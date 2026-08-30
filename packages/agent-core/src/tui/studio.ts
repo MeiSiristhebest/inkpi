@@ -358,6 +358,10 @@ export class TerminalStudio {
     ];
   }
 
+  public renderFullFrame(): string {
+    return this.renderScreen();
+  }
+
   public renderDifferential(): { isDiff: boolean; content: string } {
     const current = this.renderScreen();
     const result = this.differentialRenderer.render(current);
@@ -366,6 +370,7 @@ export class TerminalStudio {
       content: result.changedLines === 0 ? '' : current
     };
   }
+
 
   public async handleInput(input: string): Promise<string> {
     const trimmed = input.trim();

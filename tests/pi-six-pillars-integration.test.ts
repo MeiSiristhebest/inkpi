@@ -444,5 +444,26 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(output).toContain('Step 2: Preparing Standalone Release Entrypoint');
       expect(output).toContain('Build pipeline completed successfully');
     });
+
+    it('should execute inkpi-standalone.mjs CLI both in studio frame and print mode', () => {
+      // 1. Studio frame render
+      const studioOutput = execSync('node scripts/inkpi-standalone.mjs', {
+        cwd: rootDir,
+        encoding: 'utf8'
+      });
+      expect(studioOutput).toContain('Studio');
+      expect(studioOutput).toContain('资源目录树');
+      expect(studioOutput).toContain('状态账本');
+
+      // 2. Print mode execution
+      const printOutput = execSync('node scripts/inkpi-standalone.mjs --print --prompt "测试小说开篇" --json', {
+        cwd: rootDir,
+        encoding: 'utf8'
+      });
+      const parsed = JSON.parse(printOutput);
+      expect(parsed.success).toBe(true);
+      expect(parsed.role).toBe('writer');
+    });
   });
 });
+

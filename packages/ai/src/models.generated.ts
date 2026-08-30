@@ -4626,7 +4626,7 @@ export const GENERATED_MODELS: GeneratedModelMeta[] = [
     "supportsVision": false,
     "cost": {
       "inputPerMillionUsd": 0.079,
-      "outputPerMillionUsd": 0.158,
+      "outputPerMillionUsd": 0.157,
       "cacheReadPerMillionUsd": 0.016
     },
     "description": "DeepSeek V4 Flash is an efficiency-optimized Mixture-of-Experts model from DeepSeek with 284B total parameters and 13B activated parameters, supportin"
@@ -4642,7 +4642,7 @@ export const GENERATED_MODELS: GeneratedModelMeta[] = [
     "supportsVision": false,
     "cost": {
       "inputPerMillionUsd": 0.079,
-      "outputPerMillionUsd": 0.158,
+      "outputPerMillionUsd": 0.157,
       "cacheReadPerMillionUsd": 0.016
     },
     "description": "DeepSeek V4 Flash is an efficiency-optimized Mixture-of-Experts model from DeepSeek with 284B total parameters and 13B activated parameters, supportin"
