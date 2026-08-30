@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   updated_at INTEGER NOT NULL
 );
 
--- 2. Folders (分卷表)
+-- 2. Folders (目录/文件夹/分卷表)
 CREATE TABLE IF NOT EXISTS folders (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS folders (
 );
 CREATE INDEX IF NOT EXISTS idx_folders_workspace_id ON folders(workspace_id, order_index);
 
--- 3. Documents (章节表)
+-- 3. Documents (文档/章节/场次表)
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY,
   folder_id TEXT NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_folder_id ON documents(folder_id, order_index);
 CREATE INDEX IF NOT EXISTS idx_documents_workspace_id ON documents(workspace_id, order_index);
 
--- 4. Document Snapshots (章节基线快照表)
+-- 4. Document Snapshots (文档基线快照表)
 CREATE TABLE IF NOT EXISTS document_snapshots (
   document_id TEXT PRIMARY KEY,
   version INTEGER NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS writer_leases (
   metadata TEXT
 );
 
--- 7. FTS5 Full Text Search Virtual Table (全书全文检索虚拟表)
+-- 7. FTS5 Full Text Search Virtual Table (全文检索虚拟表)
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
   document_id UNINDEXED,
   title,
@@ -104,7 +104,7 @@ BEGIN
   FROM documents c WHERE c.id = new.document_id;
 END;
 
--- 9. Lanes (多泳道/平行剧情线表 - 1:1 对标 pi-session lanes)
+-- 9. Lanes (多泳道/平行分支线表 - 1:1 对标 pi-session lanes)
 CREATE TABLE IF NOT EXISTS lanes (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,

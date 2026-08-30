@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  NovelCollaborativePipeline,
+  WorkflowCoordinator,
   type QualityGateIssue
 } from '@inkpi/agent-core';
 
 describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
   it('should detect entity destruction and major twists with generic gate rules', () => {
-    const pipeline = new NovelCollaborativePipeline({
+    const pipeline = new WorkflowCoordinator({
       customGateRules: [
         {
           type: 'power_escalation',
@@ -49,7 +49,7 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
     const events: string[] = [];
     let gateTriggered = false;
 
-    const pipeline = new NovelCollaborativePipeline({
+    const pipeline = new WorkflowCoordinator({
       enableQualityGate: true,
       customExecutor: async (role) => {
         if (role === 'architect') {
@@ -95,7 +95,7 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
   });
 
   it('should abort and throw error when author rejects dangerous twist in gate', async () => {
-    const pipeline = new NovelCollaborativePipeline({
+    const pipeline = new WorkflowCoordinator({
       enableQualityGate: true,
       customGateRules: [
         {

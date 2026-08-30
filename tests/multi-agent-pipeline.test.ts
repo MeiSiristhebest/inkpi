@@ -1,22 +1,21 @@
-import { describe, it, expect } from 'vitest';
-import { NovelCollaborativePipeline, NOVEL_ROLE_CONFIGS } from '@inkpi/agent-core';
+import { WorkflowCoordinator, DEFAULT_ROLE_CONFIGS } from '@inkpi/agent-core';
 
-describe('Multi-Agent Novel Collaborative Pipeline', () => {
-  it('should have 4 predefined novel agent roles with complete system prompts', () => {
-    expect(NOVEL_ROLE_CONFIGS.architect).toBeDefined();
-    expect(NOVEL_ROLE_CONFIGS.writer).toBeDefined();
-    expect(NOVEL_ROLE_CONFIGS.auditor).toBeDefined();
-    expect(NOVEL_ROLE_CONFIGS.polisher).toBeDefined();
+describe('Multi-Agent Collaborative Pipeline', () => {
+  it('should have 4 predefined agent roles with complete system prompts', () => {
+    expect(DEFAULT_ROLE_CONFIGS.architect).toBeDefined();
+    expect(DEFAULT_ROLE_CONFIGS.writer).toBeDefined();
+    expect(DEFAULT_ROLE_CONFIGS.auditor).toBeDefined();
+    expect(DEFAULT_ROLE_CONFIGS.polisher).toBeDefined();
 
-    expect(NOVEL_ROLE_CONFIGS.architect.systemPrompt).toContain('架构师');
-    expect(NOVEL_ROLE_CONFIGS.writer.systemPrompt).toContain('主笔作家');
-    expect(NOVEL_ROLE_CONFIGS.auditor.systemPrompt).toContain('审计员');
-    expect(NOVEL_ROLE_CONFIGS.polisher.systemPrompt).toContain('校对官');
+    expect(DEFAULT_ROLE_CONFIGS.architect.systemPrompt).toContain('架构师');
+    expect(DEFAULT_ROLE_CONFIGS.writer.systemPrompt).toContain('主笔作家');
+    expect(DEFAULT_ROLE_CONFIGS.auditor.systemPrompt).toContain('审计员');
+    expect(DEFAULT_ROLE_CONFIGS.polisher.systemPrompt).toContain('校对官');
   });
 
   it('should execute full 4-stage pipeline with event streaming and state ledger merging', async () => {
     const events: string[] = [];
-    const pipeline = new NovelCollaborativePipeline();
+    const pipeline = new WorkflowCoordinator();
 
     pipeline.subscribe((ev) => {
       events.push(ev.type);
@@ -52,7 +51,7 @@ describe('Multi-Agent Novel Collaborative Pipeline', () => {
   });
 
   it('should allow custom role executor injection', async () => {
-    const pipeline = new NovelCollaborativePipeline({
+    const pipeline = new WorkflowCoordinator({
       customExecutor: async (role, sysPrompt, userPrompt) => {
         return `[Custom ${role}] executed: ${userPrompt.slice(0, 10)}`;
       }
@@ -64,7 +63,7 @@ describe('Multi-Agent Novel Collaborative Pipeline', () => {
   });
 
   it('should test progress callback event stream', async () => {
-    const pipeline = new NovelCollaborativePipeline();
+    const pipeline = new WorkflowCoordinator();
     const progressLogs: string[] = [];
     const unsubscribe = pipeline.subscribe((ev) => {
       if (ev.type === 'stage_start' || ev.type === 'stage_end') {
@@ -79,7 +78,7 @@ describe('Multi-Agent Novel Collaborative Pipeline', () => {
 
   it('should trigger all novel hooks in pipeline execution', async () => {
     const executedHooks: string[] = [];
-    const pipeline = new NovelCollaborativePipeline({
+    const pipeline = new WorkflowCoordinator({
       hooks: [
         {
           onBeforeOutline: async ({ userPrompt }) => {

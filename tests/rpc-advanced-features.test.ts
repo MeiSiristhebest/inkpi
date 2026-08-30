@@ -3,7 +3,7 @@ import {
   InkRpcServer,
   InkRpcClient,
   InMemoryTransport,
-  NovelCollaborativePipeline,
+  WorkflowCoordinator,
   TelemetryCollector
 } from '@inkpi/agent-core';
 import {
@@ -22,7 +22,7 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
     const journal = new AppendOnlySessionJournal('rpc_session_1');
     const jitRetriever = new JitMemoryRetriever({ repository: repo, ftsEngine: fts });
     const telemetry = new TelemetryCollector();
-    const pipeline = new NovelCollaborativePipeline({ telemetry });
+    const pipeline = new WorkflowCoordinator({ telemetry });
 
     const server = new InkRpcServer({
       storage: repo,

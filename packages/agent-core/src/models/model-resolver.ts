@@ -2,11 +2,12 @@ import type { ModelConfig } from '@inkpi/protocol';
 import { ModelRegistry, type ModelMetadata } from './model-registry.js';
 import { getModelPreset } from '@inkpi/ai';
 
-export type NovelTaskScope = 'drafting' | 'reasoning' | 'polishing' | 'linting' | 'fast-ghost';
+export type TaskScope = 'drafting' | 'reasoning' | 'polishing' | 'linting' | 'fast-ghost' | string;
+export type NovelTaskScope = TaskScope;
 
 export class ScopedModelResolver {
   private registry: ModelRegistry;
-  private scopeMappings = new Map<NovelTaskScope, string>();
+  private scopeMappings = new Map<TaskScope, string>();
 
   constructor(registry?: ModelRegistry) {
     this.registry = registry || new ModelRegistry();
@@ -21,14 +22,14 @@ export class ScopedModelResolver {
     this.scopeMappings.set('fast-ghost', 'local-offline');
   }
 
-  public setScopeMapping(scope: NovelTaskScope, modelIdOrAlias: string): void {
+  public setScopeMapping(scope: TaskScope, modelIdOrAlias: string): void {
     this.scopeMappings.set(scope, modelIdOrAlias);
   }
 
   /**
-   * 根据具体写作任务场景，智能解析最佳模型配置 (1:1 对标 repos/pi ScopedModelResolver)
+   * 根据具体任务场景，智能解析最佳模型配置 (1:1 对标 repos/pi ScopedModelResolver)
    */
-  public resolveForTask(scope: NovelTaskScope): ModelConfig {
+  public resolveForTask(scope: TaskScope): ModelConfig {
     const targetAlias = this.scopeMappings.get(scope) || 'creative-pro';
     const metadata = this.registry.get(targetAlias);
 

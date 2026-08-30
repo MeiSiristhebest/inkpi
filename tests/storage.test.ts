@@ -91,9 +91,9 @@ describe('@inkpi/storage', () => {
       db.transaction(() => {
         repo.createWorkspace({
           id: 'temp_workspace',
-          title: '临时workspace',
-          owner: 'A',
-          category: 'wuxia',
+          title: 'Temp Workspace',
+          owner: 'TestUser',
+          category: 'test',
           targetSize: 1000,
           createdAt: Date.now(),
           updatedAt: Date.now()

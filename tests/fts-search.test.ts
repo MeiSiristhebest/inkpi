@@ -10,8 +10,8 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
     const now = Date.now();
     repo.createWorkspace({
       id: 'workspace_fts',
-      title: '大奉打更人',
-      owner: '卖报小郎君',
+      title: 'Lore Archive System',
+      owner: 'Archive Admin',
       category: 'standard',
       targetSize: 3000000,
       createdAt: now,
@@ -20,7 +20,7 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
     repo.createFolder({
       id: 'vol_fts_1',
       workspaceId: 'workspace_fts',
-      title: '第一folder 妖蛊之乱',
+      title: 'Folder 1 Records',
       orderIndex: 1,
       createdAt: now,
       updatedAt: now
@@ -30,7 +30,7 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
       id: 'ch_fts_1',
       folderId: 'vol_fts_1',
       workspaceId: 'workspace_fts',
-      title: '第一document 牢狱之灾',
+      title: 'Document 1 Containment Event',
       orderIndex: 1,
       contentSize: 3000,
       status: 'published',
@@ -41,7 +41,7 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
       id: 'ch_fts_2',
       folderId: 'vol_fts_1',
       workspaceId: 'workspace_fts',
-      title: '第二document 税银案真相',
+      title: 'Document 2 Chemical Analysis',
       orderIndex: 2,
       contentSize: 3200,
       status: 'published',
@@ -54,7 +54,7 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
       documentId: 'ch_fts_1',
       version: 1,
       contentJson: '{}',
-      contentMarkdown: '许七安幽幽苏醒，发现自己身陷大牢，浑身剧痛。身旁狱卒冷笑道：斩首之日就在三日之后。',
+      contentMarkdown: 'UserX awakens in cell, security guards alerting perimeter protocols.',
       contentSize: 45,
       updatedAt: now
     });
@@ -63,23 +63,24 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
       documentId: 'ch_fts_2',
       version: 1,
       contentJson: '{}',
-      contentMarkdown: '二叔许平志脸色惨白。许七安在泥地上写下化学方程式：硝石、硫磺与木炭的奥秘。',
+      contentMarkdown: 'Officer analyzes chemical formula containing Potassium Nitrate and Carbon.',
       contentSize: 40,
       updatedAt: now + 1
     });
 
-    // 1. Search keyword "许七安" -> should match both documents
-    const res1 = fts.search('许七安');
-    expect(res1.length).toBe(2);
+    // 1. Search keyword "Chemical" -> matches document 2
+    const res1 = fts.search('Chemical');
+    expect(res1.length).toBe(1);
+    expect(res1[0].documentId).toBe('ch_fts_2');
+    expect(res1[0].title).toBe('Document 2 Chemical Analysis');
 
-    // 2. Search specific asset "硝石" -> should match document 2 with highlighted snippet
-    const res2 = fts.search('硝石');
+    // 2. Search keyword "UserX" -> matches document 1
+    const res2 = fts.search('UserX');
     expect(res2.length).toBe(1);
-    expect(res2[0].documentId).toBe('ch_fts_2');
-    expect(res2[0].title).toBe('第二document 税银案真相');
+    expect(res2[0].documentId).toBe('ch_fts_1');
 
     // 3. Search non-existent keyword
-    const resNone = fts.search('不存在的太古神器');
+    const resNone = fts.search('NonExistentKeywordXYZ');
     expect(resNone.length).toBe(0);
 
     // 4. Empty search
@@ -87,7 +88,7 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
 
     // 5. Test manual rebuildIndex
     fts.rebuildIndex();
-    const resAfterRebuild = fts.search('狱卒');
+    const resAfterRebuild = fts.search('security');
     expect(resAfterRebuild.length).toBe(1);
 
     db.close();

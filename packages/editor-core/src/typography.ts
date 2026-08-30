@@ -29,3 +29,16 @@ export function formatWesternTypography(text: string): string {
     .map((line) => line.trim().replace(/[ ]{2,}/g, ' '))
     .join('\n');
 }
+
+export function formatTypography(
+  text: string,
+  options: Partial<TypographyOptions> & { mode?: 'chinese' | 'western' | 'none' } = { mode: 'chinese' }
+): string {
+  if (options.enabled === false || options.mode === 'none') {
+    return text;
+  }
+  if (options.mode === 'western') {
+    return formatWesternTypography(text);
+  }
+  return formatChineseTypography(text, options);
+}

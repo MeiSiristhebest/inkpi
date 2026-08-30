@@ -69,6 +69,16 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     const badRes = scorer.score(badText);
     expect(badRes.score).toBeLessThan(80);
     expect(badRes.violationsCount).toBeGreaterThan(0);
+
+    // Western / generic typography test
+    const westernGood = 'Line 1 normal text.\nLine 2 without extra spaces.';
+    const westernGoodRes = scorer.score(westernGood, 'en-US');
+    expect(westernGoodRes.passed).toBe(true);
+    expect(westernGoodRes.score).toBe(100);
+
+    const westernBad = 'Line 1   multiple   spaces.';
+    const westernBadRes = scorer.score(westernBad, 'en-US');
+    expect(westernBadRes.violationsCount).toBeGreaterThan(0);
   });
 
   it('should run EvalRunner and generate comprehensive benchmark report', () => {

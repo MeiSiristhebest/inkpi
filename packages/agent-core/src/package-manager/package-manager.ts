@@ -1,5 +1,5 @@
 /**
- * InkPi 小说创作扩展与技能包管理器 (1:1 对标 pi package-manager-cli)
+ * InkPi 扩展与技能包管理器 (1:1 对标 pi package-manager-cli)
  */
 
 import * as fs from 'node:fs';
@@ -9,7 +9,7 @@ export interface InkPackageManifest {
   name: string;
   version: string;
   description: string;
-  category: 'worldview' | 'style' | 'character-templates' | 'skills' | 'rules';
+  category: 'worldview' | 'style' | 'character-templates' | 'skills' | 'rules' | 'themes' | 'plugins' | string;
   author?: string;
   dependencies?: Record<string, string>;
   files?: string[];

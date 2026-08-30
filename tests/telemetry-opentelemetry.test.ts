@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { TelemetryCollector, NovelCollaborativePipeline } from '@inkpi/agent-core';
+import { TelemetryCollector, WorkflowCoordinator } from '@inkpi/agent-core';
 
 describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
-  it('should foreshadowing spans, tokens, TTFT, and export valid OpenTelemetry JSON', () => {
+  it('should track spans, tokens, TTFT, and export valid OpenTelemetry JSON', () => {
     const telem = new TelemetryCollector();
     telem.startTurn();
 
@@ -37,9 +36,9 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
     expect(otelJson).toContain('writer');
   });
 
-  it('should collect OpenTelemetry spans automatically during 4-phase novel pipeline execution', async () => {
+  it('should collect OpenTelemetry spans automatically during 4-phase pipeline execution', async () => {
     const telem = new TelemetryCollector();
-    const pipeline = new NovelCollaborativePipeline({ telemetry: telem });
+    const pipeline = new WorkflowCoordinator({ telemetry: telem });
 
     const result = await pipeline.runPipeline(
       'Test Workspace B',

@@ -15,8 +15,8 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
     const now = Date.now();
     repo.createWorkspace({
       id: 'workspace_e2e',
-      title: 'author品全workspace',
-      owner: '墨派创author者',
+      title: 'Main Creative Project',
+      owner: 'Creator User',
       category: 'general',
       targetSize: 500000,
       createdAt: now,
@@ -25,7 +25,7 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
     repo.createFolder({
       id: 'vol_e2e_1',
       workspaceId: 'workspace_e2e',
-      title: '第一folder',
+      title: 'Folder 1 Prologue',
       orderIndex: 1,
       createdAt: now,
       updatedAt: now
@@ -34,7 +34,7 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
       id: 'ch_e2e_1',
       folderId: 'vol_e2e_1',
       workspaceId: 'workspace_e2e',
-      title: '第一document 启程',
+      title: 'Document 1 Genesis',
       orderIndex: 1,
       contentSize: 0,
       status: 'draft',
