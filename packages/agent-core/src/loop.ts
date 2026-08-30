@@ -82,6 +82,22 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
 
       stream.on(async (msgEvent) => {
         if (state.streamingMessage) {
+          if (msgEvent.type === 'text_delta') {
+            let textBlock = state.streamingMessage.content.find((b: any) => b.type === 'text') as any;
+            if (!textBlock) {
+              textBlock = { type: 'text', text: '' };
+              state.streamingMessage.content.push(textBlock);
+            }
+            textBlock.text += msgEvent.textDelta;
+          } else if (msgEvent.type === 'thinking_delta') {
+            let thinkBlock = state.streamingMessage.content.find((b: any) => b.type === 'thinking') as any;
+            if (!thinkBlock) {
+              thinkBlock = { type: 'thinking', thinking: '' };
+              state.streamingMessage.content.push(thinkBlock);
+            }
+            thinkBlock.thinking += msgEvent.thinkingDelta;
+          }
+
           await emitEvent({
             type: 'message_update',
             message: state.streamingMessage,
@@ -89,6 +105,7 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
           });
         }
       });
+
 
       const assistantMessage = await stream.collect();
       state.isStreaming = false;

@@ -77,14 +77,36 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
     });
 
     let generatedText = '';
+    let hasStreamedToStdout = false;
+
     agent.subscribe((event) => {
-      if (event.type === 'message_update' && event.message.role === 'assistant') {
-        const textBlocks = event.message.content.filter((b: any) => b.type === 'text');
-        generatedText = textBlocks.map((b: any) => b.text).join('\n');
+      if (event.type === 'message_update') {
+        const ev = (event as any).assistantMessageEvent;
+        if (ev && !options.json) {
+          if (ev.type === 'thinking_delta' && ev.thinkingDelta) {
+            process.stdout.write(`\x1b[36m${ev.thinkingDelta}\x1b[0m`);
+            hasStreamedToStdout = true;
+          } else if (ev.type === 'text_delta' && ev.textDelta) {
+            process.stdout.write(ev.textDelta);
+            hasStreamedToStdout = true;
+          }
+        }
+        if (event.message?.role === 'assistant') {
+          const textBlocks = event.message.content.filter((b: any) => b.type === 'text');
+          generatedText = textBlocks.map((b: any) => b.text).join('\n');
+        }
       }
     });
 
     await agent.prompt(options.prompt);
+
+    const assistantMsg = agent.state.messages.slice().reverse().find(m => m.role === 'assistant');
+    if (assistantMsg && typeof assistantMsg.content !== 'string') {
+      const textBlocks = (assistantMsg.content as any[]).filter((b: any) => b.type === 'text');
+      if (textBlocks.length > 0) {
+        generatedText = textBlocks.map((b: any) => b.text).join('\n');
+      }
+    }
 
     const durationMs = Date.now() - startTime;
     const result: PrintModeResult = {
@@ -94,17 +116,21 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       durationMs
     };
 
+
     if (options.output) {
       fs.writeFileSync(options.output, result.content, 'utf8');
     }
 
     if (options.json) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    } else if (hasStreamedToStdout) {
+      process.stdout.write('\n');
     } else {
       process.stdout.write(result.content + '\n');
     }
 
     return result;
+
   } catch (err: any) {
     const durationMs = Date.now() - startTime;
     const errorResult: PrintModeResult = {

@@ -73,10 +73,20 @@ export const fauxProvider: ProviderHandler = (model, messages, options) => {
     }
 
     const script = activeFauxScript;
-    const thinkingText = script?.thinking ?? ((model.supportsThinking || (options?.thinkingBudget && options.thinkingBudget > 0)) ? 'Thinking...' : undefined);
+    const lastMsg = messages[messages.length - 1];
+    let userPrompt = '';
+    if (lastMsg && lastMsg.role === 'user') {
+      userPrompt = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
+    }
+
+    const defaultThinking = (model.supportsThinking || (options?.thinkingBudget && options.thinkingBudget > 0))
+      ? `💡 [深度思考推演]\n1. 意图解析: "${userPrompt.slice(0, 30)}"\n2. 设定一致性检查: 角色阵营与战力基线稳定\n3. 情绪节奏规划: 营造沉浸式氛围与开篇悬念\n4. 门禁审计预检: 逻辑无矛盾，开始流式输出正文。`
+      : undefined;
+
+    const thinkingText = script?.thinking ?? defaultThinking;
 
     if (thinkingText) {
-      stream.push({ type: 'thinking_delta', thinkingDelta: thinkingText });
+      stream.push({ type: 'thinking_delta', thinkingDelta: thinkingText + '\n\n' });
     }
 
     if (script?.toolCalls && script.toolCalls.length > 0) {
@@ -89,15 +99,22 @@ export const fauxProvider: ProviderHandler = (model, messages, options) => {
         });
       }
     } else {
-      const lastMsg = messages[messages.length - 1];
-      let userPrompt = '';
-      if (lastMsg && lastMsg.role === 'user') {
-        userPrompt = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
+      let textOutput = script?.text;
+      if (!textOutput) {
+        if (userPrompt) {
+          textOutput = `【InkPi 创作试写正文】\n　　九霄大陆，长夜将尽。寒风如刀，卷起漫天碎雪呼啸掠过断崖。\n　　少年按紧了怀中泛着幽微蓝光的神秘古玉，目光沉冷如渊。三年隐忍与蛰伏，只为今朝破关一战。\n　　“既然天道不公，那我便以手中之剑，亲自劈开这无尽长夜！”\n　　随着一声低沉的剑鸣，远方沉寂已久的古老禁地骤然爆发出万丈神芒，属于新一代强者的传奇序曲在此刻轰然奏响。`;
+        } else {
+          textOutput = 'Generated response.';
+        }
       }
 
-      const textOutput = script?.text ?? (userPrompt ? `Response to "${userPrompt.slice(0, 30)}"` : 'Generated response.');
-      stream.push({ type: 'text_delta', textDelta: textOutput });
+      // 拟真流式逐字输出
+      const chunkSize = 20;
+      for (let i = 0; i < textOutput.length; i += chunkSize) {
+        stream.push({ type: 'text_delta', textDelta: textOutput.slice(i, i + chunkSize) });
+      }
     }
+
 
     const hasCache = Boolean(options?.cacheControl || model.supportsPromptCache);
     const inputTokens = script?.inputTokens ?? (hasCache ? 20 : 50);

@@ -58,7 +58,22 @@ async function main() {
   } else if (args.includes('--print') || args.includes('-p')) {
     const promptIdx = args.indexOf('--prompt');
     const prompt = promptIdx !== -1 ? args[promptIdx + 1] : '请开始一段全新创作';
-    await runPrintMode({ prompt, json: args.includes('--json') });
+    const modelIdx = args.indexOf('--model');
+    const model = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
+    const roleIdx = args.indexOf('--role');
+    const role = roleIdx !== -1 ? args[roleIdx + 1] : undefined;
+    const apiKeyIdx = args.indexOf('--api-key');
+    if (apiKeyIdx !== -1) {
+      process.env.DEEPSEEK_API_KEY = args[apiKeyIdx + 1];
+      process.env.OPENAI_API_KEY = args[apiKeyIdx + 1];
+      process.env.OPENROUTER_API_KEY = args[apiKeyIdx + 1];
+    }
+    await runPrintMode({
+      prompt,
+      model,
+      role,
+      json: args.includes('--json')
+    });
   } else if (['install', 'remove', 'list', 'update'].includes(args[0])) {
     const output = await runPackageManagerCli(args);
     console.log(output);
