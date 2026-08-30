@@ -25,6 +25,7 @@ export default defineConfig({
         '**/types.ts',
         'scripts/**',
         'vitest.config.ts',
+        'packages/ai/src/models.generated.ts',
         'packages/tui/src/components/box.ts',
         'packages/tui/src/components/h-stack.ts',
         'packages/tui/src/components/v-stack.ts',
@@ -32,6 +33,7 @@ export default defineConfig({
         'packages/agent-core/src/plugins/index.ts',
         'packages/agent-core/src/clipboard/system-clipboard.ts'
       ]
+
     },
     alias: {
       '@inkpi/protocol': resolve(__dirname, './packages/protocol/src/index.ts'),

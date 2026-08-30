@@ -1,5 +1,6 @@
 /**
- * 终端按键事件模型与解析器 (1:1 对标 pi-tui keys.ts)
+ * 终端按键与事件模型与解析器 (1:1 对标 pi-tui keys.ts)
+ * 支持常规按键、控制组合键、鼠标滚轮/点击、焦点通知与剪贴板 Bracketed Paste
  */
 
 export interface KeyEvent {
@@ -9,6 +10,9 @@ export interface KeyEvent {
   shift: boolean;
   sequence: string;
   raw: Buffer | string;
+  isMouse?: boolean;
+  mouseX?: number;
+  mouseY?: number;
 }
 
 export function parseKey(input: Buffer | string): KeyEvent {
@@ -23,7 +27,47 @@ export function parseKey(input: Buffer | string): KeyEvent {
     raw: input
   };
 
-  // Special escape sequences
+  // 1. Mouse SGR extended sequences (\x1b[<button;x;yM or m)
+  const mouseMatch = str.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+  if (mouseMatch) {
+    const btn = parseInt(mouseMatch[1], 10);
+    const x = parseInt(mouseMatch[2], 10);
+    const y = parseInt(mouseMatch[3], 10);
+    event.isMouse = true;
+    event.mouseX = x;
+    event.mouseY = y;
+
+    if (btn === 64) {
+      event.name = 'wheelup';
+    } else if (btn === 65) {
+      event.name = 'wheeldown';
+    } else {
+      event.name = `mouse_${btn}`;
+    }
+    return event;
+  }
+
+  // 2. Focus In / Out events
+  if (str === '\x1b[I') {
+    event.name = 'focusin';
+    return event;
+  }
+  if (str === '\x1b[O') {
+    event.name = 'focusout';
+    return event;
+  }
+
+  // 3. Bracketed Paste mode sequences
+  if (str === '\x1b[200~') {
+    event.name = 'paste_start';
+    return event;
+  }
+  if (str === '\x1b[201~') {
+    event.name = 'paste_end';
+    return event;
+  }
+
+  // 4. Special escape sequences
   if (str === '\r' || str === '\n') {
     event.name = 'enter';
   } else if (str === '\t') {
@@ -45,6 +89,18 @@ export function parseKey(input: Buffer | string): KeyEvent {
     event.name = 'right';
   } else if (str === '\x1b[D' || str === '\x1bOD') {
     event.name = 'left';
+  } else if (str === '\x1b[1;5A') {
+    event.name = 'up';
+    event.ctrl = true;
+  } else if (str === '\x1b[1;5B') {
+    event.name = 'down';
+    event.ctrl = true;
+  } else if (str === '\x1b[1;5C') {
+    event.name = 'right';
+    event.ctrl = true;
+  } else if (str === '\x1b[1;5D') {
+    event.name = 'left';
+    event.ctrl = true;
   } else if (str === '\x1b[H' || str === '\x1b[1~') {
     event.name = 'home';
   } else if (str === '\x1b[F' || str === '\x1b[4~') {

@@ -5,4 +5,6 @@ export * from './presets.js';
 export * from './catalog.js';
 export * from './usage.js';
 export * from './prompt-caching.js';
+export * from './models.generated.js';
+
 

@@ -185,7 +185,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
       globalThis.fetch = originalFetch;
     }
 
-    // 3. Ollama provider network error -> fallback to mockProvider
+    // 3. Ollama provider network error -> genuine error emission (no silent mock)
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) as any;
 
     try {
@@ -194,11 +194,12 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
         [{ role: 'user', content: 'hi' }]
       );
       const res = await stream.collect();
-      expect(res.role).toBe('assistant');
-      expect(res.content.length).toBeGreaterThan(0);
+      expect(res.stopReason).toBe('error');
+      expect(res.errorMessage).toContain('Ollama connection error');
     } finally {
       globalThis.fetch = originalFetch;
     }
+
 
     // 4. DeepSeek provider AbortError
     globalThis.fetch = vi.fn().mockRejectedValue({

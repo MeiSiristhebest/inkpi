@@ -11,6 +11,29 @@ export interface UsageCostBreakdown {
   cacheHitRatio: number;
 }
 
+export function calculateCost(
+  costConfig: {
+    inputPerMillionUsd: number;
+    outputPerMillionUsd: number;
+    cacheReadPerMillionUsd?: number;
+    cacheWritePerMillionUsd?: number;
+  },
+  usage: Usage
+): number {
+  const input = usage.inputTokens || 0;
+  const output = usage.outputTokens || 0;
+  const cacheRead = usage.cacheReadTokens || 0;
+  const cacheWrite = usage.cacheWriteTokens || 0;
+
+  const inputCost = (input / 1_000_000) * costConfig.inputPerMillionUsd;
+  const outputCost = (output / 1_000_000) * costConfig.outputPerMillionUsd;
+  const cacheReadCost = (cacheRead / 1_000_000) * (costConfig.cacheReadPerMillionUsd || 0);
+  const cacheWriteCost = (cacheWrite / 1_000_000) * (costConfig.cacheWritePerMillionUsd || 0);
+
+  return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+}
+
+
 export class UsageTracker {
   private totals: UsageTotals = {
     inputTokens: 0,

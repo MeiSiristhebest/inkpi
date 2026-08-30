@@ -45,7 +45,98 @@ export type PipelineEvent = WorkflowEvent;
 export type PipelineEventListener = WorkflowEventListener;
 
 /**
- * 纯通用多 Agent 工作流编排引擎 (1:1 对标 repos/pi handoff & multi-agent workflow 范式)
+ * 标准实体安全与破坏性变动门禁规则
+ */
+export function createStandardEntitySafetyRules(): QualityGateRule[] {
+  return [
+    {
+      type: 'entity_elimination',
+      severity: 'critical',
+      description: '检测到关键实体被消灭/破坏，可能对后续链条造成不可逆破坏。',
+      detector: (content, ledger) => {
+        const allEntities = ledger.entities || ledger.characters || [];
+        for (const char of allEntities) {
+          const entityName = char.name;
+          const deathRegex = new RegExp(`${entityName}[^。！？\n]*?(?:自爆|惨死|陨落|阵亡|身死道消|被杀|身亡|摧毁|销毁|死亡)`, 'g');
+          if (deathRegex.test(content)) {
+            return {
+              type: 'entity_death',
+              targetEntity: entityName,
+              characterOrEntity: entityName,
+              entityOrEntity: entityName,
+              severity: 'critical',
+              description: `检测到关键实体【${entityName}】在当前阶段被消灭/死亡，可能对后续链条造成不可逆破坏。`
+            };
+
+          }
+        }
+        return null;
+      }
+    },
+    {
+      type: 'major_twist',
+      severity: 'warning',
+      pattern: /(?:叛出|背叛|决裂|堕入|血洗|反目成仇|阵营反转)/,
+      description: '检测到重大阵营决裂/颠覆性剧情变动，需确认是否符合设计意图。'
+    }
+  ];
+}
+
+/**
+ * 影视剧本 (Screenplay) 专属门禁规则
+ */
+export function createScreenplayGateRules(): QualityGateRule[] {
+  return [
+    {
+      type: 'scene_header_check',
+      severity: 'warning',
+      pattern: /^(?!(?:INT\.|EXT\.|内景|外景)).*$/m,
+      description: '剧本场景未按标准场景标题 (INT./EXT. 或 内景/外景) 规范格式开头。'
+    }
+  ];
+}
+
+/**
+ * 短剧分镜 (Short Drama) 专属门禁规则
+ */
+export function createShortDramaGateRules(): QualityGateRule[] {
+  return [
+    {
+      type: 'hook_check',
+      severity: 'warning',
+      description: '短剧前 3 秒黄金吸睛钩子检测',
+      detector: (content) => {
+        const firstLines = content.slice(0, 100);
+        if (!/(?:耳光|退婚|离婚|反击|惊呆|打脸|绝症|重生|神豪|首富|战神|震惊|质问)/.test(firstLines)) {
+          return {
+            type: 'weak_hook',
+            severity: 'warning',
+            description: '短剧前 3 秒黄金钩子较弱，建议增强开场冲突与吸睛情绪点。'
+          };
+        }
+        return null;
+      }
+    }
+
+  ];
+}
+
+/**
+ * 视觉小说 (Visual Novel) 专属门禁规则
+ */
+export function createVisualNovelGateRules(): QualityGateRule[] {
+  return [
+    {
+      type: 'choice_integrity',
+      severity: 'warning',
+      pattern: /<choice[^>]*>.*?<\/choice>/,
+      description: '视觉小说分支选项节点已就绪。'
+    }
+  ];
+}
+
+/**
+ * 纯通用多 Agent 创作工作流编排引擎 (1:1 对标 repos/pi handoff & multi-agent workflow 范式)
  * 具备 0 业务偏见，支持任意动态注册的流水线阶段 (Stages)、动态角色 (Roles)、
  * 动态人机交互门禁 (Quality Gate Rules) 与上下文流转。
  */
@@ -68,9 +159,11 @@ export class WorkflowCoordinator {
       this.initDefaultStages();
     }
 
-    if (options.customGateRules) {
-      this.gateRules.push(...options.customGateRules);
-    }
+    this.gateRules = [
+      ...createStandardEntitySafetyRules(),
+      ...(options.customGateRules || [])
+    ];
+
   }
 
   /**
@@ -116,7 +209,7 @@ export class WorkflowCoordinator {
   }
 
   /**
-   * 质量门禁自动检测
+   * 纯规则驱动的质量门禁自动检测 (100% 领域中立)
    */
   public detectPlotGateIssues(
     content: string,
@@ -136,7 +229,6 @@ export class WorkflowCoordinator {
     };
     const issues: (QualityGateIssue & { entityOrEntity?: string })[] = [];
 
-    // 1. 自定义规则检测
     for (const rule of this.gateRules) {
       if (rule.pattern) {
         const regex = typeof rule.pattern === 'string' ? new RegExp(rule.pattern, 'g') : rule.pattern;
@@ -152,33 +244,6 @@ export class WorkflowCoordinator {
         const issue = rule.detector(content, safeLedger, context);
         if (issue) issues.push(issue);
       }
-    }
-
-    // 2. 通用实体毁灭 / 异常剧烈变动检测
-    const allEntities = safeLedger.entities || safeLedger.characters || [];
-    for (const char of allEntities) {
-      const entityName = char.name;
-      const deathRegex = new RegExp(`${entityName}[^。！？\n]*?(?:自爆|惨死|陨落|阵亡|身死道消|被杀|身亡)`, 'g');
-      if (deathRegex.test(content)) {
-        issues.push({
-          type: 'entity_death',
-          characterOrEntity: entityName,
-          targetEntity: entityName,
-          entityOrEntity: entityName,
-          severity: 'critical',
-          description: `检测到关键实体【${entityName}】在当前阶段被消灭/死亡，可能对后续链条造成不可逆破坏。`
-        });
-      }
-    }
-
-    // 3. 通用剧烈剧情/状态反转检测
-    const twistRegex = /(?:叛出|背叛|决裂|堕入|血洗|反目成仇)/;
-    if (twistRegex.test(content)) {
-      issues.push({
-        type: 'major_twist',
-        severity: 'warning',
-        description: '检测到重大阵营决裂/颠覆性剧情变动，需确认是否符合设计意图。'
-      });
     }
 
     return issues;
@@ -257,7 +322,7 @@ export class WorkflowCoordinator {
         if (typeof res === 'object') {
           stageUsage = res.usage;
           if (res.modifiedLedger) {
-            ctx.stateLedger = this.mergeLedgers(ctx.stateLedger, res.modifiedLedger as StateLedger, ctx.chapterTitle || '');
+            ctx.stateLedger = this.mergeLedgers(ctx.stateLedger, res.modifiedLedger as StateLedger, ctx.chapterTitle || ctx.sectionTitle || '');
           }
         }
       } else if (this.options.customExecutor) {
@@ -412,43 +477,45 @@ export class WorkflowCoordinator {
   }
 
   private initDefaultStages(): void {
-    // 阶段 1: 架构与大纲 (Outline Stage)
+    // 阶段 1: 结构与大纲规划 (Planning & Structure Stage)
     this.registerStage({
       id: 'outline',
-      name: '架构大纲规划',
+      name: '结构大纲规划',
       role: 'architect',
       enableGate: true,
       promptTemplate: (ctx) => {
         const ledgerSummary = formatNovelStateLedger(ctx.stateLedger);
-        return `【目标主题】: ${ctx.title || ctx.bookTitle} - ${ctx.sectionTitle || ctx.chapterTitle}\n【创作指令】: ${ctx.userPrompt}\n【当前状态账本】:\n${ledgerSummary}\n\n请输出结构化大纲与核心节点规划。`;
+        const title = ctx.title || ctx.bookTitle || '创作任务';
+        const section = ctx.sectionTitle || ctx.chapterTitle || '主干内容';
+        return `【创作主题】: ${title} - ${section}\n【指令与要求】: ${ctx.userPrompt}\n【当前状态账本】:\n${ledgerSummary}\n\n请输出结构化大纲与核心节点规划。`;
       }
     });
 
-    // 阶段 2: 正文生成 (Draft Stage)
+    // 阶段 2: 正文起草与生成 (Draft & Generation Stage)
     this.registerStage({
       id: 'draft',
-      name: '正文主笔展开',
+      name: '正文主创展开',
       role: 'writer',
       promptTemplate: (ctx) => {
         const outline = ctx.stageOutputs['outline'] || ctx.outlineText || ctx.userPrompt;
         const ledgerSummary = formatNovelStateLedger(ctx.stateLedger);
-        return `【细纲依据】:\n${outline}\n\n【状态账本】:\n${ledgerSummary}\n\n请根据细纲展开高质量正文描写。`;
+        return `【大纲与依据】:\n${outline}\n\n【状态账本】:\n${ledgerSummary}\n\n请根据大纲展开高质量内容创作。`;
       }
     });
 
-    // 阶段 3: 一致性审计 (Audit Stage)
+    // 阶段 3: 一致性与约束审计 (Audit & Verification Stage)
     this.registerStage({
       id: 'audit',
-      name: '设定一致性审计',
+      name: '约束与一致性审计',
       role: 'auditor',
       promptTemplate: (ctx) => {
         const draft = ctx.stageOutputs['draft'] || ctx.draftText || '';
         const ledgerSummary = formatNovelStateLedger(ctx.stateLedger);
-        return `【待审正文】:\n${draft}\n\n【前文状态账本】:\n${ledgerSummary}\n\n请核查正文是否违背账本设定，并输出审计结论。`;
+        return `【待审内容】:\n${draft}\n\n【状态账本】:\n${ledgerSummary}\n\n请核查生成内容是否符合设定与规则约束，并输出审计结论。`;
       }
     });
 
-    // 阶段 4: 格式与排版润色 (Polish Stage)
+    // 阶段 4: 排版校对与润色 (Polish & Format Stage)
     this.registerStage({
       id: 'polish',
       name: '排版校对与润色',
@@ -456,7 +523,7 @@ export class WorkflowCoordinator {
       promptTemplate: (ctx) => {
         const draft = ctx.stageOutputs['draft'] || ctx.draftText || '';
         const audit = ctx.stageOutputs['audit'] || '';
-        return `【原正文】:\n${draft}\n\n【审计反馈】:\n${audit}\n\n请进行中文出版级规范排版与文字润色。`;
+        return `【原稿内容】:\n${draft}\n\n【审计反馈】:\n${audit}\n\n请进行规范排版与文字润色。`;
       },
       transformOutput: (output) => {
         return formatChineseTypography(output);
@@ -498,7 +565,7 @@ export class WorkflowCoordinator {
     };
   }
 
-  private mergeLedgers(base: StateLedger, addition: StateLedger, chapterName: string): StateLedger {
+  private mergeLedgers(base: StateLedger, addition: StateLedger, sectionName: string): StateLedger {
     const baseEntities = base.entities || base.characters || [];
     const addEntities = addition.entities || addition.characters || [];
     const charMap = new Map<string, any>(
@@ -522,7 +589,7 @@ export class WorkflowCoordinator {
     const chapters = new Set([
       ...(base.modifiedChapters || base.modifiedResources || []),
       ...(addition.modifiedChapters || addition.modifiedResources || []),
-      chapterName
+      sectionName
     ]);
 
     const characters = Array.from(charMap.values());

@@ -3,6 +3,9 @@
  */
 
 export * from './render.js';
+export * from './width.js';
+export * from './cursor.js';
+export * from './overlay.js';
 export * from './keys.js';
 export * from './layout.js';
 export * from './components/box.js';
@@ -13,7 +16,10 @@ export * from './components/scroll-view.js';
 export * from './components/editor.js';
 export * from './components/select-list.js';
 export * from './components/markdown.js';
+export * from './components/thinking-accordion.js';
 export * from './terminal-image.js';
+
 export * from './mermaid.js';
 export * from './tui-screens.js';
 export * from './tui.js';
+

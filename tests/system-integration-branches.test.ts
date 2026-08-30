@@ -179,10 +179,11 @@ describe('System Integration & Edge Cases Suite', () => {
 
   it('should test Editor and SelectList auxiliary branches', () => {
     const editor = new Editor({ text: 'Line 1\nLine 2', showLineNumbers: false });
-    // Ctrl key ignored for text entry
-    expect(editor.handleKey({ name: 'k', ctrl: true, meta: false, shift: false, raw: '\x0b', sequence: '\x0b' })).toBe(false);
+    // Unhandled Ctrl key ignored for text entry
+    expect(editor.handleKey({ name: 'q', ctrl: true, meta: false, shift: false, raw: '\x11', sequence: '\x11' })).toBe(false);
     // Unknown special key ignored
     expect(editor.handleKey({ name: 'f10', ctrl: false, meta: false, shift: false, raw: '', sequence: '' })).toBe(false);
+
 
     // Insert character at position
     editor.cursorRow = 0;

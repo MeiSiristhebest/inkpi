@@ -55,39 +55,10 @@ export const ANSI = {
   ALT_SCREEN_LEAVE: '\x1b[?1049l'
 };
 
-/**
- * 剥离 ANSI 转义字符
- */
-export function stripAnsi(str: string): string {
-  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b_[^\x1b]*\x1b\\/g, '');
-}
+import { stripAnsi, visibleWidth } from './width.js';
+export { stripAnsi, visibleWidth };
 
-/**
- * 计算终端可视化列宽 (1:1 对标 pi visibleWidth)
- * 中文字符、全角标点占用 2 列，普通 ASCII 占用 1 列，ANSI 转义符占用 0 列。
- */
-export function visibleWidth(str: string): number {
-  const clean = stripAnsi(str);
-  let width = 0;
-  for (let i = 0; i < clean.length; i++) {
-    const code = clean.charCodeAt(i);
-    // CJK Unified Ideographs, Fullwidth Forms, Japanese/Korean characters, Emoji
-    if (
-      (code >= 0x4e00 && code <= 0x9fff) ||
-      (code >= 0x3400 && code <= 0x4dbf) ||
-      (code >= 0x20000 && code <= 0x2a6df) ||
-      (code >= 0xff01 && code <= 0xff60) ||
-      (code >= 0x3000 && code <= 0x303f) ||
-      (code >= 0xac00 && code <= 0xd7af) ||
-      (code >= 0x1f300 && code <= 0x1f9ff)
-    ) {
-      width += 2;
-    } else {
-      width += 1;
-    }
-  }
-  return width;
-}
+
 
 /**
  * 按终端可视列宽截断字符串 (1:1 对标 pi truncateToWidth)

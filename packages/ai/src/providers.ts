@@ -44,7 +44,7 @@ export type ProviderHandler = (
 const providerRegistry = new Map<ProviderType, ProviderHandler>();
 
 // ----------------------------------------------------------------------
-// 1. Faux / Test Provider (1:1 对标 repos/pi packages/ai/src/providers/faux.ts)
+// 1. Faux / Test Provider (仅作为显式测试夹具，1:1 对标 repos/pi packages/ai/src/providers/faux.ts)
 // ----------------------------------------------------------------------
 export interface FauxScriptedResponse {
   thinking?: string;
@@ -133,7 +133,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
   const apiKey = model.apiKey || process.env[`${model.provider.toUpperCase()}_API_KEY`] || process.env.OPENAI_API_KEY || '';
 
   if (!apiKey) {
-    if (model.id.startsWith('mock-') || model.provider === 'custom') {
+    if (model.provider === 'custom') {
       return fauxProvider(model, messages, options);
     }
     queueMicrotask(() => {
@@ -252,7 +252,7 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
   const apiKey = model.apiKey || process.env.ANTHROPIC_API_KEY || '';
 
   if (!apiKey) {
-    if (model.id.startsWith('mock-') || model.provider === 'custom') {
+    if (model.provider === 'custom') {
       return fauxProvider(model, messages, options);
     }
     queueMicrotask(() => {
@@ -374,7 +374,7 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
   const apiKey = model.apiKey || process.env.GEMINI_API_KEY || '';
 
   if (!apiKey) {
-    if (model.id.startsWith('mock-') || model.provider === 'custom') {
+    if (model.provider === 'custom') {
       return fauxProvider(model, messages, options);
     }
     queueMicrotask(() => {
@@ -543,11 +543,9 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
       if (err.name === 'AbortError') {
         stream.abort();
       } else {
-        const fallback = fauxProvider(model, messages, options);
-        fallback.on((ev) => stream.push(ev));
-        for await (const _ of fallback) {}
-        stream.end();
+        stream.error(`Ollama connection error: ${err.message || 'Ensure Ollama is running at ' + baseUrl}`);
       }
+
     }
   })();
 

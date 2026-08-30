@@ -16,7 +16,15 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
     expect(res.success).toBe(true);
     expect(res.role).toBe('writer');
     expect(res.durationMs).toBeGreaterThanOrEqual(0);
+
+    const resNonJson = await runPrintMode({
+      prompt: '非 JSON 模式',
+      role: 'writer',
+      json: false
+    });
+    expect(resNonJson.success).toBe(true);
   });
+
 
   it('should run multi-agent pipeline in print mode and write output file', async () => {
     const res = await runPrintMode({

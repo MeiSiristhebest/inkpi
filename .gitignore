@@ -4,9 +4,11 @@ node_modules/
 
 # Build and Distribution Outputs
 dist/
+dist-bin/
 build/
 out/
 *.tsbuildinfo
+
 
 # Test Coverage & Artifacts
 coverage/

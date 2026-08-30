@@ -10,6 +10,7 @@ export interface WhatIfBranchInfo {
   currentLeafId: string;
   createdAt: number;
   stateLedger: StateLedger;
+  documentSnapshots?: Record<string, string>; // documentId -> content
 }
 
 export interface LedgerDiffResult {
@@ -20,9 +21,27 @@ export interface LedgerDiffResult {
   resolvedTracks: string[];
 }
 
+export interface DocumentDiffResult {
+  modifiedDocuments: Array<{
+    documentId: string;
+    charsDelta: number;
+    linesAdded: number;
+    linesRemoved: number;
+  }>;
+}
+
+export interface WhatIfExecutiveReport {
+  baseBranchName: string;
+  targetBranchName: string;
+  premise: string;
+  ledgerDiff: LedgerDiffResult;
+  documentDiff?: DocumentDiffResult;
+  executiveSummary: string;
+}
+
 /**
  * 通用多线推演管理器 (1:1 落地 repos/pi SessionTree & Branch Summarization 架构)
- * 允许在任意节点开辟平行时间线，进行 What-If 假设推演、自动对比状态账本差异。
+ * 允许在任意节点开辟平行时间线，进行 What-If 假设推演、自动对比状态账本与文档差异。
  */
 export class BranchManager {
   private tree: SessionTree;
@@ -48,7 +67,8 @@ export class BranchManager {
         tracks: [],
         locations: [],
         modifiedResources: []
-      }
+      },
+      documentSnapshots: {}
     });
   }
 
@@ -75,7 +95,8 @@ export class BranchManager {
     branchId: string,
     branchName: string,
     premise: string,
-    initialLedger?: StateLedger
+    initialLedger?: StateLedger,
+    initialDocuments?: Record<string, string>
   ): WhatIfBranchInfo {
     const currentLeaf = this.tree.getCurrentLeafId() || 'root';
     const activeBranch = this.branches.get(this.activeBranchId);
@@ -86,6 +107,12 @@ export class BranchManager {
       ? JSON.parse(JSON.stringify(activeBranch.stateLedger))
       : { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
 
+    const docs: Record<string, string> = initialDocuments
+      ? { ...initialDocuments }
+      : activeBranch?.documentSnapshots
+      ? { ...activeBranch.documentSnapshots }
+      : {};
+
     const branchInfo: WhatIfBranchInfo = {
       branchId,
       branchName,
@@ -93,7 +120,8 @@ export class BranchManager {
       forkPointNodeId: currentLeaf,
       currentLeafId: currentLeaf,
       createdAt: Date.now(),
-      stateLedger: ledger
+      stateLedger: ledger,
+      documentSnapshots: docs
     };
 
     this.branches.set(branchId, branchInfo);
@@ -151,6 +179,17 @@ export class BranchManager {
   }
 
   /**
+   * 更新当前分支的文档快照
+   */
+  public updateDocumentSnapshot(documentId: string, content: string): void {
+    const active = this.branches.get(this.activeBranchId);
+    if (active) {
+      if (!active.documentSnapshots) active.documentSnapshots = {};
+      active.documentSnapshots[documentId] = content;
+    }
+  }
+
+  /**
    * 比对两个平行分支状态账本的差异
    */
   public diffLedgers(baseLedger: StateLedger, targetLedger: StateLedger): LedgerDiffResult {
@@ -195,6 +234,77 @@ export class BranchManager {
       addedAssets,
       newTracks,
       resolvedTracks
+    };
+  }
+
+  /**
+   * 比对两个分支的文档快照差异
+   */
+  public diffDocuments(baseBranchId: string, targetBranchId: string): DocumentDiffResult {
+    const baseBranch = this.branches.get(baseBranchId);
+    const targetBranch = this.branches.get(targetBranchId);
+    const baseDocs = baseBranch?.documentSnapshots || {};
+    const targetDocs = targetBranch?.documentSnapshots || {};
+
+    const allDocIds = new Set([...Object.keys(baseDocs), ...Object.keys(targetDocs)]);
+    const modifiedDocuments: DocumentDiffResult['modifiedDocuments'] = [];
+
+    for (const docId of allDocIds) {
+      const baseText = baseDocs[docId] || '';
+      const targetText = targetDocs[docId] || '';
+      if (baseText !== targetText) {
+        const baseLines = baseText.split('\n');
+        const targetLines = targetText.split('\n');
+        modifiedDocuments.push({
+          documentId: docId,
+          charsDelta: targetText.length - baseText.length,
+          linesAdded: Math.max(0, targetLines.length - baseLines.length),
+          linesRemoved: Math.max(0, baseLines.length - targetLines.length)
+        });
+      }
+    }
+
+    return { modifiedDocuments };
+  }
+
+  /**
+   * 生成平行推演决策报告 (What-If Executive Report)
+   */
+  public generateExecutiveReport(baseBranchId: string, targetBranchId: string): WhatIfExecutiveReport {
+    const baseBranch = this.branches.get(baseBranchId);
+    const targetBranch = this.branches.get(targetBranchId);
+    if (!baseBranch || !targetBranch) {
+      throw new Error(`Invalid branch IDs: ${baseBranchId}, ${targetBranchId}`);
+    }
+
+    const ledgerDiff = this.diffLedgers(baseBranch.stateLedger, targetBranch.stateLedger);
+    const docDiff = this.diffDocuments(baseBranchId, targetBranchId);
+
+    const summaryParts: string[] = [];
+    summaryParts.push(`【平行推演决策报告: ${baseBranch.branchName} VS ${targetBranch.branchName}】`);
+    summaryParts.push(`推演前提: ${targetBranch.premise}`);
+
+    if (ledgerDiff.changedEntityStatuses.length > 0) {
+      summaryParts.push(`实体状态变动: ${ledgerDiff.changedEntityStatuses.map((c) => `${c.name}(${c.from || '新'} -> ${c.to})`).join(', ')}`);
+    }
+    if (ledgerDiff.addedEntities.length > 0) {
+      summaryParts.push(`新增实体: ${ledgerDiff.addedEntities.join(', ')}`);
+    }
+    if (ledgerDiff.resolvedTracks.length > 0) {
+      summaryParts.push(`闭环线索与状态: ${ledgerDiff.resolvedTracks.join(', ')}`);
+    }
+    if (docDiff.modifiedDocuments.length > 0) {
+      summaryParts.push(`受影响资源: ${docDiff.modifiedDocuments.map((d) => `${d.documentId} (字符Δ: ${d.charsDelta > 0 ? `+${d.charsDelta}` : d.charsDelta})`).join(', ')}`);
+    }
+
+
+    return {
+      baseBranchName: baseBranch.branchName,
+      targetBranchName: targetBranch.branchName,
+      premise: targetBranch.premise,
+      ledgerDiff,
+      documentDiff: docDiff,
+      executiveSummary: summaryParts.join('\n')
     };
   }
 }

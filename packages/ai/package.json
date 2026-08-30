@@ -11,9 +11,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -b",
+    "generate:models": "node scripts/generate-models.mjs",
+    "hydrate:model-data": "node scripts/generate-models.mjs --data-only",
+    "check:model-data": "node scripts/check-model-data.mjs",
+    "build": "node scripts/check-model-data.mjs && tsc -b",
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
+
   "dependencies": {
     "@inkpi/protocol": "*"
   }

@@ -59,4 +59,19 @@ export class ModelRegistry {
   public getAll(): ModelMetadata[] {
     return Array.from(this.models.values());
   }
+
+  public filterByCapability(capability: { thinking?: boolean; tools?: boolean; vision?: boolean }): ModelMetadata[] {
+    return this.getAll().filter((m) => {
+      if (capability.thinking !== undefined && m.capabilities.thinking !== capability.thinking) return false;
+      if (capability.tools !== undefined && m.capabilities.tools !== capability.tools) return false;
+      if (capability.vision !== undefined && m.capabilities.vision !== capability.vision) return false;
+      return true;
+    });
+  }
+
+  public unregister(idOrAlias: string): boolean {
+    const resolvedId = this.aliasMap.get(idOrAlias.toLowerCase()) || idOrAlias;
+    return this.models.delete(resolvedId);
+  }
 }
+

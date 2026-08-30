@@ -21,3 +21,5 @@ export * from './modes/print-mode.js';
 export * from './package-manager/package-manager.js';
 export * from './package-manager-cli.js';
 export * from './trust/project-trust.js';
+export * from './sandbox/index.js';
+
