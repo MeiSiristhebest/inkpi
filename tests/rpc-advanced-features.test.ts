@@ -61,6 +61,13 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
     const otel = await client.exportOpenTelemetry();
     expect(otel).toContain('resourceSpans');
 
+    // 5. Dynamic registerMethod RPC
+    server.registerMethod('custom.ping', (params) => ({ pong: true, echo: params.msg }));
+    const customRes = await client.request('custom.ping', { msg: 'hello rpc' });
+    expect(customRes).toEqual({ pong: true, echo: 'hello rpc' });
+
     db.close();
   });
 });
+
+

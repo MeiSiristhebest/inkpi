@@ -5,7 +5,9 @@
 import * as fs from 'node:fs';
 import { Agent } from '../agent.js';
 import { WorkflowCoordinator } from '../pipeline/coordinator.js';
+import { TelemetryCollector } from '../telemetry/telemetry.js';
 import { getModelPreset } from '@inkpi/ai';
+
 import type { ThinkingLevel } from '@inkpi/protocol';
 
 export interface PrintModeOptions {
@@ -37,8 +39,9 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
 
   try {
     if (role === 'pipeline') {
-      const coordinator = new WorkflowCoordinator();
-      const pipelineResult = await coordinator.runPipeline('作品', '第一章', options.prompt);
+      const telemetry = new TelemetryCollector();
+      const coordinator = new WorkflowCoordinator({ telemetry });
+      const pipelineResult = await coordinator.runPipeline('Project', 'Unit', options.prompt);
       const durationMs = Date.now() - startTime;
       const finalContent = pipelineResult.polishedText || pipelineResult.draftText || pipelineResult.outlineText || options.prompt;
 
@@ -46,17 +49,27 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         fs.writeFileSync(options.output, finalContent, 'utf8');
       }
 
+      const spans = telemetry.getSpans();
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      for (const s of spans) {
+        if (s.inputTokens) totalInputTokens += s.inputTokens;
+        if (s.outputTokens) totalOutputTokens += s.outputTokens;
+      }
+
+
       const result: PrintModeResult = {
         success: true,
         content: finalContent,
         role: 'pipeline',
         usage: {
-          inputTokens: 1000,
-          outputTokens: finalContent.length,
-          totalTokens: 1000 + finalContent.length
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: totalInputTokens + totalOutputTokens
         },
         durationMs
       };
+
 
       if (options.json) {
         process.stdout.write(JSON.stringify(result, null, 2) + '\n');
@@ -125,10 +138,16 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
     await agent.prompt(options.prompt);
 
     const assistantMsg = agent.state.messages.slice().reverse().find(m => m.role === 'assistant');
-    if (assistantMsg && typeof assistantMsg.content !== 'string') {
-      const textBlocks = (assistantMsg.content as any[]).filter((b: any) => b.type === 'text');
-      if (textBlocks.length > 0) {
-        generatedText = textBlocks.map((b: any) => b.text).join('\n');
+    let realUsage: Usage | undefined;
+    if (assistantMsg) {
+      if (typeof assistantMsg.content !== 'string') {
+        const textBlocks = (assistantMsg.content as any[]).filter((b: any) => b.type === 'text');
+        if (textBlocks.length > 0) {
+          generatedText = textBlocks.map((b: any) => b.text).join('\n');
+        }
+      }
+      if ((assistantMsg as any).usage) {
+        realUsage = (assistantMsg as any).usage;
       }
     }
 
@@ -137,8 +156,10 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       success: true,
       content: generatedText || `[${role}] 任务已完成`,
       role,
+      usage: realUsage,
       durationMs
     };
+
 
 
     if (options.output) {

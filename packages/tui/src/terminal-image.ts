@@ -1,8 +1,7 @@
-/**
- * 终端图像渲染协议 (Kitty / iTerm2 协议 + ANSI 字符画降级) (1:1 对标 pi-tui terminal-image.ts)
- */
+import { visibleWidth } from './width.js';
 
 export interface TerminalImageOptions {
+
   protocol?: 'kitty' | 'iterm2' | 'ascii' | 'auto';
   width?: number;
   height?: number;
@@ -55,9 +54,10 @@ export function renderTerminalImage(
   for (let i = 0; i < height - 2; i++) {
     if (i === middle) {
       const label = ' 🖼️ [立绘/图像] ';
-      const pad = Math.max(0, width - 2 - label.length);
+      const pad = Math.max(0, width - 2 - visibleWidth(label));
       lines.push(`│${label}${' '.repeat(pad)}│`);
     } else {
+
       lines.push(`│${' '.repeat(width - 2)}│`);
     }
   }

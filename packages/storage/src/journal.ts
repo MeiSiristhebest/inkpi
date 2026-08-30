@@ -103,13 +103,14 @@ export class AppendOnlySessionJournal {
         replayedCount++;
         switch (entry.type) {
           case 'session_start': {
-            if (entry.payload?.book) {
-              const b = entry.payload.book;
-              const existing = repo.getWorkspace(b.id);
+            const ws = entry.payload?.workspace ?? entry.payload?.book;
+            if (ws) {
+              const existing = repo.getWorkspace(ws.id);
               if (!existing) {
-                repo.createWorkspace(b);
+                repo.createWorkspace(ws);
               }
             }
+
             if (entry.payload?.folders && Array.isArray(entry.payload.folders)) {
               for (const v of entry.payload.folders) {
                 if (!repo.getFolders(v.workspaceId).some(x => x.id === v.id)) {

@@ -89,6 +89,45 @@ describe('@inkpi/editor-core', () => {
     expect(ime.isCompositionActive()).toBe(false);
   });
 
+  it('should support incremental ghost text acceptance (acceptWord & acceptLine)', () => {
+    const editor = new HeadlessEditorState('开始：');
+    const ghost = new GhostTextManager(editor);
+
+    ghost.setGhostText(3, '第一词 第二词\n第二行内容');
+    
+    // Accept first word
+    const wordAccepted = ghost.acceptWord();
+    expect(wordAccepted).toBe(true);
+    expect(editor.getText()).toBe('开始：第一词');
+    expect(ghost.hasGhostText()).toBe(true);
+
+    // Accept next line
+    const lineAccepted = ghost.acceptLine();
+    expect(lineAccepted).toBe(true);
+    expect(editor.getText()).toBe('开始：第一词 第二词\n');
+    expect(ghost.hasGhostText()).toBe(true);
+
+    // Accept remainder
+    ghost.accept();
+    expect(editor.getText()).toBe('开始：第一词 第二词\n第二行内容');
+    expect(ghost.hasGhostText()).toBe(false);
+
+    // Inactive ghost test
+    expect(ghost.acceptWord()).toBe(false);
+    expect(ghost.acceptLine()).toBe(false);
+  });
+
+
+  it('should preserve Markdown headings and screenplay headings during typography formatting', () => {
+    const screenplayText = '# 第一幕\nINT. 警局审讯室 - NIGHT\n【张三】我没有杀人。\n普通动作叙述行。';
+    const formatted = formatChineseTypography(screenplayText);
+    expect(formatted).toContain('# 第一幕');
+    expect(formatted).toContain('INT. 警局审讯室 - NIGHT');
+    expect(formatted).toContain('\u3000\u3000【张三】我没有杀人。');
+    expect(formatted).toContain('\u3000\u3000普通动作叙述行。');
+  });
+
+
   it('should apply Chinese and Western typography formatting', () => {
     const rawCn = '第一段text\n第二段text';
     const formattedCn = formatChineseTypography(rawCn);

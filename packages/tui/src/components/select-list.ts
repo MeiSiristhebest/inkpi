@@ -103,17 +103,20 @@ export class SelectList<T = any> extends Component {
 
     // Title / Search bar
     const searchDisplay = `🔍 ${this.title}: ${this.filterQuery}${ANSI.INVERSE} ${ANSI.RESET}`;
-    const searchW = visibleWidth(searchDisplay);
-    const searchPad = Math.max(0, innerWidth - searchW);
-    lines.push(`┌─ ${searchDisplay}${'─'.repeat(searchPad)}┐`);
+    const headerInner = `─ ${searchDisplay} `;
+    const headerInnerW = visibleWidth(headerInner);
+    const searchPad = Math.max(0, innerWidth - headerInnerW);
+    lines.push(`┌${headerInner}${'─'.repeat(searchPad)}┐`);
 
     const filtered = this.getFilteredItems();
     const listHeight = Math.max(1, height - 2);
+    const scrollOffset = Math.max(0, Math.min(this.selectedIndex - Math.floor(listHeight / 2), Math.max(0, filtered.length - listHeight)));
 
     for (let i = 0; i < listHeight; i++) {
-      const item = filtered[i];
+      const itemIndex = scrollOffset + i;
+      const item = filtered[itemIndex];
       if (item) {
-        const isSelected = i === this.selectedIndex;
+        const isSelected = itemIndex === this.selectedIndex;
         const prefix = isSelected ? `${ANSI.FG_CYAN}👉 ` : '   ';
         const label = item.label + (item.description ? ` (${item.description})` : '');
         const maxTextW = innerWidth - 4;
@@ -126,6 +129,7 @@ export class SelectList<T = any> extends Component {
         lines.push(`│${' '.repeat(innerWidth)}│`);
       }
     }
+
 
     lines.push(`└${'─'.repeat(innerWidth)}┘`);
     return lines;

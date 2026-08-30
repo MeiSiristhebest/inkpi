@@ -150,5 +150,44 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
       expect(assistantMsg.stopReason).toBe('error');
       expect(assistantMsg.errorMessage).toContain("Missing API key for Anthropic provider");
     });
+
+    it('should support extended creative roles (screenwriter, storyboarder, script_doctor, worldbuilder, character_designer) with stageHooks', async () => {
+      let beforeCalled = false;
+      let afterCalled = false;
+
+      const coordinator = new WorkflowCoordinator({
+        stages: [
+          { id: 'screenplay', name: '剧本创作', role: 'screenwriter' },
+          { id: 'storyboard', name: '分镜拆解', role: 'storyboarder' },
+          { id: 'review', name: '剧本医生诊断', role: 'script_doctor' }
+        ],
+        stageHooks: {
+          onBeforeStage: async (stageId, ctx, currentPrompt) => {
+            beforeCalled = true;
+            return currentPrompt + ` [Stage: ${stageId}]`;
+          },
+          onAfterStage: async (stageId, output, ctx) => {
+            afterCalled = true;
+            return output + `\n<!-- End of ${stageId} -->`;
+          }
+        },
+        customExecutor: async (role, systemPrompt, prompt) => {
+          return `【${role}输出】: ${prompt}`;
+        }
+      });
+
+      const res = await coordinator.runWorkflow({
+        title: '星际救援',
+        userPrompt: '救生舱迫降未知星球'
+      });
+
+      expect(beforeCalled).toBe(true);
+      expect(afterCalled).toBe(true);
+      expect(res.stageOutputs['screenplay']).toContain('【screenwriter输出】');
+      expect(res.stageOutputs['storyboard']).toContain('【storyboarder输出】');
+      expect(res.stageOutputs['review']).toContain('【script_doctor输出】');
+      expect(res.stageOutputs['review']).toContain('<!-- End of review -->');
+    });
   });
 });
+

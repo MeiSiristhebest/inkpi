@@ -43,6 +43,7 @@ export class InkRpcServer {
   private branchSummarizer = new BranchSummarizer();
   private boundTransports = new Set<RpcTransport>();
   private tcpServer: net.Server | null = null;
+  private customHandlers = new Map<string, (params: any) => Promise<any> | any>();
 
   constructor(ctx: ServerContext = {}, notificationSender?: RpcNotificationSender) {
     this.ctx = {
@@ -69,6 +70,11 @@ export class InkRpcServer {
   public setNotificationSender(sender: RpcNotificationSender): void {
     this.notificationSender = sender;
   }
+
+  public registerMethod(name: string, handler: (params: any) => Promise<any> | any): void {
+    this.customHandlers.set(name, handler);
+  }
+
 
   public bindTransport(transport: RpcTransport): void {
     this.boundTransports.add(transport);
@@ -166,8 +172,13 @@ export class InkRpcServer {
   }
 
   private async dispatch(method: string, params: any): Promise<any> {
+    if (this.customHandlers.has(method)) {
+      return await this.customHandlers.get(method)!(params);
+    }
+
     switch (method) {
       // 1. Agent methods
+
       case 'agent.prompt': {
         if (!this.ctx.agent) throw new Error('Agent not initialized');
         await this.ctx.agent.prompt(params.prompt, params.images);

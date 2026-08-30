@@ -27,11 +27,18 @@ export type PlotGateIssue = QualityGateIssue;
 export type PlotGateDecision = QualityGateDecision;
 export type PlotGateHandler = QualityGateHandler;
 
+export interface WorkflowStageHooks {
+  onBeforeStage?: (stageId: string, ctx: WorkflowContext, currentPrompt: string) => Promise<string | void>;
+  onStageProgress?: (stageId: string, delta: string) => void;
+  onAfterStage?: (stageId: string, output: string, ctx: WorkflowContext) => Promise<string | void>;
+}
+
 export interface PipelineExecutionOptions {
   model?: ModelConfig;
   customExecutor?: (role: string, systemPrompt: string, userPrompt: string) => Promise<string>;
   telemetry?: TelemetryCollector;
   hooks?: PipelineHooks[];
+  stageHooks?: WorkflowStageHooks;
   enablePlotGate?: boolean;
   enableQualityGate?: boolean;
   plotGateHandler?: PlotGateHandler;
@@ -39,6 +46,7 @@ export interface PipelineExecutionOptions {
   customGateRules?: QualityGateRule[];
   stages?: WorkflowStageConfig[];
 }
+
 
 export type PipelineContext = WorkflowContext;
 export type PipelineEvent = WorkflowEvent;
@@ -298,6 +306,10 @@ export class WorkflowCoordinator {
 
       // 生成提示词
       let prompt = stage.promptTemplate ? stage.promptTemplate(ctx) : ctx.userPrompt;
+      if (this.options.stageHooks?.onBeforeStage) {
+        const transformedPrompt = await this.options.stageHooks.onBeforeStage(stage.id, ctx, prompt);
+        if (transformedPrompt) prompt = transformedPrompt;
+      }
       if (stage.id === 'outline' && this.options.hooks) {
         for (const hook of this.options.hooks) {
           if (hook.onBeforeOutline) {
@@ -312,6 +324,7 @@ export class WorkflowCoordinator {
           }
         }
       }
+
 
       let outputText = '';
       let stageUsage: Usage | undefined;
@@ -410,7 +423,13 @@ export class WorkflowCoordinator {
         outputText = await stage.transformOutput(outputText, ctx);
       }
 
+      if (this.options.stageHooks?.onAfterStage) {
+        const transformedOutput = await this.options.stageHooks.onAfterStage(stage.id, outputText, ctx);
+        if (transformedOutput) outputText = transformedOutput;
+      }
+
       if (stage.id === 'polish' && this.options.hooks) {
+
         for (const hook of this.options.hooks) {
           if (hook.onPolishDone) {
             const res = await hook.onPolishDone({

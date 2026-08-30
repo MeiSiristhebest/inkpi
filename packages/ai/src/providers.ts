@@ -125,12 +125,28 @@ export const fauxProvider: ProviderHandler = (model, messages, options) => {
   return stream;
 };
 
+export const DEFAULT_BASE_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  siliconflow: 'https://api.siliconflow.cn/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  xai: 'https://api.x.ai/v1',
+  ollama: 'http://localhost:11434'
+};
+
+export function resolveProviderBaseUrl(provider: string, explicitUrl?: string): string {
+  if (explicitUrl) return explicitUrl;
+  return DEFAULT_BASE_URLS[provider] || (provider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'https://api.openai.com/v1');
+}
+
 // ----------------------------------------------------------------------
-// 2. OpenAI / OpenRouter / DeepSeek / Groq / Azure SSE Provider
+// 2. OpenAI / OpenRouter / DeepSeek / Groq / SiliconFlow / Azure SSE Provider
 // ----------------------------------------------------------------------
 export const openAiCompatibleProvider: ProviderHandler = (model, messages, options) => {
   const stream = new AssistantEventStream();
-  const baseUrl = model.baseUrl || (model.provider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'https://api.openai.com/v1');
+  const baseUrl = resolveProviderBaseUrl(model.provider, model.baseUrl);
   const apiKey = model.apiKey || process.env[`${model.provider.toUpperCase()}_API_KEY`] || process.env.OPENAI_API_KEY || '';
 
   if (!apiKey) {
@@ -147,24 +163,38 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
 
   (async () => {
     try {
+      const payload: Record<string, unknown> = {
+        model: model.id,
+        messages: standardMessages,
+        stream: true,
+        temperature: options?.temperature ?? model.temperature ?? 0.7,
+        max_tokens: options?.maxTokens ?? model.maxTokens,
+        presence_penalty: model.presencePenalty,
+        frequency_penalty: model.frequencyPenalty,
+        stream_options: { include_usage: true }
+      };
+
+      if (options?.tools && options.tools.length > 0) {
+        payload.tools = options.tools.map((t) => ({
+          type: 'function',
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters
+          }
+        }));
+      }
+
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
-          model: model.id,
-          messages: standardMessages,
-          stream: true,
-          temperature: options?.temperature ?? model.temperature ?? 0.7,
-          max_tokens: options?.maxTokens ?? model.maxTokens,
-          presence_penalty: model.presencePenalty,
-          frequency_penalty: model.frequencyPenalty,
-          stream_options: { include_usage: true }
-        }),
+        body: JSON.stringify(payload),
         signal: options?.signal
       });
+
 
       if (!response.ok) {
         stream.error(`${model.provider} API Error: ${response.status} ${response.statusText}`);
@@ -292,18 +322,32 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
     };
   }
 
+  if (options?.tools && options.tools.length > 0) {
+    bodyPayload.tools = options.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.parameters
+    }));
+  }
+
   (async () => {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      };
+      if (options?.cacheControl || model.supportsPromptCache) {
+        headers['anthropic-beta'] = 'prompt-caching-2024-07-25';
+      }
+
       const response = await fetch(`${baseUrl}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
+        headers,
         body: JSON.stringify(bodyPayload),
         signal: options?.signal
       });
+
 
       if (!response.ok) {
         stream.error(`Anthropic API Error: ${response.status} ${response.statusText}`);
@@ -393,18 +437,37 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
 
   (async () => {
     try {
+      const geminiBody: Record<string, unknown> = {
+        contents,
+        generationConfig: {
+          temperature: options?.temperature ?? model.temperature ?? 0.7,
+          maxOutputTokens: options?.maxTokens ?? model.maxTokens
+        }
+      };
+
+      if (options?.systemPrompt) {
+        geminiBody.systemInstruction = {
+          parts: [{ text: options.systemPrompt }]
+        };
+      }
+
+      if (options?.tools && options.tools.length > 0) {
+        geminiBody.tools = [{
+          functionDeclarations: options.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters
+          }))
+        }];
+      }
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: options?.temperature ?? model.temperature ?? 0.7,
-            maxOutputTokens: options?.maxTokens ?? model.maxTokens
-          }
-        }),
+        body: JSON.stringify(geminiBody),
         signal: options?.signal
       });
+
 
       if (!response.ok) {
         stream.error(`Gemini API Error: ${response.status} ${response.statusText}`);
@@ -565,9 +628,12 @@ providerRegistry.set('groq', openAiCompatibleProvider);
 providerRegistry.set('mistral', openAiCompatibleProvider);
 providerRegistry.set('xai', openAiCompatibleProvider);
 providerRegistry.set('openrouter', openAiCompatibleProvider);
+providerRegistry.set('siliconflow', openAiCompatibleProvider);
+providerRegistry.set('qwen', openAiCompatibleProvider);
 providerRegistry.set('azure', openAiCompatibleProvider);
 providerRegistry.set('bedrock', anthropicProvider);
 providerRegistry.set('custom', fauxProvider);
+
 
 export function deepSeekProvider(
   model: ModelConfig,

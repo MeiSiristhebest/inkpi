@@ -62,9 +62,55 @@ export class GhostTextManager {
     return true;
   }
 
+  public acceptWord(): boolean {
+    if (!this.hasGhostText() || !this.state.current) return false;
+    const { pos, text } = this.state.current;
+    if (!text) return false;
+
+    const match = text.match(/^([\u4e00-\u9fa5]+|[a-zA-Z0-9_-]+|\s+|[^\s\w\u4e00-\u9fa5]+)/);
+    const word = match ? match[0] : text[0];
+
+    this.editor.insertText(pos, word);
+
+    const remaining = text.slice(word.length);
+    if (remaining.length > 0) {
+      this.state.current = {
+        ...this.state.current,
+        pos: pos + word.length,
+        text: remaining
+      };
+    } else {
+      this.dismissGhostText();
+    }
+    return true;
+  }
+
+  public acceptLine(): boolean {
+    if (!this.hasGhostText() || !this.state.current) return false;
+    const { pos, text } = this.state.current;
+    if (!text) return false;
+
+    const newlineIdx = text.indexOf('\n');
+    const line = newlineIdx !== -1 ? text.slice(0, newlineIdx + 1) : text;
+    this.editor.insertText(pos, line);
+
+    const remaining = text.slice(line.length);
+    if (remaining.length > 0) {
+      this.state.current = {
+        ...this.state.current,
+        pos: pos + line.length,
+        text: remaining
+      };
+    } else {
+      this.dismissGhostText();
+    }
+    return true;
+  }
+
   public accept(): boolean {
     return this.acceptGhostText();
   }
+
 
   public dismissGhostText(): void {
     this.state = {

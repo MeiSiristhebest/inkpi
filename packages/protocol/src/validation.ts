@@ -51,7 +51,8 @@ export function sanitizeStateLedger(raw: any): StateLedger {
         inventory: Array.isArray(e.inventory) ? e.inventory.map(String) : [],
         location: e.location ? String(e.location) : undefined,
         relationships: typeof e.relationships === 'object' && e.relationships ? e.relationships : {},
-        lastSeenChapter: typeof e.lastSeenChapter === 'number' ? e.lastSeenChapter : undefined
+        lastSeenUnit: e.lastSeenUnit ?? (typeof e.lastSeenChapter === 'number' ? e.lastSeenChapter : undefined),
+        lastSeenChapter: typeof e.lastSeenChapter === 'number' ? e.lastSeenChapter : (typeof e.lastSeenUnit === 'number' ? e.lastSeenUnit : undefined)
       }))
     : [];
 
@@ -68,12 +69,15 @@ export function sanitizeStateLedger(raw: any): StateLedger {
   const tracks = Array.isArray(raw.tracks)
     ? raw.tracks.filter((t: any) => t && (t.summary || t.id)).map((t: any) => ({
         id: String(t.id || `track-${Date.now()}`),
-        summary: String(t.summary || t.title || '未命名伏笔'),
+        summary: String(t.summary || t.title || '未命名线索'),
         status: ['open', 'resolved', 'abandoned'].includes(t.status) ? t.status : 'open',
-        plantedChapter: typeof t.plantedChapter === 'number' ? t.plantedChapter : undefined,
-        payoffChapter: typeof t.payoffChapter === 'number' ? t.payoffChapter : undefined
+        sourceUnit: t.sourceUnit ?? (typeof t.plantedChapter === 'number' ? t.plantedChapter : undefined),
+        resolvedUnit: t.resolvedUnit ?? (typeof t.payoffChapter === 'number' ? t.payoffChapter : undefined),
+        plantedChapter: typeof t.plantedChapter === 'number' ? t.plantedChapter : (typeof t.sourceUnit === 'number' ? t.sourceUnit : undefined),
+        payoffChapter: typeof t.payoffChapter === 'number' ? t.payoffChapter : (typeof t.resolvedUnit === 'number' ? t.resolvedUnit : undefined)
       }))
     : [];
+
 
   const locations = Array.isArray(raw.locations)
     ? raw.locations.filter((l: any) => l && typeof l.name === 'string').map((l: any) => ({
