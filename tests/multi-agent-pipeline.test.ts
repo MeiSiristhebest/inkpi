@@ -1,17 +1,21 @@
-import { WorkflowCoordinator, DEFAULT_ROLE_CONFIGS } from '@inkpi/agent-core';
+import { WorkflowCoordinator, RoleRegistry } from '@inkpi/agent-core';
 
 describe('Multi-Agent Collaborative Pipeline', () => {
-  it('should have 4 predefined agent roles with complete system prompts', () => {
-    expect(DEFAULT_ROLE_CONFIGS.architect).toBeDefined();
-    expect(DEFAULT_ROLE_CONFIGS.writer).toBeDefined();
-    expect(DEFAULT_ROLE_CONFIGS.auditor).toBeDefined();
-    expect(DEFAULT_ROLE_CONFIGS.polisher).toBeDefined();
+  it('should support dynamic role registration in RoleRegistry (100% pure & decoupled from core)', () => {
+    const registry = new RoleRegistry();
+    expect(registry.getAll().length).toBe(0);
 
-    expect(DEFAULT_ROLE_CONFIGS.architect.systemPrompt).toContain('架构师');
-    expect(DEFAULT_ROLE_CONFIGS.writer.systemPrompt).toContain('主笔作家');
-    expect(DEFAULT_ROLE_CONFIGS.auditor.systemPrompt).toContain('审计员');
-    expect(DEFAULT_ROLE_CONFIGS.polisher.systemPrompt).toContain('校对官');
+    registry.register('screenwriter', {
+      role: 'screenwriter',
+      name: '影视编剧',
+      systemPrompt: '负责剧本三幕剧结构与场次对白'
+    });
+
+    expect(registry.has('screenwriter')).toBe(true);
+    expect(registry.get('screenwriter')?.name).toBe('影视编剧');
+    expect(registry.get('screenwriter')?.systemPrompt).toContain('三幕剧');
   });
+
 
   it('should execute full 4-stage pipeline with event streaming and state ledger merging', async () => {
     const events: string[] = [];

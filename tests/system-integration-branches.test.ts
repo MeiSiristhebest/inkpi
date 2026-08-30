@@ -344,11 +344,25 @@ describe('System Integration & Edge Cases Suite', () => {
     const { formatChineseTypography, formatWesternTypography } = await import('@inkpi/editor-core');
     const { LaneManager, InkDb } = await import('@inkpi/storage');
 
-    // RoleRegistry
+    // RoleRegistry starts empty — no hardcoded presets (100% dynamic)
     const reg = new RoleRegistry();
-    expect(reg.getAll().length).toBeGreaterThan(0);
-    expect(reg.has('writer')).toBe(true);
+    expect(reg.getAll().length).toBe(0);
     expect(reg.has('non_existent')).toBe(false);
+
+    // Dynamically register a role and verify it
+    reg.register('writer', { role: 'writer', name: 'Custom Writer', systemPrompt: '专业主笔' });
+    expect(reg.getAll().length).toBe(1);
+    expect(reg.has('writer')).toBe(true);
+    expect(reg.get('writer')?.name).toBe('Custom Writer');
+
+    // Seed from initialRoles
+    const reg2 = new RoleRegistry({
+      initialRoles: {
+        auditor: { role: 'auditor', name: '审计员', systemPrompt: '负责逻辑核查' }
+      }
+    });
+    expect(reg2.getAll().length).toBe(1);
+    expect(reg2.has('auditor')).toBe(true);
 
     // Typography
     expect(formatChineseTypography('段落文本', { enabled: false })).toBe('段落文本');
@@ -363,6 +377,7 @@ describe('System Integration & Edge Cases Suite', () => {
     expect(lanesMgr.getLanes('ws_1').length).toBe(1);
     lanesMgr.setDefaultLane('ws_1', 'lane_1');
   });
+
 
   it('should test StateLedger extraction: items/clue branches and XML tags', async () => {
     const { extractStateLedger } = await import('@inkpi/agent-core');

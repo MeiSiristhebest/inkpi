@@ -15,7 +15,8 @@ import type {
 } from '@inkpi/protocol';
 import { formatChineseTypography } from '@inkpi/editor-core';
 import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
-import { DEFAULT_ROLE_CONFIGS, RoleRegistry } from './roles.js';
+import { RoleRegistry } from './roles.js';
+
 import type { ModelConfig } from '@inkpi/ai';
 import { getModelPreset, streamAi } from '@inkpi/ai';
 import { TelemetryCollector } from '../telemetry/telemetry.js';
@@ -45,7 +46,12 @@ export interface PipelineExecutionOptions {
   qualityGateHandler?: QualityGateHandler;
   customGateRules?: QualityGateRule[];
   stages?: WorkflowStageConfig[];
+  /** 注入已构造好的 RoleRegistry 实例（优先于 initialRoles） */
+  roleRegistry?: RoleRegistry;
+  /** 初始角色字典，由 coordinator 内部构建 RoleRegistry（当 roleRegistry 未传入时生效） */
+  initialRoles?: Record<string, AgentRoleConfig>;
 }
+
 
 
 export type PipelineContext = WorkflowContext;
@@ -159,7 +165,10 @@ export class WorkflowCoordinator {
   constructor(options: PipelineExecutionOptions = {}) {
     this.options = options;
     this.telemetry = options.telemetry;
-    this.roleRegistry = new RoleRegistry({ initialRoles: DEFAULT_ROLE_CONFIGS });
+    this.roleRegistry = options.roleRegistry ?? new RoleRegistry(
+      options.initialRoles ? { initialRoles: options.initialRoles } : {}
+    );
+
 
     if (options.stages && options.stages.length > 0) {
       this.stages = [...options.stages];
