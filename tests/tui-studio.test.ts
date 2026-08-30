@@ -1,0 +1,179 @@
+import { describe, it, expect } from 'vitest';
+import { TuiStudio } from '@inkpi/agent-core';
+import { Agent } from '@inkpi/agent-core';
+
+describe('TuiStudio (Terminal Workstation)', () => {
+  it('should initialize with default 3-pane layout and render full screen', () => {
+    const studio = new TuiStudio({ width: 120, height: 30 });
+    const screen = studio.renderScreen();
+
+    expect(screen).toContain('资源目录树');
+    expect(screen).toContain('编辑');
+    expect(screen).toContain('状态账本');
+  });
+
+  it('should support differential screen rendering', () => {
+    const studio = new TuiStudio({ width: 100, height: 26 });
+    
+    // First render -> full content
+    const firstDiff = studio.renderDifferential();
+    expect(firstDiff.content.length).toBeGreaterThan(0);
+
+    // Immediate second render without mutations -> empty diff
+    const secondDiff = studio.renderDifferential();
+    expect(secondDiff.isDiff).toBe(true);
+    expect(secondDiff.content).toBe('');
+  });
+
+  it('should support document navigation and focus switching', () => {
+    const studio = new TuiStudio({
+      initialResources: [
+        { id: '1', title: 'Doc 1', size: 0, status: 'draft', active: true },
+        { id: '2', title: 'Doc 2', size: 0, status: 'draft', active: false }
+      ]
+    });
+
+    expect(studio.activeResourceIndex).toBe(0);
+    const switchedNext = studio.nextResource();
+    expect(switchedNext).toBe(true);
+    expect(studio.activeResourceIndex).toBe(1);
+
+    const switchedPrev = studio.prevResource();
+    expect(switchedPrev).toBe(true);
+    expect(studio.activeResourceIndex).toBe(0);
+
+    studio.setFocus('outline');
+    expect(studio.focusMode).toBe('outline');
+    studio.setFocus('copilot');
+    expect(studio.focusMode).toBe('copilot');
+  });
+
+  it('should handle interactive input, ghost text acceptance, and commands', async () => {
+    const agent = new Agent();
+    const studio = new TuiStudio({ agent });
+
+    // 1. Text input
+    const inputRes = await studio.handleInput('Cool night, wind over the roof.');
+    expect(inputRes).toBe('Text inserted');
+    expect(studio.editor.getText()).toContain('Cool night');
+
+    // 2. Ghost text set & accept
+    studio.ghost.setGhostText(studio.editor.getText().length, 'Sword vibrated.');
+    expect(studio.ghost.hasGhostText()).toBe(true);
+
+    const tabRes = await studio.handleInput('\t');
+    expect(tabRes).toBe('Ghost text accepted');
+    expect(studio.editor.getText()).toContain('Sword vibrated.');
+
+    // 3. Focus command
+    const focusRes = await studio.handleInput(':focus editor');
+    expect(focusRes).toBe('Focused on editor');
+    expect(studio.focusMode).toBe('editor');
+
+    // 4. Slash command
+    const helpRes = await studio.handleInput('/help');
+    expect(helpRes).toContain('指令清单');
+  });
+
+
+  it('should handle dimensions, document navigation boundaries, and agent event streaming', async () => {
+    const agent = new Agent();
+    const studio = new TuiStudio({ agent, width: 100, height: 28 });
+
+    studio.setDimensions(140, 35);
+    const dims = studio.getDimensions();
+    expect(dims.width).toBe(140);
+    expect(dims.height).toBe(35);
+
+    // Boundary for prevResource at 0
+    expect(studio.activeResourceIndex).toBe(0);
+    const prevAtZero = studio.prevResource();
+    expect(prevAtZero).toBe(false);
+
+    // Navigate to end
+    while (studio.nextResource()) {}
+    expect(studio.activeResourceIndex).toBe(studio.resources.length - 1);
+    const nextAtEnd = studio.nextResource();
+    expect(nextAtEnd).toBe(false);
+
+    // Focus copilot, outline, editor, ledger via input
+    await studio.handleInput(':focus copilot');
+    expect(studio.focusMode).toBe('copilot');
+    await studio.handleInput(':focus outline');
+    expect(studio.focusMode).toBe('outline');
+    await studio.handleInput(':focus editor');
+    expect(studio.focusMode).toBe('editor');
+    await studio.handleInput(':focus ledger');
+    expect(studio.focusMode).toBe('ledger');
+
+    // Tab without ghost text
+    const noGhostRes = await studio.handleInput('TAB');
+    expect(noGhostRes).toBe('No active ghost text');
+
+    // Render screen with empty ledger and dialogue
+    const emptyStudio = new TuiStudio({ width: 90, height: 26 });
+    const emptyScreen = emptyStudio.renderScreen();
+    expect(emptyScreen).toContain('暂无实体记账');
+    expect(emptyScreen).toContain('暂无资产记账');
+    expect(emptyScreen).toContain('暂无追踪项');
+    // Render screen with fully populated ledger
+    const populatedStudio = new TuiStudio({ width: 100, height: 28 });
+    populatedStudio.updateStateLedger({
+      entities: [{ name: 'UserD', status: 'Level 50' }],
+      assets: [{ name: 'Epic Asset' }],
+      tracks: [{ clue: 'Ancient Site' }],
+      locations: [{ name: 'Guild A' }],
+      modifiedDocuments: ['ch_1']
+    });
+    const populatedScreen = populatedStudio.renderScreen();
+    expect(populatedScreen).toContain('UserD');
+    expect(populatedScreen).toContain('Epic Asset');
+    expect(populatedScreen).toContain('Ancient Site');
+
+    // Trigger agent prompt to test dialogue streaming listener
+    await agent.prompt('Hello, write a battle scene');
+    const screen = studio.renderScreen();
+    expect(screen).toBeDefined();
+  });
+
+  it('should handle modal input commands UP, ENTER, ESC and custom labels', async () => {
+    const studio = new TuiStudio({
+      labels: {
+        leftBoxTitle: 'Custom Explorer',
+        statusReady: 'Custom Ready'
+      }
+    });
+    expect(studio.renderScreen()).toContain('Custom Explorer');
+
+    // Open select list modal
+    studio.openSelectList({
+      title: 'Choose Template',
+      items: [
+        { id: '1', label: 'Item A', value: 'a' },
+        { id: '2', label: 'Item B', value: 'b' }
+      ]
+    });
+
+    // Test UP, DOWN, ENTER in modal
+    const downRes = await studio.handleInput('DOWN');
+    expect(downRes).toBe('Selection down');
+    const upRes = await studio.handleInput('UP');
+    expect(upRes).toBe('Selection up');
+
+    const enterRes = await studio.handleInput('ENTER');
+    expect(enterRes).toContain('Selected:');
+    expect(studio.activeModal).toBeNull();
+
+    // Open and cancel via ESC
+    studio.openSelectList({
+      title: 'Choose Another',
+      items: [{ id: '1', label: 'Item 1', value: '1' }]
+    });
+    const escRes = await studio.handleInput('ESC');
+    expect(escRes).toBe('Modal closed');
+    expect(studio.activeModal).toBeNull();
+  });
+});
+
+
+

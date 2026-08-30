@@ -1,0 +1,20 @@
+{
+  "name": "@inkpi/storage",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
+  },
+  "dependencies": {
+    "@inkpi/protocol": "*"
+  }
+}

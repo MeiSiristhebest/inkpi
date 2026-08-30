@@ -1,0 +1,18 @@
+{
+  "name": "@inkpi/tui",
+  "version": "1.0.0",
+  "description": "Terminal UI framework and differential renderer for InkPi (1:1 aligned with pi-tui)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
+  }
+}

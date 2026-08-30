@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true
+  },
+  "references": [
+    { "path": "../protocol" },
+    { "path": "../tui" },
+    { "path": "../ai" },
+    { "path": "../editor-core" },
+    { "path": "../storage" }
+  ],
+  "include": ["src/**/*"]
+}

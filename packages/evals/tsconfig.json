@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true
+  },
+  "references": [
+    { "path": "../protocol" },
+    { "path": "../editor-core" },
+    { "path": "../agent-core" }
+  ],
+  "include": ["src/**/*"]
+}

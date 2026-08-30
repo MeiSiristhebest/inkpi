@@ -1,0 +1,31 @@
+{
+  "name": "inkpi-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "InkPi - Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "build:offline": "tsc -b",
+    "bundle": "node scripts/bundle.ts",
+    "check:pinned-deps": "node scripts/check-pinned-deps.mjs",
+    "lint": "biome check packages tests scripts",
+    "format": "biome format --write packages tests scripts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run check:pinned-deps && tsc -b"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@types/node": "22.13.0",
+    "@vitest/coverage-v8": "3.0.5",
+    "typescript": "5.7.3",
+    "vitest": "3.0.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

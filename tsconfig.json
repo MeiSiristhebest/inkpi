@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/protocol" },
+    { "path": "./packages/tui" },
+    { "path": "./packages/ai" },
+    { "path": "./packages/editor-core" },
+    { "path": "./packages/storage" },
+    { "path": "./packages/agent-core" },
+    { "path": "./packages/evals" }
+  ]
+}
