@@ -67,7 +67,30 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       return result;
     }
 
-    const modelObj = options.model ? getModelPreset(options.model) : getModelPreset('mock-test');
+    let modelObj: any;
+    if (options.model) {
+      modelObj = getModelPreset(options.model);
+    } else if (process.env.DEEPSEEK_API_KEY) {
+      modelObj = getModelPreset('deepseek-chat');
+    } else if (process.env.OPENROUTER_API_KEY) {
+      modelObj = getModelPreset('creative-pro');
+    } else if (process.env.OPENAI_API_KEY) {
+      modelObj = getModelPreset('creative-pro');
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      modelObj = getModelPreset('creative-pro');
+    } else if (process.env.GEMINI_API_KEY) {
+      modelObj = getModelPreset('creative-pro');
+    } else {
+      if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+        modelObj = getModelPreset('mock-test');
+      } else {
+        throw new Error(
+          '缺少有效的 AI 模型提供商配置。请配置环境变量 (如 DEEPSEEK_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY)、通过命令行传入 --api-key <key>，或启动本地 Ollama 并使用 --model local-offline。'
+        );
+      }
+    }
+
+
     const agent = new Agent({
       initialState: {
         model: modelObj,
@@ -75,6 +98,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         systemPrompt: options.systemPrompt || `你是一位专精的 ${role} 创作 Agent。`
       }
     });
+
 
     let generatedText = '';
     let hasStreamedToStdout = false;
