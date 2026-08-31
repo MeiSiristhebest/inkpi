@@ -14,14 +14,14 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 
 # Check for package managers
 if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-    Write-Host "📦 Installing @inkpi/cli globally via pnpm..." -ForegroundColor Green
-    pnpm add -g --ignore-scripts @inkpi/cli
+    Write-Host "📦 Installing @inkpi/creative-agent globally via pnpm..." -ForegroundColor Green
+    pnpm add -g --ignore-scripts @inkpi/creative-agent
 } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
-    Write-Host "📦 Installing @inkpi/cli globally via npm..." -ForegroundColor Green
-    npm install -g --ignore-scripts @inkpi/cli
+    Write-Host "📦 Installing @inkpi/creative-agent globally via npm..." -ForegroundColor Green
+    npm install -g --ignore-scripts @inkpi/creative-agent
 } elseif (Get-Command bun -ErrorAction SilentlyContinue) {
-    Write-Host "📦 Installing @inkpi/cli globally via bun..." -ForegroundColor Green
-    bun install -g @inkpi/cli
+    Write-Host "📦 Installing @inkpi/creative-agent globally via bun..." -ForegroundColor Green
+    bun install -g @inkpi/creative-agent
 } else {
     Write-Host "❌ Neither pnpm, npm, nor bun found in PATH." -ForegroundColor Red
     exit 1

@@ -162,22 +162,22 @@ iwr https://raw.githubusercontent.com/MeiSiristhebest/inkpi/master/scripts/insta
 
 **npm**:
 ```bash
-npm install -g --ignore-scripts @inkpi/cli
+npm install -g --ignore-scripts @inkpi/creative-agent
 ```
 
 **pnpm**:
 ```bash
-pnpm add -g --ignore-scripts @inkpi/cli
+pnpm add -g --ignore-scripts @inkpi/creative-agent
 ```
 
 **bun**:
 ```bash
-bun install -g @inkpi/cli
+bun install -g @inkpi/creative-agent
 ```
 
 **npx** (Instant execution without global installation):
 ```bash
-npx @inkpi/cli
+npx @inkpi/creative-agent
 ```
 
 ---
