@@ -136,6 +136,7 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
     });
 
     expect(fts.search('灯塔').map((result) => result.documentId)).toEqual(['doc_cjk']);
+    expect(fts.search('夜航').map((result) => result.documentId)).toEqual(['doc_cjk']);
     db.close();
   });
 

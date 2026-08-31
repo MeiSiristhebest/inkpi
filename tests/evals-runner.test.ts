@@ -48,6 +48,27 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
 
     runner.registerMetric({ id: 'invalid', evaluate: () => ({ score: 101 }) });
     expect(() => runner.evaluate({ content: 'abc' })).toThrow("Evaluation metric 'invalid' returned a score outside 0-100.");
+
+    // Validation error branches
+    expect(() => runner.registerMetric({ id: '', evaluate: () => ({ score: 50 }) })).toThrow('id must not be empty');
+    expect(() => runner.registerMetric({ id: 'neg', weight: -1, evaluate: () => ({ score: 50 }) })).toThrow('invalid weight');
+
+    // Unregister metric
+    expect(runner.unregisterMetric('invalid')).toBe(true);
+    expect(runner.unregisterMetric('missing_metric')).toBe(false);
+
+    // Grade S (>= 95), B (>= 75), C (>= 60), F (< 60)
+    const runnerS = new EvalRunner([{ id: 'm', evaluate: () => ({ score: 98, passed: true }) }]);
+    expect(runnerS.evaluate({ content: 'x' }).grade).toBe('S');
+
+    const runnerB = new EvalRunner([{ id: 'm', evaluate: () => ({ score: 78, passed: true }) }]);
+    expect(runnerB.evaluate({ content: 'x' }).grade).toBe('B');
+
+    const runnerC = new EvalRunner([{ id: 'm', evaluate: () => ({ score: 65, passed: false }) }]);
+    expect(runnerC.evaluate({ content: 'x' }).grade).toBe('C');
+
+    const runnerF = new EvalRunner([{ id: 'm', evaluate: () => ({ score: 40, passed: false }) }]);
+    expect(runnerF.evaluate({ content: 'x' }).grade).toBe('F');
   });
 
   it('should score entity consistency and detect status contradictions', () => {
@@ -384,5 +405,19 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     ]);
     expect(invConditionRes.violations.length).toBe(2);
     expect(invConditionRes.passed).toBe(false);
+
+    // Test NovelEvalRunner without stateLedger and documentTitle fallback
+    const reportNoLedger = runner.evaluateDocument({
+      content: '纯文本内容，没有任何账本'
+    });
+    expect(reportNoLedger.passed).toBe(true);
+    expect(reportNoLedger.chapterTitle).toBe('Content');
+    expect(reportNoLedger.title).toBe('');
+
+    const reportDocTitle = runner.evaluateDocument({
+      documentTitle: 'Doc Title',
+      content: '文档标题测试'
+    });
+    expect(reportDocTitle.chapterTitle).toBe('Doc Title');
   });
 });

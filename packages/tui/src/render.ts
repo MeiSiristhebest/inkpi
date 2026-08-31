@@ -124,18 +124,39 @@ export function drawBox(
 export class DifferentialRenderer {
   private lastBuffer: string[] = [];
 
-  public render(newScreenText: string): { changedLines: number; output: string } {
+  public render(newScreenText: string): {
+    changedLines: number;
+    output: string;
+    diffAnsi: string;
+    isDiff: boolean;
+  } {
     const currentLines = newScreenText.split('\n');
     let changed = 0;
+    const diffSegments: string[] = [];
+    const maxLines = Math.max(this.lastBuffer.length, currentLines.length);
 
-    for (let i = 0; i < currentLines.length; i++) {
-      if (this.lastBuffer[i] !== currentLines[i]) {
+    for (let i = 0; i < maxLines; i++) {
+      const oldLine = i < this.lastBuffer.length ? this.lastBuffer[i] : undefined;
+      const newLine = i < currentLines.length ? currentLines[i] : undefined;
+
+      if (oldLine !== newLine) {
         changed++;
+        const row = i + 1;
+        if (newLine !== undefined) {
+          diffSegments.push(`\x1b[${row};1H\x1b[2K${newLine}`);
+        } else {
+          diffSegments.push(`\x1b[${row};1H\x1b[2K`);
+        }
       }
     }
 
     this.lastBuffer = [...currentLines];
-    return { changedLines: changed, output: newScreenText };
+    return {
+      changedLines: changed,
+      output: newScreenText,
+      diffAnsi: diffSegments.join(''),
+      isDiff: changed > 0
+    };
   }
 
   public clear(): void {

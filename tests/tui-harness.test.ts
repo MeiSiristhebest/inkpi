@@ -51,4 +51,18 @@ describe('@inkpi/agent-core -> TerminalHarness (TUI)', () => {
     harness.log('测试日志输出');
     expect(harness.renderScreen()).toContain('测试日志输出');
   });
+
+  it('should support typography formatting and default initial resources', () => {
+    const harness = new TerminalHarness({
+      width: 100,
+      height: 30,
+      typography: 'chinese-novel',
+      initialResources: []
+    });
+
+    expect(harness.renderScreen()).toContain('Untitled resource');
+    harness.editor.insertText(0, '你好"世界"！');
+    const screen = harness.renderScreen();
+    expect(screen).toBeDefined();
+  });
 });

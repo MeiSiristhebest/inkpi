@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   WorkflowCoordinator,
   createStandardEntitySafetyRules,
+  createScreenplayGateRules,
+  createShortDramaGateRules,
+  createVisualNovelGateRules,
+  createLegacyNarrativeStages,
   type QualityGateIssue
 } from '@inkpi/agent-core';
 
@@ -125,5 +129,38 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
     await expect(
       pipeline.runPipeline('测试作品', '第一章', '测试')
     ).rejects.toThrow('门禁未通过');
+  });
+
+  it('should evaluate screenplay, short-drama, visual-novel gates and legacy stages templates', () => {
+    // 1. Screenplay gates
+    const screenplayRules = createScreenplayGateRules();
+    expect(screenplayRules[0].pattern.test('INT. COFFEE SHOP - DAY')).toBe(false);
+
+    // 2. Short-drama hook check
+    const shortDramaRules = createShortDramaGateRules();
+    const weakHookRes = shortDramaRules[0].detector('今天天气很好，小明走在路上。', {});
+    expect(weakHookRes?.type).toBe('weak_hook');
+    const strongHookRes = shortDramaRules[0].detector('震惊！战神回归，一记耳光打脸前妻！', {});
+    expect(strongHookRes).toBeNull();
+
+    // 3. Visual novel choice integrity
+    const vnRules = createVisualNovelGateRules();
+    expect(vnRules[0].pattern.test('<choice id="1">Go Left</choice>')).toBe(true);
+
+    // 4. Legacy narrative stages prompts
+    const stages = createLegacyNarrativeStages();
+    expect(stages.length).toBe(4);
+    const mockCtx = {
+      userPrompt: '测试指令',
+      title: '书名',
+      sectionTitle: '章节名',
+      stageOutputs: { outline: '大纲', draft: '正文', audit: '合规' },
+      stateLedger: {}
+    };
+    expect(stages[0].promptTemplate(mockCtx)).toContain('书名 - 章节名');
+    expect(stages[1].promptTemplate(mockCtx)).toContain('大纲');
+    expect(stages[2].promptTemplate(mockCtx)).toContain('正文');
+    expect(stages[3].promptTemplate(mockCtx)).toContain('合规');
+    expect(stages[3].transformOutput('原文本')).toBeDefined();
   });
 });

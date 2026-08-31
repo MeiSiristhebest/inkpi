@@ -121,4 +121,43 @@ describe('InkPi Extension Package Manager', () => {
     expect(diagnostics.malformedPackages[0].directory).toBe(malformedDir);
     expect(diagnostics.malformedPackages[0].error.message).toMatch(/version|category/i);
   });
+
+  it('should reject manifest validation failures and handle CLI fallback commands', async () => {
+    const pm = new ExtensionPackageManager(testBaseDir);
+
+    expect(() => (pm as any).validateManifest(null, {})).toThrow('Package manifest must be an object');
+    expect(() => (pm as any).validateManifest({ name: '' }, {})).toThrow('name must not be empty');
+    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: '' }, {})).toThrow('category must not be empty');
+    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: 'plugin', description: 123 as any }, {})).toThrow('description must be a string');
+    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: 'plugin', files: [123 as any] }, {})).toThrow('files must be an array of paths');
+    expect(() => pm.update('pkg1', { name: 'pkg2', version: '1.0.0', category: 'plugin' })).toThrow('Package name mismatch');
+
+    // CLI branch tests
+    const helpRes = await runPackageManagerCli(['help'], { baseDir: testBaseDir });
+    expect(helpRes).toContain('Usage: inkpi');
+
+    const unknownRes = await runPackageManagerCli(['unknown_cmd'], { baseDir: testBaseDir });
+    expect(unknownRes).toContain('Usage: inkpi');
+
+    const missingPkgInstall = await runPackageManagerCli(['install'], { baseDir: testBaseDir });
+    expect(missingPkgInstall).toContain('A package name is required');
+
+    const missingPkgRemove = await runPackageManagerCli(['remove'], { baseDir: testBaseDir });
+    expect(missingPkgRemove).toContain('A package name is required');
+
+    const missingPkgUpdate = await runPackageManagerCli(['update'], { baseDir: testBaseDir });
+    expect(missingPkgUpdate).toContain('A package name is required');
+
+    const noBundleRes = await runPackageManagerCli(['install', 'missing_bundle'], {
+      baseDir: testBaseDir,
+      resolvePackage: async () => undefined
+    });
+    expect(noBundleRes).toContain('No package manifest/source was resolved');
+
+    const mismatchedBundleRes = await runPackageManagerCli(['install', 'pkg_a'], {
+      baseDir: testBaseDir,
+      resolvePackage: async () => ({ manifest: { name: 'pkg_b', version: '1.0.0', category: 'plugin' } })
+    });
+    expect(mismatchedBundleRes).toContain('does not match');
+  });
 });

@@ -157,12 +157,70 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
     try {
       delete process.env.VITEST;
       process.env.NODE_ENV = 'production';
-      const res = await runPrintMode({ prompt: 'test missing provider', json: true });
+      const res = await runPrintMode({ prompt: 'test missing provider', json: false });
       expect(res.success).toBe(false);
       expect(res.error).toContain('No AI model configuration found');
     } finally {
       process.env.NODE_ENV = oldNodeEnv;
       process.env.VITEST = oldVitest;
     }
+  });
+
+  it('should run workflow with json output and custom role configuration', async () => {
+    const tmpJsonOut = path.join(process.cwd(), 'tmp-workflow-json.txt');
+    const res = await runPrintMode({
+      prompt: 'workflow with json and custom role',
+      role: 'pipeline',
+      model: 'mock-test',
+      output: tmpJsonOut,
+      json: true,
+      workflow: {
+        stages: [
+          {
+            id: 'step1',
+            name: 'Step 1',
+            executor: async () => 'step1 completed'
+          }
+        ]
+      }
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.content).toBe('step1 completed');
+    expect(fs.readFileSync(tmpJsonOut, 'utf8')).toBe('step1 completed');
+    fs.unlinkSync(tmpJsonOut);
+  });
+
+  it('should support editor and auditor roles in print mode', async () => {
+    const editorRes = await runPrintMode({
+      prompt: '润色文本',
+      role: 'editor',
+      model: 'mock-test',
+      json: true
+    });
+    expect(editorRes.success).toBe(true);
+    expect(editorRes.role).toBe('editor');
+
+    const auditorRes = await runPrintMode({
+      prompt: '审查文本',
+      role: 'auditor',
+      model: 'mock-test',
+      json: false
+    });
+    expect(auditorRes.success).toBe(true);
+    expect(auditorRes.role).toBe('auditor');
+
+    // Workflow with non-JSON output (hits result.content + '\n')
+    const wfNonJson = await runPrintMode({
+      prompt: '非 json 工作流',
+      role: 'pipeline',
+      model: 'mock-test',
+      json: false,
+      workflow: {
+        stages: [{ id: 's', name: 'Stage', executor: async () => 'pipeline completed text' }]
+      }
+    });
+    expect(wfNonJson.success).toBe(true);
+    expect(wfNonJson.content).toBe('pipeline completed text');
   });
 });

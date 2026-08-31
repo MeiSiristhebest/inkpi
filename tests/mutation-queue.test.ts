@@ -54,6 +54,12 @@ describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
     const successRes = await pSuccess;
     expect(successRes).toBe('recovered');
 
+    // Reject task when locked by external writer
+    queue.getLeaseManager().acquire('lease_ch_locked', 'external_holder', 30000);
+    await expect(
+      queue.enqueue('ch_locked', 'internal_agent', async () => 'should not run')
+    ).rejects.toThrow('currently locked by another active writer');
+
     db.close();
   });
 });

@@ -115,11 +115,23 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
       details: { stateLedger: { entities: [], assets: [], tracks: [], locations: [], modifiedDocuments: [] } }
     });
 
+    journal.append('operation_intent', {
+      id: 'op_replay_1',
+      type: 'tool_call',
+      intent: { tool: 'grep' }
+    });
+
+    journal.append('operation_settlement', {
+      id: 'op_replay_1',
+      type: 'tool_call',
+      settlement: { count: 10 }
+    });
+
     const singleEntry = journal.getEntry('non_existent');
     expect(singleEntry).toBeUndefined();
 
     const replayRes = journal.replayToDb(repo, db);
-    expect(replayRes.replayedCount).toBe(4);
+    expect(replayRes.replayedCount).toBe(6);
     expect(replayRes.snapshotsCreated).toBe(1);
 
     expect(() => journal.replayToDb(repo, db)).not.toThrow();
@@ -127,6 +139,10 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     // Verify SQLite projection
     const workspaceInDb = repo.getWorkspace('workspace_replay');
     expect(workspaceInDb?.title).toBe('Test Workspace Name');
+
+    const opInDb = repo.getOperation('op_replay_1');
+    expect(opInDb?.state).toBe('settled');
+    expect(opInDb?.settlement).toEqual({ count: 10 });
 
     const snap = repo.getSnapshot('ch_1');
     expect(snap?.contentMarkdown).toContain('少年UserB');

@@ -90,6 +90,35 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
     const explicitText = formatJitContextAsPrompt(result);
     expect(explicitText).toContain('Retrieved Context');
     expect(explicitText).toContain('Document');
+
+    // Comprehensive formatJitContextAsPrompt branches
+    const formattedFull = formatJitContextAsPrompt({
+      l1WorkingMemory: {
+        activeEntities: ['Alice'],
+        activeAssets: ['Sword'],
+        activeTracks: ['t1'],
+        activeReferences: [],
+        activeLedger: {
+          entities: [{ name: 'Alice', status: 'Active' }, { name: 'Bob' }],
+          assets: [{ name: 'Sword', holder: 'Alice' }, { name: 'Shield' }],
+          tracks: [
+            { summary: 'Summary track', status: 'done' },
+            { id: 'track_id_only' },
+            { status: 'open' }
+          ],
+          locations: [],
+          modifiedResources: []
+        }
+      },
+      l2RecentSummaries: [{ documentId: 'doc1', title: 'Chapter 1', summary: 'Summary 1' }],
+      l3GlobalLore: [{ documentId: 'doc2', title: 'Chapter 2', orderIndex: 2, snippet: 'Snippet 2', rank: 1 }]
+    });
+    expect(formattedFull).toContain('Entities: Alice(Active), Bob');
+    expect(formattedFull).toContain('Assets: Sword[Holder:Alice], Shield');
+    expect(formattedFull).toContain('Tracks: Summary track(done); track_id_only; track(open)');
+    expect(formattedFull).toContain('=== Recent Document Summaries ===');
+    expect(formattedFull).toContain('=== Full-Text Matches ===');
+
     db.close();
   });
 

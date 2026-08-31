@@ -48,8 +48,25 @@ description: 悬疑探案Task布设指南
       expect(discovered.length).toBe(1);
       expect(discovered[0].name).toBe('detective-clues');
       expect(engine.getSkill('detective-clues')?.description).toBe('悬疑探案Task布设指南');
+      expect(engine.getAll().length).toBe(1);
+
+      engine.addSearchDir(tempDir); // duplicate branch
+      engine.addSearchDir('/non/existent/path'); // non-existent dir branch
+      expect(engine.discover().length).toBe(1);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('should handle malformed frontmatter and fallback name parsing gracefully', () => {
+    expect(parseSkillMarkdown('no frontmatter here', '/path/to/skill.md')).toBeNull();
+    expect(parseSkillMarkdown('---\nno closing delimiter', '/path/to/skill.md')).toBeNull();
+
+    // No name provided -> derived from filename
+    const fallbackSkill = parseSkillMarkdown('---\ndescription: test\ninvalid line\n---\nPrompt body', '/path/to/custom-skill.md');
+    expect(fallbackSkill).not.toBeNull();
+    expect(fallbackSkill?.name).toBe('custom-skill');
+    expect(fallbackSkill?.description).toBe('test');
+    expect(fallbackSkill?.promptBody).toBe('Prompt body');
   });
 });

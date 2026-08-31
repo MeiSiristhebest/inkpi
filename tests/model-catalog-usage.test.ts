@@ -27,6 +27,10 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     expect(getThinkingBudgetForLevel('max')).toBe(32768);
     expect(getThinkingBudgetForLevel('invalid' as any)).toBe(0);
 
+    expect(findModelInCatalog('')).toBeUndefined();
+    expect(findModelInCatalog('claude-3-7-sonnet')).toBeDefined();
+    expect(findModelInCatalog('deepseek-chat')).toBeDefined();
+
     const config = modelCatalogEntryToConfig(dsReasoner!);
     expect(config.id).toBe(dsReasoner!.id);
   });
@@ -94,6 +98,12 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
 
     foreshadowinger.reset();
     expect(foreshadowinger.getTotals().totalTokens).toBe(0);
+
+    const calculatedCost = calculateCost(
+      { inputPerMillionUsd: 1, outputPerMillionUsd: 2, cacheReadPerMillionUsd: 0.5, cacheWritePerMillionUsd: 0.8 },
+      { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000 }
+    );
+    expect(calculatedCost).toBe(4.3);
   });
 
   it('should test PromptCacheOptimizer helper branches', () => {

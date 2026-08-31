@@ -24,6 +24,12 @@ describe('TuiStudio (Terminal Workstation)', () => {
     const secondDiff = studio.renderDifferential();
     expect(secondDiff.isDiff).toBe(false);
     expect(secondDiff.content).toBe('');
+
+    // Mutate state -> differential update detected
+    studio.editor.insert('Updated text inside editor buffer');
+    const thirdDiff = studio.renderDifferential();
+    expect(thirdDiff.isDiff).toBe(true);
+    expect(thirdDiff.content).toContain('Updated text');
   });
 
   it('should support document navigation and focus switching', () => {

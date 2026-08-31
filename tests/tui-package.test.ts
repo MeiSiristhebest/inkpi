@@ -71,6 +71,17 @@ describe('@inkpi/tui Independent Framework', () => {
     renderer.clear();
     const frame4 = renderer.render('Line 1\nLine 2\nLine 3');
     expect(frame4.changedLines).toBe(3);
+
+    // Shrinking buffer (from 3 lines to 1 line) -> lines 2 & 3 cleared
+    const frameShrink = renderer.render('Line 1');
+    expect(frameShrink.changedLines).toBe(2);
+    expect(frameShrink.diffAnsi).toContain('\x1b[2;1H\x1b[2K');
+
+    // renderScrollView padding test
+    const paddedScroll = renderScrollView(['Item 1'], 3, 0);
+    expect(paddedScroll.length).toBe(3);
+    expect(paddedScroll[1]).toBe('');
+    expect(paddedScroll[2]).toBe('');
   });
 
   it('should parse terminal keys and modifiers correctly', () => {

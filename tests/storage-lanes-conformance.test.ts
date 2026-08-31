@@ -178,6 +178,29 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
     });
 
     expect(() => lanes.mergeLane('lane_child', 'lane_b')).toThrow('parent lane');
+
+    // getLanes test
+    const allLanes = lanes.getLanes(workspaceId);
+    expect(allLanes[0]?.id).toBe('lane_a');
+    expect(allLanes[0]?.isDefault).toBe(true);
+    expect(lanes.getLanes('empty_ws')).toEqual([]);
+
+    // Cross-workspace merge rejection
+    db.prepare(`
+      INSERT INTO workspaces (id, title, owner, created_at, updated_at)
+      VALUES ('other_workspace_id', 'Other WS', 'owner', 1000, 1000)
+    `).run();
+
+    lanes.createLane({
+      id: 'lane_other_ws',
+      workspaceId: 'other_workspace_id',
+      name: 'Other WS Lane',
+      isDefault: true,
+      createdAt: 1000,
+      updatedAt: 1000
+    });
+    expect(() => lanes.mergeLane('lane_child', 'lane_other_ws')).toThrow('same workspace');
+
     db.close();
   });
 

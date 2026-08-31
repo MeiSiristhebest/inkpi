@@ -115,6 +115,29 @@ describe('@inkpi/editor-core', () => {
     // Inactive ghost test
     expect(ghost.acceptWord()).toBe(false);
     expect(ghost.acceptLine()).toBe(false);
+    expect(ghost.accept()).toBe(false);
+    expect(ghost.acceptGhostText()).toBe(false);
+
+    // suggest and getCurrentGhostText
+    const sug = ghost.suggest('推荐文本');
+    expect(sug.text).toBe('推荐文本');
+    expect(ghost.getSuggestion()).toBe('推荐文本');
+    expect(ghost.getCurrentGhostText()?.text).toBe('推荐文本');
+    expect(ghost.getState().active).toBe(true);
+
+    ghost.dismiss();
+    expect(ghost.getState().active).toBe(false);
+    expect(ghost.getGhostText()).toBeNull();
+
+    // Exhaustive acceptWord in 1 step
+    ghost.setGhostText(0, '单字');
+    expect(ghost.acceptWord()).toBe(true);
+    expect(ghost.hasGhostText()).toBe(false);
+
+    // Exhaustive acceptLine in 1 step
+    ghost.setGhostText(0, '单行完整句子');
+    expect(ghost.acceptLine()).toBe(true);
+    expect(ghost.hasGhostText()).toBe(false);
   });
 
 
