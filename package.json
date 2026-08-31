@@ -10,8 +10,8 @@
   "scripts": {
     "build": "tsc -b",
     "build:offline": "tsc -b",
-    "generate:models": "npm --workspace=@inkpi/ai run generate:models",
-    "hydrate:model-data": "npm --workspace=@inkpi/ai run hydrate:model-data",
+    "generate:models": "pnpm --filter @inkpi/ai run generate:models",
+    "hydrate:model-data": "pnpm --filter @inkpi/ai run hydrate:model-data",
     "bundle": "node scripts/bundle.ts",
     "build:binaries": "node scripts/build-binaries.mjs",
     "check:pinned-deps": "node scripts/check-pinned-deps.mjs",
@@ -19,7 +19,7 @@
     "format": "biome format --write packages tests scripts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "check": "npm run check:pinned-deps && tsc -b"
+    "check": "pnpm run check:pinned-deps && tsc -b"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
