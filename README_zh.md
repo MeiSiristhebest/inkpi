@@ -116,22 +116,19 @@ pnpm run daemon
 
 ---
 
-## ⭐ Star 与支持
+## Star History
 
-如果您觉得本项目对您的学习或创作流程有所启发，欢迎在 GitHub 上点个 ⭐ **Star**！
-
-<p align="center">
-  <a href="https://www.star-history.com/?repos=MeiSiristhebest%2Finkpi&type=date&legend=bottom-right">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&theme=dark&legend=bottom-right" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&legend=bottom-right" />
-      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&legend=bottom-right" width="100%" />
-    </picture>
-  </a>
-</p>
+<a href="https://www.star-history.com/?repos=MeiSiristhebest%2Finkpi&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&theme=dark&legend=bottom-right&sealed_token=eJDW25BVma2JZ3alWYMy-ghhnCV58fPHNeF7dzTgmiKN4f5e_v8PyBE5G5IyQeEUNJKAHFm5QdsfPe_eIZmIQI3RxYuuI4TRB2WO_vYATtXxVL7XxW-PxHa6H0LzsmbzocJE8eDhVsjWgmyIYnQoC_ydsC2ChbEptHQHqMaYnUZqSxPa3l7zQ34r-9ZW" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&legend=bottom-right&sealed_token=eJDW25BVma2JZ3alWYMy-ghhnCV58fPHNeF7dzTgmiKN4f5e_v8PyBE5G5IyQeEUNJKAHFm5QdsfPe_eIZmIQI3RxYuuI4TRB2WO_vYATtXxVL7XxW-PxHa6H0LzsmbzocJE8eDhVsjWgmyIYnQoC_ydsC2ChbEptHQHqMaYnUZqSxPa3l7zQ34r-9ZW" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&legend=bottom-right&sealed_token=eJDW25BVma2JZ3alWYMy-ghhnCV58fPHNeF7dzTgmiKN4f5e_v8PyBE5G5IyQeEUNJKAHFm5QdsfPe_eIZmIQI3RxYuuI4TRB2WO_vYATtXxVL7XxW-PxHa6H0LzsmbzocJE8eDhVsjWgmyIYnQoC_ydsC2ChbEptHQHqMaYnUZqSxPa3l7zQ34r-9ZW" />
+ </picture>
+</a>
 
 ### 🤝 贡献者
 <a href="https://github.com/MeiSiristhebest/inkpi/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=MeiSiristhebest/inkpi" alt="Contributors" />
 </a>
+
 
