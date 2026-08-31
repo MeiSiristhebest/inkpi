@@ -1,5 +1,5 @@
-import type { ModelConfig } from '@inkpi/protocol';
-import { MODEL_PRESETS } from '@inkpi/ai';
+import type { ModelConfig } from '@meisiristhebest/protocol';
+import { MODEL_PRESETS } from '@meisiristhebest/ai';
 
 export interface ModelMetadata {
   model: ModelConfig;

@@ -3,7 +3,7 @@ import {
   ExtensionHost,
   ExtensionRunner,
   type ExtensionFactory
-} from '@inkpi/agent-core';
+} from '@meisiristhebest/agent-core';
 
 describe('Custom Third-Party Extension Capability', () => {
   it('should allow third-party developers to define and register custom capabilities', async () => {

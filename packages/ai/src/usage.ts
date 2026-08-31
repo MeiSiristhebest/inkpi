@@ -1,4 +1,4 @@
-import type { Usage, UsageTotals } from '@inkpi/protocol';
+import type { Usage, UsageTotals } from '@meisiristhebest/protocol';
 import { findModelInCatalog } from './catalog.js';
 
 export interface UsageCostBreakdown {

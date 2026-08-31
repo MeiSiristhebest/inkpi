@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import { Agent } from '../agent.js';
 import { WorkflowCoordinator } from '../pipeline/coordinator.js';
 import { TelemetryCollector } from '../telemetry/telemetry.js';
-import { getModelPreset } from '@inkpi/ai';
+import { getModelPreset } from '@meisiristhebest/ai';
 
 import type {
   AgentRoleConfig,
@@ -17,8 +17,8 @@ import type {
   Usage,
   WorkflowContext,
   WorkflowStageConfig
-} from '@inkpi/protocol';
-import type { ModelConfig } from '@inkpi/ai';
+} from '@meisiristhebest/protocol';
+import type { ModelConfig } from '@meisiristhebest/ai';
 
 export interface PrintWorkflowOptions {
   stages: WorkflowStageConfig[];

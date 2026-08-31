@@ -1,9 +1,9 @@
-import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
-import type { StateLedger, SelectListOptions, TypographyOptions } from '@inkpi/protocol';
+import { HeadlessEditorState, GhostTextManager, formatTypography } from '@meisiristhebest/editor-core';
+import type { StateLedger, SelectListOptions, TypographyOptions } from '@meisiristhebest/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
 import { SlashCommandRegistry } from '../slash-commands.js';
-import { ANSI, drawBox, DifferentialRenderer } from '@inkpi/tui';
+import { ANSI, drawBox, DifferentialRenderer } from '@meisiristhebest/tui';
 
 export type StudioFocusMode = 'editor' | 'outline' | 'copilot' | 'ledger';
 

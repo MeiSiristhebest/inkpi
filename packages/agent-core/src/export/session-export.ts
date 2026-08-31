@@ -1,4 +1,4 @@
-import { assertValid, AgentMessageSchema, type AgentMessage, type ExportOptions } from '@inkpi/protocol';
+import { assertValid, AgentMessageSchema, type AgentMessage, type ExportOptions } from '@meisiristhebest/protocol';
 import type { SessionTree } from '../tree.js';
 
 export interface MessageJsonlImportOptions {

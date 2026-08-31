@@ -1,4 +1,4 @@
-import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage } from '@meisiristhebest/protocol';
 import { AssistantEventStream } from './stream.js';
 import type { FauxScriptedResponse, ModelConfig, StreamOptions, EventStream, ProviderType } from './types.js';
 
@@ -300,7 +300,7 @@ function fauxProviderWithScript(
 export const fauxProvider: ProviderHandler = (model, messages, options) =>
   fauxProviderWithScript(model.fauxScript, model, messages, options);
 
-function legacyUsage(script: FauxScriptedResponse): import('@inkpi/protocol').Usage | undefined {
+function legacyUsage(script: FauxScriptedResponse): import('@meisiristhebest/protocol').Usage | undefined {
   const hasLegacyUsage = [
     script.inputTokens,
     script.outputTokens,

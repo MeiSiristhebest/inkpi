@@ -1,4 +1,4 @@
-import type { ModelConfig } from '@inkpi/protocol';
+import type { ModelConfig } from '@meisiristhebest/protocol';
 import { ModelRegistry, type ModelMetadata } from './model-registry.js';
 
 export type TaskScope = 'drafting' | 'reasoning' | 'polishing' | 'linting' | 'fast-ghost' | string;

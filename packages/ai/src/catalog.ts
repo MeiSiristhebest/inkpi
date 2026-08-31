@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from '@inkpi/protocol';
+import type { ThinkingLevel } from '@meisiristhebest/protocol';
 import type { ModelConfig, ProviderType } from './types.js';
 import {
   GENERATED_MODELS,

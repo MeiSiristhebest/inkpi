@@ -3,7 +3,7 @@ import { InkRpcServer, type ServerContext } from './server.js';
 import { LiveSessionManager, type ManagedSession, type SessionCreateOptions } from './session-manager.js';
 import type { RpcTransport } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';
-import type { ModelConfig } from '@inkpi/protocol';
+import type { ModelConfig } from '@meisiristhebest/protocol';
 
 export interface DaemonOptions {
   port?: number;

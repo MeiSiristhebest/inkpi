@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { SessionCompactor } from '@inkpi/agent-core';
-import type { AgentMessage } from '@inkpi/protocol';
+import { SessionCompactor } from '@meisiristhebest/agent-core';
+import type { AgentMessage } from '@meisiristhebest/protocol';
 
-describe('@inkpi/agent-core -> Context Compaction Engine (1:1 Ported from repos/pi)', () => {
+describe('@meisiristhebest/agent-core -> Context Compaction Engine (1:1 Ported from repos/pi)', () => {
   it('should estimate tokens, detect context overflow, and perform recursive summarization', async () => {
     const compactor = new SessionCompactor({
       triggerTokensThreshold: 50, // Small threshold for testing

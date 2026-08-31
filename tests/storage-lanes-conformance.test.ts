@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { InkDb, LaneManager, StorageConformanceSuite } from '@inkpi/storage';
+import { InkDb, LaneManager, StorageConformanceSuite } from '@meisiristhebest/storage';
 
 describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
   it('should manage lanes and branch tips accurately', () => {

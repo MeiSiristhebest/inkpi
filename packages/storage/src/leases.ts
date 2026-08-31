@@ -1,4 +1,4 @@
-import type { WriterLeaseInfo } from '@inkpi/protocol';
+import type { WriterLeaseInfo } from '@meisiristhebest/protocol';
 import type { InkDb } from './db.js';
 
 export class WriterLeaseManager {

@@ -1,5 +1,5 @@
 {
-  "name": "@inkpi/storage",
+  "name": "@meisiristhebest/storage",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,6 +15,6 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "workspace:*"
+    "@meisiristhebest/protocol": "workspace:*"
   }
 }

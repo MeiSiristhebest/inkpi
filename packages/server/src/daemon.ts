@@ -4,8 +4,8 @@ import type {
   RpcResponse,
   RpcNotification,
   AgentMessage
-} from '@inkpi/protocol';
-import { RPC_ERROR_CODES } from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
+import { RPC_ERROR_CODES } from '@meisiristhebest/protocol';
 import { LiveSessionManager } from './sessions.js';
 import type { RpcNotificationSender } from './types.js';
 

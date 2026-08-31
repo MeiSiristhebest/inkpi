@@ -5,8 +5,8 @@ import type {
   ToolResultMessage,
   ToolCallContent,
   AgentEventListener
-} from '@inkpi/protocol';
-import { streamAi } from '@inkpi/ai';
+} from '@meisiristhebest/protocol';
+import { streamAi } from '@meisiristhebest/ai';
 import type { AgentOptions, AgentState } from './types.js';
 import type { ToolRegistry } from './tools.js';
 import type { SteeringQueue, FollowUpQueue } from './queues.js';

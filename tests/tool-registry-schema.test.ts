@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ToolRegistry } from '@inkpi/agent-core';
-import { Type, type AgentTool } from '@inkpi/protocol';
+import { ToolRegistry } from '@meisiristhebest/agent-core';
+import { Type, type AgentTool } from '@meisiristhebest/protocol';
 
 describe('ToolRegistry parameter validation', () => {
   it('rejects invalid JSON Schema arguments before executing the tool', async () => {

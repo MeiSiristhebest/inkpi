@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { InkPiDaemon, InkRpcClient } from '@inkpi/agent-core';
+import { InkPiDaemon, InkRpcClient } from '@meisiristhebest/agent-core';
 
 describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () => {
   const TEST_PORT = 42831;

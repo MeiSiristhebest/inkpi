@@ -1,8 +1,8 @@
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import type { ModelConfig, AgentMessage } from '@inkpi/protocol';
-import { getModelPreset } from '@inkpi/ai';
-import type { ISessionBackend } from '@inkpi/session-backends';
-import { MemorySessionBackend } from '@inkpi/session-backends';
+import { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
+import type { ModelConfig, AgentMessage } from '@meisiristhebest/protocol';
+import { getModelPreset } from '@meisiristhebest/ai';
+import type { ISessionBackend } from '@meisiristhebest/session-backends';
+import { MemorySessionBackend } from '@meisiristhebest/session-backends';
 import type { ManagedSession } from './types.js';
 
 export interface CreateSessionOptions {

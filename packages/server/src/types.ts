@@ -4,9 +4,9 @@ import type {
   RpcNotification,
   AgentMessage,
   ModelConfig
-} from '@inkpi/protocol';
-import type { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import type { ISessionBackend } from '@inkpi/session-backends';
+} from '@meisiristhebest/protocol';
+import type { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
+import type { ISessionBackend } from '@meisiristhebest/session-backends';
 
 export type RpcNotificationSender = (notification: RpcNotification) => void;
 

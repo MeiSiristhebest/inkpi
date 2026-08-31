@@ -12,7 +12,7 @@ import type {
   WorkflowEvent,
   WorkflowEventListener,
   AgentRoleConfig
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 import { RoleRegistry } from './roles.js';
 import {
   createLegacyNarrativeStages,
@@ -24,8 +24,8 @@ import {
 } from './legacy-narrative.js';
 import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
 
-import type { ModelConfig } from '@inkpi/ai';
-import { getModelPreset, streamAi } from '@inkpi/ai';
+import type { ModelConfig } from '@meisiristhebest/ai';
+import { getModelPreset, streamAi } from '@meisiristhebest/ai';
 import { TelemetryCollector } from '../telemetry/telemetry.js';
 
 export type PipelineStage = 'outline' | 'draft' | 'audit' | 'polish' | string;

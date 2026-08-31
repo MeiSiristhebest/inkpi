@@ -5,7 +5,7 @@ import {
   FtsSearchEngine,
   JitMemoryRetriever,
   formatJitContextAsPrompt
-} from '@inkpi/storage';
+} from '@meisiristhebest/storage';
 
 describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
   it('should return structured retrieval data without imposing a content format', async () => {

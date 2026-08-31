@@ -4,8 +4,8 @@ import type {
   QualityGateIssue,
   StateLedger,
   UsageTotals
-} from '@inkpi/protocol';
-import type { UsageCostBreakdown } from '@inkpi/ai';
+} from '@meisiristhebest/protocol';
+import type { UsageCostBreakdown } from '@meisiristhebest/ai';
 import type { SessionTree } from '../tree.js';
 
 export interface SessionReportBranchSummary {

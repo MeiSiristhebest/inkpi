@@ -2,13 +2,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { ISessionBackend } from '@inkpi/session-backends';
+import type { ISessionBackend } from '@meisiristhebest/session-backends';
 import {
   MemorySessionBackend,
   JsonlSessionBackend,
   SqliteSessionBackend
-} from '@inkpi/session-backends';
-import type { SessionEntry, DocumentSnapshot, DocumentDelta } from '@inkpi/protocol';
+} from '@meisiristhebest/session-backends';
+import type { SessionEntry, DocumentSnapshot, DocumentDelta } from '@meisiristhebest/protocol';
 
 describe('Pluggable Session Backends Conformance Suite (LSP Verification)', () => {
   let tmpDir: string;

@@ -1,5 +1,5 @@
 {
-  "name": "@inkpi/agent-core",
+  "name": "@meisiristhebest/agent-core",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,10 +15,10 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "workspace:*",
-    "@inkpi/tui": "workspace:*",
-    "@inkpi/ai": "workspace:*",
-    "@inkpi/editor-core": "workspace:*",
-    "@inkpi/storage": "workspace:*"
+    "@meisiristhebest/protocol": "workspace:*",
+    "@meisiristhebest/tui": "workspace:*",
+    "@meisiristhebest/ai": "workspace:*",
+    "@meisiristhebest/editor-core": "workspace:*",
+    "@meisiristhebest/storage": "workspace:*"
   }
 }

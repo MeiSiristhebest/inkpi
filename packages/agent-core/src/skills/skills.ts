@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import type { SkillInfo } from '@inkpi/protocol';
+import type { SkillInfo } from '@meisiristhebest/protocol';
 
 /**
  * 轻量 YAML Frontmatter 解析器 (1:1 对标 repos/pi parseFrontmatter)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { ModelRegistry, ScopedModelResolver } from '@inkpi/agent-core';
+import { ModelRegistry, ScopedModelResolver } from '@meisiristhebest/agent-core';
 
-describe('@inkpi/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from repos/pi)', () => {
+describe('@meisiristhebest/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from repos/pi)', () => {
   it('should register models, resolve aliases, and route tasks to specialized model configurations', () => {
     const registry = new ModelRegistry();
 

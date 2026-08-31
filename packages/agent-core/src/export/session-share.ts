@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import type { AgentMessage, StateLedger } from '@inkpi/protocol';
+import type { AgentMessage, StateLedger } from '@meisiristhebest/protocol';
 import type { SessionTree } from '../tree.js';
 
 export interface CreativeSessionShareOptions {

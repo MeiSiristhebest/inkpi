@@ -13,9 +13,9 @@ import {
   CharacterStateSchema,
   StateLedgerSchema,
   RpcRequestSchema
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 
-describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
+describe('@meisiristhebest/protocol TypeBox Schemas & Validation', () => {
   it('should validate ThinkingLevelSchema', () => {
     expect(Value.Check(ThinkingLevelSchema, 'low')).toBe(true);
     expect(Value.Check(ThinkingLevelSchema, 'high')).toBe(true);

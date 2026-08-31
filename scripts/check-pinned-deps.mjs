@@ -19,7 +19,7 @@ function checkPackageJson(pkgPath) {
   const checkDeps = (deps, label) => {
     if (!deps) return;
     for (const [dep, version] of Object.entries(deps)) {
-      if (dep.startsWith('@inkpi/')) {
+      if (dep.startsWith('@meisiristhebest/')) {
         // Internal monorepo workspace packages
         continue;
       }

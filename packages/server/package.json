@@ -1,5 +1,5 @@
 {
-  "name": "@inkpi/server",
+  "name": "@meisiristhebest/server",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,9 +15,9 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "workspace:*",
-    "@inkpi/ai": "workspace:*",
-    "@inkpi/editor-core": "workspace:*",
-    "@inkpi/session-backends": "workspace:*"
+    "@meisiristhebest/protocol": "workspace:*",
+    "@meisiristhebest/ai": "workspace:*",
+    "@meisiristhebest/editor-core": "workspace:*",
+    "@meisiristhebest/session-backends": "workspace:*"
   }
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { InkDb, WriterLeaseManager } from '@inkpi/storage';
+import { InkDb, WriterLeaseManager } from '@meisiristhebest/storage';
 
-describe('@inkpi/storage -> WriterLeaseManager (Multi-process Concurrency Safety, 1:1 Ported from repos/pi)', () => {
+describe('@meisiristhebest/storage -> WriterLeaseManager (Multi-process Concurrency Safety, 1:1 Ported from repos/pi)', () => {
   it('should acquire, renew, release, and detect lease collisions across processes', () => {
     const db = new InkDb(':memory:');
     const leases = new WriterLeaseManager(db, 1000); // 1s TTL for testing

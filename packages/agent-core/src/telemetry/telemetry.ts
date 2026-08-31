@@ -5,7 +5,7 @@ import type {
   Usage,
   CreativeInteractionMetrics,
   TelemetryEvent
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 
 /**
  * OpenTelemetry 规范全链路可观测性度量收集器 (1:1 对标 repos/pi packages/telemetry)

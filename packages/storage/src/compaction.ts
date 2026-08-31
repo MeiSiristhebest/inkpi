@@ -1,4 +1,4 @@
-import type { DocumentSnapshot } from '@inkpi/protocol';
+import type { DocumentSnapshot } from '@meisiristhebest/protocol';
 import type { InkDb } from './db.js';
 import type { InkRepository } from './repository.js';
 

@@ -8,7 +8,7 @@ import {
   NarrativeSemanticLedgerExtractor
 } from '../packages/agent-core/src/index.js';
 import { streamAi } from '../packages/ai/src/index.js';
-import type { StateLedger } from '@inkpi/protocol';
+import type { StateLedger } from '@meisiristhebest/protocol';
 
 describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite', () => {
   // --------------------------------------------------------------------------

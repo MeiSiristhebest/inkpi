@@ -23,13 +23,13 @@ import {
   layoutHStack,
   layoutVStack,
   renderScrollView
-} from '@inkpi/tui';
+} from '@meisiristhebest/tui';
 import { Box as CompBox } from '../packages/tui/src/components/box.js';
 import { HStack as CompHStack } from '../packages/tui/src/components/h-stack.js';
 import { VStack as CompVStack } from '../packages/tui/src/components/v-stack.js';
 import { Spacer as CompSpacer } from '../packages/tui/src/components/spacer.js';
 
-describe('@inkpi/tui Independent Framework', () => {
+describe('@meisiristhebest/tui Independent Framework', () => {
   it('should calculate visible width correctly with CJK, Fullwidth, and Emoji characters', () => {
     expect(visibleWidth('hello')).toBe(5);
     expect(visibleWidth('你好世界')).toBe(8);

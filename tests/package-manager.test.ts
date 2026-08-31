@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ExtensionPackageManager, runPackageManagerCli } from '@inkpi/agent-core';
+import { ExtensionPackageManager, runPackageManagerCli } from '@meisiristhebest/agent-core';
 
 describe('InkPi Extension Package Manager', () => {
   const testBaseDir = path.join(process.cwd(), '.tmp-inkpi-extensions-test');
@@ -25,7 +25,7 @@ describe('InkPi Extension Package Manager', () => {
 
     // Install
     const manifest = {
-      name: '@inkpi/xianxia-worldview',
+      name: '@meisiristhebest/xianxia-worldview',
       version: '1.0.0',
       description: '仙侠大世界观设定与境界划分',
       category: 'worldview' as const
@@ -36,23 +36,23 @@ describe('InkPi Extension Package Manager', () => {
 
     const list = pm.getInstalledPackages();
     expect(list.length).toBe(1);
-    expect(list[0].name).toBe('@inkpi/xianxia-worldview');
-    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'), 'utf8'))
+    expect(list[0].name).toBe('@meisiristhebest/xianxia-worldview');
+    expect(fs.readFileSync(path.join(testBaseDir, '@meisiristhebest-xianxia-worldview', 'realms.json'), 'utf8'))
       .toContain('元婴');
 
     // Update
-    pm.update('@inkpi/xianxia-worldview', {
+    pm.update('@meisiristhebest/xianxia-worldview', {
       ...manifest,
       version: '1.1.0'
     }, { 'index.js': 'export const version = "1.1.0";' });
     const updatedList = pm.getInstalledPackages();
     expect(updatedList[0].version).toBe('1.1.0');
-    expect(fs.existsSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'))).toBe(false);
-    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'index.js'), 'utf8'))
+    expect(fs.existsSync(path.join(testBaseDir, '@meisiristhebest-xianxia-worldview', 'realms.json'))).toBe(false);
+    expect(fs.readFileSync(path.join(testBaseDir, '@meisiristhebest-xianxia-worldview', 'index.js'), 'utf8'))
       .toContain('1.1.0');
 
     // Remove
-    const removed = pm.remove('@inkpi/xianxia-worldview');
+    const removed = pm.remove('@meisiristhebest/xianxia-worldview');
     expect(removed).toBe(true);
     expect(pm.getInstalledPackages().length).toBe(0);
   });
@@ -61,7 +61,7 @@ describe('InkPi Extension Package Manager', () => {
     const cliBaseDir = path.join(testBaseDir, 'cli');
     const bundle = {
       manifest: {
-        name: '@inkpi/test-pkg',
+        name: '@meisiristhebest/test-pkg',
         version: '2.3.4',
         description: 'Test bundle from a configured source',
         category: 'plugins' as const
@@ -73,34 +73,34 @@ describe('InkPi Extension Package Manager', () => {
     const listRes = await runPackageManagerCli(['list'], { baseDir: cliBaseDir, resolvePackage });
     expect(typeof listRes).toBe('string');
 
-    const missingSourceRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], { baseDir: cliBaseDir });
+    const missingSourceRes = await runPackageManagerCli(['install', '@meisiristhebest/test-pkg'], { baseDir: cliBaseDir });
     expect(missingSourceRes).toContain('No package source resolver');
 
-    const installRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
-    expect(installRes).toContain("Installed '@inkpi/test-pkg'@2.3.4");
+    const installRes = await runPackageManagerCli(['install', '@meisiristhebest/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    expect(installRes).toContain("Installed '@meisiristhebest/test-pkg'@2.3.4");
 
-    const updateRes = await runPackageManagerCli(['update', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
-    expect(updateRes).toContain("Updated '@inkpi/test-pkg' to v2.3.4");
+    const updateRes = await runPackageManagerCli(['update', '@meisiristhebest/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    expect(updateRes).toContain("Updated '@meisiristhebest/test-pkg' to v2.3.4");
 
-    const removeRes = await runPackageManagerCli(['remove', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    const removeRes = await runPackageManagerCli(['remove', '@meisiristhebest/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
     expect(removeRes).toContain('Removed');
   });
 
   it('should reject invalid manifests and file paths before touching an existing package', () => {
     const pm = new ExtensionPackageManager(testBaseDir);
     const manifest = {
-      name: '@inkpi/stable',
+      name: '@meisiristhebest/stable',
       version: '1.0.0',
       description: 'Stable package',
       category: 'plugin'
     };
     pm.install(manifest, { 'state.json': '{"ok":true}' });
 
-    expect(() => pm.update('@inkpi/stable', {
+    expect(() => pm.update('@meisiristhebest/stable', {
       ...manifest,
       version: 'not-semver'
     }, { 'state.json': '{"ok":false}' })).toThrow(/Invalid package version/);
-    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-stable', 'state.json'), 'utf8')).toBe('{"ok":true}');
+    expect(fs.readFileSync(path.join(testBaseDir, '@meisiristhebest-stable', 'state.json'), 'utf8')).toBe('{"ok":true}');
 
     expect(() => pm.install({
       ...manifest,

@@ -9,10 +9,10 @@ import {
   UsageTracker,
   calculateCost,
   retryAssistantStream
-} from '@inkpi/ai';
+} from '@meisiristhebest/ai';
 
 
-describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
+describe('@meisiristhebest/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
   it('should find models and map thinking budgets correctly', () => {
     const dsReasoner = findModelInCatalog('deepseek-reasoner');
     expect(dsReasoner).toBeDefined();

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TuiStudio } from '@inkpi/agent-core';
-import { Agent } from '@inkpi/agent-core';
-import { getModelPreset } from '@inkpi/ai';
+import { TuiStudio } from '@meisiristhebest/agent-core';
+import { Agent } from '@meisiristhebest/agent-core';
+import { getModelPreset } from '@meisiristhebest/ai';
 
 describe('TuiStudio (Terminal Workstation)', () => {
   it('should initialize with default 3-pane layout and render full screen', () => {

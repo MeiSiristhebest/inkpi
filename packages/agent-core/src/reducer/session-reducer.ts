@@ -14,7 +14,7 @@ import type {
   ToolResultMessage,
   Usage,
   UserMessage
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 
 export interface TokenUsageSummary {
   inputTokens: number;

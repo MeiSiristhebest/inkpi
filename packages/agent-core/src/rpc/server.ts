@@ -3,13 +3,13 @@ import type {
   RpcRequest,
   RpcResponse,
   RpcNotification
-} from '@inkpi/protocol';
-import type { AgentMessage } from '@inkpi/protocol';
-import { RPC_ERROR_CODES } from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
+import type { AgentMessage } from '@meisiristhebest/protocol';
+import { RPC_ERROR_CODES } from '@meisiristhebest/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
-import type { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import type { FtsSearchEngine, InkRepository, AppendOnlySessionJournal, JitMemoryRetriever } from '@inkpi/storage';
+import type { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
+import type { FtsSearchEngine, InkRepository, AppendOnlySessionJournal, JitMemoryRetriever } from '@meisiristhebest/storage';
 import { SlashCommandRegistry } from '../slash-commands.js';
 import { BranchSummarizer } from '../branch-summary.js';
 import type { WorkflowCoordinator } from '../pipeline/coordinator.js';

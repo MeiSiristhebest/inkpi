@@ -7,7 +7,7 @@ import {
   streamAi,
   registerProvider,
   createFauxProvider
-} from '@inkpi/ai';
+} from '@meisiristhebest/ai';
 
 describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
   it('should discover and filter models through ModelCatalogManager', async () => {
@@ -83,7 +83,7 @@ describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
   });
 
   it('should foreshadowing token usage breakdown and prompt caching savings with UsageTracker', async () => {
-    const { UsageTracker } = await import('@inkpi/ai');
+    const { UsageTracker } = await import('@meisiristhebest/ai');
     const foreshadowinger = new UsageTracker();
 
     foreshadowinger.recordUsage({

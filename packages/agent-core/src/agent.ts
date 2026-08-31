@@ -4,7 +4,7 @@ import type {
   AgentMessage,
   ImageContent,
   UserMessage
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
 import { ToolRegistry } from './tools.js';
 import { SteeringQueue, FollowUpQueue } from './queues.js';
@@ -15,7 +15,7 @@ import { runAgentLoop } from './loop.js';
  * 纯粹 Agent 执行引擎核心 (AgentEngine / Agent)
  * 严格遵循单一职责原则 (SRP)：
  * 仅负责状态机（AgentState）、双向队列调度（Steering/FollowUp）、工具执行与驱动推理循环（Agent Loop）。
- * 所有斜杠命令解释交由 SlashCommandRegistry，所有 RPC 通信交由 @inkpi/server 与 @inkpi/client。
+ * 所有斜杠命令解释交由 SlashCommandRegistry，所有 RPC 通信交由 @meisiristhebest/server 与 @meisiristhebest/client。
  */
 export class Agent {
   public state: AgentState;

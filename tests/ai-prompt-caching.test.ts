@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamAi, getModelPreset, UsageTracker, PromptCacheOptimizer } from '@inkpi/ai';
+import { streamAi, getModelPreset, UsageTracker, PromptCacheOptimizer } from '@meisiristhebest/ai';
 
 describe('AI Layer - Prompt Caching & Cost Calculation', () => {
   it('should stream with prompt caching enabled and capture cache token usage', async () => {

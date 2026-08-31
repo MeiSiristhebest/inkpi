@@ -1,4 +1,4 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { StateLedger } from '@meisiristhebest/protocol';
 import { EntityConsistencyScorer, type ConsistencyScoreResult } from './benchmarks/entity-consistency.js';
 import { ForeshadowingPayoffScorer, type ForeshadowingScoreResult } from './benchmarks/foreshadowing-payoff.js';
 import { TypographyComplianceScorer, type TypographyComplianceResult } from './benchmarks/typography-compliance.js';

@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@inkpi/protocol';
+import type { AgentMessage } from '@meisiristhebest/protocol';
 
 export interface SessionTreeOptions {
   idGenerator?: () => string;

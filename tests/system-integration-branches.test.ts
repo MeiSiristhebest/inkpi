@@ -18,20 +18,20 @@ import {
   MockClipboardDriver,
   SyncedClipboard,
   createStandardEntitySafetyRules
-} from '@inkpi/agent-core';
-import { BranchSummarizer } from '@inkpi/agent-core';
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import { AppendOnlySessionJournal, InkDb, FtsSearchEngine } from '@inkpi/storage';
+} from '@meisiristhebest/agent-core';
+import { BranchSummarizer } from '@meisiristhebest/agent-core';
+import { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
+import { AppendOnlySessionJournal, InkDb, FtsSearchEngine } from '@meisiristhebest/storage';
 import {
   validateSchema,
   sanitizeStateLedger,
   StateLedgerSchema
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 import {
   convertMessagesToStandard,
   getModelPreset,
   streamAi
-} from '@inkpi/ai';
+} from '@meisiristhebest/ai';
 
 describe('System Integration & Edge Cases Suite', () => {
   it('should test InkRpcServer uninitialized component branches', async () => {
@@ -283,7 +283,7 @@ describe('System Integration & Edge Cases Suite', () => {
   });
 
   it('should test WorkflowCoordinator hooks, gate decisions, custom executor, and transformOutput branches', async () => {
-    const { WorkflowCoordinator } = await import('@inkpi/agent-core');
+    const { WorkflowCoordinator } = await import('@meisiristhebest/agent-core');
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'provider stage output', inputTokens: 5, outputTokens: 7 };
     
@@ -351,9 +351,9 @@ describe('System Integration & Edge Cases Suite', () => {
   });
 
   it('should test RoleRegistry, Typography options, and Storage Lanes helper branches', async () => {
-    const { RoleRegistry } = await import('@inkpi/agent-core');
-    const { formatChineseTypography, formatWesternTypography } = await import('@inkpi/editor-core');
-    const { LaneManager, InkDb } = await import('@inkpi/storage');
+    const { RoleRegistry } = await import('@meisiristhebest/agent-core');
+    const { formatChineseTypography, formatWesternTypography } = await import('@meisiristhebest/editor-core');
+    const { LaneManager, InkDb } = await import('@meisiristhebest/storage');
 
     // RoleRegistry starts empty — no hardcoded presets (100% dynamic)
     const reg = new RoleRegistry();
@@ -391,7 +391,7 @@ describe('System Integration & Edge Cases Suite', () => {
 
 
   it('should test StateLedger extraction: items/clue branches and XML tags', async () => {
-    const { extractNovelStateLedger } = await import('@inkpi/agent-core');
+    const { extractNovelStateLedger } = await import('@meisiristhebest/agent-core');
 
     // 触发 tool calls and standard tags
     const msgsWithItems = [

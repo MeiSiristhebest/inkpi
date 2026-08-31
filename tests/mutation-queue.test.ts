@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { InkDb, DocumentMutationQueue } from '@inkpi/storage';
+import { InkDb, DocumentMutationQueue } from '@meisiristhebest/storage';
 
-describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
+describe('@meisiristhebest/storage -> DocumentMutationQueue & Concurrency Leases', () => {
   it('should serialize concurrent mutations to the same document and execute atomically', async () => {
     const db = new InkDb(':memory:');
     const queue = new DocumentMutationQueue(db);

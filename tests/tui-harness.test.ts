@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TerminalHarness } from '@inkpi/agent-core';
+import { TerminalHarness } from '@meisiristhebest/agent-core';
 
-describe('@inkpi/agent-core -> TerminalHarness (TUI)', () => {
+describe('@meisiristhebest/agent-core -> TerminalHarness (TUI)', () => {
   it('should render split-screen ANSI interface and handle typing / Ghost Text Tab acceptance', async () => {
     const harness = new TerminalHarness({
       width: 80,

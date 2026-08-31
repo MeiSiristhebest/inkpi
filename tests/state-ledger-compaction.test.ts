@@ -5,10 +5,10 @@ import {
   formatStateLedger,
   NarrativeSemanticLedgerExtractor,
   SessionCompactor
-} from '@inkpi/agent-core';
-import type { AgentMessage, UserMessage, AssistantMessage } from '@inkpi/protocol';
+} from '@meisiristhebest/agent-core';
+import type { AgentMessage, UserMessage, AssistantMessage } from '@meisiristhebest/protocol';
 
-describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
+describe('@meisiristhebest/agent-core -> State Ledger Context Compaction', () => {
   it('should accurately extract state ledger from structured tags, tool calls, and text', () => {
     const messages: AgentMessage[] = [
       {

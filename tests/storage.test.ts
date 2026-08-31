@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { InkDb, InkRepository, CompactionEngine } from '@inkpi/storage';
-import type { Workspace, Folder, Document } from '@inkpi/protocol';
+import { InkDb, InkRepository, CompactionEngine } from '@meisiristhebest/storage';
+import type { Workspace, Folder, Document } from '@meisiristhebest/protocol';
 
-describe('@inkpi/storage', () => {
+describe('@meisiristhebest/storage', () => {
   let db: InkDb;
   let repo: InkRepository;
   let compaction: CompactionEngine;

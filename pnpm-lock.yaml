@@ -26,49 +26,49 @@ importers:
 
   packages/agent-core:
     dependencies:
-      '@inkpi/ai':
+      '@meisiristhebest/ai':
         specifier: workspace:*
         version: link:../ai
-      '@inkpi/editor-core':
+      '@meisiristhebest/editor-core':
         specifier: workspace:*
         version: link:../editor-core
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@inkpi/storage':
+      '@meisiristhebest/storage':
         specifier: workspace:*
         version: link:../storage
-      '@inkpi/tui':
+      '@meisiristhebest/tui':
         specifier: workspace:*
         version: link:../tui
 
   packages/ai:
     dependencies:
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
 
   packages/client:
     dependencies:
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
 
   packages/editor-core:
     dependencies:
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
 
   packages/evals:
     dependencies:
-      '@inkpi/agent-core':
+      '@meisiristhebest/agent-core':
         specifier: workspace:*
         version: link:../agent-core
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@inkpi/storage':
+      '@meisiristhebest/storage':
         specifier: workspace:*
         version: link:../storage
 
@@ -76,40 +76,40 @@ importers:
 
   packages/server:
     dependencies:
-      '@inkpi/ai':
+      '@meisiristhebest/ai':
         specifier: workspace:*
         version: link:../ai
-      '@inkpi/editor-core':
+      '@meisiristhebest/editor-core':
         specifier: workspace:*
         version: link:../editor-core
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@inkpi/session-backends':
+      '@meisiristhebest/session-backends':
         specifier: workspace:*
         version: link:../session-backends
 
   packages/session-backends:
     dependencies:
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@inkpi/storage':
+      '@meisiristhebest/storage':
         specifier: workspace:*
         version: link:../storage
 
   packages/storage:
     dependencies:
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
 
   packages/tui:
     dependencies:
-      '@inkpi/editor-core':
+      '@meisiristhebest/editor-core':
         specifier: workspace:*
         version: link:../editor-core
-      '@inkpi/protocol':
+      '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
 

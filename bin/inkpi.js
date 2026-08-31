@@ -112,7 +112,7 @@ async function main() {
     case 'server': {
       const portIdx = args.indexOf('--port');
       const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 8848;
-      const { InkRpcServer } = await import('@inkpi/server');
+      const { InkRpcServer } = await import('@meisiristhebest/server');
       const server = new InkRpcServer();
       await server.listenTcp(port);
       console.log(`\n🚀 [InkPi Server Daemon] Listening on tcp://127.0.0.1:${port}`);
@@ -160,7 +160,7 @@ async function main() {
 
 async function startInteractiveStudio(args) {
   const { TerminalStudio } = await import('../packages/agent-core/dist/tui/studio.js');
-  const { ANSI } = await import('@inkpi/tui');
+  const { ANSI } = await import('@meisiristhebest/tui');
 
   const studio = new TerminalStudio({
     typography: { mode: 'chinese', indentString: '\u3000\u3000' }

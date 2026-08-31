@@ -1,4 +1,4 @@
-# @inkpi/server
+# @meisiristhebest/server
 
 > Headless Daemon, Multi-Session Lifecycle, and JSON-RPC 2.0 Server for InkPi
 
@@ -11,8 +11,8 @@ This package provides the server-side runtime for InkPi:
 ## Usage
 
 ```typescript
-import { InkPiDaemon, LiveSessionManager } from '@inkpi/server';
-import { MemorySessionBackend } from '@inkpi/session-backends';
+import { InkPiDaemon, LiveSessionManager } from '@meisiristhebest/server';
+import { MemorySessionBackend } from '@meisiristhebest/session-backends';
 
 const sessionManager = new LiveSessionManager(() => new MemorySessionBackend());
 const daemon = new InkPiDaemon({ port: 9876, sessionManager });

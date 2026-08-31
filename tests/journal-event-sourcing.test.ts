@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { InkDb, InkRepository, AppendOnlySessionJournal } from '@inkpi/storage';
+import { InkDb, InkRepository, AppendOnlySessionJournal } from '@meisiristhebest/storage';
 
 describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
   it('should append immutable journal events and query by type', () => {

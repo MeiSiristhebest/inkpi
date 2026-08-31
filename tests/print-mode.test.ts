@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { runPrintMode } from '@inkpi/agent-core';
+import { runPrintMode } from '@meisiristhebest/agent-core';
 
 describe('InkPi Print Mode (Non-interactive batch mode)', () => {
   const tmpOut = path.join(process.cwd(), 'tmp-print-test.txt');

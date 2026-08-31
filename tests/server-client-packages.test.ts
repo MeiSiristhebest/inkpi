@@ -3,17 +3,17 @@ import {
   InkPiDaemon,
   LiveSessionManager,
   InkRpcServer
-} from '@inkpi/server';
+} from '@meisiristhebest/server';
 import {
   InkRpcClient,
   MemoryTransport,
   WebSocketTransport,
   InMemoryTransport,
   RemoteStreamTransport
-} from '@inkpi/client';
-import { MemorySessionBackend } from '@inkpi/session-backends';
+} from '@meisiristhebest/client';
+import { MemorySessionBackend } from '@meisiristhebest/session-backends';
 
-describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
+describe('Comprehensive @meisiristhebest/server & @meisiristhebest/client Test Suite', () => {
   const testPort = 19892;
   let daemon: InkPiDaemon;
   let client: InkRpcClient;

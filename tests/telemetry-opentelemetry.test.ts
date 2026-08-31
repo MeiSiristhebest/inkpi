@@ -1,5 +1,5 @@
-import { TelemetryCollector, WorkflowCoordinator } from '@inkpi/agent-core';
-import { getModelPreset } from '@inkpi/ai';
+import { TelemetryCollector, WorkflowCoordinator } from '@meisiristhebest/agent-core';
+import { getModelPreset } from '@meisiristhebest/ai';
 
 describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
   it('should track spans, tokens, TTFT, and export valid OpenTelemetry JSON', () => {

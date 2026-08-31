@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@inkpi/protocol"><img src="https://img.shields.io/badge/npm-v1.0.0-blue.svg?style=flat" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@meisiristhebest/protocol"><img src="https://img.shields.io/badge/npm-v1.0.0-blue.svg?style=flat" alt="npm version" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat" alt="License: MIT" /></a>
 </p>
 
@@ -67,19 +67,19 @@ InkPi is an **extensible creative writing and domain-specific agent foundation**
     │                      External Client / UI Layer                  │
     │        Terminal TUI · Web Workspace · VS Code Extension          │
     │                                                                  │
-    │  @inkpi/client · @inkpi/tui · JSON-RPC 2.0 Client                │
+    │  @meisiristhebest/client · @meisiristhebest/tui · JSON-RPC 2.0 Client                │
     └───────────────────────────┬──────────────────────────────────────┘
                                 │ JSON-RPC 2.0 / TCP / WebSocket
                                 ▼
     ┌──────────────────────────────────────────────────────────────────┐
-    │                  @inkpi/server (Daemon Runtime)                  │
+    │                  @meisiristhebest/server (Daemon Runtime)                  │
     │                                                                  │
     │  InkPiDaemon · LiveSessionManager · InkRpcServer                 │
     └───────────────────────────┬──────────────────────────────────────┘
                                 │ In-process typed dispatch
                                 ▼
     ┌──────────────────────────────────────────────────────────────────┐
-    │            @inkpi/agent-core (Domain State Engine)               │
+    │            @meisiristhebest/agent-core (Domain State Engine)               │
     │                                                                  │
     │  AgentEngine · Agent Loop · SessionTree · WorkflowCoordinator    │
     │  StateLedger · ToolRegistry · ExtensionHost · Queues             │
@@ -87,7 +87,7 @@ InkPi is an **extensible creative writing and domain-specific agent foundation**
                    │                               │
                    ▼ ISessionBackend Port          ▼ AIProvider Port
     ┌──────────────────────────────┐ ┌─────────────────────────────────┐
-    │   @inkpi/session-backends    │ │          @inkpi/ai              │
+    │   @meisiristhebest/session-backends    │ │          @meisiristhebest/ai              │
     │                              │ │                                 │
     │  • MemorySessionBackend      │ │  • ModelCatalog                 │
     │  • JsonlSessionBackend       │ │  • PromptCacheOptimizer         │
@@ -105,16 +105,16 @@ InkPi is divided into 10 decoupled packages with zero cyclic dependencies:
 
 | Package | Responsibility | Core Exports |
 | :--- | :--- | :--- |
-| **`@inkpi/protocol`** | Pure domain schemas & JSON-RPC frames | `SessionEntry`, `DocumentSnapshot`, `DocumentDelta`, `RpcRequest` |
-| **`@inkpi/session-backends`** | Pluggable session storage adapters | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
-| **`@inkpi/server`** | Headless daemon & session manager | `InkPiDaemon`, `LiveSessionManager`, `InkRpcServer` |
-| **`@inkpi/client`** | Type-safe client SDK & transports | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
-| **`@inkpi/agent-core`** | Reasoning engine & session trees | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
-| **`@inkpi/editor-core`** | Headless editor & typography | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
-| **`@inkpi/storage`** | SQLite, FTS5 BM25 search, leases | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
-| **`@inkpi/tui`** | ANSI diff rendering & CJK layout | `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
-| **`@inkpi/ai`** | Providers, prompt caching, streams | `PromptCacheOptimizer`, `streamWithResilience`, `ModelCatalog` |
-| **`@inkpi/evals`** | Narrative consistency scoring | `NovelConsistencyBenchmark`, `InvariantChecker` |
+| **`@meisiristhebest/protocol`** | Pure domain schemas & JSON-RPC frames | `SessionEntry`, `DocumentSnapshot`, `DocumentDelta`, `RpcRequest` |
+| **`@meisiristhebest/session-backends`** | Pluggable session storage adapters | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
+| **`@meisiristhebest/server`** | Headless daemon & session manager | `InkPiDaemon`, `LiveSessionManager`, `InkRpcServer` |
+| **`@meisiristhebest/client`** | Type-safe client SDK & transports | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
+| **`@meisiristhebest/agent-core`** | Reasoning engine & session trees | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
+| **`@meisiristhebest/editor-core`** | Headless editor & typography | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
+| **`@meisiristhebest/storage`** | SQLite, FTS5 BM25 search, leases | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
+| **`@meisiristhebest/tui`** | ANSI diff rendering & CJK layout | `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
+| **`@meisiristhebest/ai`** | Providers, prompt caching, streams | `PromptCacheOptimizer`, `streamWithResilience`, `ModelCatalog` |
+| **`@meisiristhebest/evals`** | Narrative consistency scoring | `NovelConsistencyBenchmark`, `InvariantChecker` |
 
 ### 2. Pluggable Session Backends
 
@@ -207,9 +207,9 @@ pnpm run check:pinned-deps
 ### 4. Programmatic SDK Usage Example
 
 ```typescript
-import { LiveSessionManager } from '@inkpi/server';
-import { MemorySessionBackend } from '@inkpi/session-backends';
-import { InkRpcClient, InMemoryTransport } from '@inkpi/client';
+import { LiveSessionManager } from '@meisiristhebest/server';
+import { MemorySessionBackend } from '@meisiristhebest/session-backends';
+import { InkRpcClient, InMemoryTransport } from '@meisiristhebest/client';
 
 // 1. Initialize session manager with pluggable storage backend
 const sessionManager = new LiveSessionManager(() => new MemorySessionBackend());

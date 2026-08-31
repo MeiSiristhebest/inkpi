@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { SessionShareManager, SessionTree } from '@inkpi/agent-core';
-import type { AgentMessage } from '@inkpi/protocol';
+import { SessionShareManager, SessionTree } from '@meisiristhebest/agent-core';
+import type { AgentMessage } from '@meisiristhebest/protocol';
 
 describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-hf)', () => {
   it('should sanitize sensitive API keys and local paths from texts and messages', () => {

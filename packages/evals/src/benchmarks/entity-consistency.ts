@@ -1,4 +1,4 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { StateLedger } from '@meisiristhebest/protocol';
 
 export interface ConsistencyScoreResult {
   score: number; // 0 - 100

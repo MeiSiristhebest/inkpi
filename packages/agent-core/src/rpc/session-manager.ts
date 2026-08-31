@@ -1,9 +1,9 @@
 import { Agent } from '../agent.js';
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
+import { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
 
 import { SessionTree } from '../tree.js';
-import type { ModelConfig } from '@inkpi/protocol';
-import { getModelPreset } from '@inkpi/ai';
+import type { ModelConfig } from '@meisiristhebest/protocol';
+import { getModelPreset } from '@meisiristhebest/ai';
 
 export interface ManagedSession {
   sessionId: string;

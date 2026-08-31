@@ -1,4 +1,4 @@
-import type { GhostTextSuggestion, GhostTextState } from '@inkpi/protocol';
+import type { GhostTextSuggestion, GhostTextState } from '@meisiristhebest/protocol';
 import type { HeadlessEditorState } from './state.js';
 
 export class GhostTextManager {

@@ -4,7 +4,7 @@ import {
   AssistantEventStream,
   createResilientStream,
   retryAssistantStream
-} from '@inkpi/ai';
+} from '@meisiristhebest/ai';
 
 describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai)', () => {
   it('should build 4-slot precise cache breakpoints for long-form creative contexts', () => {

@@ -3,7 +3,7 @@ import type {
   FtsSearchResult,
   JitContextQuery,
   JitContextResult
-} from '@inkpi/protocol';
+} from '@meisiristhebest/protocol';
 import type { InkRepository } from './repository.js';
 import type { FtsSearchEngine } from './fts.js';
 

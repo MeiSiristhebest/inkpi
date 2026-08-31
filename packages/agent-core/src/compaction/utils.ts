@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@inkpi/protocol';
+import type { AgentMessage } from '@meisiristhebest/protocol';
 
 export const GENERIC_SUMMARIZATION_SYSTEM_PROMPT = `
 You are an expert at compressing conversation history into high-fidelity summaries.
