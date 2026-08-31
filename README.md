@@ -5,13 +5,10 @@
 **The Extensible AI Agent Creative Harness & Workstation Platform**  
 *Inspired by Pi Architecture — 10-Package Decoupled Monorepo, Pluggable Session Backends, 4-Tier Prompt Caching & Differential TUI*
 
-[![CI](https://github.com/MeiSiristhebest/inkpi/actions/workflows/ci.yml/badge.svg)](https://github.com/MeiSiristhebest/inkpi/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B%20%7C%2022%2B-brightgreen.svg)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-9.x-orange.svg)](https://pnpm.io/)
-[![Coverage](https://img.shields.io/badge/Coverage-94.7%25-success.svg)](https://github.com/MeiSiristhebest/inkpi)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://makeapullrequest.com)
 
 [English](./README.md) | [中文说明](./README_zh.md) | [Development SOP](./DEVELOPMENT_SOP.md) | [Contributing](./CONTRIBUTING.md)
 
