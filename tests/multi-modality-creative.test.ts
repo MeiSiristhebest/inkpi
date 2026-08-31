@@ -3,7 +3,9 @@ import {
   WorkflowCoordinator,
   createScreenplayGateRules,
   createShortDramaGateRules,
-  createVisualNovelGateRules
+  createVisualNovelGateRules,
+  extractStateLedger,
+  NarrativeSemanticLedgerExtractor
 } from '../packages/agent-core/src/index.js';
 import { streamAi } from '../packages/ai/src/index.js';
 import type { StateLedger } from '@inkpi/protocol';
@@ -15,6 +17,10 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
   describe('Screenplay Modality (Scene / Dialogue / Stage Direction)', () => {
     it('should coordinate multi-stage screenplay workflow with standard screenplay gate rules', async () => {
       const coordinator = new WorkflowCoordinator({
+        stages: [
+          { id: 'outline', name: '结构规划', role: 'architect' },
+          { id: 'draft', name: '剧本创作', role: 'writer' }
+        ],
         customGateRules: createScreenplayGateRules(),
         enableQualityGate: true,
         customExecutor: async (role, _systemPrompt, userPrompt) => {
@@ -59,6 +65,10 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
   describe('Short Drama Modality (3-Second Hook / Fast Reversal)', () => {
     it('should detect weak opening hook in short drama and trigger quality gate', () => {
       const coordinator = new WorkflowCoordinator({
+        stages: [
+          { id: 'outline', name: '分支规划', role: 'architect' },
+          { id: 'draft', name: '视觉小说场景', role: 'writer' }
+        ],
         customGateRules: createShortDramaGateRules()
       });
 
@@ -82,7 +92,14 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
   describe('Visual Novel Modality (Branching Choices & Affection Values)', () => {
     it('should parse choice branches and update state ledger variables', async () => {
       const coordinator = new WorkflowCoordinator({
+        stages: [
+          { id: 'outline', name: '分支规划', role: 'architect' },
+          { id: 'draft', name: '视觉小说场景', role: 'writer' }
+        ],
         customGateRules: createVisualNovelGateRules(),
+        ledgerExtractor: (output) => extractStateLedger([
+          { role: 'assistant', content: [{ type: 'text', text: output }] } as any
+        ], [NarrativeSemanticLedgerExtractor]),
         customExecutor: async (role) => {
           if (role === 'writer') {
             return `【背景: 星空下的天台】\n<asset name="红线风铃" holder="女主" />\n少女转过身，微风吹起她的长发。\n\n<choice id="opt_1" target="scene_confession">握住她的手，说出心声</choice>\n<choice id="opt_2" target="scene_silence">默默站在她身边，一同看星空</choice>`;
@@ -190,4 +207,3 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
     });
   });
 });
-

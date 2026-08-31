@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WorkflowCoordinator,
+  createStandardEntitySafetyRules,
   type QualityGateIssue
 } from '@inkpi/agent-core';
 
@@ -8,6 +9,7 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
   it('should detect entity destruction and major twists with generic gate rules', () => {
     const pipeline = new WorkflowCoordinator({
       customGateRules: [
+        ...createStandardEntitySafetyRules(),
         {
           type: 'power_escalation',
           pattern: /突飞猛进|连续暴涨|瞬间跃迁/,
@@ -57,6 +59,7 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
         }
         return `[${role}] 生成内容`;
       },
+      customGateRules: createStandardEntitySafetyRules(),
       qualityGateHandler: async ({ workspaceTitle, documentTitle, issues, outlineText }) => {
         gateTriggered = true;
         expect(issues.length).toBeGreaterThan(0);

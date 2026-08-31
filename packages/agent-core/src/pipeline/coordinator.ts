@@ -13,9 +13,16 @@ import type {
   WorkflowEventListener,
   AgentRoleConfig
 } from '@inkpi/protocol';
-import { formatChineseTypography } from '@inkpi/editor-core';
-import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
 import { RoleRegistry } from './roles.js';
+import {
+  createLegacyNarrativeStages,
+  createNarrativeEntitySafetyRules,
+  createScreenplayGateRules,
+  createShortDramaGateRules,
+  createStandardEntitySafetyRules,
+  createVisualNovelGateRules
+} from './legacy-narrative.js';
+import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
 
 import type { ModelConfig } from '@inkpi/ai';
 import { getModelPreset, streamAi } from '@inkpi/ai';
@@ -36,10 +43,11 @@ export interface WorkflowStageHooks {
 
 export interface PipelineExecutionOptions {
   model?: ModelConfig;
-  customExecutor?: (role: string, systemPrompt: string, userPrompt: string) => Promise<string>;
+  customExecutor?: (role: string, systemPrompt: string, userPrompt: string, signal?: AbortSignal) => Promise<string>;
   telemetry?: TelemetryCollector;
   hooks?: PipelineHooks[];
   stageHooks?: WorkflowStageHooks;
+  signal?: AbortSignal;
   enablePlotGate?: boolean;
   enableQualityGate?: boolean;
   plotGateHandler?: PlotGateHandler;
@@ -50,6 +58,12 @@ export interface PipelineExecutionOptions {
   roleRegistry?: RoleRegistry;
   /** 初始角色字典，由 coordinator 内部构建 RoleRegistry（当 roleRegistry 未传入时生效） */
   initialRoles?: Record<string, AgentRoleConfig>;
+  /** 可选的领域状态抽取器；通用工作流不会自行推断状态。 */
+  ledgerExtractor?: (output: string, ctx: WorkflowContext) => StateLedger | Partial<StateLedger>;
+  /** 可选的领域状态格式化器；通用工作流不会自动注入账本。 */
+  ledgerFormatter?: (ledger: StateLedger) => string;
+  /** 仅供旧 pipeline.run 兼容字段和事件名称；通用工作流不启用。 */
+  compatibilityMode?: 'legacy-pipeline';
 }
 
 
@@ -61,93 +75,14 @@ export type PipelineEventListener = WorkflowEventListener;
 /**
  * 标准实体安全与破坏性变动门禁规则
  */
-export function createStandardEntitySafetyRules(): QualityGateRule[] {
-  return [
-    {
-      type: 'entity_elimination',
-      severity: 'critical',
-      description: '检测到关键实体被消灭/破坏，可能对后续链条造成不可逆破坏。',
-      detector: (content, ledger) => {
-        const allEntities = ledger.entities || ledger.characters || [];
-        for (const char of allEntities) {
-          const entityName = char.name;
-          const deathRegex = new RegExp(`${entityName}[^。！？\n]*?(?:自爆|惨死|陨落|阵亡|身死道消|被杀|身亡|摧毁|销毁|死亡)`, 'g');
-          if (deathRegex.test(content)) {
-            return {
-              type: 'entity_death',
-              targetEntity: entityName,
-              characterOrEntity: entityName,
-              entityOrEntity: entityName,
-              severity: 'critical',
-              description: `检测到关键实体【${entityName}】在当前阶段被消灭/死亡，可能对后续链条造成不可逆破坏。`
-            };
-
-          }
-        }
-        return null;
-      }
-    },
-    {
-      type: 'major_twist',
-      severity: 'warning',
-      pattern: /(?:叛出|背叛|决裂|堕入|血洗|反目成仇|阵营反转)/,
-      description: '检测到重大阵营决裂/颠覆性剧情变动，需确认是否符合设计意图。'
-    }
-  ];
-}
-
-/**
- * 影视剧本 (Screenplay) 专属门禁规则
- */
-export function createScreenplayGateRules(): QualityGateRule[] {
-  return [
-    {
-      type: 'scene_header_check',
-      severity: 'warning',
-      pattern: /^(?!(?:INT\.|EXT\.|内景|外景)).*$/m,
-      description: '剧本场景未按标准场景标题 (INT./EXT. 或 内景/外景) 规范格式开头。'
-    }
-  ];
-}
-
-/**
- * 短剧分镜 (Short Drama) 专属门禁规则
- */
-export function createShortDramaGateRules(): QualityGateRule[] {
-  return [
-    {
-      type: 'hook_check',
-      severity: 'warning',
-      description: '短剧前 3 秒黄金吸睛钩子检测',
-      detector: (content) => {
-        const firstLines = content.slice(0, 100);
-        if (!/(?:耳光|退婚|离婚|反击|惊呆|打脸|绝症|重生|神豪|首富|战神|震惊|质问)/.test(firstLines)) {
-          return {
-            type: 'weak_hook',
-            severity: 'warning',
-            description: '短剧前 3 秒黄金钩子较弱，建议增强开场冲突与吸睛情绪点。'
-          };
-        }
-        return null;
-      }
-    }
-
-  ];
-}
-
-/**
- * 视觉小说 (Visual Novel) 专属门禁规则
- */
-export function createVisualNovelGateRules(): QualityGateRule[] {
-  return [
-    {
-      type: 'choice_integrity',
-      severity: 'warning',
-      pattern: /<choice[^>]*>.*?<\/choice>/,
-      description: '视觉小说分支选项节点已就绪。'
-    }
-  ];
-}
+export {
+  createLegacyNarrativeStages,
+  createNarrativeEntitySafetyRules,
+  createScreenplayGateRules,
+  createShortDramaGateRules,
+  createStandardEntitySafetyRules,
+  createVisualNovelGateRules
+} from './legacy-narrative.js';
 
 /**
  * 纯通用多 Agent 创作工作流编排引擎 (1:1 对标 repos/pi handoff & multi-agent workflow 范式)
@@ -170,16 +105,8 @@ export class WorkflowCoordinator {
     );
 
 
-    if (options.stages && options.stages.length > 0) {
-      this.stages = [...options.stages];
-    } else {
-      this.initDefaultStages();
-    }
-
-    this.gateRules = [
-      ...createStandardEntitySafetyRules(),
-      ...(options.customGateRules || [])
-    ];
+    this.stages = [...(options.stages || [])];
+    this.gateRules = [...(options.customGateRules || [])];
 
   }
 
@@ -238,17 +165,14 @@ export class WorkflowCoordinator {
       assets: [],
       tracks: [],
       locations: [],
-      modifiedResources: [],
-      characters: [],
-      items: [],
-      foreshadowings: [],
-      modifiedChapters: []
+      modifiedResources: []
     };
     const issues: (QualityGateIssue & { entityOrEntity?: string })[] = [];
 
     for (const rule of this.gateRules) {
       if (rule.pattern) {
         const regex = typeof rule.pattern === 'string' ? new RegExp(rule.pattern, 'g') : rule.pattern;
+        regex.lastIndex = 0;
         if (regex.test(content)) {
           issues.push({
             type: rule.type,
@@ -278,36 +202,31 @@ export class WorkflowCoordinator {
    * 执行全流程多 Agent 动态工作流
    */
   public async runWorkflow(initialCtx: Partial<WorkflowContext>): Promise<WorkflowContext> {
+    return this.executeWorkflow(initialCtx, this.stages, this.options);
+  }
+
+  private async executeWorkflow(
+    initialCtx: Partial<WorkflowContext>,
+    stages: WorkflowStageConfig[],
+    options: PipelineExecutionOptions
+  ): Promise<WorkflowContext> {
     const ctx: WorkflowContext = {
-      title: initialCtx.title || initialCtx.bookTitle || '',
-      bookTitle: initialCtx.bookTitle || initialCtx.title || '',
-      sectionTitle: initialCtx.sectionTitle || initialCtx.chapterTitle || '',
-      chapterTitle: initialCtx.chapterTitle || initialCtx.sectionTitle || '',
-      userPrompt: initialCtx.userPrompt || '',
-      stageOutputs: { ...(initialCtx.stageOutputs || {}) },
-      stageLogs: [],
       ...initialCtx,
-      stateLedger: initialCtx.stateLedger || {
-        entities: [],
-        assets: [],
-        tracks: [],
-        locations: [],
-        modifiedResources: [],
-        characters: [],
-        items: [],
-        foreshadowings: [],
-        modifiedChapters: []
-      }
+      userPrompt: initialCtx.userPrompt ?? '',
+      stateLedger: initialCtx.stateLedger ?? this.emptyLedger(),
+      stageOutputs: { ...(initialCtx.stageOutputs || {}) },
+      stageLogs: [...(initialCtx.stageLogs || [])]
     };
 
-    const isGateActive = Boolean(this.options.enablePlotGate || this.options.enableQualityGate);
+    const isGateActive = Boolean(options.enablePlotGate || options.enableQualityGate);
 
-    for (const stage of this.stages) {
+    for (const stage of stages) {
+      this.throwIfAborted(options.signal, stage.id);
       const roleId = typeof stage.role === 'string' ? stage.role : (stage.role?.role || stage.id);
       const roleConfig = typeof stage.role === 'object' ? stage.role : this.roleRegistry.get(roleId) || {
         role: roleId,
         name: stage.name,
-        systemPrompt: stage.systemPrompt || `你是一个专业的 ${stage.name} Agent。`
+        systemPrompt: stage.systemPrompt || ''
       };
 
       const stageSpan = this.telemetry?.startSpan(stage.name, stage.id, roleConfig.role);
@@ -315,12 +234,22 @@ export class WorkflowCoordinator {
 
       // 生成提示词
       let prompt = stage.promptTemplate ? stage.promptTemplate(ctx) : ctx.userPrompt;
-      if (this.options.stageHooks?.onBeforeStage) {
-        const transformedPrompt = await this.options.stageHooks.onBeforeStage(stage.id, ctx, prompt);
+      if (options.stageHooks?.onBeforeStage) {
+        const transformedPrompt = await options.stageHooks.onBeforeStage(stage.id, ctx, prompt);
         if (transformedPrompt) prompt = transformedPrompt;
       }
-      if (stage.id === 'outline' && this.options.hooks) {
-        for (const hook of this.options.hooks) {
+      for (const hook of options.hooks || []) {
+        if (hook.onBeforeStage) {
+          const transformedPrompt = await hook.onBeforeStage({
+            stageId: stage.id,
+            context: ctx,
+            prompt
+          });
+          if (transformedPrompt) prompt = transformedPrompt;
+        }
+      }
+      if (options.compatibilityMode === 'legacy-pipeline' && stage.id === 'outline' && options.hooks) {
+        for (const hook of options.hooks) {
           if (hook.onBeforeOutline) {
             const res = await hook.onBeforeOutline({
               bookTitle: ctx.bookTitle,
@@ -339,24 +268,32 @@ export class WorkflowCoordinator {
       let stageUsage: Usage | undefined;
 
       if (stage.executor) {
-        const res = await stage.executor(ctx);
+        const res = await stage.executor(ctx, options.signal);
         outputText = typeof res === 'string' ? res : res.text;
         if (typeof res === 'object') {
           stageUsage = res.usage;
           if (res.modifiedLedger) {
-            ctx.stateLedger = this.mergeLedgers(ctx.stateLedger, res.modifiedLedger as StateLedger, ctx.chapterTitle || ctx.sectionTitle || '');
+            ctx.stateLedger = this.mergeLedgers(
+              ctx.stateLedger,
+              res.modifiedLedger,
+              options.compatibilityMode === 'legacy-pipeline'
+            );
           }
         }
-      } else if (this.options.customExecutor) {
-        outputText = await this.options.customExecutor(roleId, roleConfig.systemPrompt, prompt);
+      } else if (options.customExecutor) {
+        outputText = await options.customExecutor(roleId, roleConfig.systemPrompt, prompt, options.signal);
       } else {
-        const runRes = await this.runAgentRole(roleConfig, prompt, ctx.stateLedger);
+        const runRes = await this.runAgentRole(roleConfig, prompt, ctx.stateLedger, options);
         outputText = runRes.text;
         stageUsage = runRes.usage;
       }
 
-      if (stage.id === 'draft' && this.options.hooks) {
-        for (const hook of this.options.hooks) {
+      if (!outputText) {
+        throw new Error(`Workflow stage '${stage.id}' returned empty output.`);
+      }
+
+      if (options.compatibilityMode === 'legacy-pipeline' && stage.id === 'draft' && options.hooks) {
+        for (const hook of options.hooks) {
           if (hook.onDraftGenerated) {
             const res = await hook.onDraftGenerated({
               bookTitle: ctx.bookTitle,
@@ -370,8 +307,8 @@ export class WorkflowCoordinator {
         }
       }
 
-      if (stage.id === 'audit' && this.options.hooks) {
-        for (const hook of this.options.hooks) {
+      if (options.compatibilityMode === 'legacy-pipeline' && stage.id === 'audit' && options.hooks) {
+        for (const hook of options.hooks) {
           if (hook.onAuditPass) {
             await hook.onAuditPass({
               auditNotes: [outputText],
@@ -382,35 +319,46 @@ export class WorkflowCoordinator {
       }
 
       // 门禁检查 (Quality Gate)
-      if (stage.enableGate || isGateActive) {
-        const issues = this.detectPlotGateIssues(outputText, ctx.stateLedger, ctx);
+      const stageRules = [...this.gateRules, ...(stage.gateRules || [])];
+      if (stage.enableGate || isGateActive || stageRules.length > 0) {
+        const issues = this.detectIssues(outputText, ctx.stateLedger, ctx, stageRules);
         if (issues.length > 0) {
           ctx.qualityIssues = issues;
-          ctx.plotGateIssues = issues;
-          (ctx as any).qualityGateIssues = issues;
+          ctx.qualityGateIssues = issues;
+          if (options.compatibilityMode === 'legacy-pipeline') {
+            ctx.plotGateIssues = issues;
+          }
           await this.emit({
-            type: 'plot_gate_triggered',
+            type: options.compatibilityMode === 'legacy-pipeline' ? 'plot_gate_triggered' : 'quality_gate_triggered',
             issues,
-            outlineText: outputText,
+            content: outputText,
+            ...(options.compatibilityMode === 'legacy-pipeline' ? { outlineText: outputText } : {}),
             stageId: stage.id
           });
 
-          const gateHandler = stage.gateHandler || this.options.qualityGateHandler || this.options.plotGateHandler;
+          const gateHandler = stage.gateHandler || options.qualityGateHandler || options.plotGateHandler;
           if (gateHandler) {
-            const decision = await gateHandler({
+            const gateEvent = {
               stageId: stage.id,
               content: outputText,
               issues,
-              context: ctx,
-              bookTitle: ctx.bookTitle,
-              chapterTitle: ctx.chapterTitle,
-              outlineText: outputText
-            });
+              context: ctx
+            } as Parameters<QualityGateHandler>[0];
+            if (options.compatibilityMode === 'legacy-pipeline') {
+              gateEvent.workspaceTitle = ctx.workspaceTitle;
+              gateEvent.documentTitle = ctx.documentTitle;
+              gateEvent.bookTitle = ctx.bookTitle;
+              gateEvent.chapterTitle = ctx.chapterTitle;
+              gateEvent.outlineText = outputText;
+            }
+            const decision = await gateHandler(gateEvent);
 
             await this.emit({
-              type: 'plot_gate_resolved',
+              type: options.compatibilityMode === 'legacy-pipeline' ? 'plot_gate_resolved' : 'quality_gate_resolved',
               approved: decision.approved,
-              modifiedOutlineText: decision.modifiedContent || decision.modifiedOutlineText,
+              ...(options.compatibilityMode === 'legacy-pipeline'
+                ? { modifiedOutlineText: decision.modifiedContent || decision.modifiedOutlineText }
+                : { modifiedContent: decision.modifiedContent }),
               feedback: decision.feedback,
               stageId: stage.id
             });
@@ -432,20 +380,45 @@ export class WorkflowCoordinator {
         outputText = await stage.transformOutput(outputText, ctx);
       }
 
-      if (this.options.stageHooks?.onAfterStage) {
-        const transformedOutput = await this.options.stageHooks.onAfterStage(stage.id, outputText, ctx);
+      if (options.stageHooks?.onAfterStage) {
+        const transformedOutput = await options.stageHooks.onAfterStage(stage.id, outputText, ctx);
         if (transformedOutput) outputText = transformedOutput;
       }
 
-      if (stage.id === 'polish' && this.options.hooks) {
+      for (const hook of options.hooks || []) {
+        if (hook.onAfterStage) {
+          const transformedOutput = await hook.onAfterStage({
+            stageId: stage.id,
+            context: ctx,
+            output: outputText
+          });
+          if (transformedOutput) outputText = transformedOutput;
+        }
+      }
 
-        for (const hook of this.options.hooks) {
+      if (options.compatibilityMode === 'legacy-pipeline' && stage.id === 'polish' && options.hooks) {
+
+        for (const hook of options.hooks) {
           if (hook.onPolishDone) {
             const res = await hook.onPolishDone({
               polishedText: outputText
             });
             if (res) outputText = res;
           }
+        }
+      }
+
+      if (!outputText) {
+        throw new Error(`Workflow stage '${stage.id}' produced empty output after transformation.`);
+      }
+
+      for (const hook of options.hooks || []) {
+        if (hook.onStageOutput) {
+          await hook.onStageOutput({
+            stageId: stage.id,
+            context: ctx,
+            output: outputText
+          });
         }
       }
 
@@ -457,16 +430,21 @@ export class WorkflowCoordinator {
         timestamp: Date.now()
       });
 
-      // 映射向后兼容字段
-      if (stage.id === 'outline') ctx.outlineText = outputText;
-      if (stage.id === 'draft') ctx.draftText = outputText;
-      if (stage.id === 'audit') ctx.auditNotes = [outputText];
-      if (stage.id === 'polish') ctx.polishedText = outputText;
+      if (options.compatibilityMode === 'legacy-pipeline') {
+        if (stage.id === 'outline') ctx.outlineText = outputText;
+        if (stage.id === 'draft') ctx.draftText = outputText;
+        if (stage.id === 'audit') ctx.auditNotes = [outputText];
+        if (stage.id === 'polish') ctx.polishedText = outputText;
+      }
 
-      // 从生成内容中增量提取实体状态账本
-      const stageMessages = [{ role: 'assistant', content: [{ type: 'text', text: outputText }] } as any];
-      const newLedger = extractNovelStateLedger(stageMessages);
-      ctx.stateLedger = this.mergeLedgers(ctx.stateLedger, newLedger, ctx.chapterTitle || ctx.sectionTitle || '');
+      if (options.ledgerExtractor) {
+        const extracted = options.ledgerExtractor(outputText, ctx);
+        ctx.stateLedger = this.mergeLedgers(
+          ctx.stateLedger,
+          extracted,
+          options.compatibilityMode === 'legacy-pipeline'
+        );
+      }
 
       if (stageSpan) {
         this.telemetry?.endSpan(stageSpan.id, stageUsage);
@@ -494,78 +472,48 @@ export class WorkflowCoordinator {
     userPrompt: string,
     initialLedger?: StateLedger
   ): Promise<PipelineContext> {
-    return this.runWorkflow({
+    const legacyOptions: PipelineExecutionOptions = {
+      ...this.options,
+      compatibilityMode: 'legacy-pipeline',
+      enableQualityGate: this.options.enableQualityGate,
+      customGateRules: [
+        ...createStandardEntitySafetyRules(),
+        ...(this.options.customGateRules || [])
+      ],
+      ledgerExtractor: (output) => extractNovelStateLedger([
+        { role: 'assistant', content: [{ type: 'text', text: output }] } as any
+      ]),
+      ledgerFormatter: formatNovelStateLedger
+    };
+    const legacyCoordinator = new WorkflowCoordinator(legacyOptions);
+    legacyCoordinator.subscribe((event) => this.emit(event));
+    const legacyStages = createLegacyNarrativeStages();
+    for (const stage of this.stages) {
+      const index = legacyStages.findIndex((candidate) => candidate.id === stage.id);
+      if (index >= 0) legacyStages[index] = stage;
+      else legacyStages.push(stage);
+    }
+    return legacyCoordinator.executeWorkflow({
       bookTitle,
       title: bookTitle,
       chapterTitle,
       sectionTitle: chapterTitle,
       userPrompt,
       stateLedger: initialLedger
-    });
-  }
-
-  private initDefaultStages(): void {
-    // 阶段 1: 结构与大纲规划 (Planning & Structure Stage)
-    this.registerStage({
-      id: 'outline',
-      name: '结构大纲规划',
-      role: 'architect',
-      enableGate: true,
-      promptTemplate: (ctx) => {
-        const ledgerSummary = formatNovelStateLedger(ctx.stateLedger);
-        const title = ctx.title || ctx.bookTitle || '创作任务';
-        const section = ctx.sectionTitle || ctx.chapterTitle || '主干内容';
-        return `【创作主题】: ${title} - ${section}\n【指令与要求】: ${ctx.userPrompt}\n【当前状态账本】:\n${ledgerSummary}\n\n请输出结构化大纲与核心节点规划。`;
-      }
-    });
-
-    // 阶段 2: 正文起草与生成 (Draft & Generation Stage)
-    this.registerStage({
-      id: 'draft',
-      name: '正文主创展开',
-      role: 'writer',
-      promptTemplate: (ctx) => {
-        const outline = ctx.stageOutputs['outline'] || ctx.outlineText || ctx.userPrompt;
-        const ledgerSummary = formatNovelStateLedger(ctx.stateLedger);
-        return `【大纲与依据】:\n${outline}\n\n【状态账本】:\n${ledgerSummary}\n\n请根据大纲展开高质量内容创作。`;
-      }
-    });
-
-    // 阶段 3: 一致性与约束审计 (Audit & Verification Stage)
-    this.registerStage({
-      id: 'audit',
-      name: '约束与一致性审计',
-      role: 'auditor',
-      promptTemplate: (ctx) => {
-        const draft = ctx.stageOutputs['draft'] || ctx.draftText || '';
-        const ledgerSummary = formatNovelStateLedger(ctx.stateLedger);
-        return `【待审内容】:\n${draft}\n\n【状态账本】:\n${ledgerSummary}\n\n请核查生成内容是否符合设定与规则约束，并输出审计结论。`;
-      }
-    });
-
-    // 阶段 4: 排版校对与润色 (Polish & Format Stage)
-    this.registerStage({
-      id: 'polish',
-      name: '排版校对与润色',
-      role: 'polisher',
-      promptTemplate: (ctx) => {
-        const draft = ctx.stageOutputs['draft'] || ctx.draftText || '';
-        const audit = ctx.stageOutputs['audit'] || '';
-        return `【原稿内容】:\n${draft}\n\n【审计反馈】:\n${audit}\n\n请进行规范排版与文字润色。`;
-      },
-      transformOutput: (output) => {
-        return formatChineseTypography(output);
-      }
-    });
+    }, legacyStages, legacyOptions);
   }
 
   private async runAgentRole(
     config: AgentRoleConfig,
     prompt: string,
-    ledger?: StateLedger
-  ): Promise<{ text: string; usage: Usage }> {
-    const model = this.options.model || getModelPreset('creative-pro');
-    const ledgerBlock = formatNovelStateLedger(ledger);
+    ledger: StateLedger | undefined,
+    options: PipelineExecutionOptions
+  ): Promise<{ text: string; usage?: Usage }> {
+    if (!options.model) {
+      throw new Error('Workflow requires an explicit model or executor.');
+    }
+    const model = options.model;
+    const ledgerBlock = options.ledgerFormatter?.(ledger || this.emptyLedger()) || '';
     const systemPromptWithLedger = ledgerBlock
       ? `${config.systemPrompt}\n\n【核心状态账本快照】\n${ledgerBlock}`
       : config.systemPrompt;
@@ -577,68 +525,135 @@ export class WorkflowCoordinator {
       ],
       {
         systemPrompt: systemPromptWithLedger,
-        thinkingBudget: config.defaultThinkingLevel === 'high' ? 4000 : 2000
+        thinkingBudget: config.defaultThinkingLevel === 'high' ? 4000 : 2000,
+        signal: options.signal
       }
     );
 
     const assistantMsg = await stream.collect();
+    if (assistantMsg.stopReason === 'error') {
+      throw new Error(assistantMsg.errorMessage || `Model failed during workflow stage '${config.role}'.`);
+    }
     const texts = assistantMsg.content
       .filter((c) => c.type === 'text')
       .map((c) => (c as any).text)
       .join('\n');
 
-    return {
-      text: texts || `【${config.name}完成】`,
-      usage: assistantMsg.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-    };
+    if (!texts) {
+      throw new Error(`Model returned empty output for workflow role '${config.role}'.`);
+    }
+    return { text: texts, usage: assistantMsg.usage };
   }
 
-  private mergeLedgers(base: StateLedger, addition: StateLedger, sectionName: string): StateLedger {
+  private detectIssues(content: string, ledger: StateLedger, context: any, rules: QualityGateRule[]): QualityGateIssue[] {
+    const issues: QualityGateIssue[] = [];
+    for (const rule of rules) {
+      if (rule.pattern) {
+        const regex = typeof rule.pattern === 'string' ? new RegExp(rule.pattern, 'g') : rule.pattern;
+        regex.lastIndex = 0;
+        if (regex.test(content)) issues.push({ type: rule.type, description: rule.description, severity: rule.severity });
+      }
+      if (rule.detector) {
+        const issue = rule.detector(content, ledger, context);
+        if (issue) issues.push(issue);
+      }
+    }
+    return issues;
+  }
+
+  private emptyLedger(): StateLedger {
+    return { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] } as StateLedger;
+  }
+
+  private throwIfAborted(signal: AbortSignal | undefined, stageId: string): void {
+    if (signal?.aborted) {
+      throw new Error(`Workflow aborted before stage '${stageId}'.`);
+    }
+  }
+
+  private mergeLedgers(
+    base: StateLedger,
+    addition: Partial<StateLedger>,
+    includeLegacyAliases = false
+  ): StateLedger {
     const baseEntities = base.entities || base.characters || [];
     const addEntities = addition.entities || addition.characters || [];
     const charMap = new Map<string, any>(
-      baseEntities.map((c: any) => [c.id || c.name, c])
+      baseEntities.map((c: any, index) => [c.id || c.name || `entity-${index}`, c])
     );
     for (const c of addEntities) {
-      const existing = charMap.get(c.id || c.name);
-      charMap.set(c.id || c.name, existing ? { ...existing, ...c } : { ...c });
+      const key = c.id || c.name || `entity-${charMap.size}`;
+      const existing = charMap.get(key);
+      charMap.set(key, existing ? { ...existing, ...c } : { ...c });
     }
 
     const baseAssets = base.assets || base.items || [];
     const addAssets = addition.assets || addition.items || [];
     const itemMap = new Map<string, any>(
-      baseAssets.map((i: any) => [i.id || i.name, i])
+      baseAssets.map((i: any, index) => [i.id || i.name || `asset-${index}`, i])
     );
     for (const item of addAssets) {
-      const existing = itemMap.get(item.id || item.name);
-      itemMap.set(item.id || item.name, existing ? { ...existing, ...item } : { ...item });
+      const key = item.id || item.name || `asset-${itemMap.size}`;
+      const existing = itemMap.get(key);
+      itemMap.set(key, existing ? { ...existing, ...item } : { ...item });
     }
 
     const chapters = new Set([
-      ...(base.modifiedChapters || base.modifiedResources || []),
-      ...(addition.modifiedChapters || addition.modifiedResources || []),
-      sectionName
+      ...(base.modifiedResources || base.modifiedChapters || base.modifiedDocuments || []),
+      ...(addition.modifiedResources || addition.modifiedChapters || addition.modifiedDocuments || []),
     ]);
 
     const characters = Array.from(charMap.values());
     const items = Array.from(itemMap.values());
-    const foreshadowings = [...(base.foreshadowings || base.tracks || []), ...(addition.foreshadowings || addition.tracks || [])];
-    const locations = [...(base.locations || []), ...(addition.locations || [])];
-    const modifiedChapters = Array.from(chapters);
+    const tracks = mergeRecords(base.tracks || [], addition.tracks || [], (track: any, index) =>
+      track.id || track.clue || track.summary || `track-${index}`
+    );
+    const locations = mergeRecords(base.locations || [], addition.locations || [], (location: any, index) =>
+      location.id || location.name || `location-${index}`
+    );
 
-    return {
-      characters,
-      items,
-      foreshadowings,
+    const result: StateLedger = {
+      ...base,
+      ...addition,
       locations,
-      modifiedChapters,
       entities: characters,
       assets: items,
-      tracks: foreshadowings,
-      modifiedResources: modifiedChapters,
-      modifiedDocuments: modifiedChapters
-    } as any;
+      tracks,
+      modifiedResources: Array.from(chapters)
+    } as StateLedger;
+
+    if (!includeLegacyAliases) {
+      delete (result as any).characters;
+      delete (result as any).items;
+      delete (result as any).foreshadowings;
+      delete (result as any).modifiedChapters;
+      delete (result as any).modifiedDocuments;
+      return result;
+    }
+
+    Object.assign(result, {
+      characters,
+      items,
+      foreshadowings: tracks,
+      modifiedChapters: Array.from(chapters),
+      modifiedDocuments: Array.from(chapters)
+    });
+    return result;
   }
+}
+
+function mergeRecords<T extends Record<string, unknown>>(
+  base: T[],
+  addition: T[],
+  keyOf: (record: T, index: number) => string
+): T[] {
+  const records = new Map<string, T>();
+  for (const [index, record] of [...base, ...addition].entries()) {
+    const key = keyOf(record, index);
+    const previous = records.get(key);
+    records.set(key, previous ? { ...previous, ...record } : { ...record });
+  }
+  return Array.from(records.values());
 }
 
 /** 别名兼容 */

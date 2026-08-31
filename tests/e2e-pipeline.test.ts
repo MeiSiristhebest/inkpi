@@ -129,7 +129,9 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
     expect(compactionResult.deletedDeltas).toBeGreaterThanOrEqual(1);
 
     // 11. Test idempotent crash recovery
-    const recovered = compaction.recoverDocument('ch_e2e_1');
+    const recovered = compaction.recoverDocument('ch_e2e_1', {
+      measureContent: () => editor.getWordCount()
+    });
     expect(recovered.contentMarkdown).toBe(editor.getText());
     expect(recovered.contentSize).toBe(editor.getWordCount());
 
