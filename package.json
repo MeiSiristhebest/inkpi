@@ -4,9 +4,6 @@
   "private": true,
   "description": "InkPi - Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)",
   "type": "module",
-  "bin": {
-    "inkpi": "./bin/inkpi.mjs"
-  },
   "workspaces": [
     "packages/*"
   ],

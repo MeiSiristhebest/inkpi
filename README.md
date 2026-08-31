@@ -1,6 +1,14 @@
 # InkPi
 
-> Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)
+<div align="center">
+
+**Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)**
+
+[English](./README.md) | [中文文档](./README_zh.md) | [Development SOP](./DEVELOPMENT_SOP.md)
+
+</div>
+
+---
 
 InkPi is a high-performance, modular, domain-agnostic foundation for AI-assisted creative workflows (novels, screenplays, visual novels, short dramas, and structured creative documentation).
 
@@ -55,14 +63,34 @@ InkPi is a high-performance, modular, domain-agnostic foundation for AI-assisted
 
 ---
 
-## 🛠️ Available Scripts
+## ⚡ Quick Start
 
-- `npm run build`: Monorepo TypeScript build (`tsc -b`) across all 10 packages
-- `npm run test:coverage`: Run complete test suite with strict coverage enforcement (Lines $\ge 85\%$, Branches $\ge 80\%$)
-- `npm run check:pinned-deps`: Verify exact dependency locking across all packages
-- `npm run build:binaries`: Build standalone single-file executable binary (`inkpi.exe` / `inkpi`)
-- `npm run lint`: Biome lint check
-- `npm run format`: Biome code formatting
+### Prerequisites
+- **Node.js**: $\ge 20.0.0$
+- **Package Manager**: `pnpm` (recommended)
+
+### 1. Installation & Build
+```bash
+# Clone repository
+git clone https://github.com/MeiSiristhebest/inkpi.git
+cd inkpi
+
+# Install dependencies via pnpm
+pnpm install
+
+# Compile all workspace packages
+pnpm run build
+```
+
+### 2. Run Test Coverage & Quality Gate
+```bash
+pnpm run test:coverage
+```
+
+### 3. Supply-chain Hardening Check
+```bash
+pnpm run check:pinned-deps
+```
 
 ---
 
