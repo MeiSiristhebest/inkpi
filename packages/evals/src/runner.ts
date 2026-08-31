@@ -1,131 +1,88 @@
-import type { StateLedger } from '@inkpi/protocol';
-import { EntityConsistencyScorer, type ConsistencyScoreResult } from './benchmarks/entity-consistency.js';
-import { ForeshadowingPayoffScorer, type ForeshadowingScoreResult } from './benchmarks/foreshadowing-payoff.js';
-import { TypographyComplianceScorer, type TypographyComplianceResult } from './benchmarks/typography-compliance.js';
-
 export interface EvaluationInput {
-  title: string;
-  chapterTitle?: string;
-  documentTitle?: string;
+  title?: string;
   sectionTitle?: string;
   content: string;
-  stateLedger: StateLedger;
-  targetSize?: number;
-  targetWords?: number;
-  expectedInvariants?: any[];
-  customResolver?: (clue: string, text: string) => boolean;
+  metadata?: Record<string, unknown>;
 }
 
-export type NovelEvaluationInput = EvaluationInput;
+export interface EvaluationMetricResult {
+  score: number;
+  passed?: boolean;
+  [key: string]: unknown;
+}
 
-export interface BenchmarkReport {
+export interface EvaluationMetric {
+  id: string;
+  weight?: number;
+  evaluate: (input: EvaluationInput) => EvaluationMetricResult;
+}
+
+export interface GenericBenchmarkReport {
   title: string;
-  chapterTitle: string;
-  overallScore: number; // 0 - 100
+  sectionTitle?: string;
+  overallScore: number;
   grade: 'S' | 'A' | 'B' | 'C' | 'F';
   passed: boolean;
   timestamp: number;
-  scores: {
-    characterConsistency: ConsistencyScoreResult;
-    foreshadowingPayoff: ForeshadowingScoreResult;
-    typographyCompliance: TypographyComplianceResult;
-    contentSizeAdherence: {
-      score: number;
-      actualWords: number;
-      targetSize: number;
-      difference: number;
-    };
-    wordCountAdherence?: {
-      score: number;
-      actualWords: number;
-      targetWords: number;
-      difference: number;
-    };
-  };
-  summary: string;
+  metrics: Record<string, EvaluationMetricResult>;
 }
-
-export type NovelBenchmarkReport = BenchmarkReport;
 
 /**
- * 纯通用 AI 内容生成与一致性评测运行器 (1:1 对标 repos/pi packages/evals runner)
- * 对生成质量、实体状态一致性、约束闭环率与排版规范进行自动化 Benchmark 评分。
+ * Generic metric runner.
+ *
+ * Domain-specific scoring belongs to explicitly constructed adapters. This
+ * module intentionally has no knowledge of any content domain.
  */
 export class EvalRunner {
-  private consistencyScorer = new EntityConsistencyScorer();
-  private foreshadowingScorer = new ForeshadowingPayoffScorer();
-  private typographyScorer = new TypographyComplianceScorer();
+  private metrics = new Map<string, EvaluationMetric>();
 
-  public evaluateDocument(input: EvaluationInput): BenchmarkReport {
-    const consistencyRes = this.consistencyScorer.score(input.content, input.stateLedger as any, input.expectedInvariants);
-    const foreshadowingRes = this.foreshadowingScorer.score(input.stateLedger as any, input.content, input.customResolver);
-    const typographyRes = this.typographyScorer.score(input.content);
+  constructor(metrics: EvaluationMetric[] = []) {
+    for (const metric of metrics) this.registerMetric(metric);
+  }
 
-    // Calculate actual words (Chinese characters + English words)
-    const chineseChars = (input.content.match(/[\u4e00-\u9fa5]/g) || []).length;
-    const englishWords = (input.content.replace(/[\u4e00-\u9fa5]/g, ' ').match(/[a-zA-Z0-9_-]+/g) || []).length;
-    const actualWords = chineseChars + englishWords;
-    const targetSize = input.targetSize || input.targetWords || actualWords || 1;
+  public registerMetric(metric: EvaluationMetric): this {
+    if (!metric.id.trim()) throw new Error('Evaluation metric id must not be empty.');
+    if (metric.weight !== undefined && (!Number.isFinite(metric.weight) || metric.weight < 0)) {
+      throw new Error(`Evaluation metric '${metric.id}' has an invalid weight.`);
+    }
+    this.metrics.set(metric.id, metric);
+    return this;
+  }
 
-    const diff = Math.abs(actualWords - targetSize);
-    const wordRatio = targetSize > 0 ? diff / targetSize : 0;
-    const contentSizeScore = Math.max(0, Math.round(100 - wordRatio * 100));
+  public unregisterMetric(id: string): boolean {
+    return this.metrics.delete(id);
+  }
 
-    // Weighted overall score:
-    // Character consistency: 35%
-    // Foreshadowing: 25%
-    // Typography: 25%
-    // Word count: 15%
-    const overallScore = Math.round(
-      consistencyRes.score * 0.35 +
-      foreshadowingRes.score * 0.25 +
-      typographyRes.score * 0.25 +
-      contentSizeScore * 0.15
-    );
+  public getMetrics(): EvaluationMetric[] {
+    return Array.from(this.metrics.values());
+  }
 
-    let grade: 'S' | 'A' | 'B' | 'C' | 'F' = 'F';
-    if (overallScore >= 95) grade = 'S';
-    else if (overallScore >= 85) grade = 'A';
-    else if (overallScore >= 75) grade = 'B';
-    else if (overallScore >= 60) grade = 'C';
+  public evaluate(input: EvaluationInput): GenericBenchmarkReport {
+    const metrics: Record<string, EvaluationMetricResult> = {};
+    const registered = this.getMetrics();
+    const totalWeight = registered.reduce((sum, metric) => sum + (metric.weight ?? 1), 0);
+    let weightedScore = 0;
 
-    const passed = overallScore >= 75 && consistencyRes.passed;
-    const secTitle = input.documentTitle || input.chapterTitle || input.sectionTitle || 'Content';
+    for (const metric of registered) {
+      const result = metric.evaluate(input);
+      if (!Number.isFinite(result.score) || result.score < 0 || result.score > 100) {
+        throw new Error(`Evaluation metric '${metric.id}' returned a score outside 0-100.`);
+      }
+      metrics[metric.id] = result;
+      weightedScore += result.score * (metric.weight ?? 1);
+    }
 
-    const summary = `[${secTitle}] Evaluation Score: ${overallScore}/100 (Grade: ${grade}) - Entity Consistency: ${consistencyRes.score}, Condition Payoff: ${foreshadowingRes.score}, Typography: ${typographyRes.score}, Target Length: ${contentSizeScore}`;
-
+    const overallScore = totalWeight === 0 ? 0 : Math.round(weightedScore / totalWeight);
+    const grade = overallScore >= 95 ? 'S' : overallScore >= 85 ? 'A' : overallScore >= 75 ? 'B' : overallScore >= 60 ? 'C' : 'F';
     return {
-      title: input.title,
-      chapterTitle: secTitle,
+      title: input.title || '',
+      sectionTitle: input.sectionTitle,
       overallScore,
       grade,
-      passed,
+      passed: totalWeight > 0 && overallScore >= 75 && Object.values(metrics).every((metric) => metric.passed !== false),
       timestamp: Date.now(),
-      scores: {
-        characterConsistency: consistencyRes,
-        foreshadowingPayoff: foreshadowingRes,
-        typographyCompliance: typographyRes,
-        contentSizeAdherence: {
-          score: contentSizeScore,
-          actualWords,
-          targetSize,
-          difference: diff
-        },
-        wordCountAdherence: {
-          score: contentSizeScore,
-          actualWords,
-          targetWords: targetSize,
-          difference: diff
-        }
-      },
-      summary
+      metrics
     };
   }
 
-  public evaluateChapter(input: EvaluationInput): BenchmarkReport {
-    return this.evaluateDocument(input);
-  }
 }
-
-export const NovelEvalRunner = EvalRunner;
-export type NovelEvalRunner = EvalRunner;

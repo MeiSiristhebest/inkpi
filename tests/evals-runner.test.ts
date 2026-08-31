@@ -3,10 +3,53 @@ import {
   EntityConsistencyScorer,
   ForeshadowingPayoffScorer,
   TypographyComplianceScorer,
-  EvalRunner
+  EvalRunner,
+  NovelEvalRunner
 } from '@inkpi/evals';
 
 describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
+  it('should keep the generic runner empty until callers register metrics', () => {
+    const runner = new EvalRunner();
+    const report = runner.evaluate({
+      title: 'Reusable Artifact',
+      sectionTitle: 'Pass 1',
+      content: 'arbitrary content'
+    });
+
+    expect(report.metrics).toEqual({});
+    expect(report.overallScore).toBe(0);
+    expect(report.passed).toBe(false);
+    expect(report.sectionTitle).toBe('Pass 1');
+    expect(report).not.toHaveProperty('scores');
+    expect(JSON.stringify(report)).not.toContain('Content');
+  });
+
+  it('should calculate generic scores from registered metrics and reject invalid results', () => {
+    const runner = new EvalRunner([
+      {
+        id: 'length',
+        weight: 2,
+        evaluate: ({ content }) => ({ score: content.length === 3 ? 100 : 0, passed: content.length === 3 })
+      },
+      {
+        id: 'constant',
+        weight: 1,
+        evaluate: () => ({ score: 60 })
+      }
+    ]);
+
+    const good = runner.evaluate({ content: 'abc' });
+    const bad = runner.evaluate({ content: 'abcd' });
+    expect(good.overallScore).toBe(87);
+    expect(good.grade).toBe('A');
+    expect(good.passed).toBe(true);
+    expect(bad.overallScore).toBe(20);
+    expect(bad.passed).toBe(false);
+
+    runner.registerMetric({ id: 'invalid', evaluate: () => ({ score: 101 }) });
+    expect(() => runner.evaluate({ content: 'abc' })).toThrow("Evaluation metric 'invalid' returned a score outside 0-100.");
+  });
+
   it('should score entity consistency and detect status contradictions', () => {
     const scorer = new EntityConsistencyScorer();
     
@@ -82,7 +125,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
   });
 
   it('should run EvalRunner and generate comprehensive benchmark report', () => {
-    const runner = new EvalRunner();
+    const runner = new NovelEvalRunner();
 
     const report = runner.evaluateDocument({
       title: 'Workspace Title',
@@ -106,7 +149,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
   });
 
   it('should test edge cases and all grade levels in EvalRunner', () => {
-    const runner = new EvalRunner();
+    const runner = new NovelEvalRunner();
     const consistencyScorer = new EntityConsistencyScorer();
     const foreshadowingScorer = new ForeshadowingPayoffScorer();
     const typographyScorer = new TypographyComplianceScorer();
@@ -343,7 +386,3 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     expect(invConditionRes.passed).toBe(false);
   });
 });
-
-
-
-
