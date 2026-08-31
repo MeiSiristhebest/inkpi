@@ -30,7 +30,8 @@ COMMANDS:
 OPTIONS:
   -p, --prompt <text>       Prompt for non-interactive generation
   -m, --model <id>          Model identifier (e.g. deepseek-chat, gpt-4o, claude-3-5-sonnet)
-  --port <number>           Port for daemon server (default: 8848)
+  --port <number>           TCP port for daemon server (default: 8848)
+  --ws-port <number>        WebSocket port for daemon server (default: TCP port + 1)
   --role <role>             Agent role preset for creative pipeline
   --json                    Output structured JSON responses
   --chinese                 Enable Chinese typography formatting (\u3000\u3000 full-width indents)
@@ -112,11 +113,29 @@ async function main() {
     case 'server': {
       const portIdx = args.indexOf('--port');
       const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 8848;
-      const { InkRpcServer } = await import('@meisiristhebest/server');
-      const server = new InkRpcServer();
-      await server.listenTcp(port);
-      console.log(`\n🚀 [InkPi Server Daemon] Listening on tcp://127.0.0.1:${port}`);
-      console.log(`📡 Ready to accept connections from Web / VS Code / TUI clients.\n`);
+      const wsPortIdx = args.indexOf('--ws-port');
+      const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
+
+      const { InkPiDaemon } = await import('@meisiristhebest/agent-core');
+      const daemon = new InkPiDaemon({ port, host: '127.0.0.1' });
+      await daemon.start(port, '127.0.0.1');
+      await daemon.startWebSocket(wsPort, '127.0.0.1');
+
+      console.log(`\n🚀 [InkPi Daemon] Headless JSON-RPC 2.0 core is running:`);
+      console.log(`   • TCP       : tcp://127.0.0.1:${port}  (TUI / VS Code / Node clients)`);
+      console.log(`   • WebSocket : ws://127.0.0.1:${wsPort}  (Web / Desktop GUI clients)`);
+      console.log(`📡 Ready to accept connections from Web / VS Code / TUI clients. Press Ctrl+C to stop.\n`);
+
+      const shutdown = async () => {
+        console.log('\n👋 Shutting down InkPi Daemon...');
+        try {
+          await daemon.stop();
+        } finally {
+          process.exit(0);
+        }
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
       break;
     }
 
@@ -131,7 +150,7 @@ async function main() {
       const modelIdx = args.indexOf('--model');
       const model = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
 
-      const { runPrintMode } = await import('../packages/agent-core/dist/modes/print-mode.js');
+      const { runPrintMode } = await import('@meisiristhebest/agent-core');
       const result = await runPrintMode({
         prompt,
         model,
@@ -143,7 +162,7 @@ async function main() {
 
     case 'plugin': {
       const sub = args[1] || 'list';
-      const { runPackageManagerCli } = await import('../packages/agent-core/dist/package-manager-cli.js');
+      const { runPackageManagerCli } = await import('@meisiristhebest/agent-core');
       const output = await runPackageManagerCli(args.slice(1));
       console.log(output);
       break;
@@ -159,7 +178,7 @@ async function main() {
 }
 
 async function startInteractiveStudio(args) {
-  const { TerminalStudio } = await import('../packages/agent-core/dist/tui/studio.js');
+  const { TerminalStudio } = await import('@meisiristhebest/agent-core');
   const { ANSI } = await import('@meisiristhebest/tui');
 
   const studio = new TerminalStudio({

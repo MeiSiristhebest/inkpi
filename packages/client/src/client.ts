@@ -6,6 +6,7 @@ import type {
 import type { AgentMessage, ImageContent } from '@meisiristhebest/protocol';
 import type { RpcTransport } from './types.js';
 import { TcpSocketTransport } from './transports/tcp.js';
+import { WebSocketTransport } from './transports/ws.js';
 
 export interface Transport {
   sendRequest(req: RpcRequest): Promise<RpcResponse>;
@@ -125,6 +126,48 @@ export class InkRpcClient {
   public static async connectTcp(port: number, host = '127.0.0.1'): Promise<InkRpcClient> {
     const rawTransport = await TcpSocketTransport.connect(port, host);
     return new InkRpcClient(rawTransport);
+  }
+
+  /**
+   * 通过 WebSocket 连接 daemon (浏览器 / Tauri WebView 用全局 WebSocket,
+   * Node.js 端自动回退到 ws 包)。对应服务端 InkPiDaemon.startWebSocket()。
+   */
+  public static async connectWebSocket(url: string): Promise<InkRpcClient> {
+    const g = globalThis as any;
+    let ws: any;
+    if (typeof g.WebSocket !== 'undefined') {
+      ws = new g.WebSocket(url);
+    } else {
+      // 动态拼接模块名 + @vite-ignore, 避免浏览器打包器静态解析 node 内置模块
+      const nodeModuleSpecifier = 'node:' + 'module';
+      const { createRequire } = await import(/* @vite-ignore */ nodeModuleSpecifier);
+      const nodeRequire = createRequire(import.meta.url);
+      const { WebSocket: NodeWebSocket } = nodeRequire('ws');
+      ws = new NodeWebSocket(url);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      if (ws.readyState === 1) {
+        resolve();
+        return;
+      }
+      const cleanup = () => {
+        ws.removeEventListener?.('open', onOpen);
+        ws.removeEventListener?.('error', onError);
+      };
+      const onOpen = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error(`WebSocket connection failed: ${url}`));
+      };
+      ws.addEventListener('open', onOpen);
+      ws.addEventListener('error', onError);
+    });
+
+    return new InkRpcClient(new WebSocketTransport(ws));
   }
 
   public async request<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {

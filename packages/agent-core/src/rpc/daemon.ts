@@ -8,6 +8,7 @@ import type { ModelConfig } from '@meisiristhebest/protocol';
 export interface DaemonOptions {
   port?: number;
   host?: string;
+  wsPort?: number;
   defaultModel?: ModelConfig;
   context?: Partial<ServerContext>;
 }
@@ -16,6 +17,7 @@ export interface DaemonStatus {
   running: boolean;
   port?: number;
   host?: string;
+  wsPort?: number | null;
   activeSessions: number;
   uptimeMs: number;
 }
@@ -30,6 +32,7 @@ export class InkPiDaemon {
   private startTime = 0;
   private running = false;
   private tcpServer: net.Server | null = null;
+  private wsPort: number | null = null;
   private options: DaemonOptions;
 
   constructor(options: DaemonOptions = {}) {
@@ -102,7 +105,7 @@ export class InkPiDaemon {
       return { success: true };
     });
 
-    this.rpcServer.registerMethod('session.get_state', (params: { sessionId: string }) => {
+    const getStateHandler = (params: { sessionId: string }) => {
       const session = this.sessionManager.getSession(params?.sessionId);
       if (!session) {
         throw new Error(`Session '${params?.sessionId}' not found.`);
@@ -115,7 +118,10 @@ export class InkPiDaemon {
         hasGhostText: session.ghost.hasGhostText(),
         ghostText: session.ghost.getGhostText()
       };
-    });
+    };
+    // session.getState 为 client SDK 兼容别名
+    this.rpcServer.registerMethod('session.get_state', getStateHandler);
+    this.rpcServer.registerMethod('session.getState', getStateHandler);
 
     // 2. Editor Multi-session RPCs
     this.rpcServer.registerMethod('session.editor.insert', (params: { sessionId: string; pos: number; text: string }) => {
@@ -178,6 +184,17 @@ export class InkPiDaemon {
     return this;
   }
 
+  /**
+   * 额外开启 WebSocket 监听 (浏览器 / Tauri WebView GUI 客户端入口)
+   * 默认端口为 TCP 端口 + 1
+   */
+  public async startWebSocket(wsPort = (this.options.port ?? 41829) + 1, host = this.options.host): Promise<this> {
+    this.wsPort = wsPort;
+    this.options.wsPort = wsPort;
+    await this.rpcServer.listenWebSocket(wsPort!, host!);
+    return this;
+  }
+
   public attachTransport(transport: RpcTransport): void {
     this.rpcServer.bindTransport(transport);
   }
@@ -188,6 +205,7 @@ export class InkPiDaemon {
     this.sessionManager.clear();
     await this.rpcServer.close();
     this.tcpServer = null;
+    this.wsPort = null;
   }
 
   public getStatus(): DaemonStatus {
@@ -195,6 +213,7 @@ export class InkPiDaemon {
       running: this.running,
       port: this.options.port,
       host: this.options.host,
+      wsPort: this.wsPort,
       activeSessions: this.sessionManager.size,
       uptimeMs: this.running ? Date.now() - this.startTime : 0
     };

@@ -7,6 +7,34 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@meisiristhebest/agent-core':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/ai':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/client':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/editor-core':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/protocol':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/server':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/session-backends':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/storage':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@meisiristhebest/tui':
+        specifier: 1.0.0
+        version: 1.0.0
     devDependencies:
       '@biomejs/biome':
         specifier: 1.9.4
@@ -41,6 +69,9 @@ importers:
       '@meisiristhebest/tui':
         specifier: workspace:*
         version: link:../tui
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
 
   packages/ai:
     dependencies:
@@ -53,6 +84,9 @@ importers:
       '@meisiristhebest/protocol':
         specifier: workspace:*
         version: link:../protocol
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
 
   packages/editor-core:
     dependencies:
@@ -372,6 +406,33 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@meisiristhebest/agent-core@1.0.0':
+    resolution: {integrity: sha512-KalreIjUjfRYrxiQZ2bNvz5OXEzOx68CD0kvJTkDoY66LEQ+1DBg4juKMk4kX/T4kusHvJazFuhQCdvUbBZTfw==}
+
+  '@meisiristhebest/ai@1.0.0':
+    resolution: {integrity: sha512-ULmkvuSAILJ9iq0uVyB40XiUj3RYPiV7OhPt9hj1yzsfgPyZ71DZkRiRczyYTtcmvuZH9Ukl8dJEdVuvfEQZoQ==}
+
+  '@meisiristhebest/client@1.0.0':
+    resolution: {integrity: sha512-jHmejcksvgp1ka9ZRJkGv0rVXZeAMDElo3mkVtwhpw2eMWhctAEF9IpKJfjaD+9ABh7V09V7HfsrYVEEQIMAWQ==}
+
+  '@meisiristhebest/editor-core@1.0.0':
+    resolution: {integrity: sha512-NMkasVYJToBkyNkl2oT5zUnkhIKnQJjZxZS3X6oQ9tGUbQAJtg3rp+983YjvWPQu28ayAGMpgJuEOI9MHgjWtQ==}
+
+  '@meisiristhebest/protocol@1.0.0':
+    resolution: {integrity: sha512-UdkFype7n3syRweg571AgXVBq5HVMoSfc24akdPUwnEzRVZJcDyRmbGXViVWZWiRMvmwF6fKbiJO4LEJq6UDoA==}
+
+  '@meisiristhebest/server@1.0.0':
+    resolution: {integrity: sha512-WBSDVlHnrDFl67YE3BLbFt6GcER4Hkm1p5XT9SQcjcaBQmTJx0PvDlHiLvi+pdcgszahSg0q8NZV3CIiGPfg8A==}
+
+  '@meisiristhebest/session-backends@1.0.0':
+    resolution: {integrity: sha512-mFdAySw84ReFWgyKwCdXivjHDEsPA80TWi0L3Mti8ny72e9tKHUpITOxZOQU9p93AaT2Ar7H/8zYfvzVC3fbZg==}
+
+  '@meisiristhebest/storage@1.0.0':
+    resolution: {integrity: sha512-i9E9ncFzqc8XWOq5B8c9G5bksh6Cu+33rwFivBguJux03zEXhsZBL/GAc0Ft6qe79ByQlw0dP7t2XtJOtETMFA==}
+
+  '@meisiristhebest/tui@1.0.0':
+    resolution: {integrity: sha512-NA0It6jdMn0IsGHH2Lu7OTk3jD74khMDrHWjJ92p1Ou/GKJLXEZJfx5Y5XO45mPRi1BUpCq/TJwzecvdqJ9Ltg==}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -966,6 +1027,18 @@ packages:
     resolution: {integrity: sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==}
     engines: {node: '>=12'}
 
+  ws@8.21.3:
+    resolution: {integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
 snapshots:
 
   '@ampproject/remapping@2.3.0':
@@ -1125,6 +1198,49 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@meisiristhebest/agent-core@1.0.0':
+    dependencies:
+      '@meisiristhebest/ai': 1.0.0
+      '@meisiristhebest/editor-core': 1.0.0
+      '@meisiristhebest/protocol': 1.0.0
+      '@meisiristhebest/storage': 1.0.0
+      '@meisiristhebest/tui': 1.0.0
+
+  '@meisiristhebest/ai@1.0.0':
+    dependencies:
+      '@meisiristhebest/protocol': 1.0.0
+
+  '@meisiristhebest/client@1.0.0':
+    dependencies:
+      '@meisiristhebest/protocol': 1.0.0
+
+  '@meisiristhebest/editor-core@1.0.0':
+    dependencies:
+      '@meisiristhebest/protocol': 1.0.0
+
+  '@meisiristhebest/protocol@1.0.0': {}
+
+  '@meisiristhebest/server@1.0.0':
+    dependencies:
+      '@meisiristhebest/ai': 1.0.0
+      '@meisiristhebest/editor-core': 1.0.0
+      '@meisiristhebest/protocol': 1.0.0
+      '@meisiristhebest/session-backends': 1.0.0
+
+  '@meisiristhebest/session-backends@1.0.0':
+    dependencies:
+      '@meisiristhebest/protocol': 1.0.0
+      '@meisiristhebest/storage': 1.0.0
+
+  '@meisiristhebest/storage@1.0.0':
+    dependencies:
+      '@meisiristhebest/protocol': 1.0.0
+
+  '@meisiristhebest/tui@1.0.0':
+    dependencies:
+      '@meisiristhebest/editor-core': 1.0.0
+      '@meisiristhebest/protocol': 1.0.0
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
@@ -1674,3 +1790,5 @@ snapshots:
       ansi-styles: 6.1.0
       string-width: 5.1.2
       strip-ansi: 7.2.0
+
+  ws@8.21.3: {}

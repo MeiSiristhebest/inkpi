@@ -19,6 +19,7 @@
     "@meisiristhebest/tui": "workspace:*",
     "@meisiristhebest/ai": "workspace:*",
     "@meisiristhebest/editor-core": "workspace:*",
-    "@meisiristhebest/storage": "workspace:*"
+    "@meisiristhebest/storage": "workspace:*",
+    "ws": "8.21.3"
   }
 }

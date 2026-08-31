@@ -1,2 +1,12 @@
 packages:
   - 'packages/*'
+minimumReleaseAgeExclude:
+  - '@meisiristhebest/agent-core@1.0.0'
+  - '@meisiristhebest/ai@1.0.0'
+  - '@meisiristhebest/client@1.0.0'
+  - '@meisiristhebest/editor-core@1.0.0'
+  - '@meisiristhebest/protocol@1.0.0'
+  - '@meisiristhebest/server@1.0.0'
+  - '@meisiristhebest/session-backends@1.0.0'
+  - '@meisiristhebest/storage@1.0.0'
+  - '@meisiristhebest/tui@1.0.0'

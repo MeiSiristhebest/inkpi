@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { runPrintMode } from '@meisiristhebest/agent-core';
 
 describe('InkPi Print Mode (Non-interactive batch mode)', () => {
-  const tmpOut = path.join(process.cwd(), 'tmp-print-test.txt');
+  const tmpOut = path.join(os.tmpdir(), 'inkpi-tmp-print-test.txt');
 
   it('should run single-shot generation with a generic default role', async () => {
     const res = await runPrintMode({
@@ -127,7 +128,7 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
 
 
   it('should write output file in writer mode', async () => {
-    const tmpFile = path.join(process.cwd(), 'tmp-writer-test.txt');
+    const tmpFile = path.join(os.tmpdir(), 'inkpi-tmp-writer-test.txt');
     const res = await runPrintMode({
       prompt: '写入文件测试',
       model: 'mock-test',
@@ -167,7 +168,7 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
   });
 
   it('should run workflow with json output and custom role configuration', async () => {
-    const tmpJsonOut = path.join(process.cwd(), 'tmp-workflow-json.txt');
+    const tmpJsonOut = path.join(os.tmpdir(), 'inkpi-tmp-workflow-json.txt');
     const res = await runPrintMode({
       prompt: 'workflow with json and custom role',
       role: 'pipeline',

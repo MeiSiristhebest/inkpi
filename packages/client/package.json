@@ -15,6 +15,7 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@meisiristhebest/protocol": "workspace:*"
+    "@meisiristhebest/protocol": "workspace:*",
+    "ws": "8.21.3"
   }
 }

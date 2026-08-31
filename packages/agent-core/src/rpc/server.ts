@@ -17,6 +17,7 @@ import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import type { ExtensionHost } from '../extension-host.js';
 import type { RpcTransport } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';
+import { WebSocketRpcTransport } from './ws-transport.js';
 
 export interface ServerContext {
   agent?: Agent;
@@ -45,6 +46,7 @@ export class InkRpcServer {
   private branchSummarizer?: BranchSummarizer;
   private boundTransports = new Set<RpcTransport>();
   private tcpServer: net.Server | null = null;
+  private wsServer: any | null = null;
   private customHandlers = new Map<string, (params: any) => Promise<any> | any>();
 
   constructor(ctx: ServerContext = {}, notificationSender?: RpcNotificationSender) {
@@ -114,6 +116,30 @@ export class InkRpcServer {
     });
   }
 
+  /**
+   * 监听 WebSocket 连接 (浏览器 / Tauri WebView 等 GUI 客户端可直接接入)
+   * 复用与 TCP 完全相同的换行无关 JSON-RPC 消息协议 (每条 WS 消息即一条 RPC 消息)
+   */
+  public async listenWebSocket(port: number, host = '127.0.0.1'): Promise<any> {
+    const { createRequire } = await import('node:module');
+    const nodeRequire = createRequire(import.meta.url);
+    const { WebSocketServer } = nodeRequire('ws');
+    const wss = new WebSocketServer({ port, host });
+    wss.on('connection', (ws: any) => {
+      const transport = new WebSocketRpcTransport(ws);
+      this.bindTransport(transport);
+      const cleanup = () => {
+        this.boundTransports.delete(transport);
+      };
+      if (typeof ws.on === 'function') {
+        ws.on('close', cleanup);
+        ws.on('error', cleanup);
+      }
+    });
+    this.wsServer = wss;
+    return wss;
+  }
+
   public async close(): Promise<void> {
     for (const t of this.boundTransports) {
       t.close();
@@ -122,6 +148,10 @@ export class InkRpcServer {
     if (this.tcpServer) {
       await new Promise<void>((res) => this.tcpServer?.close(() => res()));
       this.tcpServer = null;
+    }
+    if (this.wsServer) {
+      await new Promise<void>((res) => this.wsServer.close(() => res()));
+      this.wsServer = null;
     }
   }
 
@@ -193,13 +223,13 @@ export class InkRpcServer {
 
       case 'agent.steer': {
         if (!this.ctx.agent) throw new Error('Agent not initialized');
-        this.ctx.agent.steer(normalizeAgentMessage(params.message, 'agent.steer'));
+        this.ctx.agent.steer(normalizeAgentMessage(params.message ?? params.prompt, 'agent.steer'));
         return { success: true };
       }
 
       case 'agent.followUp': {
         if (!this.ctx.agent) throw new Error('Agent not initialized');
-        this.ctx.agent.followUp(normalizeAgentMessage(params.message, 'agent.followUp'));
+        this.ctx.agent.followUp(normalizeAgentMessage(params.message ?? params.prompt, 'agent.followUp'));
         return { success: true };
       }
 
@@ -239,6 +269,14 @@ export class InkRpcServer {
         return { text: this.ctx.editor.getText() };
       }
 
+      case 'editor.delete': {
+        if (!this.ctx.editor) throw new Error('Editor not initialized');
+        const from = params.from ?? params.start ?? 0;
+        const to = params.to ?? params.end ?? this.ctx.editor.getText().length;
+        this.ctx.editor.replaceRange(from, to, '');
+        return { text: this.ctx.editor.getText() };
+      }
+
       case 'editor.undo': {
         if (!this.ctx.editor) throw new Error('Editor not initialized');
         return { success: this.ctx.editor.undo() };
@@ -254,14 +292,22 @@ export class InkRpcServer {
       case 'ghost.suggest': {
         if (!this.ctx.ghost) throw new Error('Ghost text manager not initialized');
         const suggestion = params.suggestion || params.text;
-        this.ctx.ghost.suggest(suggestion);
-        return { suggestion: this.ctx.ghost.getSuggestion() };
+        this.ctx.ghost.suggest(suggestion, params.pos);
+        const current = this.ctx.ghost.getSuggestion();
+        return { suggestion: current, ghostText: current, success: true };
       }
 
       case 'ghost.accept': {
         if (!this.ctx.ghost) throw new Error('Ghost text manager not initialized');
-        const accepted = this.ctx.ghost.accept();
-        return { accepted, text: this.ctx.editor?.getText() };
+        let accepted: boolean;
+        if (params.mode === 'word') {
+          accepted = this.ctx.ghost.acceptWord();
+        } else if (params.mode === 'line') {
+          accepted = this.ctx.ghost.acceptLine();
+        } else {
+          accepted = this.ctx.ghost.accept();
+        }
+        return { accepted, success: accepted, text: this.ctx.editor?.getText() };
       }
 
       case 'ghost.dismiss': {
@@ -322,9 +368,11 @@ export class InkRpcServer {
         return { summary };
       }
 
-      // 5. Slash Commands
-      case 'slash.execute': {
-        const cmd = params.command;
+      // 5. Slash Commands (command.execute 为 client SDK 兼容别名)
+      case 'slash.execute':
+      case 'command.execute': {
+        const argSuffix = typeof params.args === 'string' && params.args.length > 0 ? ` ${params.args}` : '';
+        const cmd = `${params.command ?? params.cmd ?? ''}${argSuffix}`.trim();
         const res = await this.ctx.slashRegistry!.execute(cmd, {
           agent: this.ctx.agent,
           tree: this.ctx.tree,
@@ -342,7 +390,7 @@ export class InkRpcServer {
       case 'pipeline.run': {
         if (!this.ctx.pipeline) throw new Error('Pipeline not initialized');
         const bookTitle = params.bookTitle || params.title;
-        const chapterTitle = params.chapterTitle || params.documentTitle;
+        const chapterTitle = params.chapterTitle || params.documentTitle || params.title;
         const userPrompt = params.userPrompt || params.initialPrompt;
         if (typeof bookTitle !== 'string' || bookTitle.trim().length === 0) {
           throw new Error('pipeline.run requires bookTitle or title in legacy compatibility mode');
@@ -368,8 +416,9 @@ export class InkRpcServer {
         return this.ctx.journal.getEntries();
       }
 
-      // 8. JIT Memory
-      case 'jit.retrieve': {
+      // 8. JIT Memory (storage.queryMemory 为 client SDK 兼容别名)
+      case 'jit.retrieve':
+      case 'storage.queryMemory': {
         if (!this.ctx.jitRetriever) throw new Error('JitRetriever not initialized');
         const mem = await this.ctx.jitRetriever.retrieve(params);
         return mem;

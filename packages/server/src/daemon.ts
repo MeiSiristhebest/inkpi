@@ -7,6 +7,7 @@ import type {
 } from '@meisiristhebest/protocol';
 import { RPC_ERROR_CODES } from '@meisiristhebest/protocol';
 import { LiveSessionManager } from './sessions.js';
+import { streamAi } from '@meisiristhebest/ai';
 import type { RpcNotificationSender } from './types.js';
 
 export interface DaemonOptions {
@@ -167,7 +168,8 @@ export class InkPiDaemon {
         return { success };
       }
 
-      case 'session.get_state': {
+      case 'session.get_state':
+      case 'session.getState': {
         const session = this.sessionManager.getSession(params.sessionId);
         if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
         return {
@@ -203,10 +205,21 @@ export class InkPiDaemon {
           });
         }
 
+        let replyText: string;
+        if (session.modelConfig) {
+          // 真实模型路径: 接 @meisiristhebest/ai 的 streamAi (按会话 modelConfig 调用真实 provider)
+          const stream = streamAi(session.modelConfig, session.messages, {});
+          const assistant = await stream.collect();
+          replyText = assistantText(assistant);
+        } else {
+          // 离线回显: 未配置模型时的 fixture 行为 (保持向后兼容, 供离线测试使用)
+          replyText = `InkPi Response for [${session.sessionId}]: ${params.prompt}`;
+        }
+
         const asstMsg: AgentMessage = {
           id: `msg_a_${Date.now()}`,
           role: 'assistant',
-          content: [{ type: 'text', text: `InkPi Response for [${session.sessionId}]: ${params.prompt}` }]
+          content: [{ type: 'text', text: replyText }]
         };
         session.messages.push(asstMsg);
 
@@ -284,4 +297,18 @@ export class InkPiDaemon {
         };
     }
   }
+}
+
+/**
+ * 从 AssistantMessage 中提取纯文本回复 (兼容 string 与 content block 数组两种形态)
+ */
+function assistantText(message: any): string {
+  const raw = message?.content ?? message?.text ?? '';
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    return raw
+      .map((block: any) => (typeof block === 'string' ? block : block?.text ?? ''))
+      .join('');
+  }
+  return String(raw);
 }

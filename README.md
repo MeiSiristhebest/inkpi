@@ -150,16 +150,6 @@ Optimizes long-context inference cost and latency through 4-tier breakpoint cach
 
 ## 📦 Installation
 
-**curl** (Linux / macOS):
-```bash
-curl -fsSL https://inkpi.dev/install.sh | sh
-```
-
-**PowerShell** (Windows):
-```powershell
-iwr https://inkpi.dev/install.ps1 | iex
-```
-
 **npm**:
 ```bash
 npm install -g --ignore-scripts inkpi
@@ -173,6 +163,11 @@ pnpm add -g --ignore-scripts inkpi
 **bun**:
 ```bash
 bun install -g inkpi
+```
+
+**npx** (Instant execution without global installation):
+```bash
+npx inkpi
 ```
 
 ---
