@@ -43,6 +43,9 @@ export default defineConfig({
       '@inkpi/agent-core': resolve(__dirname, './packages/agent-core/src/index.ts'),
       '@inkpi/editor-core': resolve(__dirname, './packages/editor-core/src/index.ts'),
       '@inkpi/storage': resolve(__dirname, './packages/storage/src/index.ts'),
+      '@inkpi/session-backends': resolve(__dirname, './packages/session-backends/src/index.ts'),
+      '@inkpi/client': resolve(__dirname, './packages/client/src/index.ts'),
+      '@inkpi/server': resolve(__dirname, './packages/server/src/index.ts'),
       '@inkpi/evals': resolve(__dirname, './packages/evals/src/index.ts')
     }
   }

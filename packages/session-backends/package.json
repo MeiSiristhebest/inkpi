@@ -1,5 +1,5 @@
 {
-  "name": "@inkpi/agent-core",
+  "name": "@inkpi/session-backends",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,12 +16,6 @@
   },
   "dependencies": {
     "@inkpi/protocol": "*",
-    "@inkpi/ai": "*",
-    "@inkpi/editor-core": "*",
-    "@inkpi/storage": "*",
-    "@inkpi/tui": "*",
-    "@inkpi/session-backends": "*",
-    "@inkpi/server": "*",
-    "@inkpi/client": "*"
+    "@inkpi/storage": "*"
   }
 }
