@@ -13,19 +13,19 @@ InkPi strictly separates domain logic from interface drivers and persistence ada
     │                      External Client / UI Layer                  │
     │        Terminal TUI · Web Workspace · VS Code Extension          │
     │                                                                  │
-    │  @meisiristhebest/client · @meisiristhebest/tui · JSON-RPC 2.0 Client                │
+    │  @inkpi/client · @inkpi/tui · JSON-RPC 2.0 Client                │
     └───────────────────────────┬──────────────────────────────────────┘
                                 │ JSON-RPC 2.0 / TCP / WebSocket
                                 ▼
     ┌──────────────────────────────────────────────────────────────────┐
-    │                  @meisiristhebest/server (Daemon Runtime)                  │
+    │                  @inkpi/server (Daemon Runtime)                  │
     │                                                                  │
     │  InkPiDaemon · LiveSessionManager · InkRpcServer                 │
     └───────────────────────────┬──────────────────────────────────────┘
                                 │ In-process typed dispatch
                                 ▼
     ┌──────────────────────────────────────────────────────────────────┐
-    │            @meisiristhebest/agent-core (Domain State Engine)               │
+    │            @inkpi/agent-core (Domain State Engine)               │
     │                                                                  │
     │  AgentEngine · Agent Loop · SessionTree · WorkflowCoordinator    │
     │  StateLedger · ToolRegistry · ExtensionHost · Queues             │
@@ -33,7 +33,7 @@ InkPi strictly separates domain logic from interface drivers and persistence ada
                    │                               │
                    ▼ ISessionBackend Port          ▼ AIProvider Port
     ┌──────────────────────────────┐ ┌─────────────────────────────────┐
-    │   @meisiristhebest/session-backends    │ │          @meisiristhebest/ai              │
+    │   @inkpi/session-backends    │ │          @inkpi/ai              │
     │                              │ │                                 │
     │  • MemorySessionBackend      │ │  • ModelCatalog                 │
     │  • JsonlSessionBackend       │ │  • PromptCacheOptimizer         │
@@ -45,16 +45,16 @@ InkPi strictly separates domain logic from interface drivers and persistence ada
 
 ## 📦 2. 10-Package Decoupled Monorepo Structure
 
-1. **`@meisiristhebest/protocol`**: Pure domain schemas, TypeBox types, and JSON-RPC frames. Zero runtime dependencies.
-2. **`@meisiristhebest/session-backends`**: Pluggable storage backend adapters implementing the `ISessionBackend` contract with full LSP conformance.
-3. **`@meisiristhebest/server`**: Headless daemon, multi-session lifecycle scheduler, and RPC server.
-4. **`@meisiristhebest/client`**: Multi-transport client SDK (TCP Socket, WebSocket, In-Memory).
-5. **`@meisiristhebest/agent-core`**: Core reasoning loop, bidirectional queues (Steering & Follow-up), and state ledger.
-6. **`@meisiristhebest/editor-core`**: Headless editor state machine, ghost text completion, and Chinese typography engine.
-7. **`@meisiristhebest/storage`**: SQLite relational engine, FTS5 BM25 search, concurrency lanes, and writer leases.
-8. **`@meisiristhebest/tui`**: ANSI differential rendering pipeline, CJK width calculation, and terminal images.
-9. **`@meisiristhebest/ai`**: Multi-provider abstractions, 4-tier prompt caching breakpoints, and stream reconnection.
-10. **`@meisiristhebest/evals`**: Evaluation benchmarks and narrative consistency scoring.
+1. **`@inkpi/protocol`**: Pure domain schemas, TypeBox types, and JSON-RPC frames. Zero runtime dependencies.
+2. **`@inkpi/session-backends`**: Pluggable storage backend adapters implementing the `ISessionBackend` contract with full LSP conformance.
+3. **`@inkpi/server`**: Headless daemon, multi-session lifecycle scheduler, and RPC server.
+4. **`@inkpi/client`**: Multi-transport client SDK (TCP Socket, WebSocket, In-Memory).
+5. **`@inkpi/agent-core`**: Core reasoning loop, bidirectional queues (Steering & Follow-up), and state ledger.
+6. **`@inkpi/editor-core`**: Headless editor state machine, ghost text completion, and Chinese typography engine.
+7. **`@inkpi/storage`**: SQLite relational engine, FTS5 BM25 search, concurrency lanes, and writer leases.
+8. **`@inkpi/tui`**: ANSI differential rendering pipeline, CJK width calculation, and terminal images.
+9. **`@inkpi/ai`**: Multi-provider abstractions, 4-tier prompt caching breakpoints, and stream reconnection.
+10. **`@inkpi/evals`**: Evaluation benchmarks and narrative consistency scoring.
 
 ---
 

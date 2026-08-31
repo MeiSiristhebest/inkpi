@@ -1,5 +1,5 @@
-import type { AgentMessage, ExportOptions, QualityGateIssue, StateLedger, UsageTotals } from '@meisiristhebest/protocol';
-import type { UsageCostBreakdown } from '@meisiristhebest/ai';
+import type { AgentMessage, ExportOptions, QualityGateIssue, StateLedger, UsageTotals } from '@inkpi/protocol';
+import type { UsageCostBreakdown } from '@inkpi/ai';
 import type { SessionTree } from '../tree.js';
 import {
   SessionReportExporter,

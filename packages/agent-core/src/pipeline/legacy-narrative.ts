@@ -1,5 +1,5 @@
-import type { QualityGateRule, StateLedger, WorkflowContext, WorkflowStageConfig } from '@meisiristhebest/protocol';
-import { formatChineseTypography } from '@meisiristhebest/editor-core';
+import type { QualityGateRule, StateLedger, WorkflowContext, WorkflowStageConfig } from '@inkpi/protocol';
+import { formatChineseTypography } from '@inkpi/editor-core';
 import { formatNovelStateLedger } from '../compaction/state-ledger.js';
 
 /**

@@ -1,4 +1,4 @@
-import type { AgentMessage, StateLedger } from '@meisiristhebest/protocol';
+import type { AgentMessage, StateLedger } from '@inkpi/protocol';
 import type { CacheControl } from './types.js';
 
 export interface OptimizedCachedPromptResult {

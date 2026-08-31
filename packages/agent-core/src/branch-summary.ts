@@ -1,4 +1,4 @@
-import type { AgentMessage, AssistantMessage, BranchSummaryDetails } from '@meisiristhebest/protocol';
+import type { AgentMessage, AssistantMessage, BranchSummaryDetails } from '@inkpi/protocol';
 import type { SessionTree, SessionTreeNode } from './tree.js';
 import { serializeConversationForSummary } from './compaction/utils.js';
 

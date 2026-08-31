@@ -5,7 +5,7 @@ import type {
   ThinkingContent,
   ToolCallContent,
   Usage
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 import type { EventStream } from './types.js';
 
 export class AssistantEventStream implements EventStream<AssistantMessageEvent> {

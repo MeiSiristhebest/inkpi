@@ -1,4 +1,4 @@
-import type { AgentMessage, CompactionEntry, AssistantMessage } from '@meisiristhebest/protocol';
+import type { AgentMessage, CompactionEntry, AssistantMessage } from '@inkpi/protocol';
 import { serializeConversationForSummary, GENERIC_SUMMARIZATION_SYSTEM_PROMPT } from './utils.js';
 import { extractStateLedger, type LedgerExtractor } from './state-ledger.js';
 

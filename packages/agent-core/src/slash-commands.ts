@@ -1,7 +1,7 @@
-import type { SlashCommand, AgentMessage, ThinkingLevel } from '@meisiristhebest/protocol';
+import type { SlashCommand, AgentMessage, ThinkingLevel } from '@inkpi/protocol';
 import type { Agent } from './agent.js';
 import type { SessionTree } from './tree.js';
-import { findModelInCatalog, modelCatalogEntryToConfig } from '@meisiristhebest/ai';
+import { findModelInCatalog, modelCatalogEntryToConfig } from '@inkpi/ai';
 
 export interface SlashCommandCapabilities {
   compact?: (ctx: SlashCommandExecutionContext) => Promise<string> | string;

@@ -4,10 +4,10 @@ import {
   reduceSessionEntry,
   reduceSession,
   detectAndMarkInterruptedOperations
-} from '@meisiristhebest/agent-core';
-import type { SessionEntry } from '@meisiristhebest/protocol';
+} from '@inkpi/agent-core';
+import type { SessionEntry } from '@inkpi/protocol';
 
-describe('@meisiristhebest/agent-core -> SessionReducer (Pure Event Sourcing State Machine)', () => {
+describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine)', () => {
   it('should create empty initial session state', () => {
     const state = createInitialSessionState('sess_test_1');
     expect(state.sessionId).toBe('sess_test_1');

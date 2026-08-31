@@ -6,14 +6,14 @@ import {
   createInkDb,
   InkRepository,
   createTestDb
-} from '@meisiristhebest/storage';
+} from '@inkpi/storage';
 import {
   Agent,
   reduceSession,
   detectAndMarkInterruptedOperations
-} from '@meisiristhebest/agent-core';
-import type { AgentTool } from '@meisiristhebest/protocol';
-import { AssistantEventStream, getModelPreset } from '@meisiristhebest/ai';
+} from '@inkpi/agent-core';
+import type { AgentTool } from '@inkpi/protocol';
+import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
 
 describe('Crash Recovery & Durable Event Sourcing E2E', () => {
   const tmpDir = path.resolve('.tmp-inkpi-crash-recovery');

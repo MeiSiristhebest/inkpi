@@ -1,5 +1,5 @@
 {
-  "name": "@meisiristhebest/tui",
+  "name": "@inkpi/tui",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,7 +15,7 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@meisiristhebest/protocol": "workspace:*",
-    "@meisiristhebest/editor-core": "workspace:*"
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/editor-core": "workspace:*"
   }
 }

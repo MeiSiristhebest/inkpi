@@ -37,16 +37,16 @@ export default defineConfig({
 
     },
     alias: {
-      '@meisiristhebest/protocol': resolve(__dirname, './packages/protocol/src/index.ts'),
-      '@meisiristhebest/tui': resolve(__dirname, './packages/tui/src/index.ts'),
-      '@meisiristhebest/ai': resolve(__dirname, './packages/ai/src/index.ts'),
-      '@meisiristhebest/agent-core': resolve(__dirname, './packages/agent-core/src/index.ts'),
-      '@meisiristhebest/editor-core': resolve(__dirname, './packages/editor-core/src/index.ts'),
-      '@meisiristhebest/storage': resolve(__dirname, './packages/storage/src/index.ts'),
-      '@meisiristhebest/session-backends': resolve(__dirname, './packages/session-backends/src/index.ts'),
-      '@meisiristhebest/client': resolve(__dirname, './packages/client/src/index.ts'),
-      '@meisiristhebest/server': resolve(__dirname, './packages/server/src/index.ts'),
-      '@meisiristhebest/evals': resolve(__dirname, './packages/evals/src/index.ts')
+      '@inkpi/protocol': resolve(__dirname, './packages/protocol/src/index.ts'),
+      '@inkpi/tui': resolve(__dirname, './packages/tui/src/index.ts'),
+      '@inkpi/ai': resolve(__dirname, './packages/ai/src/index.ts'),
+      '@inkpi/agent-core': resolve(__dirname, './packages/agent-core/src/index.ts'),
+      '@inkpi/editor-core': resolve(__dirname, './packages/editor-core/src/index.ts'),
+      '@inkpi/storage': resolve(__dirname, './packages/storage/src/index.ts'),
+      '@inkpi/session-backends': resolve(__dirname, './packages/session-backends/src/index.ts'),
+      '@inkpi/client': resolve(__dirname, './packages/client/src/index.ts'),
+      '@inkpi/server': resolve(__dirname, './packages/server/src/index.ts'),
+      '@inkpi/evals': resolve(__dirname, './packages/evals/src/index.ts')
     }
   }
 });

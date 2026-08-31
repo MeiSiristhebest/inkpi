@@ -22,14 +22,14 @@
 
 ```
                        ┌─────────────────────────┐
-                       │    @meisiristhebest/protocol      │ (领域契约、TypeBox 与 JSON-RPC 帧)
+                       │    @inkpi/protocol      │ (领域契约、TypeBox 与 JSON-RPC 帧)
                        └────────────┬────────────┘
                                     │
           ┌─────────────────────────┼─────────────────────────┐
           │                         │                         │
           ▼                         ▼                         ▼
 ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│ @meisiristhebest/session-  │      │  @meisiristhebest/server   │      │  @meisiristhebest/client   │
+│ @inkpi/session-  │      │  @inkpi/server   │      │  @inkpi/client   │
 │   backends       │      │  (Daemon & RPC)  │      │  (类型安全 SDK)  │
 │ (Memory/Jsonl/   │      └─────────▲────────┘      └──────────────────┘
 │  Sqlite 适配器)  │                │
@@ -38,7 +38,7 @@
           ├─────────────────────────┴─────────────────────────┐
           │                                                   │
 ┌─────────┴────────┐      ┌──────────────────┐      ┌─────────┴────────┐
-│ @meisiristhebest/agent-core│      │  @meisiristhebest/ai       │      │  @meisiristhebest/storage  │
+│ @inkpi/agent-core│      │  @inkpi/ai       │      │  @inkpi/storage  │
 │ (AgentEngine 循环│      │  (多模型适配、   │      │  (SQLite、FTS5、 │
 │  工作流与状态机) │      │   Prompt Caching)│      │   Lanes 租约)    │
 └─────────┬────────┘      └──────────────────┘      └──────────────────┘
@@ -46,7 +46,7 @@
     ┌─────┴──────────────────────────┐
     ▼                                ▼
 ┌──────────────────┐      ┌──────────────────┐
-│@meisiristhebest/editor-core│      │   @meisiristhebest/tui     │
+│@inkpi/editor-core│      │   @inkpi/tui     │
 │(无头编辑器状态机 │      │ (ANSI 差分渲染、 │
 │ 幽灵补全与排版)  │      │  终端图像与布局) │
 └──────────────────┘      └──────────────────┘
@@ -56,16 +56,16 @@
 
 | 子包名称 | 架构职责与定位 | 核心模块 |
 | :--- | :--- | :--- |
-| **`@meisiristhebest/protocol`** | 纯领域契约与 Schemas | 消息类型、工具契约、状态账本、JSON-RPC 2.0 帧 |
-| **`@meisiristhebest/session-backends`** | 可插拔会话持久化端口与适配器 | `ISessionBackend`、`MemorySessionBackend`、`JsonlSessionBackend`、`SqliteSessionBackend` |
-| **`@meisiristhebest/server`** | 后台常驻守护进程与服务端 | `InkPiDaemon`、`LiveSessionManager`、`InkRpcServer` |
-| **`@meisiristhebest/client`** | 多通道客户端 SDK | `InkRpcClient`、`TcpSocketTransport`、`WebSocketTransport`、`MemoryTransport` |
-| **`@meisiristhebest/agent-core`** | 纯 Agent 状态机与执行循环 | `AgentEngine`、`SessionTree`、`WorkflowCoordinator`、`StateLedger` |
-| **`@meisiristhebest/editor-core`** | 无头编辑器与创作体验 | `HeadlessEditorState`、`GhostTextManager`、`TypographyEngine` |
-| **`@meisiristhebest/storage`** | 工业级本地持久化引擎 | SQLite、FTS5 BM25 全文检索、并发写租约、快照 Compaction |
-| **`@meisiristhebest/tui`** | 终端界面与渲染管线 | 差分渲染器 `DifferentialRenderer`、中文 CJK 等宽计算、终端图像展示 |
-| **`@meisiristhebest/ai`** | 创作级多模型抽象 | 4 级 Prompt Caching 断点、流式断流恢复、用量账本 |
-| **`@meisiristhebest/evals`** | 创作质量基准评测 | 叙事一致性打分、创作质量门禁 |
+| **`@inkpi/protocol`** | 纯领域契约与 Schemas | 消息类型、工具契约、状态账本、JSON-RPC 2.0 帧 |
+| **`@inkpi/session-backends`** | 可插拔会话持久化端口与适配器 | `ISessionBackend`、`MemorySessionBackend`、`JsonlSessionBackend`、`SqliteSessionBackend` |
+| **`@inkpi/server`** | 后台常驻守护进程与服务端 | `InkPiDaemon`、`LiveSessionManager`、`InkRpcServer` |
+| **`@inkpi/client`** | 多通道客户端 SDK | `InkRpcClient`、`TcpSocketTransport`、`WebSocketTransport`、`MemoryTransport` |
+| **`@inkpi/agent-core`** | 纯 Agent 状态机与执行循环 | `AgentEngine`、`SessionTree`、`WorkflowCoordinator`、`StateLedger` |
+| **`@inkpi/editor-core`** | 无头编辑器与创作体验 | `HeadlessEditorState`、`GhostTextManager`、`TypographyEngine` |
+| **`@inkpi/storage`** | 工业级本地持久化引擎 | SQLite、FTS5 BM25 全文检索、并发写租约、快照 Compaction |
+| **`@inkpi/tui`** | 终端界面与渲染管线 | 差分渲染器 `DifferentialRenderer`、中文 CJK 等宽计算、终端图像展示 |
+| **`@inkpi/ai`** | 创作级多模型抽象 | 4 级 Prompt Caching 断点、流式断流恢复、用量账本 |
+| **`@inkpi/evals`** | 创作质量基准评测 | 叙事一致性打分、创作质量门禁 |
 
 ---
 
@@ -77,13 +77,27 @@
 
 ### 1. 全局一键安装（推荐创作者使用）
 
+**Linux / macOS (curl 一键安装)**:
 ```bash
-# 全局安装 InkPi CLI
-pnpm add -g inkpi
-# 或
-npm install -g inkpi
+curl -fsSL https://raw.githubusercontent.com/MeiSiristhebest/inkpi/master/scripts/install.sh | sh
+```
 
-# 或无需安装直接免装运行
+**Windows (PowerShell 一键安装)**:
+```powershell
+iwr https://raw.githubusercontent.com/MeiSiristhebest/inkpi/master/scripts/install.ps1 | iex
+```
+
+**npm / pnpm / bun 包管理器安装**:
+```bash
+npm install -g --ignore-scripts inkpi
+# 或
+pnpm add -g --ignore-scripts inkpi
+# 或
+bun install -g inkpi
+```
+
+**npx 免装即用**:
+```bash
 npx inkpi
 ```
 

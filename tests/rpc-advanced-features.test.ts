@@ -5,15 +5,15 @@ import {
   InMemoryTransport,
   WorkflowCoordinator,
   TelemetryCollector
-} from '@meisiristhebest/agent-core';
-import { getModelPreset } from '@meisiristhebest/ai';
+} from '@inkpi/agent-core';
+import { getModelPreset } from '@inkpi/ai';
 import {
   InkDb,
   InkRepository,
   FtsSearchEngine,
   AppendOnlySessionJournal,
   JitMemoryRetriever
-} from '@meisiristhebest/storage';
+} from '@inkpi/storage';
 
 describe('Advanced JSON-RPC Server & Client Features', () => {
   it('should support journal, jit memory, pipeline run and telemetry via RPC', async () => {

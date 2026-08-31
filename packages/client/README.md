@@ -1,4 +1,4 @@
-# @meisiristhebest/client
+# @inkpi/client
 
 > Type-Safe Client SDK and Multi-Transport Protocol Client for InkPi
 
@@ -12,7 +12,7 @@ This package provides the client SDK for connecting to InkPi daemon or in-proces
 ## Usage
 
 ```typescript
-import { InkRpcClient } from '@meisiristhebest/client';
+import { InkRpcClient } from '@inkpi/client';
 
 // Connect via TCP
 const client = await InkRpcClient.connectTcp(9876);

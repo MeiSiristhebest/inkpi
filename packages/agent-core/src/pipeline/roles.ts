@@ -1,4 +1,4 @@
-import type { AgentRoleConfig } from '@meisiristhebest/protocol';
+import type { AgentRoleConfig } from '@inkpi/protocol';
 
 /** 纯字符串角色 ID 类型，不预设任何固定名称，由用户动态注册 */
 export type RoleType = string;

@@ -8,8 +8,8 @@ import type {
   Usage,
   TextContent,
   ImageContent
-} from '@meisiristhebest/protocol';
-import type { ModelConfig, StreamFn } from '@meisiristhebest/ai';
+} from '@inkpi/protocol';
+import type { ModelConfig, StreamFn } from '@inkpi/ai';
 
 export type { ToolExecutionMode };
 export type QueueMode = 'all' | 'one-at-a-time';

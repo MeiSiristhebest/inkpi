@@ -9,13 +9,13 @@ import {
   ScopedModelResolver,
   KillRing,
   fuzzySearch
-} from '@meisiristhebest/agent-core';
-import type { AgentMessage } from '@meisiristhebest/protocol';
+} from '@inkpi/agent-core';
+import type { AgentMessage } from '@inkpi/protocol';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-describe('@meisiristhebest/agent-core -> New Systems In-Depth Branch Coverage Suite', () => {
+describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () => {
   it('should test Skill discovery edge cases and parseSkillMarkdown invalid branches', () => {
     // 1. Invalid YAML frontmatter
     expect(parseSkillMarkdown('no frontmatter text', 'test.md')).toBeNull();

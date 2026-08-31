@@ -3,7 +3,7 @@ import {
   ExtensionHost,
   ExtensionRunner,
   type ExtensionFactory
-} from '@meisiristhebest/agent-core';
+} from '@inkpi/agent-core';
 
 describe('Novel Extensions Infrastructure & Interface Contracts', () => {
   it('should allow loading and registering tools/commands via ExtensionRunner', async () => {

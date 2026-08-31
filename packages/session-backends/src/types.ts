@@ -3,7 +3,7 @@ import type {
   DocumentDelta,
   FtsSearchResult,
   SessionEntry
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 
 export interface SessionBackendCapabilities {
   readonly fts: boolean;

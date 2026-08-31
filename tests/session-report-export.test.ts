@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SessionReportExporter, SessionTree } from '@meisiristhebest/agent-core';
+import { SessionReportExporter, SessionTree } from '@inkpi/agent-core';
 
 describe('SessionReportExporter', () => {
   it('renders protocol data without narrative defaults', () => {

@@ -1,4 +1,4 @@
-# @meisiristhebest/session-backends
+# @inkpi/session-backends
 
 > Pluggable Session Storage Backends for InkPi (1:1 Inspired by Pi Architecture)
 
@@ -15,7 +15,7 @@ import {
   MemorySessionBackend,
   JsonlSessionBackend,
   SqliteSessionBackend
-} from '@meisiristhebest/session-backends';
+} from '@inkpi/session-backends';
 
 const backend = new MemorySessionBackend();
 await backend.initialize();

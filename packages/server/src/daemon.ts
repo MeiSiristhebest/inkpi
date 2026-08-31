@@ -4,10 +4,10 @@ import type {
   RpcResponse,
   RpcNotification,
   AgentMessage
-} from '@meisiristhebest/protocol';
-import { RPC_ERROR_CODES } from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
+import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import { LiveSessionManager } from './sessions.js';
-import { streamAi } from '@meisiristhebest/ai';
+import { streamAi } from '@inkpi/ai';
 import type { RpcNotificationSender } from './types.js';
 
 export interface DaemonOptions {
@@ -207,7 +207,7 @@ export class InkPiDaemon {
 
         let replyText: string;
         if (session.modelConfig) {
-          // 真实模型路径: 接 @meisiristhebest/ai 的 streamAi (按会话 modelConfig 调用真实 provider)
+          // 真实模型路径: 接 @inkpi/ai 的 streamAi (按会话 modelConfig 调用真实 provider)
           const stream = streamAi(session.modelConfig, session.messages, {});
           const assistant = await stream.collect();
           replyText = assistantText(assistant);

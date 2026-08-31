@@ -7,7 +7,7 @@ import {
   createVisualNovelGateRules,
   createLegacyNarrativeStages,
   type QualityGateIssue
-} from '@meisiristhebest/agent-core';
+} from '@inkpi/agent-core';
 
 describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
   it('should detect entity destruction and major twists with generic gate rules', () => {

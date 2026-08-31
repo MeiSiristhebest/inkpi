@@ -1,4 +1,4 @@
-import type { StateLedger } from '@meisiristhebest/protocol';
+import type { StateLedger } from '@inkpi/protocol';
 
 export interface ForeshadowingScoreResult {
   score: number; // 0 - 100

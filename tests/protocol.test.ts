@@ -12,9 +12,9 @@ import type {
   AgentTool,
   SlashCommand,
   ShortcutHandler
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 
-describe('@meisiristhebest/protocol (Pure Zero-Bias Protocol Contracts)', () => {
+describe('@inkpi/protocol (Pure Zero-Bias Protocol Contracts)', () => {
   it('should instantiate and validate standard message types', () => {
     const userMsg: UserMessage = {
       role: 'user',

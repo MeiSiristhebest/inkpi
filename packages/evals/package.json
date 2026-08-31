@@ -1,5 +1,5 @@
 {
-  "name": "@meisiristhebest/evals",
+  "name": "@inkpi/evals",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,9 +15,9 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@meisiristhebest/protocol": "workspace:*",
-    "@meisiristhebest/agent-core": "workspace:*",
-    "@meisiristhebest/storage": "workspace:*"
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/agent-core": "workspace:*",
+    "@inkpi/storage": "workspace:*"
   },
   "private": true
 }

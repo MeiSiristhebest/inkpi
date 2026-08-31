@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { Agent } from '@meisiristhebest/agent-core';
-import { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
-import { InkDb, InkRepository, CompactionEngine } from '@meisiristhebest/storage';
-import { getModelPreset } from '@meisiristhebest/ai';
-import type { AgentEvent, ExtensionAPI } from '@meisiristhebest/protocol';
+import { Agent } from '@inkpi/agent-core';
+import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
+import { InkDb, InkRepository, CompactionEngine } from '@inkpi/storage';
+import { getModelPreset } from '@inkpi/ai';
+import type { AgentEvent, ExtensionAPI } from '@inkpi/protocol';
 
 describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Loading)', () => {
   it('should execute end-to-end writer plot with Agent, Editor, Storage, and Dynamic Extension', async () => {

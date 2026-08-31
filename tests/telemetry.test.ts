@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TelemetryCollector } from '@meisiristhebest/agent-core';
+import { TelemetryCollector } from '@inkpi/agent-core';
 
-describe('@meisiristhebest/agent-core -> Telemetry Collector (1:1 Ported from repos/pi)', () => {
+describe('@inkpi/agent-core -> Telemetry Collector (1:1 Ported from repos/pi)', () => {
   it('should foreshadowing TTFT, tokens per second, prompt caching hit rate, and estimated costs', async () => {
     const collector = new TelemetryCollector();
 

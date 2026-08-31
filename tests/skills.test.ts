@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseSkillMarkdown, SkillDiscoveryEngine } from '@meisiristhebest/agent-core';
+import { parseSkillMarkdown, SkillDiscoveryEngine } from '@inkpi/agent-core';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-describe('@meisiristhebest/agent-core -> Skills System (YAML Frontmatter & Discovery, 1:1 Ported from repos/pi)', () => {
+describe('@inkpi/agent-core -> Skills System (YAML Frontmatter & Discovery, 1:1 Ported from repos/pi)', () => {
   it('should parse YAML Frontmatter and extract prompt body', () => {
     const rawMarkdown = `---
 name: standard-combat-guide

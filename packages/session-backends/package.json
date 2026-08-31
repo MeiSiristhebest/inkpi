@@ -1,5 +1,5 @@
 {
-  "name": "@meisiristhebest/session-backends",
+  "name": "@inkpi/session-backends",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,7 +15,7 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@meisiristhebest/protocol": "workspace:*",
-    "@meisiristhebest/storage": "workspace:*"
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/storage": "workspace:*"
   }
 }

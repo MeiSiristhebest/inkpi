@@ -3,13 +3,13 @@ import type {
   DocumentDelta,
   FtsSearchResult,
   SessionEntry
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 import {
   InkDb,
   InkRepository,
   AppendOnlySessionJournal,
   FtsSearchEngine
-} from '@meisiristhebest/storage';
+} from '@inkpi/storage';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 export interface SqliteSessionBackendOptions {

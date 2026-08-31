@@ -12,10 +12,10 @@ import {
   geminiProvider
   , createFauxProvider,
   fauxProvider
-} from '@meisiristhebest/ai';
-import type { AgentMessage, AssistantMessageEvent } from '@meisiristhebest/protocol';
+} from '@inkpi/ai';
+import type { AgentMessage, AssistantMessageEvent } from '@inkpi/protocol';
 
-describe('@meisiristhebest/ai', () => {
+describe('@inkpi/ai', () => {
   function responseFrom(chunks: string[]) {
     return {
       ok: true,

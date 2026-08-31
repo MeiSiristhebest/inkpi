@@ -35,4 +35,4 @@ for (const file of allFiles) {
   }
 }
 
-console.log(`\nSuccessfully migrated ${changedCount} files from @inkpi/ to @inkpi/`);
+console.log(`\nSuccessfully migrated ${changedCount} files from @inkpi/ back to @inkpi/`);

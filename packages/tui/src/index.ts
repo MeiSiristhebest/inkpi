@@ -1,5 +1,5 @@
 /**
- * @meisiristhebest/tui - Terminal UI framework for InkPi (1:1 aligned with pi-tui)
+ * @inkpi/tui - Terminal UI framework for InkPi (1:1 aligned with pi-tui)
  */
 
 export * from './render.js';

@@ -3,7 +3,7 @@ import type {
   DocumentDelta,
   FtsSearchResult,
   SessionEntry
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 /**

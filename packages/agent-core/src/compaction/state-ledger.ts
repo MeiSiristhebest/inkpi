@@ -5,7 +5,7 @@ import type {
   LocationRecord,
   StateLedger,
   TrackRecord
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 
 export interface LedgerExtractorContext {
   messages: AgentMessage[];

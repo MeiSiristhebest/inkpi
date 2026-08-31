@@ -1,4 +1,4 @@
-import type { TypographyOptions } from '@meisiristhebest/protocol';
+import type { TypographyOptions } from '@inkpi/protocol';
 
 export const DEFAULT_CHINESE_TYPOGRAPHY: TypographyOptions = {
   enabled: true,

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { SessionExporter, SessionTree } from '@meisiristhebest/agent-core';
-import type { AgentMessage, UserMessage, AssistantMessage } from '@meisiristhebest/protocol';
+import { SessionExporter, SessionTree } from '@inkpi/agent-core';
+import type { AgentMessage, UserMessage, AssistantMessage } from '@inkpi/protocol';
 
-describe('@meisiristhebest/agent-core -> Advanced SessionExporter (HTML & JSONL)', () => {
+describe('@inkpi/agent-core -> Advanced SessionExporter (HTML & JSONL)', () => {
   it('should export and import session to/from JSONL losslessly', () => {
     const exporter = new SessionExporter();
 

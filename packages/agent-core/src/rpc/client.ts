@@ -2,8 +2,8 @@ import type {
   RpcRequest,
   RpcResponse,
   RpcNotification
-} from '@meisiristhebest/protocol';
-import type { AgentMessage, ImageContent } from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
+import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
 import type { RpcTransport } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';

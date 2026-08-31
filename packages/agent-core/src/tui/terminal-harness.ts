@@ -1,9 +1,9 @@
-import { HeadlessEditorState, GhostTextManager, formatTypography } from '@meisiristhebest/editor-core';
-import type { TypographyOptions } from '@meisiristhebest/protocol';
+import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
+import type { TypographyOptions } from '@inkpi/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
 import { SlashCommandRegistry } from '../slash-commands.js';
-import { ANSI, drawBox } from '@meisiristhebest/tui';
+import { ANSI, drawBox } from '@inkpi/tui';
 
 export interface TerminalHarnessOptions {
   agent?: Agent;

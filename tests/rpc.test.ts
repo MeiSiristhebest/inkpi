@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { InkRpcServer, InkRpcClient, InMemoryTransport, Agent, SessionTree } from '@meisiristhebest/agent-core';
-import { HeadlessEditorState, GhostTextManager } from '@meisiristhebest/editor-core';
-import { InkDb, FtsSearchEngine, InkRepository } from '@meisiristhebest/storage';
-import { getModelPreset } from '@meisiristhebest/ai';
+import { InkRpcServer, InkRpcClient, InMemoryTransport, Agent, SessionTree } from '@inkpi/agent-core';
+import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
+import { InkDb, FtsSearchEngine, InkRepository } from '@inkpi/storage';
+import { getModelPreset } from '@inkpi/ai';
 
-describe('@meisiristhebest/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', () => {
+describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', () => {
   it('should dispatch full writer pipeline via RPC client and receive streaming notifications', async () => {
     const db = new InkDb(':memory:');
     const repo = new InkRepository(db);

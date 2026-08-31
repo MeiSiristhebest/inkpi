@@ -1,5 +1,5 @@
-import { WorkflowCoordinator, RoleRegistry } from '@meisiristhebest/agent-core';
-import { getModelPreset } from '@meisiristhebest/ai';
+import { WorkflowCoordinator, RoleRegistry } from '@inkpi/agent-core';
+import { getModelPreset } from '@inkpi/ai';
 
 describe('Multi-Agent Collaborative Pipeline', () => {
   it('should support dynamic role registration in RoleRegistry (100% pure & decoupled from core)', () => {

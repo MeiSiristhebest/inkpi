@@ -5,9 +5,9 @@ import {
   TypographyComplianceScorer,
   EvalRunner,
   NovelEvalRunner
-} from '@meisiristhebest/evals';
+} from '@inkpi/evals';
 
-describe('Evaluation Benchmark Suite (@meisiristhebest/evals)', () => {
+describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
   it('should keep the generic runner empty until callers register metrics', () => {
     const runner = new EvalRunner();
     const report = runner.evaluate({

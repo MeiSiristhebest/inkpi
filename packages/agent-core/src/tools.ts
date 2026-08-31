@@ -1,5 +1,5 @@
-import { validateSchema } from '@meisiristhebest/protocol';
-import type { AgentTool, ToolCallContent, ToolResultMessage, ToolResult, TSchema } from '@meisiristhebest/protocol';
+import { validateSchema } from '@inkpi/protocol';
+import type { AgentTool, ToolCallContent, ToolResultMessage, ToolResult, TSchema } from '@inkpi/protocol';
 import type { ToolExecutionMode } from './types.js';
 
 export class ToolRegistry {

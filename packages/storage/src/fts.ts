@@ -1,4 +1,4 @@
-import type { FtsSearchResult } from '@meisiristhebest/protocol';
+import type { FtsSearchResult } from '@inkpi/protocol';
 import type { InkDb } from './db.js';
 
 export class FtsSearchEngine {

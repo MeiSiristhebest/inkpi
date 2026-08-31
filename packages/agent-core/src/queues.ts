@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@meisiristhebest/protocol';
+import type { AgentMessage } from '@inkpi/protocol';
 import type { QueueMode } from './types.js';
 
 export class MessageQueue {

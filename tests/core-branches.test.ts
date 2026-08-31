@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Agent, ToolRegistry, ExtensionHost, SessionTree } from '@meisiristhebest/agent-core';
+import { Agent, ToolRegistry, ExtensionHost, SessionTree } from '@inkpi/agent-core';
 import {
   HeadlessEditorState,
   GhostTextManager,
   formatChineseTypography,
   formatWesternTypography
-} from '@meisiristhebest/editor-core';
-import { InkDb, InkRepository, CompactionEngine } from '@meisiristhebest/storage';
+} from '@inkpi/editor-core';
+import { InkDb, InkRepository, CompactionEngine } from '@inkpi/storage';
 import {
   mockProvider,
   deepSeekProvider,
@@ -15,8 +15,8 @@ import {
   registerProvider,
   getProvider,
   streamAi
-} from '@meisiristhebest/ai';
-import type { AgentMessage, AgentEvent } from '@meisiristhebest/protocol';
+} from '@inkpi/ai';
+import type { AgentMessage, AgentEvent } from '@inkpi/protocol';
 
 describe('Headless Core In-Depth Branch Coverage Suite', () => {
   it('should test Agent loop hooks, termination, queue modes, onUpdate events and abort', async () => {

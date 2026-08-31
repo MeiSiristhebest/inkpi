@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StoryBranchManager } from '@meisiristhebest/agent-core';
+import { StoryBranchManager } from '@inkpi/agent-core';
 
 describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   it('should initialize with main canon branch and allow creating parallel what-if branches', () => {

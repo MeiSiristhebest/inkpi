@@ -4,11 +4,11 @@ import {
   Editor,
   ThinkingAccordion,
   parseKey
-} from '@meisiristhebest/tui';
+} from '@inkpi/tui';
 import {
   ModelCatalogManager,
   findModelInCatalog
-} from '@meisiristhebest/ai';
+} from '@inkpi/ai';
 import {
   InkRpcServer,
   InkPiClient,
@@ -16,7 +16,7 @@ import {
   NodeVMSandbox,
   SandboxManager,
   SessionTree
-} from '@meisiristhebest/agent-core';
+} from '@inkpi/agent-core';
 import { execSync } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { ExtensionHost, ExtensionRunner } from '@meisiristhebest/agent-core';
-import type { AgentTool, SlashCommand, ShortcutHandler, AgentMessage } from '@meisiristhebest/protocol';
+import { ExtensionHost, ExtensionRunner } from '@inkpi/agent-core';
+import type { AgentTool, SlashCommand, ShortcutHandler, AgentMessage } from '@inkpi/protocol';
 
-describe('@meisiristhebest/agent-core -> ExtensionHost & ExtensionRunner (Generic Extension Ecosystem)', () => {
+describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extension Ecosystem)', () => {
   it('should register, list, and unregister tools dynamically', () => {
     const host = new ExtensionHost();
     const mockTool: AgentTool<{ query: string }> = {

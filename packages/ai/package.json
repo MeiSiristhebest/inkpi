@@ -1,5 +1,5 @@
 {
-  "name": "@meisiristhebest/ai",
+  "name": "@inkpi/ai",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +17,6 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@meisiristhebest/protocol": "workspace:*"
+    "@inkpi/protocol": "workspace:*"
   }
 }

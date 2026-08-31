@@ -3,8 +3,8 @@ import type {
   RpcRequest,
   RpcResponse,
   RpcNotification
-} from '@meisiristhebest/protocol';
-import { RPC_ERROR_CODES } from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
+import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { RpcNotificationSender } from './types.js';
 
 export interface StandaloneServerContext {

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { SlashCommandRegistry, Agent, SessionTree } from '@meisiristhebest/agent-core';
-import { getModelPreset } from '@meisiristhebest/ai';
+import { SlashCommandRegistry, Agent, SessionTree } from '@inkpi/agent-core';
+import { getModelPreset } from '@inkpi/ai';
 
-describe('@meisiristhebest/agent-core -> SlashCommandRegistry', () => {
+describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
   it('should execute built-in commands like /model, /thinking, /tree, /stats, /help', async () => {
     const registry = new SlashCommandRegistry();
     const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });

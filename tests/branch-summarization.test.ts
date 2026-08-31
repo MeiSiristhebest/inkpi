@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { SessionTree } from '@meisiristhebest/agent-core';
-import { BranchSummarizer } from '@meisiristhebest/agent-core';
-import type { AgentMessage, UserMessage, AssistantMessage } from '@meisiristhebest/protocol';
+import { SessionTree } from '@inkpi/agent-core';
+import { BranchSummarizer } from '@inkpi/agent-core';
+import type { AgentMessage, UserMessage, AssistantMessage } from '@inkpi/protocol';
 
-describe('@meisiristhebest/agent-core -> BranchSummarization & Session Tree LCA', () => {
+describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
   it('should compute Lowest Common Ancestor (LCA) between arbitrary tree nodes correctly', () => {
     const tree = new SessionTree();
 

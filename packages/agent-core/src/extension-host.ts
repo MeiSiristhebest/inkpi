@@ -11,7 +11,7 @@ import type {
   InputDialogOptions,
   FlashNotificationOptions,
   UIDelegate
-} from '@meisiristhebest/protocol';
+} from '@inkpi/protocol';
 
 export interface CommandDefinition {
   name: string;

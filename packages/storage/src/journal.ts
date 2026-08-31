@@ -9,7 +9,7 @@ import {
   writeFileSync
 } from 'node:fs';
 import { dirname } from 'node:path';
-import type { JournalEntry, JournalEntryType, StateLedger } from '@meisiristhebest/protocol';
+import type { JournalEntry, JournalEntryType, StateLedger } from '@inkpi/protocol';
 import type { InkRepository } from './repository.js';
 import type { InkDb } from './db.js';
 

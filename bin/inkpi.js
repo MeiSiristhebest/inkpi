@@ -116,7 +116,7 @@ async function main() {
       const wsPortIdx = args.indexOf('--ws-port');
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
-      const { InkPiDaemon } = await import('@meisiristhebest/agent-core');
+      const { InkPiDaemon } = await import('@inkpi/agent-core');
       const daemon = new InkPiDaemon({ port, host: '127.0.0.1' });
       await daemon.start(port, '127.0.0.1');
       await daemon.startWebSocket(wsPort, '127.0.0.1');
@@ -150,7 +150,7 @@ async function main() {
       const modelIdx = args.indexOf('--model');
       const model = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
 
-      const { runPrintMode } = await import('@meisiristhebest/agent-core');
+      const { runPrintMode } = await import('@inkpi/agent-core');
       const result = await runPrintMode({
         prompt,
         model,
@@ -162,7 +162,7 @@ async function main() {
 
     case 'plugin': {
       const sub = args[1] || 'list';
-      const { runPackageManagerCli } = await import('@meisiristhebest/agent-core');
+      const { runPackageManagerCli } = await import('@inkpi/agent-core');
       const output = await runPackageManagerCli(args.slice(1));
       console.log(output);
       break;
@@ -178,8 +178,8 @@ async function main() {
 }
 
 async function startInteractiveStudio(args) {
-  const { TerminalStudio } = await import('@meisiristhebest/agent-core');
-  const { ANSI } = await import('@meisiristhebest/tui');
+  const { TerminalStudio } = await import('@inkpi/agent-core');
+  const { ANSI } = await import('@inkpi/tui');
 
   const studio = new TerminalStudio({
     typography: { mode: 'chinese', indentString: '\u3000\u3000' }

@@ -1,4 +1,4 @@
-import type { AgentMessage, AssistantMessage, AssistantMessageEvent, Usage, ProviderType } from '@meisiristhebest/protocol';
+import type { AgentMessage, AssistantMessage, AssistantMessageEvent, Usage, ProviderType } from '@inkpi/protocol';
 
 export type { ProviderType };
 

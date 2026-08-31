@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { SessionExporter, SessionTree } from '@meisiristhebest/agent-core';
-import type { AgentMessage } from '@meisiristhebest/protocol';
+import { SessionExporter, SessionTree } from '@inkpi/agent-core';
+import type { AgentMessage } from '@inkpi/protocol';
 
-describe('@meisiristhebest/agent-core -> Session Exporter', () => {
+describe('@inkpi/agent-core -> Session Exporter', () => {
   it('should export session messages and thinking traces into interactive HTML and Markdown', () => {
     const exporter = new SessionExporter();
     const tree = new SessionTree();

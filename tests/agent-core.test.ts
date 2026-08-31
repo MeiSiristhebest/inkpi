@@ -7,11 +7,11 @@ import {
   SessionTree,
   ExtensionHost,
   ExtensionRunner
-} from '@meisiristhebest/agent-core';
-import type { AgentTool, AgentEvent, AgentMessage, UserMessage } from '@meisiristhebest/protocol';
-import { AssistantEventStream, getModelPreset } from '@meisiristhebest/ai';
+} from '@inkpi/agent-core';
+import type { AgentTool, AgentEvent, AgentMessage, UserMessage } from '@inkpi/protocol';
+import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
 
-describe('@meisiristhebest/agent-core', () => {
+describe('@inkpi/agent-core', () => {
   it('should manage MessageQueues with different queue modes', () => {
     const queue = new SteeringQueue();
     const msg1: AgentMessage = { role: 'user', content: '纠偏1' };

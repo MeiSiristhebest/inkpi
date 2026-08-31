@@ -1,4 +1,4 @@
-import type { Workspace, Folder, Document, DocumentSnapshot, DocumentDelta, OperationRecord, SessionEntry } from '@meisiristhebest/protocol';
+import type { Workspace, Folder, Document, DocumentSnapshot, DocumentDelta, OperationRecord, SessionEntry } from '@inkpi/protocol';
 import type { InkDb } from './db.js';
 
 export class InkRepository {

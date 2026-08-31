@@ -14,22 +14,22 @@
     "packages/*"
   ],
   "dependencies": {
-    "@meisiristhebest/agent-core": "1.0.0",
-    "@meisiristhebest/ai": "1.0.0",
-    "@meisiristhebest/client": "1.0.0",
-    "@meisiristhebest/editor-core": "1.0.0",
-    "@meisiristhebest/protocol": "1.0.0",
-    "@meisiristhebest/server": "1.0.0",
-    "@meisiristhebest/session-backends": "1.0.0",
-    "@meisiristhebest/storage": "1.0.0",
-    "@meisiristhebest/tui": "1.0.0"
+    "@inkpi/agent-core": "workspace:*",
+    "@inkpi/ai": "workspace:*",
+    "@inkpi/client": "workspace:*",
+    "@inkpi/editor-core": "workspace:*",
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/server": "workspace:*",
+    "@inkpi/session-backends": "workspace:*",
+    "@inkpi/storage": "workspace:*",
+    "@inkpi/tui": "workspace:*"
   },
   "scripts": {
     "inkpi": "node ./bin/inkpi.js",
     "build": "tsc -b",
     "build:offline": "tsc -b",
-    "generate:models": "pnpm --filter @meisiristhebest/ai run generate:models",
-    "hydrate:model-data": "pnpm --filter @meisiristhebest/ai run hydrate:model-data",
+    "generate:models": "pnpm --filter @inkpi/ai run generate:models",
+    "hydrate:model-data": "pnpm --filter @inkpi/ai run hydrate:model-data",
     "bundle": "node scripts/bundle.ts",
     "build:binaries": "node scripts/build-binaries.mjs",
     "check:pinned-deps": "node scripts/check-pinned-deps.mjs",

@@ -1,4 +1,4 @@
-import type { StateLedger } from '@meisiristhebest/protocol';
+import type { StateLedger } from '@inkpi/protocol';
 import { SessionTree, type SessionTreeNode } from './tree.js';
 
 export interface WhatIfBranchInfo {

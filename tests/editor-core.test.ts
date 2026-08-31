@@ -6,9 +6,9 @@ import {
   formatChineseTypography,
   formatWesternTypography,
   formatTypography
-} from '@meisiristhebest/editor-core';
+} from '@inkpi/editor-core';
 
-describe('@meisiristhebest/editor-core', () => {
+describe('@inkpi/editor-core', () => {
   it('should maintain Document AST and support undo/redo transactions', () => {
     const editor = new HeadlessEditorState('第一段');
     expect(editor.getText()).toBe('第一段');
