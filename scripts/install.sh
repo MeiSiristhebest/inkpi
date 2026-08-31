@@ -15,14 +15,14 @@ fi
 
 # Prefer pnpm, fallback to npm
 if command -v pnpm >/dev/null 2>&1; then
-    echo "📦 Installing inkpi globally via pnpm..."
-    pnpm add -g --ignore-scripts inkpi
+    echo "📦 Installing @inkpi/cli globally via pnpm..."
+    pnpm add -g --ignore-scripts @inkpi/cli
 elif command -v npm >/dev/null 2>&1; then
-    echo "📦 Installing inkpi globally via npm..."
-    npm install -g --ignore-scripts inkpi
+    echo "📦 Installing @inkpi/cli globally via npm..."
+    npm install -g --ignore-scripts @inkpi/cli
 elif command -v bun >/dev/null 2>&1; then
-    echo "📦 Installing inkpi globally via bun..."
-    bun install -g inkpi
+    echo "📦 Installing @inkpi/cli globally via bun..."
+    bun install -g @inkpi/cli
 else
     echo "❌ Neither pnpm, npm, nor bun found in PATH."
     exit 1

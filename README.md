@@ -162,22 +162,22 @@ iwr https://raw.githubusercontent.com/MeiSiristhebest/inkpi/master/scripts/insta
 
 **npm**:
 ```bash
-npm install -g --ignore-scripts inkpi
+npm install -g --ignore-scripts @inkpi/cli
 ```
 
 **pnpm**:
 ```bash
-pnpm add -g --ignore-scripts inkpi
+pnpm add -g --ignore-scripts @inkpi/cli
 ```
 
 **bun**:
 ```bash
-bun install -g inkpi
+bun install -g @inkpi/cli
 ```
 
 **npx** (Instant execution without global installation):
 ```bash
-npx inkpi
+npx @inkpi/cli
 ```
 
 ---

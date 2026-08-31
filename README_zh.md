@@ -89,16 +89,16 @@ iwr https://raw.githubusercontent.com/MeiSiristhebest/inkpi/master/scripts/insta
 
 **npm / pnpm / bun 包管理器安装**:
 ```bash
-npm install -g --ignore-scripts inkpi
+npm install -g --ignore-scripts @inkpi/cli
 # 或
-pnpm add -g --ignore-scripts inkpi
+pnpm add -g --ignore-scripts @inkpi/cli
 # 或
-bun install -g inkpi
+bun install -g @inkpi/cli
 ```
 
 **npx 免装即用**:
 ```bash
-npx inkpi
+npx @inkpi/cli
 ```
 
 ### 2. Monorepo 源码开发与构建

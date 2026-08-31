@@ -1,5 +1,5 @@
 {
-  "name": "inkpi",
+  "name": "@inkpi/cli",
   "version": "1.0.0",
   "description": "InkPi - Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)",
   "type": "module",
