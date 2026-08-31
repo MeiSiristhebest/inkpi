@@ -27,7 +27,15 @@ describe('@inkpi/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from
     expect(registry.getAll().length).toBeGreaterThan(0);
     expect(registry.filterByCapability({ thinking: true }).length).toBeGreaterThan(0);
 
-    const resolver = new ScopedModelResolver(registry);
+    const resolver = new ScopedModelResolver(registry, {
+      scopeMappings: {
+        drafting: 'creative-pro',
+        reasoning: 'deep-reasoning',
+        polishing: 'creative-pro',
+        linting: 'fast-draft',
+        'fast-ghost': 'local-offline'
+      }
+    });
     expect(resolver.getRegistry()).toBe(registry);
 
     // 1. Task: drafting -> routes to creative-pro (DeepSeek Chat)
@@ -42,7 +50,7 @@ describe('@inkpi/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from
     expect(resolver.resolveForTask('polishing').id).toBe('deepseek-chat');
     expect(resolver.resolveForTask('linting').id).toBe('deepseek-chat');
     expect(resolver.resolveForTask('fast-ghost').id).toBe('qwen2.5:14b');
-    expect(resolver.resolveForTask('custom-unmapped-scope').id).toBe('deepseek-chat');
+    expect(() => resolver.resolveForTask('custom-unmapped-scope')).toThrow(/No model mapping configured/);
 
     // 4. Custom routing override
     resolver.setScopeMapping('drafting', 'qwen-custom');
@@ -50,8 +58,15 @@ describe('@inkpi/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from
     expect(customDraft.id).toBe('qwen-max-custom');
 
     // Default constructor resolver
-    const defaultResolver = new ScopedModelResolver();
-    expect(defaultResolver.resolveForTask('drafting').id).toBe('deepseek-chat');
+    const fallbackResolver = new ScopedModelResolver(registry, { fallbackModel: 'creative-pro' });
+    expect(fallbackResolver.resolveForTask('custom-unmapped-scope').id).toBe('deepseek-chat');
+
+    expect(() => new ScopedModelResolver(registry, {
+      scopeMappings: { unknown: 'does-not-exist' }
+    }).resolveForTask('unknown')).toThrow(/not registered/);
+    expect(() => new ScopedModelResolver(registry, {
+      fallbackModel: 'does-not-exist'
+    }).resolveForTask('unmapped')).toThrow(/not registered/);
 
     // Unregister
     expect(registry.unregister('qwen-max-custom')).toBe(true);

@@ -188,4 +188,15 @@ export interface ExportOptions {
   includeThinking?: boolean;
   includeToolCalls?: boolean;
   includeDiffs?: boolean;
+  labels?: {
+    user?: string;
+    assistant?: string;
+    thinking?: string;
+    toolCall?: string;
+    toolResult?: string;
+    system?: string;
+    custom?: string;
+    branches?: string;
+    messages?: string;
+  };
 }

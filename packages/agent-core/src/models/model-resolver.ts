@@ -1,25 +1,25 @@
 import type { ModelConfig } from '@inkpi/protocol';
 import { ModelRegistry, type ModelMetadata } from './model-registry.js';
-import { getModelPreset } from '@inkpi/ai';
 
 export type TaskScope = 'drafting' | 'reasoning' | 'polishing' | 'linting' | 'fast-ghost' | string;
 export type NovelTaskScope = TaskScope;
 
+export interface ScopedModelResolverOptions {
+  scopeMappings?: Record<string, string>;
+  fallbackModel?: string;
+}
+
 export class ScopedModelResolver {
   private registry: ModelRegistry;
   private scopeMappings = new Map<TaskScope, string>();
+  private fallbackModel?: string;
 
-  constructor(registry?: ModelRegistry) {
+  constructor(registry?: ModelRegistry, options: ScopedModelResolverOptions = {}) {
     this.registry = registry || new ModelRegistry();
-    this.initDefaultMappings();
-  }
-
-  private initDefaultMappings(): void {
-    this.scopeMappings.set('drafting', 'creative-pro');
-    this.scopeMappings.set('reasoning', 'deep-reasoning');
-    this.scopeMappings.set('polishing', 'creative-pro');
-    this.scopeMappings.set('linting', 'fast-draft');
-    this.scopeMappings.set('fast-ghost', 'local-offline');
+    this.fallbackModel = options.fallbackModel;
+    for (const [scope, model] of Object.entries(options.scopeMappings || {})) {
+      this.scopeMappings.set(scope, model);
+    }
   }
 
   public setScopeMapping(scope: TaskScope, modelIdOrAlias: string): void {
@@ -30,14 +30,17 @@ export class ScopedModelResolver {
    * 根据具体任务场景，智能解析最佳模型配置 (1:1 对标 repos/pi ScopedModelResolver)
    */
   public resolveForTask(scope: TaskScope): ModelConfig {
-    const targetAlias = this.scopeMappings.get(scope) || 'creative-pro';
+    const targetAlias = this.scopeMappings.get(scope) || this.fallbackModel;
+    if (!targetAlias) {
+      throw new Error(`No model mapping configured for task scope '${scope}'.`);
+    }
     const metadata = this.registry.get(targetAlias);
 
     if (metadata) {
       return metadata.model;
     }
 
-    return getModelPreset(targetAlias);
+    throw new Error(`Model '${targetAlias}' is not registered for task scope '${scope}'.`);
   }
 
   public getRegistry(): ModelRegistry {

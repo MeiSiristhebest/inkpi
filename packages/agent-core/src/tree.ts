@@ -1,5 +1,10 @@
 import type { AgentMessage } from '@inkpi/protocol';
 
+export interface SessionTreeOptions {
+  idGenerator?: () => string;
+  clock?: () => number;
+}
+
 export interface SessionTreeNode {
   id: string;
   parentId: string | null;
@@ -13,8 +18,13 @@ export class SessionTree {
   private nodes = new Map<string, SessionTreeNode>();
   private rootId: string | null = null;
   private currentLeafId: string | null = null;
+  private readonly idGenerator: () => string;
+  private readonly clock: () => number;
+  private generatedId = 0;
 
-  constructor(initialMessages?: AgentMessage[]) {
+  constructor(initialMessages?: AgentMessage[], options: SessionTreeOptions = {}) {
+    this.idGenerator = options.idGenerator || (() => `node_${++this.generatedId}`);
+    this.clock = options.clock || Date.now;
     if (initialMessages && initialMessages.length > 0) {
       for (const msg of initialMessages) {
         this.addMessage(msg);
@@ -23,21 +33,28 @@ export class SessionTree {
   }
 
   public addMessage(message: AgentMessage, parentId?: string, metadata?: Record<string, unknown>): string {
-    const id = message.id || `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id = message.id || this.idGenerator();
     const effectiveParentId = parentId !== undefined ? parentId : this.currentLeafId;
+
+    if (this.nodes.has(id)) {
+      throw new Error(`Node '${id}' already exists in SessionTree`);
+    }
+    if (effectiveParentId !== null && effectiveParentId !== undefined && !this.nodes.has(effectiveParentId)) {
+      throw new Error(`Parent node '${effectiveParentId}' not found in SessionTree`);
+    }
 
     const node: SessionTreeNode = {
       id,
-      parentId: effectiveParentId,
+      parentId: effectiveParentId ?? null,
       message: { ...message, id },
       childrenIds: [],
-      createdAt: Date.now(),
+      createdAt: this.clock(),
       metadata
     };
 
     this.nodes.set(id, node);
 
-    if (effectiveParentId && this.nodes.has(effectiveParentId)) {
+    if (effectiveParentId) {
       const parent = this.nodes.get(effectiveParentId)!;
       parent.childrenIds.push(id);
     }
@@ -58,8 +75,15 @@ export class SessionTree {
     return fromNodeId;
   }
 
-  public branch(name?: string, hypothesis?: string): SessionTreeNode {
-    this.addMessage({ role: 'custom', content: name || '分支', metadata: { hypothesis } } as any);
+  public branch(name: string, hypothesis?: string): SessionTreeNode {
+    if (!name || !name.trim()) {
+      throw new Error('SessionTree.branch requires a non-empty label');
+    }
+    this.addMessage({
+      role: 'custom',
+      customType: 'branch',
+      content: { label: name, hypothesis }
+    });
     return this.nodes.get(this.currentLeafId!)!;
   }
 
@@ -160,4 +184,3 @@ export class SessionTree {
     this.currentLeafId = null;
   }
 }
-

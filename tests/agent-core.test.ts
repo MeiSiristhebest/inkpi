@@ -9,7 +9,7 @@ import {
   ExtensionRunner
 } from '@inkpi/agent-core';
 import type { AgentTool, AgentEvent, AgentMessage, UserMessage } from '@inkpi/protocol';
-import { getModelPreset } from '@inkpi/ai';
+import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
 
 describe('@inkpi/agent-core', () => {
   it('should manage MessageQueues with different queue modes', () => {
@@ -110,7 +110,11 @@ describe('@inkpi/agent-core', () => {
   });
 
   it('should manage branching and DAG history with SessionTree', () => {
-    const tree = new SessionTree();
+    let nextId = 0;
+    const tree = new SessionTree([], {
+      idGenerator: () => `generated_${++nextId}`,
+      clock: () => 1234
+    });
     const msg1: AgentMessage = { id: 'm1', role: 'user', content: '第一幕' };
     const msg2: AgentMessage = { id: 'm2', role: 'assistant', content: [{ type: 'text', text: '主角拔剑' }] };
 
@@ -138,8 +142,29 @@ describe('@inkpi/agent-core', () => {
 
     expect(tree.getBranches().length).toBe(2);
 
+    expect(() => tree.addMessage({ id: 'm2', role: 'assistant', content: [] })).toThrow('already exists');
+    expect(() => tree.addMessage({ role: 'user', content: 'orphan' }, 'missing')).toThrow('Parent node');
+    expect(() => tree.branch()).toThrow('requires a non-empty label');
+
     tree.clear();
     expect(tree.size()).toBe(0);
+  });
+
+  it('should generate stable unique IDs and valid branch marker messages', () => {
+    let nextId = 0;
+    const tree = new SessionTree([], { idGenerator: () => `generated_${++nextId}` });
+    const rootId = tree.addMessage({ role: 'user', content: 'root' });
+    expect(rootId).toBe('generated_1');
+
+    expect(() => tree.addMessage({ id: rootId, role: 'assistant', content: [] })).toThrow('already exists');
+
+    const branchNode = tree.branch('alternate', 'test premise');
+    expect(branchNode.message).toMatchObject({
+      role: 'custom',
+      customType: 'branch',
+      content: { label: 'alternate', hypothesis: 'test premise' }
+    });
+    expect(tree.getHistory()).toHaveLength(2);
   });
 
   it('should run full Agent prompt, continue, steer, followUp, and lifecycle', async () => {
@@ -178,6 +203,171 @@ describe('@inkpi/agent-core', () => {
     expect(agent.state.messages.length).toBe(0);
 
     unsubscribe();
+  });
+
+  it('should reject a second run while the first run is still streaming', async () => {
+    let releaseStream!: () => void;
+    let markStarted!: () => void;
+    const streamStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const streamRelease = new Promise<void>((resolve) => {
+      releaseStream = resolve;
+    });
+
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      streamFn: () => {
+        markStarted();
+        const stream = new AssistantEventStream();
+        void streamRelease.then(() => {
+          stream.push({ type: 'text_delta', textDelta: 'completed' });
+          stream.end();
+        });
+        return stream;
+      }
+    });
+
+    const firstRun = agent.prompt('first');
+    await streamStarted;
+
+    await expect(agent.prompt('second')).rejects.toThrow('run in progress');
+    expect(() => agent.reset()).toThrow('already processing');
+    expect(agent.state.messages.filter((message) => message.role === 'user')).toHaveLength(1);
+
+    releaseStream();
+    await firstRun;
+    expect(agent.state.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'completed' }]
+    });
+
+    await agent.continue();
+  });
+
+  it('should settle asynchronous stream listeners before message_end', async () => {
+    let releaseListener!: () => void;
+    let markListenerStarted!: () => void;
+    const listenerReleased = new Promise<void>((resolve) => {
+      releaseListener = resolve;
+    });
+    const listenerStarted = new Promise<void>((resolve) => {
+      markListenerStarted = resolve;
+    });
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      streamFn: () => {
+        const stream = new AssistantEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: 'text_delta', textDelta: 'ordered' });
+          stream.end();
+        });
+        return stream;
+      }
+    });
+    const events: string[] = [];
+    agent.subscribe(async (event) => {
+      if (event.type === 'message_update') {
+        markListenerStarted();
+        await listenerReleased;
+        events.push('update-settled');
+      }
+      if (event.type === 'message_end' && event.message.role === 'assistant') {
+        events.push('message-end');
+      }
+    });
+
+    const run = agent.prompt('order');
+    await listenerStarted;
+    expect(events).toEqual([]);
+    releaseListener();
+    await run;
+    expect(events).toEqual(['update-settled', 'message-end']);
+  });
+
+  it('should honor parallel tool execution in the agent loop', async () => {
+    let active = 0;
+    let maxActive = 0;
+    let calls = 0;
+    const makeTool = (name: string): AgentTool => ({
+      name,
+      description: name,
+      parameters: { type: 'object', properties: {} },
+      execute: async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        active -= 1;
+        return { content: [{ type: 'text', text: name }] };
+      }
+    });
+
+    const agent = new Agent({
+      toolExecution: 'parallel',
+      initialState: {
+        model: getModelPreset('mock-test'),
+        tools: [makeTool('one'), makeTool('two')]
+      },
+      streamFn: () => {
+        const stream = new AssistantEventStream();
+        calls += 1;
+        if (calls === 1) {
+          for (const [id, name] of [['call-one', 'one'], ['call-two', 'two']] as const) {
+            stream.push({ type: 'tool_call_start', toolCallId: id, toolName: name });
+            stream.push({ type: 'tool_call_delta', toolCallId: id, argsDelta: '{}' });
+            stream.push({
+              type: 'tool_call_end',
+              toolCall: { type: 'toolCall', id, name, arguments: {} }
+            });
+          }
+        } else {
+          stream.push({ type: 'text_delta', textDelta: 'done' });
+        }
+        stream.end();
+        return stream;
+      }
+    });
+
+    await agent.prompt('run tools');
+    expect(maxActive).toBe(2);
+    expect(agent.state.messages.filter((message) => message.role === 'toolResult')).toHaveLength(2);
+  });
+
+  it('should convert hook failures into terminal tool results and clear pending calls', async () => {
+    for (const hook of ['before', 'after'] as const) {
+      const agent = new Agent({
+        initialState: { model: getModelPreset('mock-test') },
+        ...(hook === 'before'
+          ? { beforeToolCall: async () => { throw new Error('before failed'); } }
+          : { afterToolCall: async () => { throw new Error('after failed'); } }),
+        streamFn: () => {
+          const stream = new AssistantEventStream();
+          stream.push({ type: 'tool_call_start', toolCallId: 'call', toolName: 'tool' });
+          stream.push({ type: 'tool_call_delta', toolCallId: 'call', argsDelta: '{}' });
+          stream.push({
+            type: 'tool_call_end',
+            toolCall: { type: 'toolCall', id: 'call', name: 'tool', arguments: {} }
+          });
+          stream.end();
+          return stream;
+        }
+      });
+      agent.getToolRegistry().register({
+        name: 'tool',
+        description: 'tool',
+        parameters: { type: 'object', properties: {} },
+        execute: async () => ({ content: [{ type: 'text', text: 'ok' }] })
+      });
+
+      await agent.prompt(`run ${hook}`);
+      expect(agent.state.pendingToolCalls.size).toBe(0);
+      expect(agent.state.messages.at(-1)).toMatchObject({
+        role: 'toolResult',
+        isError: true,
+        terminate: true
+      });
+      expect((agent.state.messages.at(-1) as any).content[0].text).toContain(`${hook} failed`);
+    }
   });
 
   it('should test ExtensionHost commands, shortcuts, and Runner loadAll', async () => {

@@ -32,6 +32,15 @@ describe('@inkpi/agent-core -> Advanced SessionExporter (HTML & JSONL)', () => {
     }
   });
 
+  it('should reject malformed or schema-invalid JSONL instead of dropping messages', () => {
+    const exporter = new SessionExporter();
+    const invalid = '{"role":"assistant","content":"not-an-array"}';
+
+    expect(() => exporter.importFromJsonl(invalid)).toThrow(/line 1/);
+    expect(exporter.importFromJsonl(`${invalid}\n${JSON.stringify({ role: 'user', content: 'ok' })}`, { strict: false }))
+      .toHaveLength(1);
+  });
+
   it('should render rich interactive HTML report with thinking blocks and branch information', () => {
     const exporter = new SessionExporter();
     const tree = new SessionTree();
@@ -52,8 +61,8 @@ describe('@inkpi/agent-core -> Advanced SessionExporter (HTML & JSONL)', () => {
     const html = exporter.exportToHtml([m1, m2], { format: 'html', title: '全书创作档案' }, tree);
 
     expect(html).toContain('全书创作档案');
-    expect(html).toContain('推演思考');
-    expect(html).toContain('AI 创作响应');
-    expect(html).toContain('分支总数: 1');
+    expect(html).toContain('Thinking');
+    expect(html).toContain('Assistant');
+    expect(html).toContain('Branches: 1');
   });
 });

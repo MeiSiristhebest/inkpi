@@ -4,9 +4,16 @@ import { serializeConversationForSummary } from './compaction/utils.js';
 
 export class BranchSummarizer {
   private customSummarizer?: (serializedBranchText: string) => Promise<string>;
+  private idGenerator: () => string;
+  private clock: () => number;
 
-  constructor(summarizer?: (serializedBranchText: string) => Promise<string>) {
+  constructor(
+    summarizer?: (serializedBranchText: string) => Promise<string>,
+    options: { idGenerator?: () => string; clock?: () => number } = {}
+  ) {
     this.customSummarizer = summarizer;
+    this.idGenerator = options.idGenerator || (() => `branch_summary_${this.clock()}`);
+    this.clock = options.clock || Date.now;
   }
 
   /**
@@ -50,17 +57,16 @@ export class BranchSummarizer {
     const serialized = serializeConversationForSummary(messages);
 
     let summaryText = '';
-    if (this.customSummarizer) {
-      summaryText = await this.customSummarizer(serialized);
-    } else {
-      summaryText = `【被放弃剧情分支探索摘要】\n共推演了 ${divergedNodes.length} 个回合，探索了以下走向：\n${serialized.slice(0, 300)}...`;
+    if (!this.customSummarizer) {
+      throw new Error('Branch summarization requires an explicit summarizer capability.');
     }
+    summaryText = await this.customSummarizer(serialized);
 
     const discardedIdeas: string[] = [];
     for (const msg of messages) {
       if (msg.role === 'user') {
         const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-        discardedIdeas.push(`试探指令: ${text.slice(0, 50)}`);
+        discardedIdeas.push(`Input: ${text.slice(0, 50)}`);
       }
     }
 
@@ -79,16 +85,16 @@ export class BranchSummarizer {
    */
   public createBranchSummaryMessage(details: BranchSummaryDetails): AssistantMessage {
     return {
-      id: `branch_summary_${Date.now()}`,
+      id: this.idGenerator(),
       role: 'assistant',
       content: [
         {
           type: 'text',
-          text: `🌿 【分支剧情推演回溯摘要】\n(已从被放弃分支回溯至公共祖先，以下为探索经验归档)\n${details.summary}`
+          text: `【Branch Summary】\n${details.summary}`
         }
       ],
       stopReason: 'stop',
-      timestamp: Date.now()
+      timestamp: this.clock()
     };
   }
 

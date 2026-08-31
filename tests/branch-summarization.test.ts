@@ -42,7 +42,11 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
     tree.fork(rootAssistant);
     const leafB = tree.addMessage({ role: 'user', content: '试写：主角选择隐忍调查' } as UserMessage);
 
-    const summarizer = new BranchSummarizer(async (text) => `【废案总结】尝试了激进反杀路线，导致矛盾提前终结。`);
+    let now = 1000;
+    const summarizer = new BranchSummarizer(
+      async () => 'Summary of the abandoned route.',
+      { idGenerator: () => 'summary_1', clock: () => ++now }
+    );
 
     const result = await summarizer.switchBranchWithSummary(tree, leafB, leafA);
 
@@ -50,25 +54,26 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
     expect(result).not.toBeNull();
     expect(result!.summaryDetails.commonAncestorId).toBe(rootAssistant);
     expect(result!.summaryDetails.divergedNodeCount).toBe(2);
-    expect(result!.summaryDetails.summary).toContain('【废案总结】尝试了激进反杀路线');
+    expect(result!.summaryDetails.summary).toBe('Summary of the abandoned route.');
 
     const history = tree.getHistory(tree.getCurrentLeafId()!);
     const lastMsg = history[history.length - 1];
     expect(lastMsg.role).toBe('assistant');
     if (lastMsg.role === 'assistant') {
       expect(lastMsg.content[0].type).toBe('text');
-      expect((lastMsg.content[0] as any).text).toContain('分支剧情推演回溯摘要');
+      expect((lastMsg.content[0] as any).text).toContain('Branch Summary');
+      expect((lastMsg.content[0] as any).text).toContain('Summary of the abandoned route.');
+      expect(lastMsg.id).toBe('summary_1');
+      expect(lastMsg.timestamp).toBe(1001);
     }
 
     // Edge case: switch to the same leaf ID returns null
     const sameRes = await summarizer.switchBranchWithSummary(tree, tree.getCurrentLeafId()!);
     expect(sameRes).toBeNull();
 
-    // Default summarizer branch
+    // Missing summarizer is an explicit capability error, not a fabricated summary.
     const defaultSummarizer = new BranchSummarizer();
-    const defaultDetails = await defaultSummarizer.summarizeBranch(tree, leafA, rootAssistant);
-    expect(defaultDetails).toBeDefined();
-    expect(defaultDetails?.summary).toContain('被放弃剧情分支探索摘要');
+    await expect(defaultSummarizer.summarizeBranch(tree, leafA, rootAssistant))
+      .rejects.toThrow('explicit summarizer capability');
   });
 });
-

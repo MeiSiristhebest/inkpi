@@ -1,13 +1,12 @@
 import type { StateLedger } from '@inkpi/protocol';
 import { SessionTree, type SessionTreeNode } from './tree.js';
-import { BranchSummarizer } from './branch-summary.js';
 
 export interface WhatIfBranchInfo {
   branchId: string;
   branchName: string;
   premise: string; // "What if condition..."
-  forkPointNodeId: string;
-  currentLeafId: string;
+  forkPointNodeId: string | null;
+  currentLeafId: string | null;
   createdAt: number;
   stateLedger: StateLedger;
   documentSnapshots?: Record<string, string>; // documentId -> content
@@ -36,7 +35,25 @@ export interface WhatIfExecutiveReport {
   premise: string;
   ledgerDiff: LedgerDiffResult;
   documentDiff?: DocumentDiffResult;
-  executiveSummary: string;
+  executiveSummary?: string;
+}
+
+export interface BranchManagerOptions {
+  mainBranchName?: string;
+  mainBranchPremise?: string;
+  idGenerator?: () => string;
+  clock?: () => number;
+  formatSwitchSummary?: (input: {
+    currentBranch: WhatIfBranchInfo;
+    targetBranch: WhatIfBranchInfo;
+    diff: LedgerDiffResult;
+  }) => string;
+  formatExecutiveReport?: (input: {
+    baseBranch: WhatIfBranchInfo;
+    targetBranch: WhatIfBranchInfo;
+    ledgerDiff: LedgerDiffResult;
+    documentDiff: DocumentDiffResult;
+  }) => string;
 }
 
 /**
@@ -45,22 +62,26 @@ export interface WhatIfExecutiveReport {
  */
 export class BranchManager {
   private tree: SessionTree;
-  private summarizer: BranchSummarizer;
+  private options: BranchManagerOptions;
   private branches = new Map<string, WhatIfBranchInfo>();
   private activeBranchId = 'main';
+  private idGenerator: () => string;
+  private clock: () => number;
 
-  constructor(tree?: SessionTree, summarizer?: BranchSummarizer) {
+  constructor(tree?: SessionTree, options: BranchManagerOptions = {}) {
     this.tree = tree || new SessionTree();
-    this.summarizer = summarizer || new BranchSummarizer();
+    this.options = options;
+    this.idGenerator = options.idGenerator || (() => `branch_${this.clock()}`);
+    this.clock = options.clock || Date.now;
 
     // 默认主线分支
     this.branches.set('main', {
       branchId: 'main',
-      branchName: '主线 (Mainline)',
-      premise: '标准主线进程',
-      forkPointNodeId: 'root',
-      currentLeafId: this.tree.getCurrentLeafId() || 'root',
-      createdAt: Date.now(),
+      branchName: options.mainBranchName || 'main',
+      premise: options.mainBranchPremise || '',
+      forkPointNodeId: null,
+      currentLeafId: this.tree.getCurrentLeafId(),
+      createdAt: this.clock(),
       stateLedger: {
         entities: [],
         assets: [],
@@ -98,7 +119,7 @@ export class BranchManager {
     initialLedger?: StateLedger,
     initialDocuments?: Record<string, string>
   ): WhatIfBranchInfo {
-    const currentLeaf = this.tree.getCurrentLeafId() || 'root';
+    const currentLeaf = this.tree.getCurrentLeafId();
     const activeBranch = this.branches.get(this.activeBranchId);
 
     const ledger: StateLedger = initialLedger
@@ -119,7 +140,7 @@ export class BranchManager {
       premise,
       forkPointNodeId: currentLeaf,
       currentLeafId: currentLeaf,
-      createdAt: Date.now(),
+      createdAt: this.clock(),
       stateLedger: ledger,
       documentSnapshots: docs
     };
@@ -150,14 +171,15 @@ export class BranchManager {
 
     if (currentBranch && currentBranch.branchId !== targetBranchId) {
       const diff = this.diffLedgers(currentBranch.stateLedger, target.stateLedger);
-      summaryText = `【分支切换: ${currentBranch.branchName} -> ${target.branchName}】\n` +
-        `分支假设: ${target.premise}\n` +
-        `主要实体状态差异: ${diff.changedEntityStatuses.map((c) => `${c.name}: ${c.from || '无'} -> ${c.to || '无'}`).join('；') || '无明显变动'}\n` +
-        `新增登场: ${diff.addedEntities.join('、') || '无'}`;
+      summaryText = this.options.formatSwitchSummary?.({
+        currentBranch,
+        targetBranch: target,
+        diff
+      });
     }
 
     this.activeBranchId = targetBranchId;
-    if (target.currentLeafId && target.currentLeafId !== 'root') {
+    if (target.currentLeafId) {
       this.tree.navigate(target.currentLeafId);
     }
 
@@ -280,31 +302,18 @@ export class BranchManager {
     const ledgerDiff = this.diffLedgers(baseBranch.stateLedger, targetBranch.stateLedger);
     const docDiff = this.diffDocuments(baseBranchId, targetBranchId);
 
-    const summaryParts: string[] = [];
-    summaryParts.push(`【平行推演决策报告: ${baseBranch.branchName} VS ${targetBranch.branchName}】`);
-    summaryParts.push(`推演前提: ${targetBranch.premise}`);
-
-    if (ledgerDiff.changedEntityStatuses.length > 0) {
-      summaryParts.push(`实体状态变动: ${ledgerDiff.changedEntityStatuses.map((c) => `${c.name}(${c.from || '新'} -> ${c.to})`).join(', ')}`);
-    }
-    if (ledgerDiff.addedEntities.length > 0) {
-      summaryParts.push(`新增实体: ${ledgerDiff.addedEntities.join(', ')}`);
-    }
-    if (ledgerDiff.resolvedTracks.length > 0) {
-      summaryParts.push(`闭环线索与状态: ${ledgerDiff.resolvedTracks.join(', ')}`);
-    }
-    if (docDiff.modifiedDocuments.length > 0) {
-      summaryParts.push(`受影响资源: ${docDiff.modifiedDocuments.map((d) => `${d.documentId} (字符Δ: ${d.charsDelta > 0 ? `+${d.charsDelta}` : d.charsDelta})`).join(', ')}`);
-    }
-
-
     return {
       baseBranchName: baseBranch.branchName,
       targetBranchName: targetBranch.branchName,
       premise: targetBranch.premise,
       ledgerDiff,
       documentDiff: docDiff,
-      executiveSummary: summaryParts.join('\n')
+      executiveSummary: this.options.formatExecutiveReport?.({
+        baseBranch,
+        targetBranch,
+        ledgerDiff,
+        documentDiff: docDiff
+      })
     };
   }
 }

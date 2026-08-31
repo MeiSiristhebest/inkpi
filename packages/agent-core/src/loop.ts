@@ -78,9 +78,16 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
         timestamp: Date.now()
       };
       state.streamingMessage = initialAssistantMsg;
-      await emitEvent({ type: 'message_start', message: initialAssistantMsg });
 
+      // Providers may start producing as soon as streamFn returns. Attach the
+      // listener before awaiting any lifecycle listener, then gate updates so
+      // message_start still settles before the first message_update.
+      let releaseMessageStart!: () => void;
+      const messageStartSettled = new Promise<void>((resolve) => {
+        releaseMessageStart = resolve;
+      });
       stream.on(async (msgEvent) => {
+        await messageStartSettled;
         if (state.streamingMessage) {
           if (msgEvent.type === 'text_delta') {
             let textBlock = state.streamingMessage.content.find((b: any) => b.type === 'text') as any;
@@ -106,8 +113,11 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
         }
       });
 
+      await emitEvent({ type: 'message_start', message: initialAssistantMsg });
+      releaseMessageStart();
 
       const assistantMessage = await stream.collect();
+      await stream.waitForListeners?.();
       state.isStreaming = false;
       state.streamingMessage = undefined;
       state.messages.push(assistantMessage);
@@ -125,9 +135,17 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       let shouldTerminateFromTools = false;
 
       if (toolCalls.length > 0) {
-        // Execute tools
-        for (const call of toolCalls) {
-          if (signal?.aborted) break;
+        const executeOne = async (call: ToolCallContent): Promise<ToolResultMessage & { terminate?: boolean }> => {
+          if (signal?.aborted) {
+            return {
+              role: 'toolResult',
+              toolCallId: call.id,
+              toolName: call.name,
+              isError: true,
+              content: [{ type: 'text', text: 'Tool execution aborted by signal' }],
+              timestamp: Date.now()
+            };
+          }
 
           state.pendingToolCalls.add(call.id);
           await emitEvent({
@@ -137,76 +155,93 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
             args: call.arguments
           });
 
-          // Check beforeToolCall gate
-          let blocked = false;
-          let blockReason = 'Tool execution blocked by gate';
-          if (options.beforeToolCall) {
-            const beforeRes = await options.beforeToolCall({
-              assistantMessage,
-              toolCall: call,
-              args: call.arguments,
-              context: { messages: state.messages }
-            });
-            if (beforeRes?.block) {
-              blocked = true;
-              blockReason = beforeRes.reason || blockReason;
-              if (beforeRes.terminate) shouldTerminateFromTools = true;
-            }
-          }
-
           let toolRes: ToolResultMessage & { terminate?: boolean };
+          try {
+            let blocked = false;
+            let blockReason = 'Tool execution blocked by gate';
+            if (options.beforeToolCall) {
+              const beforeRes = await options.beforeToolCall({
+                assistantMessage,
+                toolCall: call,
+                args: call.arguments,
+                context: { messages: state.messages }
+              });
+              if (beforeRes?.block) {
+                blocked = true;
+                blockReason = beforeRes.reason || blockReason;
+                if (beforeRes.terminate) shouldTerminateFromTools = true;
+              }
+            }
 
-          if (blocked) {
+            if (blocked) {
+              toolRes = {
+                role: 'toolResult',
+                toolCallId: call.id,
+                toolName: call.name,
+                isError: true,
+                content: [{ type: 'text', text: blockReason }],
+                timestamp: Date.now()
+              };
+            } else {
+              toolRes = await toolRegistry.executeTool(
+                call,
+                signal,
+                async (update) => {
+                  await emitEvent({
+                    type: 'tool_execution_update',
+                    toolCallId: call.id,
+                    partialResult: update
+                  });
+                },
+                { messages: state.messages }
+              );
+            }
+
+            if (options.afterToolCall) {
+              const afterRes = await options.afterToolCall({
+                assistantMessage,
+                toolCall: call,
+                args: call.arguments,
+                result: { content: toolRes.content, details: toolRes.details },
+                isError: toolRes.isError ?? false
+              });
+              if (afterRes) {
+                if (afterRes.content) toolRes.content = afterRes.content;
+                if (afterRes.details !== undefined) toolRes.details = afterRes.details;
+                if (afterRes.isError !== undefined) toolRes.isError = afterRes.isError;
+                if (afterRes.terminate) shouldTerminateFromTools = true;
+              }
+            }
+          } catch (error) {
+            shouldTerminateFromTools = true;
+            const message = error instanceof Error ? error.message : String(error);
             toolRes = {
               role: 'toolResult',
               toolCallId: call.id,
               toolName: call.name,
               isError: true,
-              content: [{ type: 'text', text: blockReason }],
+              terminate: true,
+              content: [{ type: 'text', text: `Tool lifecycle error: ${message}` }],
               timestamp: Date.now()
             };
-          } else {
-            toolRes = await toolRegistry.executeTool(
-              call,
-              signal,
-              async (update) => {
-                await emitEvent({
-                  type: 'tool_execution_update',
-                  toolCallId: call.id,
-                  partialResult: update
-                });
-              }
-            );
+          } finally {
+            state.pendingToolCalls.delete(call.id);
           }
 
-          // Check afterToolCall gate
-          if (options.afterToolCall) {
-            const afterRes = await options.afterToolCall({
-              assistantMessage,
-              toolCall: call,
-              args: call.arguments,
-              result: { content: toolRes.content, details: toolRes.details },
-              isError: toolRes.isError ?? false
-            });
-            if (afterRes) {
-              if (afterRes.content) toolRes.content = afterRes.content;
-              if (afterRes.details !== undefined) toolRes.details = afterRes.details;
-              if (afterRes.isError !== undefined) toolRes.isError = afterRes.isError;
-              if (afterRes.terminate) shouldTerminateFromTools = true;
-            }
-          }
-
-          if (toolRes.terminate) {
-            shouldTerminateFromTools = true;
-          }
-
-          state.pendingToolCalls.delete(call.id);
+          if (toolRes.terminate) shouldTerminateFromTools = true;
           await emitEvent({
             type: 'tool_execution_end',
             toolCallId: call.id,
             result: toolRes.content
           });
+          return toolRes;
+        };
 
+        const results = options.toolExecution === 'sequential'
+          ? await executeSequential(toolCalls, executeOne)
+          : await Promise.all(toolCalls.map((call) => executeOne(call)));
+
+        for (const toolRes of results) {
           toolResults.push(toolRes);
           state.messages.push(toolRes);
           await emitEvent({ type: 'message_start', message: toolRes });
@@ -269,4 +304,13 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
   }
 
   return state.messages;
+}
+
+async function executeSequential<T>(
+  items: T[],
+  execute: (item: T) => Promise<ToolResultMessage & { terminate?: boolean }>
+): Promise<Array<ToolResultMessage & { terminate?: boolean }>> {
+  const results: Array<ToolResultMessage & { terminate?: boolean }> = [];
+  for (const item of items) results.push(await execute(item));
+  return results;
 }
