@@ -3,11 +3,12 @@ import {
   InkDb,
   InkRepository,
   FtsSearchEngine,
-  JitMemoryRetriever
+  JitMemoryRetriever,
+  formatJitContextAsPrompt
 } from '@inkpi/storage';
 
 describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
-  it('should retrieve working memory (L1), recent summaries (L2) and global FTS5 lore (L3)', async () => {
+  it('should return structured retrieval data without imposing a content format', async () => {
     const db = new InkDb(':memory:');
     const repo = new InkRepository(db);
     const fts = new FtsSearchEngine(db);
@@ -36,8 +37,8 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
       {
         workspaceId: 'workspace_jit',
         currentDocumentId: 'ch_3',
-        currentDraftText: 'Alice holds the Quantum Beacon, examining the ancient ruins.',
-        activeEntities: ['Alice', 'Quantum Beacon']
+        currentText: 'Alice holds the Quantum Beacon, examining the ancient ruins.',
+        activeReferences: ['Alice', 'Quantum Beacon']
       },
       {
         entities: [{ name: 'Alice', status: 'Captain' }, { name: 'Bob', status: 'Engineer' }],
@@ -51,6 +52,7 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
     // Assert L1
     expect(result.l1WorkingMemory.activeEntities).toContain('Alice');
     expect(result.l1WorkingMemory.activeAssets).toContain('Quantum Beacon');
+    expect(result.l1WorkingMemory.activeReferences).toEqual(['Alice', 'Quantum Beacon']);
 
     // Assert L2
     expect(result.l2RecentSummaries.length).toBe(2);
@@ -59,11 +61,65 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
     // Assert L3
     expect(result.l3GlobalLore.length).toBeGreaterThan(0);
 
-    // Assert assembled prompt block
-    expect(result.assembledPromptBlock).toContain('L1 Working Memory');
-    expect(result.assembledPromptBlock).toContain('L2 Document Chain');
-    expect(result.assembledPromptBlock).toContain('L3 Global Lore');
+    // Formatting is opt-in. The core result must remain usable by any modality.
+    expect(result.assembledPromptBlock).toBe('');
 
+    db.close();
+  });
+
+  it('should use an explicit formatter and keyword selector', async () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const fts = new FtsSearchEngine(db);
+    repo.createWorkspace({ id: 'workspace_custom', title: 'Workspace', owner: 'Owner', createdAt: Date.now(), updatedAt: Date.now() });
+    repo.createFolder({ id: 'folder_custom', workspaceId: 'workspace_custom', title: 'Folder', orderIndex: 1, createdAt: Date.now(), updatedAt: Date.now() });
+    repo.createDocument({ id: 'doc_custom', folderId: 'folder_custom', workspaceId: 'workspace_custom', title: 'Document', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: Date.now(), updatedAt: Date.now() });
+    repo.upsertSnapshot({ documentId: 'doc_custom', version: 1, contentJson: '{}', contentMarkdown: 'Signal appears here.', contentSize: 19, updatedAt: Date.now() });
+    fts.rebuildIndex();
+
+    const result = await new JitMemoryRetriever({
+      repository: repo,
+      ftsEngine: fts,
+      keywordSelector: () => ['Signal'],
+      formatContext: (structured) => `CUSTOM:${structured.l3GlobalLore.map((item) => item.documentId).join(',')}`
+    }).retrieve({ workspaceId: 'workspace_custom' });
+
+    expect(result.l3GlobalLore.map((item) => item.documentId)).toEqual(['doc_custom']);
+    expect(result.assembledPromptBlock).toBe('CUSTOM:doc_custom');
+
+    const explicitText = formatJitContextAsPrompt(result);
+    expect(explicitText).toContain('Retrieved Context');
+    expect(explicitText).toContain('Document');
+    db.close();
+  });
+
+  it('should apply the configured FTS search error policy', async () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const failingFts = { search: () => { throw new Error('index unavailable'); } } as unknown as FtsSearchEngine;
+
+    await expect(new JitMemoryRetriever({
+      repository: repo,
+      ftsEngine: failingFts,
+      keywordSelector: () => ['term']
+    }).retrieve({})).rejects.toThrow('index unavailable');
+
+    const ignored = await new JitMemoryRetriever({
+      repository: repo,
+      ftsEngine: failingFts,
+      keywordSelector: () => ['term'],
+      onSearchError: 'ignore'
+    }).retrieve({});
+    expect(ignored.l3GlobalLore).toEqual([]);
+
+    const errors: string[] = [];
+    await new JitMemoryRetriever({
+      repository: repo,
+      ftsEngine: failingFts,
+      keywordSelector: () => ['term'],
+      onSearchError: (error, keyword) => errors.push(`${keyword}:${(error as Error).message}`)
+    }).retrieve({});
+    expect(errors).toEqual(['term:index unavailable']);
     db.close();
   });
 });

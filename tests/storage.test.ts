@@ -181,5 +181,6 @@ describe('@inkpi/storage', () => {
     expect(recovery.replayedDeltasCount).toBe(1);
     expect(recovery.contentMarkdown).toBe('This is the merged text snapshot.[New text]');
     expect(recovery.contentSize).toBeGreaterThan(5);
+    expect(recovery.recoveryErrors).toEqual([]);
   });
 });

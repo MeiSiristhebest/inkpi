@@ -15,37 +15,34 @@ export class FtsSearchEngine {
     const trimmed = query.trim();
     if (!trimmed) return [];
 
-    try {
-      const formattedQuery = `"${trimmed.replace(/"/g, '""')}"`;
-      const stmt = this.db.prepare(`
-        SELECT 
-          f.document_id,
-          c.title,
-          c.order_index,
-          snippet(documents_fts, 2, '<b>', '</b>', '...', 24) AS snippet,
-          bm25(documents_fts) AS rank
-        FROM documents_fts f
-        JOIN documents c ON c.id = f.document_id
-        WHERE documents_fts MATCH ?
-        ORDER BY rank ASC
-        LIMIT ?
-      `);
+    const formattedQuery = `"${trimmed.replace(/"/g, '""')}"`;
+    const stmt = this.db.prepare(`
+      SELECT
+        f.document_id,
+        c.title,
+        c.order_index,
+        snippet(documents_fts, 2, '<b>', '</b>', '...', 24) AS snippet,
+        bm25(documents_fts) AS rank
+      FROM documents_fts f
+      JOIN documents c ON c.id = f.document_id
+      WHERE documents_fts MATCH ?
+      ORDER BY rank ASC
+      LIMIT ?
+    `);
 
-      const rows = stmt.all(formattedQuery, limit) as any[];
-      if (rows && rows.length > 0) {
-        return rows.map((r) => ({
-          documentId: r.document_id,
-          title: r.title,
-          orderIndex: Number(r.order_index),
-          snippet: r.snippet || '',
-          rank: Number(r.rank)
-        }));
-      }
-    } catch {
-      // Ignore FTS query syntax error and proceed to fallback
+    const ftsRows = stmt.all(formattedQuery, limit) as any[];
+    if (ftsRows && ftsRows.length > 0) {
+      return ftsRows.map((r) => ({
+        documentId: r.document_id,
+        title: r.title,
+        orderIndex: Number(r.order_index),
+        snippet: r.snippet || '',
+        rank: Number(r.rank)
+      }));
     }
 
-    // High-fidelity fallback for CJK substring matching
+    // FTS completed successfully but found nothing. This fallback supports
+    // substring matching for scripts whose tokenization is not useful here.
     const fallbackStmt = this.db.prepare(`
       SELECT 
         s.document_id,
@@ -60,8 +57,8 @@ export class FtsSearchEngine {
     `);
 
     const likeQuery = `%${trimmed}%`;
-    const rows = fallbackStmt.all(likeQuery, likeQuery, limit) as any[];
-    return rows.map((r) => ({
+    const fallbackRows = fallbackStmt.all(likeQuery, likeQuery, limit) as any[];
+    return fallbackRows.map((r) => ({
       documentId: r.document_id,
       title: r.title,
       orderIndex: Number(r.order_index),

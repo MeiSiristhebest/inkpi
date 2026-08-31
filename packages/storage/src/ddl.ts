@@ -110,10 +110,12 @@ CREATE TABLE IF NOT EXISTS lanes (
   workspace_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
+  parent_lane_id TEXT,
   is_default INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_lane_id) REFERENCES lanes(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lanes_workspace_id ON lanes(workspace_id);
 
@@ -123,6 +125,8 @@ CREATE TABLE IF NOT EXISTS branch_tips (
   document_id TEXT NOT NULL,
   head_snapshot_version INTEGER NOT NULL,
   last_delta_id INTEGER DEFAULT 0,
+  base_snapshot_version INTEGER NOT NULL DEFAULT 0,
+  base_delta_id INTEGER DEFAULT 0,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (lane_id, document_id),
   FOREIGN KEY (lane_id) REFERENCES lanes(id) ON DELETE CASCADE,
@@ -141,4 +145,3 @@ CREATE TABLE IF NOT EXISTS session_compaction_records (
 );
 CREATE INDEX IF NOT EXISTS idx_compaction_session_id ON session_compaction_records(session_id);
 `;
-

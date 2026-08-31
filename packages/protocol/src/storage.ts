@@ -86,9 +86,10 @@ export interface AssetRecord {
 
 export interface TrackRecord {
   id?: string;
-  clue: string;
+  clue?: string;
+  summary?: string;
   sourceId?: string;
-  status: 'pending' | 'resolved';
+  status?: string;
   notes?: string;
   metadata?: Record<string, unknown>;
   [key: string]: unknown;
@@ -156,6 +157,10 @@ export type JournalEntryType =
 export interface JournalEntry<TPayload = any> {
   id: string;
   sessionId: string;
+  /** Session-wide monotonically increasing journal sequence. */
+  seq: number;
+  /** Immutable tree placement; null means this entry starts a root. */
+  parentId: string | null;
   type: JournalEntryType;
   timestamp: number;
   payload: TPayload;
@@ -166,7 +171,11 @@ export interface JournalEntry<TPayload = any> {
 export interface JitContextQuery {
   workspaceId?: string;
   currentDocumentId?: string;
+  currentText?: string;
+  activeReferences?: string[];
+  /** @deprecated Use currentText. */
   currentDraftText?: string;
+  /** @deprecated Use activeReferences. */
   activeEntities?: string[];
   maxSummaryDocuments?: number;
   maxFtsResults?: number;
@@ -175,7 +184,10 @@ export interface JitContextQuery {
 export interface JitContextResult {
   l1WorkingMemory: {
     activeLedger: StateLedger;
+    activeReferences: string[];
+    /** @deprecated Use activeReferences. */
     activeEntities: string[];
+    /** @deprecated Use activeReferences. */
     activeAssets: string[];
   };
   l2RecentSummaries: Array<{

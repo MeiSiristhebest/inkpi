@@ -64,11 +64,120 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
 
     lanes.setDefaultLane(workspaceId, 'lane_if_1');
     const updatedIfLane = lanes.getLane('lane_if_1');
+    expect(updatedIfLane?.isDefault).toBe(true);
+    expect(() => lanes.setDefaultLane(workspaceId, 'missing_lane')).toThrow('not found');
+    expect(() => lanes.setBranchTip({
+      laneId: 'missing_lane',
+      documentId: 'ch_101',
+      headSnapshotVersion: 1,
+      lastDeltaId: 0,
+      updatedAt: 1000
+    })).toThrow('not found');
+    expect(() => lanes.forkLane('lane_main', 'lane_if_1', 'Duplicate')).toThrow('already exists');
+    expect(() => lanes.mergeLane('lane_main', 'lane_main')).toThrow('must differ');
     expect(lanes.getLanes('empty_workspace')).toEqual([]);
     expect(lanes.getBranchTips('empty_lane')).toEqual([]);
 
     expect(() => lanes.forkLane('non_existent', 'target', 'Target')).toThrow();
+    expect(() => lanes.mergeLane('non_existent', 'lane_main')).toThrow('Source lane');
 
+    db.close();
+  });
+
+  it('should reject a merge when the parent lane changed after fork', () => {
+    const db = new InkDb(':memory:');
+    const lanes = new LaneManager(db);
+    const workspaceId = 'workspace_lane_conflict';
+
+    db.prepare(`
+      INSERT INTO workspaces (id, title, owner, created_at, updated_at)
+      VALUES (?, 'Workspace', 'owner', 1000, 1000)
+    `).run(workspaceId);
+    db.prepare(`
+      INSERT INTO folders (id, workspace_id, title, order_index, created_at, updated_at)
+      VALUES ('folder', ?, 'Folder', 1, 1000, 1000)
+    `).run(workspaceId);
+    db.prepare(`
+      INSERT INTO documents (id, folder_id, workspace_id, title, order_index, content_size, created_at, updated_at)
+      VALUES ('document', 'folder', ?, 'Document', 1, 0, 1000, 1000)
+    `).run(workspaceId);
+
+    lanes.createLane({
+      id: 'parent',
+      workspaceId,
+      name: 'Parent',
+      isDefault: true,
+      createdAt: 1000,
+      updatedAt: 1000
+    });
+    lanes.setBranchTip({
+      laneId: 'parent',
+      documentId: 'document',
+      headSnapshotVersion: 1,
+      lastDeltaId: 1,
+      updatedAt: 1000
+    });
+    lanes.forkLane('parent', 'child', 'Child');
+
+    lanes.setBranchTip({
+      laneId: 'child',
+      documentId: 'document',
+      headSnapshotVersion: 2,
+      lastDeltaId: 2,
+      updatedAt: 1001
+    });
+    lanes.setBranchTip({
+      laneId: 'parent',
+      documentId: 'document',
+      headSnapshotVersion: 3,
+      lastDeltaId: 3,
+      updatedAt: 1002
+    });
+
+    expect(() => lanes.mergeLane('child', 'parent')).toThrow('target changed after fork');
+    expect(lanes.getBranchTip('parent', 'document')).toMatchObject({
+      headSnapshotVersion: 3,
+      lastDeltaId: 3
+    });
+    db.close();
+  });
+
+  it('should only fast-forward a lane into its recorded parent', () => {
+    const db = new InkDb(':memory:');
+    const lanes = new LaneManager(db);
+    const workspaceId = 'workspace_lane_parent';
+    db.prepare(`
+      INSERT INTO workspaces (id, title, owner, created_at, updated_at)
+      VALUES (?, 'Workspace', 'owner', 1000, 1000)
+    `).run(workspaceId);
+
+    lanes.createLane({
+      id: 'lane_a',
+      workspaceId,
+      name: 'A',
+      isDefault: true,
+      createdAt: 1000,
+      updatedAt: 1000
+    });
+    lanes.createLane({
+      id: 'lane_b',
+      workspaceId,
+      name: 'B',
+      isDefault: false,
+      createdAt: 1000,
+      updatedAt: 1000
+    });
+    lanes.createLane({
+      id: 'lane_child',
+      workspaceId,
+      name: 'Child',
+      parentLaneId: 'lane_a',
+      isDefault: false,
+      createdAt: 1000,
+      updatedAt: 1000
+    });
+
+    expect(() => lanes.mergeLane('lane_child', 'lane_b')).toThrow('parent lane');
     db.close();
   });
 

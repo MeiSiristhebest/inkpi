@@ -93,4 +93,58 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
 
     db.close();
   });
+
+  it('should use CJK substring fallback only after a successful FTS miss', () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const fts = new FtsSearchEngine(db);
+    const now = Date.now();
+
+    repo.createWorkspace({
+      id: 'workspace_cjk',
+      title: '检索工作区',
+      owner: 'tester',
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.createFolder({
+      id: 'folder_cjk',
+      workspaceId: 'workspace_cjk',
+      title: '素材',
+      orderIndex: 0,
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.createDocument({
+      id: 'doc_cjk',
+      folderId: 'folder_cjk',
+      workspaceId: 'workspace_cjk',
+      title: '夜航记录',
+      orderIndex: 0,
+      contentSize: 8,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.upsertSnapshot({
+      documentId: 'doc_cjk',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: '雾中的灯塔忽然熄灭。',
+      contentSize: 10,
+      updatedAt: now
+    });
+
+    expect(fts.search('灯塔').map((result) => result.documentId)).toEqual(['doc_cjk']);
+    db.close();
+  });
+
+  it('should surface an FTS execution failure instead of masking it with LIKE results', () => {
+    const db = new InkDb(':memory:');
+    const fts = new FtsSearchEngine(db);
+    db.exec('DROP TABLE documents_fts;');
+
+    expect(() => fts.search('anything')).toThrow();
+    db.close();
+  });
 });

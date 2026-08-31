@@ -10,19 +10,31 @@ import type { FtsSearchEngine } from './fts.js';
 export interface JitMemoryRetrieverOptions {
   repository: InkRepository;
   ftsEngine: FtsSearchEngine;
+  /** Select domain-specific retrieval terms from the query and active ledger. */
+  keywordSelector?: (query: JitContextQuery, activeLedger: StateLedger, activeEntities: string[], activeAssets: string[]) => string[];
+  /** Format the structured retrieval result for a downstream consumer. */
+  formatContext?: (result: Omit<JitContextResult, 'assembledPromptBlock'>) => string;
+  /** Decide what to do when a real FTS search fails. Defaults to throwing. */
+  onSearchError?: 'throw' | 'ignore' | ((error: unknown, keyword: string) => void);
 }
 
 /**
- * JIT 分层检索记忆管理器 (1:1 对标工业级 long-context 智能检索架构)
- * 包含 L1 工作记忆 (内存状态账本) -> L2 近期剧情链条 (章节摘要) -> L3 全局长线记忆 (FTS5 全文召回)
+ * JIT 分层检索管理器。
+ * 核心只负责从结构化状态、近期文档和全文索引中检索数据；提示词格式由调用方选择。
  */
 export class JitMemoryRetriever {
   private repo: InkRepository;
   private fts: FtsSearchEngine;
+  private keywordSelector: NonNullable<JitMemoryRetrieverOptions['keywordSelector']>;
+  private formatContext?: JitMemoryRetrieverOptions['formatContext'];
+  private onSearchError: NonNullable<JitMemoryRetrieverOptions['onSearchError']>;
 
   constructor(options: JitMemoryRetrieverOptions) {
     this.repo = options.repository;
     this.fts = options.ftsEngine;
+    this.keywordSelector = options.keywordSelector || defaultKeywordSelector;
+    this.formatContext = options.formatContext;
+    this.onSearchError = options.onSearchError || 'throw';
   }
 
   /**
@@ -43,7 +55,8 @@ export class JitMemoryRetriever {
       modifiedResources: []
     };
 
-    const textToScan = `${query.currentDraftText || ''} ${(query.activeEntities || []).join(' ')}`;
+    const suppliedReferences = query.activeReferences || query.activeEntities || [];
+    const textToScan = `${query.currentText || query.currentDraftText || ''} ${suppliedReferences.join(' ')}`;
     const activeEntities = (activeLedger.entities || [])
       .filter((c: StateLedger['entities'][number]) => textToScan.includes(c.name))
       .map((c: StateLedger['entities'][number]) => c.name);
@@ -53,7 +66,7 @@ export class JitMemoryRetriever {
       .map((i: StateLedger['assets'][number]) => i.name);
 
     // -------------------------------------------------------------
-    // L2: 近期剧情概要链 (Recent Document Summaries)
+    // L2: Recent document summaries
     // -------------------------------------------------------------
     const l2RecentSummaries: Array<{ documentId: string; title: string; summary: string }> = [];
     if (query.workspaceId) {
@@ -67,7 +80,7 @@ export class JitMemoryRetriever {
 
       allDocuments.sort((a, b) => a.orderIndex - b.orderIndex);
 
-      // 提取当前章节之前的最近 N 个章节摘要
+      // Retrieve the nearest preceding documents by their explicit order.
       let targetIndex = allDocuments.length;
       if (query.currentDocumentId) {
         const idx = allDocuments.findIndex((c) => c.id === query.currentDocumentId);
@@ -90,22 +103,12 @@ export class JitMemoryRetriever {
     }
 
     // -------------------------------------------------------------
-    // L3: 全局长线记忆 (FTS5 Global Lore Retrieval)
+    // L3: Full-text retrieval
     // -------------------------------------------------------------
     const l3GlobalLore: FtsSearchResult[] = [];
-    const keywords: string[] = [];
-
-    if (query.activeEntities && query.activeEntities.length > 0) {
-      keywords.push(...query.activeEntities);
-    }
-    if (activeEntities.length > 0) {
-      keywords.push(...activeEntities);
-    }
-    if (activeAssets.length > 0) {
-      keywords.push(...activeAssets);
-    }
-
-    const uniqueKeywords = Array.from(new Set(keywords)).filter((k) => k.length >= 2);
+    const uniqueKeywords = Array.from(new Set(this.keywordSelector(query, activeLedger, activeEntities, activeAssets)))
+      .filter((k) => typeof k === 'string' && k.trim().length >= 2)
+      .map((k) => k.trim());
 
     if (uniqueKeywords.length > 0) {
       for (const kw of uniqueKeywords.slice(0, 5)) {
@@ -120,56 +123,66 @@ export class JitMemoryRetriever {
             }
           }
         } catch (err) {
-          console.error('[JitMemoryRetriever] FTS search error:', err);
+          if (this.onSearchError === 'throw') throw err;
+          if (this.onSearchError === 'ignore') continue;
+          this.onSearchError(err, kw);
         }
       }
     }
 
-    // -------------------------------------------------------------
-    // 组装格式化 JIT Prompt 块
-    // -------------------------------------------------------------
-    const sections: string[] = [];
-
-    // 1. L1 Block
-    sections.push('=== 🧠 [L1 Working Memory: Active Entities and Items] ===');
-    if (activeLedger.entities && activeLedger.entities.length > 0) {
-      sections.push(`Active Entities: ${activeLedger.entities.map((c: StateLedger['entities'][number]) => `${c.name}${c.status ? `(${c.status})` : ''}`).join(', ')}`);
-    }
-    if (activeLedger.assets && activeLedger.assets.length > 0) {
-      sections.push(`Key Items: ${activeLedger.assets.map((i: StateLedger['assets'][number]) => `${i.name}${i.holder ? `[Holder:${i.holder}]` : ''}`).join(', ')}`);
-    }
-    const pendingForeshadows = (activeLedger.tracks || []).filter((f: StateLedger['tracks'][number]) => f.status === 'pending');
-    if (pendingForeshadows.length > 0) {
-      sections.push(`Pending Conditions: ${pendingForeshadows.map((f: StateLedger['tracks'][number]) => f.clue).join('; ')}`);
-    }
-
-    // 2. L2 Block
-    if (l2RecentSummaries.length > 0) {
-      sections.push('\n=== 📜 [L2 Document Chain: Recent Summaries] ===');
-      for (const s of l2RecentSummaries) {
-        sections.push(`• [${s.title}]: ${s.summary}`);
-      }
-    }
-
-    // 3. L3 Block
-    if (l3GlobalLore.length > 0) {
-      sections.push('\n=== 🔍 [L3 Global Lore & Long-term Context (FTS5 Retrieval)] ===');
-      for (const lore of l3GlobalLore) {
-        sections.push(`• History snippet from [${lore.title}]: "${lore.snippet.replace(/\\n+/g, ' ')}"`);
-      }
-    }
-
-    const assembledPromptBlock = sections.join('\n');
-
-    return {
+    const structuredResult = {
       l1WorkingMemory: {
         activeLedger,
+        activeReferences: [...new Set([...activeEntities, ...activeAssets])],
         activeEntities,
         activeAssets
       },
       l2RecentSummaries,
-      l3GlobalLore,
-      assembledPromptBlock
+      l3GlobalLore
+    };
+
+    return {
+      ...structuredResult,
+      assembledPromptBlock: this.formatContext ? this.formatContext(structuredResult) : ''
     };
   }
+}
+
+function defaultKeywordSelector(
+  query: JitContextQuery,
+  _activeLedger: StateLedger,
+  activeEntities: string[],
+  activeAssets: string[]
+): string[] {
+  return [
+    ...(query.activeReferences || query.activeEntities || []),
+    ...activeEntities,
+    ...activeAssets
+  ];
+}
+
+/** Optional neutral text formatter for consumers that need a prompt block. */
+export function formatJitContextAsPrompt(
+  result: Omit<JitContextResult, 'assembledPromptBlock'>
+): string {
+  const sections: string[] = ['=== Retrieved Context: Working State ==='];
+  const { activeLedger } = result.l1WorkingMemory;
+  if (activeLedger.entities?.length) {
+    sections.push(`Entities: ${activeLedger.entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ''}`).join(', ')}`);
+  }
+  if (activeLedger.assets?.length) {
+    sections.push(`Assets: ${activeLedger.assets.map((asset) => `${asset.name}${asset.holder ? `[Holder:${asset.holder}]` : ''}`).join(', ')}`);
+  }
+  if (activeLedger.tracks?.length) {
+    sections.push(`Tracks: ${activeLedger.tracks.map((track) => `${track.clue || track.summary || track.id || 'track'}${track.status ? `(${track.status})` : ''}`).join('; ')}`);
+  }
+  if (result.l2RecentSummaries.length) {
+    sections.push('=== Recent Document Summaries ===');
+    for (const item of result.l2RecentSummaries) sections.push(`[${item.title}]: ${item.summary}`);
+  }
+  if (result.l3GlobalLore.length) {
+    sections.push('=== Full-Text Matches ===');
+    for (const item of result.l3GlobalLore) sections.push(`[${item.title}]: ${item.snippet.replace(/\n+/g, ' ')}`);
+  }
+  return sections.join('\n');
 }

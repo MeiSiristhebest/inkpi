@@ -5,6 +5,7 @@ export interface Lane {
   workspaceId: string;
   name: string;
   description?: string;
+  parentLaneId?: string;
   isDefault: boolean;
   createdAt: number;
   updatedAt: number;
@@ -15,12 +16,16 @@ export interface BranchTip {
   documentId: string;
   headSnapshotVersion: number;
   lastDeltaId: number;
+  baseSnapshotVersion?: number;
+  baseDeltaId?: number;
   updatedAt: number;
 }
 
 /**
- * 小说多泳道与分支游标追踪器 (1:1 对标 repos/pi packages/session-backends lanes & branch-tips)
- * 支持同一部小说在「主线剧情」、「IF线/支线」、「草案推演」等多个并行分支间自由切换与合并。
+ * Durable lane and branch-tip storage.
+ *
+ * Fork metadata and the original tip are persisted so merges can reject
+ * concurrent target changes instead of silently overwriting them.
  */
 export class LaneManager {
   private db: InkDb;
@@ -38,14 +43,15 @@ export class LaneManager {
       }
 
       const stmt = this.db.prepare(`
-        INSERT INTO lanes (id, workspace_id, name, description, is_default, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO lanes (id, workspace_id, name, description, parent_lane_id, is_default, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         lane.id,
         lane.workspaceId,
         lane.name,
         lane.description || null,
+        lane.parentLaneId || null,
         lane.isDefault ? 1 : 0,
         lane.createdAt,
         lane.updatedAt
@@ -62,6 +68,7 @@ export class LaneManager {
       workspaceId: row.workspace_id,
       name: row.name,
       description: row.description || undefined,
+      parentLaneId: row.parent_lane_id || undefined,
       isDefault: Boolean(row.is_default),
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at)
@@ -76,6 +83,7 @@ export class LaneManager {
       workspaceId: r.workspace_id,
       name: r.name,
       description: r.description || undefined,
+      parentLaneId: r.parent_lane_id || undefined,
       isDefault: Boolean(r.is_default),
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
@@ -84,21 +92,51 @@ export class LaneManager {
 
   public setDefaultLane(workspaceId: string, laneId: string): void {
     this.db.transaction(() => {
+      const lane = this.getLane(laneId);
+      if (!lane || lane.workspaceId !== workspaceId) {
+        throw new Error(`Lane '${laneId}' not found in workspace '${workspaceId}'`);
+      }
       this.db.prepare(`UPDATE lanes SET is_default = 0 WHERE workspace_id = ?`).run(workspaceId);
-      this.db.prepare(`UPDATE lanes SET is_default = 1 WHERE id = ? AND workspace_id = ?`).run(laneId, workspaceId);
+      this.db.prepare(`UPDATE lanes SET is_default = 1 WHERE id = ?`).run(laneId);
     });
   }
 
   public setBranchTip(tip: BranchTip): void {
+    const lane = this.getLane(tip.laneId);
+    if (!lane) throw new Error(`Lane '${tip.laneId}' not found`);
+
+    const document = this.db.prepare(`
+      SELECT id, workspace_id AS workspaceId
+      FROM documents
+      WHERE id = ?
+    `).get(tip.documentId) as { id: string; workspaceId: string } | undefined;
+    if (!document) throw new Error(`Document '${tip.documentId}' not found`);
+    if (document.workspaceId !== lane.workspaceId) {
+      throw new Error(
+        `Document '${tip.documentId}' does not belong to lane workspace '${lane.workspaceId}'`
+      );
+    }
+
     const stmt = this.db.prepare(`
-      INSERT INTO branch_tips (lane_id, document_id, head_snapshot_version, last_delta_id, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO branch_tips (
+        lane_id, document_id, head_snapshot_version, last_delta_id,
+        base_snapshot_version, base_delta_id, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(lane_id, document_id) DO UPDATE SET
         head_snapshot_version = excluded.head_snapshot_version,
         last_delta_id = excluded.last_delta_id,
         updated_at = excluded.updated_at
     `);
-    stmt.run(tip.laneId, tip.documentId, tip.headSnapshotVersion, tip.lastDeltaId, tip.updatedAt);
+    stmt.run(
+      tip.laneId,
+      tip.documentId,
+      tip.headSnapshotVersion,
+      tip.lastDeltaId,
+      tip.baseSnapshotVersion ?? tip.headSnapshotVersion,
+      tip.baseDeltaId ?? tip.lastDeltaId,
+      tip.updatedAt
+    );
   }
 
   public getBranchTip(laneId: string, documentId: string): BranchTip | undefined {
@@ -110,6 +148,8 @@ export class LaneManager {
       documentId: row.document_id,
       headSnapshotVersion: Number(row.head_snapshot_version),
       lastDeltaId: Number(row.last_delta_id),
+      baseSnapshotVersion: Number(row.base_snapshot_version ?? row.head_snapshot_version),
+      baseDeltaId: Number(row.base_delta_id ?? row.last_delta_id),
       updatedAt: Number(row.updated_at)
     };
   }
@@ -122,6 +162,8 @@ export class LaneManager {
       documentId: r.document_id,
       headSnapshotVersion: Number(r.head_snapshot_version),
       lastDeltaId: Number(r.last_delta_id),
+      baseSnapshotVersion: Number(r.base_snapshot_version ?? r.head_snapshot_version),
+      baseDeltaId: Number(r.base_delta_id ?? r.last_delta_id),
       updatedAt: Number(r.updated_at)
     }));
   }
@@ -132,6 +174,12 @@ export class LaneManager {
   public forkLane(sourceLaneId: string, targetLaneId: string, targetName: string, description?: string): Lane {
     const sourceLane = this.getLane(sourceLaneId);
     if (!sourceLane) throw new Error(`Source lane '${sourceLaneId}' not found`);
+    if (sourceLaneId === targetLaneId) {
+      throw new Error('Source and target lane IDs must differ');
+    }
+    if (this.getLane(targetLaneId)) {
+      throw new Error(`Target lane '${targetLaneId}' already exists`);
+    }
 
     const now = Date.now();
     const newLane: Lane = {
@@ -139,6 +187,7 @@ export class LaneManager {
       workspaceId: sourceLane.workspaceId,
       name: targetName,
       description: description || `Forked from ${sourceLane.name}`,
+      parentLaneId: sourceLaneId,
       isDefault: false,
       createdAt: now,
       updatedAt: now
@@ -153,6 +202,8 @@ export class LaneManager {
           documentId: tip.documentId,
           headSnapshotVersion: tip.headSnapshotVersion,
           lastDeltaId: tip.lastDeltaId,
+          baseSnapshotVersion: tip.headSnapshotVersion,
+          baseDeltaId: tip.lastDeltaId,
           updatedAt: now
         });
       }
@@ -162,20 +213,57 @@ export class LaneManager {
   }
 
   /**
-   * 将分支泳道合并回目标泳道 (Fast-forward tips merge)
+   * Fast-forward a forked lane into its parent lane.
+   *
+   * The target must still equal the tip recorded at fork time. This is a
+   * compare-and-set check: concurrent target edits are reported as conflicts.
    */
   public mergeLane(sourceLaneId: string, targetLaneId: string): { mergedCount: number } {
+    const sourceLane = this.getLane(sourceLaneId);
+    const targetLane = this.getLane(targetLaneId);
+    if (!sourceLane) throw new Error(`Source lane '${sourceLaneId}' not found`);
+    if (!targetLane) throw new Error(`Target lane '${targetLaneId}' not found`);
+    if (sourceLaneId === targetLaneId) {
+      throw new Error('Source and target lane IDs must differ');
+    }
+    if (sourceLane.workspaceId !== targetLane.workspaceId) {
+      throw new Error('Source and target lanes must belong to the same workspace');
+    }
+    if (sourceLane.parentLaneId !== targetLaneId) {
+      throw new Error(
+        `Lane '${sourceLaneId}' can only fast-forward into its parent lane '${sourceLane.parentLaneId || '(none)'}'`
+      );
+    }
+
     const sourceTips = this.getBranchTips(sourceLaneId);
     let mergedCount = 0;
 
     this.db.transaction(() => {
       const now = Date.now();
       for (const tip of sourceTips) {
+        const targetTip = this.getBranchTip(targetLaneId, tip.documentId);
+        if (!targetTip) {
+          throw new Error(
+            `Lane merge conflict for document '${tip.documentId}': target has no fork baseline`
+          );
+        }
+        const expectedSnapshot = targetTip.baseSnapshotVersion ?? targetTip.headSnapshotVersion;
+        const expectedDelta = targetTip.baseDeltaId ?? targetTip.lastDeltaId;
+        if (
+          targetTip.headSnapshotVersion !== expectedSnapshot ||
+          targetTip.lastDeltaId !== expectedDelta
+        ) {
+          throw new Error(
+            `Lane merge conflict for document '${tip.documentId}': target changed after fork`
+          );
+        }
         this.setBranchTip({
           laneId: targetLaneId,
           documentId: tip.documentId,
           headSnapshotVersion: tip.headSnapshotVersion,
           lastDeltaId: tip.lastDeltaId,
+          baseSnapshotVersion: targetTip.baseSnapshotVersion,
+          baseDeltaId: targetTip.baseDeltaId,
           updatedAt: now
         });
         mergedCount++;

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { InkDb, InkRepository, AppendOnlySessionJournal } from '@inkpi/storage';
 
 describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
@@ -7,13 +10,15 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     expect(journal.sessionId).toBe('session_novel_101');
     expect(journal.count()).toBe(0);
 
-    journal.append('session_start', { book: { id: 'workspace_1', title: '万古仙穹', owner: '无名氏', category: '仙侠', targetSize: 1000000, createdAt: Date.now(), updatedAt: Date.now() } });
-    journal.append('user_message', { content: '请推演第十document' });
-    journal.append('draft_revision', { documentId: 'ch_1', markdown: '天地不仁，以万物为刍狗。' });
-    journal.append('pipeline_stage', { stage: 'outline', role: 'architect' });
+    const root = journal.append('session_start', { scope: 'workspace' }, 'root');
+    const message = journal.append('user_message', { content: '请执行任务' });
+    const branch = journal.append('custom', { branch: true }, 'branch', root.id);
 
-    expect(journal.count()).toBe(4);
-    expect(journal.getEntriesByType('draft_revision').length).toBe(1);
+    expect(journal.count()).toBe(3);
+    expect(root).toMatchObject({ seq: 1, parentId: null });
+    expect(message).toMatchObject({ seq: 2, parentId: 'root' });
+    expect(branch).toMatchObject({ seq: 3, parentId: 'root' });
+    expect(journal.getEntriesByType('custom').length).toBe(1);
     expect(journal.getEntriesByType('user_message').length).toBe(1);
   });
 
@@ -27,9 +32,41 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     expect(jsonl.split('\n').length).toBe(2);
 
     const journal2 = new AppendOnlySessionJournal('session_export_test');
-    const importedCount = journal2.importFromJsonl(jsonl + '\n{invalid json}\n\n');
-    expect(importedCount).toBe(2);
+    expect(() => journal2.importFromJsonl(jsonl + '\n{invalid json}\n\n')).toThrow(/line 3/);
     expect(journal2.count()).toBe(2);
+    const journal3 = new AppendOnlySessionJournal('session_export_test');
+    const importedCount = journal3.importFromJsonl(jsonl + '\n{invalid json}\n\n', { strict: false });
+    expect(importedCount).toBe(2);
+    expect(journal3.count()).toBe(2);
+    expect(journal3.getEntries()).toEqual(journal1.getEntries());
+  });
+
+  it('should reject invalid sequence and parent placement during import', () => {
+    const journal = new AppendOnlySessionJournal('session_validation_test');
+    journal.append('custom', { value: 'root' }, 'root');
+
+    const invalidSeq = JSON.stringify({
+      id: 'child',
+      sessionId: 'session_validation_test',
+      seq: 1,
+      parentId: 'root',
+      type: 'custom',
+      timestamp: 1000,
+      payload: {}
+    });
+    expect(() => journal.importFromJsonl(invalidSeq)).toThrow(/expected seq 2|non-increasing/);
+
+    const invalidParent = JSON.stringify({
+      id: 'child',
+      sessionId: 'session_validation_test',
+      seq: 2,
+      parentId: 'missing',
+      type: 'custom',
+      timestamp: 1000,
+      payload: {}
+    });
+    expect(() => journal.importFromJsonl(invalidParent)).toThrow(/unknown parent/);
+    expect(journal.count()).toBe(1);
   });
 
   it('should replay journal events into SQLite repository as materialized view projection', () => {
@@ -38,7 +75,7 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
 
     const journal = new AppendOnlySessionJournal('session_replay_test');
     journal.append('session_start', {
-      book: {
+      workspace: {
         id: 'workspace_replay',
         title: 'Test Workspace Name',
         owner: '剑客',
@@ -85,6 +122,8 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     expect(replayRes.replayedCount).toBe(4);
     expect(replayRes.snapshotsCreated).toBe(1);
 
+    expect(() => journal.replayToDb(repo, db)).not.toThrow();
+
     // Verify SQLite projection
     const workspaceInDb = repo.getWorkspace('workspace_replay');
     expect(workspaceInDb?.title).toBe('Test Workspace Name');
@@ -94,5 +133,40 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     expect(snap?.contentSize).toBeGreaterThan(0);
 
     db.close();
+  });
+
+  it('should persist, reopen, and repair an unterminated JSONL tail', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'inkpi-journal-'));
+    const filePath = join(directory, 'session.jsonl');
+
+    const journal1 = new AppendOnlySessionJournal({
+      sessionId: 'durable_session',
+      filePath,
+      idGenerator: (() => {
+        let next = 0;
+        return () => `event_${++next}`;
+      })(),
+      clock: () => 1000
+    });
+    journal1.append('user_message', { text: 'persisted' });
+    journal1.append('agent_turn', { text: 'response' });
+
+    expect(readFileSync(filePath, 'utf8').split('\n').filter(Boolean)).toHaveLength(2);
+
+    const journal2 = new AppendOnlySessionJournal({ sessionId: 'durable_session', filePath });
+    expect(journal2.count()).toBe(2);
+    expect(journal2.getEntries()[0].payload).toEqual({ text: 'persisted' });
+
+    appendFileSync(filePath, '{"id":"interrupted"');
+    const journal3 = new AppendOnlySessionJournal({ sessionId: 'durable_session', filePath });
+    expect(journal3.count()).toBe(2);
+    expect(readFileSync(filePath, 'utf8')).not.toContain('"interrupted"');
+
+    journal3.append('custom', { value: 'after-reopen' }, 'event_3');
+    expect(journal3.getEntry('event_3')?.seq).toBe(3);
+    expect(journal3.getEntry('event_3')?.parentId).toBe('event_2');
+    const journal4 = new AppendOnlySessionJournal({ sessionId: 'durable_session', filePath });
+    expect(journal4.getEntry('event_3')?.payload).toEqual({ value: 'after-reopen' });
+    expect(journal4.getEntry('event_3')?.seq).toBe(3);
   });
 });
