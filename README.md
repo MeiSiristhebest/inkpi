@@ -1,125 +1,216 @@
-<div align="center">
+<!-- 
+  Designed & Built with ❤️ by MeiSiristhebest (https://github.com/MeiSiristhebest)
+  If this repository helps your learning or engineering, please consider dropping a ⭐ Star!
+-->
+<h1 align="center">🖋️ InkPi</h1>
 
-# 🖋️ InkPi
+<p align="center">
+  <b>English | <a href="./README_zh.md">简体中文</a></b>
+</p>
 
-**The Extensible AI Agent Creative Harness & Workstation Platform**  
-*Inspired by Pi Architecture — 10-Package Decoupled Monorepo, Pluggable Session Backends, 4-Tier Prompt Caching & Differential TUI*
+> [!TIP]
+> 💡 **If this architecture, engineering implementation, or toolchain helps your learning or workflow, please drop a ⭐ Star!**
+> 📚 Explore the technical blueprint: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B%20%7C%2022%2B-brightgreen.svg)](https://nodejs.org/)
-[![pnpm](https://img.shields.io/badge/pnpm-9.x-orange.svg)](https://pnpm.io/)
+<p align="center">
+  <b>The Extensible AI Agent Creative Harness & Workstation Platform</b>
+</p>
 
-[English](./README.md) | [中文说明](./README_zh.md) | [Development SOP](./DEVELOPMENT_SOP.md) | [Contributing](./CONTRIBUTING.md)
+<p align="center">
+  <a href="https://www.npmjs.com/package/@inkpi/protocol"><img src="https://img.shields.io/badge/npm-v1.0.0-blue.svg?style=flat" alt="npm version" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat" alt="License: MIT" /></a>
+</p>
 
-</div>
+<p align="center">
+  <em>A modular creative writing & agent harness infrastructure providing AI agents with discrete engineering primitives: 10-package decoupled Monorepo, pluggable session backends (Memory/JSONL/SQLite+FTS5), 4-tier prompt caching breakpoints, and differential ANSI TUI.</em>
+</p>
 
 ---
 
-## 📖 Overview
+## 📑 Table of Contents
 
-**InkPi** is a high-performance, domain-agnostic foundation for AI-assisted creative workflows (novels, screenplays, visual novels, short dramas, and structured creative documentation).
-
-Architected around the **Hexagonal Ports & Adapters Architecture** and strict **Single Responsibility Principle (SRP)**, InkPi decouples the pure reasoning state machine, session storage adapters, RPC daemon scheduling, and headless editor engines into 10 cohesive, independently versioned packages.
-
-Whether powering an interactive terminal TUI, a web-based rich text editor, an Obsidian / VS Code extension, or an autonomous headless agent pipeline, InkPi serves as the deterministic creative harness.
+- [💡 Overview](#-overview)
+  - [What is InkPi?](#what-is-inkpi)
+  - [What InkPi is NOT](#what-inkpi-is-not)
+  - [Architecture & Decoupled Layers](#architecture--decoupled-layers)
+- [✨ Key Capabilities](#-key-capabilities)
+  - [1. 10-Package Hexagonal Topology](#1-10-package-hexagonal-topology)
+  - [2. Pluggable Session Backends](#2-pluggable-session-backends)
+  - [3. 4-Tier Prompt Caching & Stream Resilience](#3-4-tier-prompt-caching--stream-resilience)
+  - [4. Headless Editor & Ghost Text Engine](#4-headless-editor--ghost-text-engine)
+  - [5. Terminal Differential Renderer & CJK Layout](#5-terminal-differential-renderer--cjk-layout)
+- [⚙️ Requirements](#️-requirements)
+- [📦 Installation & Setup](#-installation--setup)
+- [🚀 Quick Start](#-quick-start)
+- [🛡️ The 5 Absolute Engineering Invariants](#️-the-5-absolute-engineering-invariants)
+- [🤝 Contributing](#-contributing)
+- [📜 License](#-license)
+- [⭐ Star & Support](#-star--support)
 
 ---
 
-## 🏛️ Monorepo Package Topology (10 Packages)
+## 💡 Overview
 
+### What is InkPi?
+
+InkPi is an **extensible creative writing and domain-specific agent foundation** inspired by Pi's architecture. It provides AI agents (such as Google Antigravity, Claude Code, Cursor, Codex, or custom creative agents) with discrete engineering primitives to construct long-form novels, screenplays, visual novels, and structured documentation with deterministic state machines and durable persistence.
+
+### What InkPi is NOT
+
+- **NOT a Monolithic Chat Wrapper**: It does not bundle prompts inside hardcoded loops; it provides a modular hexagonal runtime.
+- **NOT an Unbounded In-Memory Scratchpad**: It enforces event-sourcing journals, snapshot compaction, and concurrency leases.
+
+### Architecture & Decoupled Layers
+
+```text
+    ┌──────────────────────────────────────────────────────────────────┐
+    │                      External Client / UI Layer                  │
+    │        Terminal TUI · Web Workspace · VS Code Extension          │
+    │                                                                  │
+    │  @inkpi/client · @inkpi/tui · JSON-RPC 2.0 Client                │
+    └───────────────────────────┬──────────────────────────────────────┘
+                                │ JSON-RPC 2.0 / TCP / WebSocket
+                                ▼
+    ┌──────────────────────────────────────────────────────────────────┐
+    │                  @inkpi/server (Daemon Runtime)                  │
+    │                                                                  │
+    │  InkPiDaemon · LiveSessionManager · InkRpcServer                 │
+    └───────────────────────────┬──────────────────────────────────────┘
+                                │ In-process typed dispatch
+                                ▼
+    ┌──────────────────────────────────────────────────────────────────┐
+    │            @inkpi/agent-core (Domain State Engine)               │
+    │                                                                  │
+    │  AgentEngine · Agent Loop · SessionTree · WorkflowCoordinator    │
+    │  StateLedger · ToolRegistry · ExtensionHost · Queues             │
+    └──────────────┬───────────────────────────────┬───────────────────┘
+                   │                               │
+                   ▼ ISessionBackend Port          ▼ AIProvider Port
+    ┌──────────────────────────────┐ ┌─────────────────────────────────┐
+    │   @inkpi/session-backends    │ │          @inkpi/ai              │
+    │                              │ │                                 │
+    │  • MemorySessionBackend      │ │  • ModelCatalog                 │
+    │  • JsonlSessionBackend       │ │  • PromptCacheOptimizer         │
+    │  • SqliteSessionBackend      │ │  • streamWithResilience         │
+    └──────────────────────────────┘ └─────────────────────────────────┘
 ```
-                       ┌─────────────────────────┐
-                       │    @inkpi/protocol      │ (Pure Domain Contracts & JSON-RPC Frames)
-                       └────────────┬────────────┘
-                                    │
-          ┌─────────────────────────┼─────────────────────────┐
-          │                         │                         │
-          ▼                         ▼                         ▼
-┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│ @inkpi/session-  │      │  @inkpi/server   │      │  @inkpi/client   │
-│   backends       │      │  (Daemon & RPC)  │      │  (Type-Safe SDK) │
-│ (Memory/Jsonl/   │      └─────────▲────────┘      └──────────────────┘
-│  Sqlite Adapters)│                │
-└──────────────────┘                │
-          ▲                         │
-          ├─────────────────────────┴─────────────────────────┐
-          │                                                   │
-┌─────────┴────────┐      ┌──────────────────┐      ┌─────────┴────────┐
-│ @inkpi/agent-core│      │  @inkpi/ai       │      │  @inkpi/storage  │
-│ (AgentEngine &   │      │  (Providers,     │      │  (SQLite, FTS5,  │
-│  StateLedger)    │      │   Prompt Cache)  │      │   Lanes, Leases) │
-└─────────┬────────┘      └──────────────────┘      └──────────────────┘
-          │
-    ┌─────┴──────────────────────────┐
-    ▼                                ▼
-┌──────────────────┐      ┌──────────────────┐
-│@inkpi/editor-core│      │   @inkpi/tui     │
-│(Headless Editor, │      │ (ANSI Diff TUI,  │
-│ Ghost Text, IME) │      │  Image, Unicode) │
-└──────────────────┘      └──────────────────┘
-```
 
-### Monorepo Packages Breakdown
+---
 
-| Package | Role & Responsibility (Aligned with Pi) | Core Exports |
+## ✨ Key Capabilities
+
+### 1. 10-Package Hexagonal Topology
+
+InkPi is divided into 10 decoupled packages with zero cyclic dependencies:
+
+| Package | Responsibility | Core Exports |
 | :--- | :--- | :--- |
-| **[`@inkpi/protocol`](./packages/protocol)** | Pure domain contracts, TypeBox schemas, JSON-RPC 2.0 frames, and event types | `SessionEntry`, `DocumentSnapshot`, `DocumentDelta`, `RpcRequest`, `RpcResponse` |
-| **[`@inkpi/session-backends`](./packages/session-backends)** | Pluggable session storage backends with 100% LSP conformance | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
-| **[`@inkpi/server`](./packages/server)** | Headless daemon, multi-session lifecycle, and JSON-RPC 2.0 dispatching | `InkPiDaemon`, `LiveSessionManager`, `InkRpcServer` |
-| **[`@inkpi/client`](./packages/client)** | Type-safe client SDK and multi-transport channels | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
-| **[`@inkpi/agent-core`](./packages/agent-core)** | Pure Agent execution engine (`AgentEngine`), SessionTree, and StateLedger | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
-| **[`@inkpi/editor-core`](./packages/editor-core)** | Headless editor state machine, ghost text, and Chinese typography | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
-| **[`@inkpi/storage`](./packages/storage)** | Industrial-grade SQLite, FTS5 BM25 search, concurrency lanes, writer leases | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
-| **[`@inkpi/tui`](./packages/tui)** | ANSI differential rendering, CJK width calculation, terminal images | `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
-| **[`@inkpi/ai`](./packages/ai)** | Multi-provider abstraction, 4-tier prompt caching breakpoints, stream retries | `PromptCacheOptimizer`, `streamWithResilience`, `ModelCatalog` |
-| **[`@inkpi/evals`](./packages/evals)** | Narrative consistency evaluation runner and benchmark scoring | `NovelConsistencyBenchmark`, `InvariantChecker` |
+| **`@inkpi/protocol`** | Pure domain schemas & JSON-RPC frames | `SessionEntry`, `DocumentSnapshot`, `DocumentDelta`, `RpcRequest` |
+| **`@inkpi/session-backends`** | Pluggable session storage adapters | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
+| **`@inkpi/server`** | Headless daemon & session manager | `InkPiDaemon`, `LiveSessionManager`, `InkRpcServer` |
+| **`@inkpi/client`** | Type-safe client SDK & transports | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
+| **`@inkpi/agent-core`** | Reasoning engine & session trees | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
+| **`@inkpi/editor-core`** | Headless editor & typography | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
+| **`@inkpi/storage`** | SQLite, FTS5 BM25 search, leases | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
+| **`@inkpi/tui`** | ANSI diff rendering & CJK layout | `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
+| **`@inkpi/ai`** | Providers, prompt caching, streams | `PromptCacheOptimizer`, `streamWithResilience`, `ModelCatalog` |
+| **`@inkpi/evals`** | Narrative consistency scoring | `NovelConsistencyBenchmark`, `InvariantChecker` |
+
+### 2. Pluggable Session Backends
+
+Switch persistence backends via the unified `ISessionBackend` port contract:
+- **`MemorySessionBackend`**: Pure in-memory Map storage with zero I/O for deterministic testing.
+- **`JsonlSessionBackend`**: Pure append-only JSONL files with zero C++ native bindings for cross-platform edge deployments.
+- **`SqliteSessionBackend`**: Full ACID SQLite relational storage with FTS5 BM25 full-text search, snapshots, and concurrency leases.
+
+### 3. 4-Tier Prompt Caching & Stream Resilience
+
+Optimizes long-context inference cost and latency through 4-tier breakpoint caching:
+- `System Prompt & World Rules` $\to$ `Character Lore & Codex` $\to$ `Chapter Outline` $\to$ `Rolling History`.
+- Exponential backoff stream reconnection automatically recovers dropped SSE connections without losing message history.
+
+### 4. Headless Editor & Ghost Text Engine
+
+- Pure data-driven document state machine (`HeadlessEditorState`) decoupled from terminal or browser DOMs.
+- `GhostTextManager` supporting granular word-by-word (`acceptWord()`) and line-by-line (`acceptLine()`) interactive inline autocomplete.
+
+### 5. Terminal Differential Renderer & CJK Layout
+
+- ANSI differential screen buffer updater minimizing flickering.
+- Accurate East Asian Ambiguous character width calculation (`calculateDisplayWidth`).
+- Kitty, Sixel, and iTerm2 terminal inline graphics protocol support.
 
 ---
 
-## ⚡ Quick Start
+## ⚙️ Requirements
 
-### Prerequisites
-- **Node.js**: $\ge 20.0.0$
+- **Node.js**: $\ge 20.0.0$ (LTS recommended)
 - **Package Manager**: `pnpm` $\ge 9.0.0$
 
-### 1. Installation & Monorepo Setup
+---
+
+## 📦 Installation & Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/MeiSiristhebest/inkpi.git
 cd inkpi
 
-# Install dependencies via pnpm workspace
+# Install monorepo dependencies via pnpm workspace
 pnpm install
 
-# Build all 10 monorepo packages with TypeScript project references
+# Compile all 10 packages with TypeScript composite references
 pnpm run build
-```
-
-### 2. Run Test Coverage & Quality Gate
-```bash
-# Execute comprehensive 65-file test suite with strict coverage enforcement
-pnpm run test:coverage
-```
-
-### 3. Supply-Chain Hardening Check
-```bash
-# Verify that all external dependencies are pinned to exact versions
-pnpm run check:pinned-deps
 ```
 
 ---
 
-## 🛡️ Core Engineering Invariants
+## 🚀 Quick Start
+
+### 1. Run Complete Test Suite & Coverage Gate
+
+```bash
+pnpm run test:coverage
+```
+
+### 2. Verify Supply-Chain Hardened Dependencies
+
+```bash
+pnpm run check:pinned-deps
+```
+
+### 3. Programmatic Usage Example
+
+```typescript
+import { LiveSessionManager } from '@inkpi/server';
+import { MemorySessionBackend } from '@inkpi/session-backends';
+import { InkRpcClient, InMemoryTransport } from '@inkpi/client';
+
+// 1. Initialize session manager with pluggable storage backend
+const sessionManager = new LiveSessionManager(() => new MemorySessionBackend());
+const session = sessionManager.createSession('novel_session_1', {
+  initialText: '# Chapter 1: The Great Awakening\n\n'
+});
+
+// 2. Insert text into headless editor
+session.editor.insertText(33, 'The stars aligned in the northern sky.');
+console.log(session.editor.getText());
+```
+
+---
+
+## 🛡️ The 5 Absolute Engineering Invariants
 
 1. **Strict Single Responsibility Principle (SRP)**:
-   The `AgentEngine` state machine is decoupled from slash command interpretations and RPC framing. Each responsibility belongs exclusively to its designated package.
+   The `AgentEngine` state machine is decoupled from slash command interpretations and RPC framing.
 2. **Pluggable Persistence via Ports & Adapters**:
-   Domain logic relies entirely on the `ISessionBackend` interface. Switch between `Memory` (testing), `JSONL` (serverless/edge), and `SQLite` (full ACID + FTS5) with zero business logic changes.
+   Domain logic relies entirely on the `ISessionBackend` interface.
 3. **Rigorous Quality Gate ($\ge 85\%$ Lines, $\ge 80\%$ Branches)**:
    Every pull request is verified against 280+ unit and integration tests across Linux, macOS, and Windows.
 4. **Supply-Chain Security**:
    All dependencies are locked to exact versions without floating range operators (`^` or `~`).
+5. **Deterministic Event Sourcing**:
+   Every state transition is tracked in append-only journals for lossless undo, replay, and branch branching.
 
 ---
 
@@ -132,3 +223,15 @@ Contributions are welcome! Please read [`CONTRIBUTING.md`](./CONTRIBUTING.md) an
 ## 📜 License
 
 Distributed under the [MIT License](./LICENSE). Copyright (c) 2026 InkPi Contributors.
+
+---
+
+## ⭐ Star & Support
+
+If you find this project useful or inspiring, please consider giving it a ⭐ **Star** on GitHub!
+
+<p align="center">
+  <a href="https://github.com/MeiSiristhebest/inkpi">
+    <img src="https://img.shields.io/github/stars/MeiSiristhebest/inkpi?style=social" alt="GitHub stars" />
+  </a>
+</p>
