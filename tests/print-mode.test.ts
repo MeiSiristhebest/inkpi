@@ -6,20 +6,20 @@ import { runPrintMode } from '@inkpi/agent-core';
 describe('InkPi Print Mode (Non-interactive batch mode)', () => {
   const tmpOut = path.join(process.cwd(), 'tmp-print-test.txt');
 
-  it('should run single-shot generation for writer role', async () => {
+  it('should run single-shot generation with a generic default role', async () => {
     const res = await runPrintMode({
       prompt: '请写一段开篇介绍',
-      role: 'writer',
+      model: 'mock-test',
       json: true
     });
 
     expect(res.success).toBe(true);
-    expect(res.role).toBe('writer');
+    expect(res.role).toBe('assistant');
     expect(res.durationMs).toBeGreaterThanOrEqual(0);
 
     const resNonJson = await runPrintMode({
       prompt: '非 JSON 模式',
-      role: 'writer',
+      model: 'mock-test',
       json: false
     });
     expect(resNonJson.success).toBe(true);
@@ -30,14 +30,29 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
     const res = await runPrintMode({
       prompt: '请构建第一章大纲并撰写正文',
       role: 'pipeline',
-      output: tmpOut
+      model: 'mock-test',
+      output: tmpOut,
+      workflow: {
+        stages: [
+          {
+            id: 'outline',
+            name: 'Outline',
+            executor: async () => 'outline result'
+          },
+          {
+            id: 'scene',
+            name: 'Scene',
+            promptTemplate: (ctx) => `${ctx.stageOutputs.outline}: ${ctx.userPrompt}`,
+            executor: async (ctx) => `scene result for ${ctx.stageOutputs.outline}`
+          }
+        ]
+      }
     });
 
     expect(res.success).toBe(true);
     expect(res.role).toBe('pipeline');
-    expect(fs.existsSync(tmpOut)).toBe(true);
-    const content = fs.readFileSync(tmpOut, 'utf8');
-    expect(content.length).toBeGreaterThan(0);
+    expect(res.content).toBe('scene result for outline result');
+    expect(fs.readFileSync(tmpOut, 'utf8')).toBe('scene result for outline result');
 
     // Clean up
     fs.unlinkSync(tmpOut);
@@ -47,7 +62,15 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
     const res = await runPrintMode({
       prompt: '测试错误处理',
       role: 'pipeline',
+      model: 'mock-test',
       output: '/invalid_dir_path_that_fails/output.txt',
+      workflow: {
+        stages: [{
+          id: 'single',
+          name: 'Single',
+          executor: async () => 'real workflow output'
+        }]
+      },
       json: false
     });
     expect(res.success).toBe(false);
@@ -56,42 +79,50 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
     const jsonError = await runPrintMode({
       prompt: '测试 JSON 错误',
       role: 'pipeline',
+      model: 'mock-test',
       output: '/invalid_dir_path_that_fails/output.txt',
+      workflow: {
+        stages: [{
+          id: 'single',
+          name: 'Single',
+          executor: async () => 'real workflow output'
+        }]
+      },
       json: true
     });
     expect(jsonError.success).toBe(false);
   });
 
-  it('should resolve models dynamically from environment variables', async () => {
-    // 1. DeepSeek
-    process.env.DEEPSEEK_API_KEY = 'sk-test-deepseek';
-    const resDeepSeek = await runPrintMode({ prompt: 'test deepseek' });
-    expect(resDeepSeek).toBeDefined();
-    delete process.env.DEEPSEEK_API_KEY;
+  it('should reject implicit legacy narrative stages in pipeline print mode', async () => {
+    const result = await runPrintMode({
+      prompt: 'generic batch request',
+      role: 'pipeline',
+      model: 'mock-test'
+    });
 
-    // 2. OpenRouter
-    process.env.OPENROUTER_API_KEY = 'sk-test-openrouter';
-    const resOpenRouter = await runPrintMode({ prompt: 'test openrouter' });
-    expect(resOpenRouter).toBeDefined();
-    delete process.env.OPENROUTER_API_KEY;
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('explicit workflow configuration');
+  });
 
-    // 3. OpenAI
-    process.env.OPENAI_API_KEY = 'sk-test-openai';
-    const resOpenAi = await runPrintMode({ prompt: 'test openai' });
-    expect(resOpenAi).toBeDefined();
-    delete process.env.OPENAI_API_KEY;
+  it('should reject an API key without an explicit model instead of selecting one', async () => {
+    const original = { ...process.env };
+    try {
+      for (const key of ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY']) {
+        delete process.env[key];
+      }
+      process.env.DEEPSEEK_API_KEY = 'deliberately-invalid-test-key';
+      delete process.env.INKPI_DEEPSEEK_MODEL;
 
-    // 4. Anthropic
-    process.env.ANTHROPIC_API_KEY = 'sk-test-anthropic';
-    const resAnthropic = await runPrintMode({ prompt: 'test anthropic' });
-    expect(resAnthropic).toBeDefined();
-    delete process.env.ANTHROPIC_API_KEY;
+      const result = await runPrintMode({ prompt: 'configuration probe' });
 
-    // 5. Gemini
-    process.env.GEMINI_API_KEY = 'sk-test-gemini';
-    const resGemini = await runPrintMode({ prompt: 'test gemini' });
-    expect(resGemini).toBeDefined();
-    delete process.env.GEMINI_API_KEY;
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('INKPI_DEEPSEEK_MODEL');
+    } finally {
+      for (const key of Object.keys(process.env)) {
+        if (!(key in original)) delete process.env[key];
+      }
+      for (const [key, value] of Object.entries(original)) process.env[key] = value;
+    }
   });
 
 
@@ -128,11 +159,10 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
       process.env.NODE_ENV = 'production';
       const res = await runPrintMode({ prompt: 'test missing provider', json: true });
       expect(res.success).toBe(false);
-      expect(res.error).toContain('缺少有效的 AI 模型提供商配置');
+      expect(res.error).toContain('No AI model configuration found');
     } finally {
       process.env.NODE_ENV = oldNodeEnv;
       process.env.VITEST = oldVitest;
     }
   });
 });
-

@@ -434,15 +434,18 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
   // -------------------------------------------------------------
   describe('Pillar 6: Release Engineering & Standalone Single Binary Packaging', () => {
     it('should execute build-binaries pipeline in dry-run mode and verify pinned dependencies', () => {
+      const before = execSync('git status --short', { cwd: rootDir, encoding: 'utf8' });
       const output = execSync('node scripts/build-binaries.mjs --dry-run', {
         cwd: rootDir,
         encoding: 'utf8'
       });
+      const after = execSync('git status --short', { cwd: rootDir, encoding: 'utf8' });
 
       expect(output).toContain('InkPi Binary Release Engineering');
       expect(output).toContain('Step 1: Running supply-chain dependency verification');
       expect(output).toContain('Step 2: Preparing Standalone Release Entrypoint');
       expect(output).toContain('Build pipeline completed successfully');
+      expect(after).toBe(before);
     });
 
     it('should execute inkpi-standalone.mjs CLI both in studio frame and print mode', () => {
@@ -452,18 +455,23 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
         encoding: 'utf8'
       });
       expect(studioOutput).toContain('Studio');
-      expect(studioOutput).toContain('资源目录树');
-      expect(studioOutput).toContain('状态账本');
+      expect(studioOutput).toContain('Resources');
+      expect(studioOutput).toContain('Runtime State');
 
       // 2. Print mode execution
-      const printOutput = execSync('node scripts/inkpi-standalone.mjs --print --prompt "测试小说开篇" --json', {
+      const printOutput = execSync('node scripts/inkpi-standalone.mjs --print --model mock-test --prompt "测试小说开篇" --json', {
         cwd: rootDir,
         encoding: 'utf8'
       });
       const parsed = JSON.parse(printOutput);
       expect(parsed.success).toBe(true);
-      expect(parsed.role).toBe('writer');
+      expect(parsed.role).toBe('assistant');
+
+      expect(() => execSync('node scripts/inkpi-standalone.mjs --print --prompt', {
+        cwd: rootDir,
+        encoding: 'utf8',
+        stdio: 'pipe'
+      })).toThrow();
     });
   });
 });
-

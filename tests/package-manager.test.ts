@@ -37,14 +37,19 @@ describe('InkPi Extension Package Manager', () => {
     const list = pm.getInstalledPackages();
     expect(list.length).toBe(1);
     expect(list[0].name).toBe('@inkpi/xianxia-worldview');
+    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'), 'utf8'))
+      .toContain('元婴');
 
     // Update
     pm.update('@inkpi/xianxia-worldview', {
       ...manifest,
       version: '1.1.0'
-    });
+    }, { 'index.js': 'export const version = "1.1.0";' });
     const updatedList = pm.getInstalledPackages();
     expect(updatedList[0].version).toBe('1.1.0');
+    expect(fs.existsSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'))).toBe(false);
+    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'index.js'), 'utf8'))
+      .toContain('1.1.0');
 
     // Remove
     const removed = pm.remove('@inkpi/xianxia-worldview');
@@ -53,16 +58,67 @@ describe('InkPi Extension Package Manager', () => {
   });
 
   it('should execute package manager CLI commands', async () => {
-    const listRes = await runPackageManagerCli(['list']);
+    const cliBaseDir = path.join(testBaseDir, 'cli');
+    const bundle = {
+      manifest: {
+        name: '@inkpi/test-pkg',
+        version: '2.3.4',
+        description: 'Test bundle from a configured source',
+        category: 'plugins' as const
+      },
+      files: { 'index.js': 'export const value = 42;' }
+    };
+    const resolvePackage = async () => bundle;
+
+    const listRes = await runPackageManagerCli(['list'], { baseDir: cliBaseDir, resolvePackage });
     expect(typeof listRes).toBe('string');
 
-    const installRes = await runPackageManagerCli(['install', '@inkpi/test-pkg']);
-    expect(installRes).toContain('成功安装');
+    const missingSourceRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], { baseDir: cliBaseDir });
+    expect(missingSourceRes).toContain('No package source resolver');
 
-    const updateRes = await runPackageManagerCli(['update', '@inkpi/test-pkg']);
-    expect(updateRes).toContain('成功更新');
+    const installRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    expect(installRes).toContain("Installed '@inkpi/test-pkg'@2.3.4");
 
-    const removeRes = await runPackageManagerCli(['remove', '@inkpi/test-pkg']);
-    expect(removeRes).toContain('成功卸载');
+    const updateRes = await runPackageManagerCli(['update', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    expect(updateRes).toContain("Updated '@inkpi/test-pkg' to v2.3.4");
+
+    const removeRes = await runPackageManagerCli(['remove', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    expect(removeRes).toContain('Removed');
+  });
+
+  it('should reject invalid manifests and file paths before touching an existing package', () => {
+    const pm = new ExtensionPackageManager(testBaseDir);
+    const manifest = {
+      name: '@inkpi/stable',
+      version: '1.0.0',
+      description: 'Stable package',
+      category: 'plugin'
+    };
+    pm.install(manifest, { 'state.json': '{"ok":true}' });
+
+    expect(() => pm.update('@inkpi/stable', {
+      ...manifest,
+      version: 'not-semver'
+    }, { 'state.json': '{"ok":false}' })).toThrow(/Invalid package version/);
+    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-stable', 'state.json'), 'utf8')).toBe('{"ok":true}');
+
+    expect(() => pm.install({
+      ...manifest,
+      version: '1.0.1'
+    }, { '../escape.js': 'must not be written' })).toThrow(/escapes package directory/);
+    expect(fs.existsSync(path.join(testBaseDir, 'escape.js'))).toBe(false);
+  });
+
+  it('should expose malformed installed package manifests through diagnostics', () => {
+    const pm = new ExtensionPackageManager(testBaseDir);
+    const malformedDir = path.join(testBaseDir, 'broken');
+    fs.mkdirSync(malformedDir, { recursive: true });
+    fs.writeFileSync(path.join(malformedDir, 'package.json'), '{"name":"broken"}', 'utf8');
+
+    expect(pm.getInstalledPackages()).toEqual([]);
+    const diagnostics = pm.getDiagnostics();
+    expect(diagnostics.malformedPackages).toHaveLength(1);
+    expect(diagnostics.malformedPackages[0].directory).toBe(malformedDir);
+    expect(diagnostics.malformedPackages[0].error.message).toMatch(/version|category/i);
   });
 });

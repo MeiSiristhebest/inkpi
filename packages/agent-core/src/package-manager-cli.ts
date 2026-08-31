@@ -2,58 +2,56 @@
  * InkPi 扩展包管理命令行分发器 (1:1 对标 pi-coding-agent package-manager-cli.ts)
  */
 
-import { ExtensionPackageManager, type InkPackageManifest } from './package-manager/package-manager.js';
+import { ExtensionPackageManager, type InkPackageBundle } from './package-manager/package-manager.js';
 
-export async function runPackageManagerCli(args: string[]): Promise<string> {
+export interface PackageManagerCliOptions {
+  baseDir?: string;
+  resolvePackage?: (pkgName: string, operation: 'install' | 'update') => Promise<InkPackageBundle | undefined> | InkPackageBundle | undefined;
+}
+
+export async function runPackageManagerCli(args: string[], options: PackageManagerCliOptions = {}): Promise<string> {
   const [subcommand, pkgName] = args;
-  const pm = new ExtensionPackageManager();
+  const pm = new ExtensionPackageManager(options.baseDir);
 
   switch (subcommand) {
     case 'list': {
       const pkgs = pm.getInstalledPackages();
       if (pkgs.length === 0) {
-        return '📦 当前未安装任何 InkPi 创作扩展或世界观技能包。';
+        return 'No extension packages are installed.';
       }
       return [
-        '📦 已安装的 InkPi 创作扩展：',
+        'Installed extension packages:',
         ...pkgs.map((p) => `  • ${p.name}@${p.version} (${p.category}): ${p.description}`)
       ].join('\n');
     }
 
     case 'install': {
-      if (!pkgName) return '❌ 请提供要安装的包名，例如: inkpi install @inkpi/wuxia-worldview';
-      const mockManifest: InkPackageManifest = {
-        name: pkgName,
-        version: '1.0.0',
-        description: `Community package ${pkgName}`,
-        category: 'worldview'
-      };
-      pm.install(mockManifest, {
-        'rules.md': `# ${pkgName} 创作规则与世界观设定\n1. 角色境界划分\n2. 势力分布`,
-        'index.js': `export default { name: "${pkgName}", init() { console.log("${pkgName} loaded"); } };`
-      });
-      return `✅ 成功安装扩展包 '${pkgName}'@1.0.0`;
+      if (!pkgName) return 'A package name is required: inkpi install <package>';
+      if (!options.resolvePackage) return `No package source resolver is configured for '${pkgName}'.`;
+      const bundle = await options.resolvePackage(pkgName, 'install');
+      if (!bundle) return `No package manifest/source was resolved for '${pkgName}'.`;
+      if (bundle.manifest.name !== pkgName) return `Resolved manifest '${bundle.manifest.name}' does not match '${pkgName}'.`;
+      pm.install(bundle.manifest, bundle.files);
+      return `Installed '${pkgName}'@${bundle.manifest.version}.`;
     }
 
     case 'remove': {
-      if (!pkgName) return '❌ 请提供要卸载的包名，例如: inkpi remove @inkpi/wuxia-worldview';
+      if (!pkgName) return 'A package name is required: inkpi remove <package>';
       const removed = pm.remove(pkgName);
-      return removed ? `✅ 成功卸载扩展包 '${pkgName}'` : `⚠️ 未找到扩展包 '${pkgName}'`;
+      return removed ? `Removed '${pkgName}'.` : `Package '${pkgName}' is not installed.`;
     }
 
     case 'update': {
-      if (!pkgName) return '❌ 请提供要更新的包名，例如: inkpi update @inkpi/wuxia-worldview';
-      const updatedManifest: InkPackageManifest = {
-        name: pkgName,
-        version: '1.1.0',
-        description: `Updated package ${pkgName}`,
-        category: 'worldview'
-      };
-      pm.update(pkgName, updatedManifest);
-      return `✅ 成功更新扩展包 '${pkgName}' 至 v1.1.0`;
+      if (!pkgName) return 'A package name is required: inkpi update <package>';
+      if (!options.resolvePackage) return `No package source resolver is configured for '${pkgName}'.`;
+      const bundle = await options.resolvePackage(pkgName, 'update');
+      if (!bundle) return `No package manifest/source was resolved for '${pkgName}'.`;
+      if (bundle.manifest.name !== pkgName) return `Resolved manifest '${bundle.manifest.name}' does not match '${pkgName}'.`;
+      pm.update(pkgName, bundle.manifest, bundle.files);
+      return `Updated '${pkgName}' to v${bundle.manifest.version}.`;
     }
 
     default:
-      return '用法: inkpi <install|remove|list|update> [pkgName]';
+      return 'Usage: inkpi <install|remove|list|update> [package]';
   }
 }
