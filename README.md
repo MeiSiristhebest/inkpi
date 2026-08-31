@@ -145,36 +145,53 @@ Optimizes long-context inference cost and latency through 4-tier breakpoint cach
 ## ⚙️ Requirements
 
 - **Node.js**: $\ge 22.0.0$ (LTS recommended)
-- **Package Manager**: `pnpm` $\ge 9.0.0$
 
 ---
 
-## 📦 Installation & Setup
+## 📦 Installation
 
-### 1. Global Installation (Recommended for Writers & Creators)
-
+**curl** (Linux / macOS):
 ```bash
-# Install globally via pnpm or npm
-pnpm add -g inkpi
-# or
-npm install -g inkpi
-
-# Or run instantly without installation
-npx inkpi
+curl -fsSL https://inkpi.dev/install.sh | sh
 ```
 
-### 2. Monorepo Source Development
+**PowerShell** (Windows):
+```powershell
+iwr https://inkpi.dev/install.ps1 | iex
+```
+
+**npm**:
+```bash
+npm install -g --ignore-scripts inkpi
+```
+
+**pnpm**:
+```bash
+pnpm add -g --ignore-scripts inkpi
+```
+
+**bun**:
+```bash
+bun install -g inkpi
+```
+
+---
+
+## 🛠️ Source Development
 
 ```bash
 # Clone the repository
 git clone https://github.com/MeiSiristhebest/inkpi.git
 cd inkpi
 
-# Install monorepo dependencies via pnpm workspace
-pnpm install
+# Install monorepo dependencies (without lifecycle scripts)
+pnpm install --ignore-scripts
 
-# Compile all 10 packages with TypeScript composite references
+# Compile all 10 packages
 pnpm run build
+
+# Run tests
+pnpm run test:coverage
 ```
 
 ---
