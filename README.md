@@ -228,10 +228,20 @@ Distributed under the [MIT License](./LICENSE). Copyright (c) 2026 InkPi Contrib
 
 ## ⭐ Star & Support
 
-If you find this project useful or inspiring, please consider giving it a ⭐ **Star** on GitHub!
+If you find this project useful or inspiring, please consider giving it a ⭐ **Star** on GitHub! It helps more developers discover the work and supports continuous open-source maintenance.
 
 <p align="center">
-  <a href="https://github.com/MeiSiristhebest/inkpi">
-    <img src="https://img.shields.io/github/stars/MeiSiristhebest/inkpi?style=social" alt="GitHub stars" />
+  <a href="https://www.star-history.com/?repos=MeiSiristhebest%2Finkpi&type=date&legend=bottom-right">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&theme=dark&legend=bottom-right" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&legend=bottom-right" />
+      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=MeiSiristhebest/inkpi&type=date&legend=bottom-right" width="100%" />
+    </picture>
   </a>
 </p>
+
+### 🤝 Contributors
+<a href="https://github.com/MeiSiristhebest/inkpi/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=MeiSiristhebest/inkpi" alt="Contributors" />
+</a>
+

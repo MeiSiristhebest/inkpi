@@ -8,31 +8,36 @@ on:
 
 jobs:
   verify:
-    name: Lint, Build & Test Coverage
+    name: Lint, Build & Test Coverage (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [20.x, 22.x]
+        node-version: [22.x]
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile=false
 
       - name: Check Pinned Dependencies
-        run: npm run check:pinned-deps
+        run: pnpm run check:pinned-deps
 
       - name: Typecheck & Build Monorepo
-        run: npm run build
+        run: pnpm run build
 
       - name: Run Test Coverage & Thresholds
-        run: npm run test:coverage
+        run: pnpm run test:coverage
