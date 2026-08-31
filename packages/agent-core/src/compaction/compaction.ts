@@ -1,6 +1,6 @@
 import type { AgentMessage, CompactionEntry, AssistantMessage } from '@inkpi/protocol';
 import { serializeConversationForSummary, GENERIC_SUMMARIZATION_SYSTEM_PROMPT } from './utils.js';
-import { extractStateLedger, formatStateLedger } from './state-ledger.js';
+import { extractStateLedger, type LedgerExtractor } from './state-ledger.js';
 
 export interface CompactionConfig {
   /** Trigger threshold in tokens (e.g. 100,000) */
@@ -9,16 +9,30 @@ export interface CompactionConfig {
   preserveRecentCount?: number;
   /** Custom summarizer function */
   summarizer?: (serializedConversation: string, systemPrompt: string) => Promise<string>;
+  /** Optional domain adapter for extracting structured state from compacted messages. */
+  ledgerExtractors?: LedgerExtractor[];
+  /** Optional domain adapter for rendering the extracted state into the summary message. */
+  ledgerFormatter?: (ledger: ReturnType<typeof extractStateLedger>) => string;
+}
+
+interface ResolvedCompactionConfig {
+  triggerTokensThreshold: number;
+  preserveRecentCount: number;
+  summarizer?: CompactionConfig['summarizer'];
+  ledgerExtractors?: LedgerExtractor[];
+  ledgerFormatter?: CompactionConfig['ledgerFormatter'];
 }
 
 export class SessionCompactor {
-  private config: Required<CompactionConfig>;
+  private config: ResolvedCompactionConfig;
 
   constructor(config: CompactionConfig = {}) {
     this.config = {
       triggerTokensThreshold: config.triggerTokensThreshold ?? 50000,
       preserveRecentCount: config.preserveRecentCount ?? 4,
-      summarizer: config.summarizer ?? (async (conv) => `[Summary]\n${conv.slice(0, 300)}...`)
+      summarizer: config.summarizer,
+      ledgerExtractors: config.ledgerExtractors,
+      ledgerFormatter: config.ledgerFormatter
     };
   }
 
@@ -56,15 +70,22 @@ export class SessionCompactor {
     compactedMessages: AgentMessage[];
     entry: CompactionEntry;
   }> {
+    if (!this.config.summarizer) {
+      throw new Error('Session compaction requires an explicit summarizer capability.');
+    }
+
     const tokensBefore = this.estimateTokens(messages);
     const splitIndex = Math.max(1, messages.length - this.config.preserveRecentCount);
 
     const oldMessages = messages.slice(0, splitIndex);
     const keptMessages = messages.slice(splitIndex);
 
-    // Extract state ledger from compacted range
-    const stateLedger = extractStateLedger(oldMessages);
-    const formattedLedger = formatStateLedger(stateLedger);
+    const stateLedger = this.config.ledgerExtractors
+      ? extractStateLedger(oldMessages, this.config.ledgerExtractors)
+      : undefined;
+    const formattedLedger = stateLedger && this.config.ledgerFormatter
+      ? this.config.ledgerFormatter(stateLedger)
+      : '';
 
     // Generate conversation summary
     const serialized = serializeConversationForSummary(oldMessages);
@@ -82,7 +103,7 @@ export class SessionCompactor {
       tokensBefore,
       estimatedTokensAfter: this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * 0.7),
       createdAt: Date.now(),
-      details: { stateLedger }
+      details: stateLedger ? { stateLedger } : undefined
     };
 
     // Replace old messages with structured summary block

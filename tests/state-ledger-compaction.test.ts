@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { extractStateLedger, formatStateLedger, SessionCompactor } from '@inkpi/agent-core';
+import {
+  extractNovelStateLedger,
+  extractStateLedger,
+  formatStateLedger,
+  NarrativeSemanticLedgerExtractor,
+  SessionCompactor
+} from '@inkpi/agent-core';
 import type { AgentMessage, UserMessage, AssistantMessage } from '@inkpi/protocol';
 
 describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
@@ -27,12 +33,20 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
       name: 'custom_keyword_extractor',
       extract(rawText: string, ctx: any) {
         if (rawText.includes('CustomSignal')) {
-          ctx.foreshadowingsMap.set('CustomSignalCaptured', 'resolved');
+          ctx.tracksMap.set('CustomSignalCaptured', {
+            clue: 'CustomSignalCaptured',
+            status: 'resolved'
+          });
         }
       }
     };
 
-    const ledger = extractStateLedger([...messages, { role: 'user', content: 'Received CustomSignal' } as any], [customExtractor]);
+    const genericLedger = extractStateLedger(messages);
+    expect(genericLedger.entities).toEqual([]);
+    expect(genericLedger.assets).toEqual([]);
+    expect(genericLedger.tracks).toEqual([]);
+
+    const ledger = extractNovelStateLedger([...messages, { role: 'user', content: 'Received CustomSignal' } as any], [customExtractor]);
 
     expect(ledger.entities.some((c) => c.name === 'Alice')).toBe(true);
     expect(ledger.entities.some((c) => c.name === 'Bob')).toBe(true);
@@ -42,9 +56,9 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
     expect(ledger.modifiedResources.some((ch) => ch.includes('doc_12'))).toBe(true);
 
     const formatted = formatStateLedger(ledger);
-    expect(formatted).toContain('Active Entities');
-    expect(formatted).toContain('Key Assets');
-    expect(formatted).toContain('Tracks & Open Threads');
+    expect(formatted).toContain('Entities:');
+    expect(formatted).toContain('Assets:');
+    expect(formatted).toContain('Tracks:');
 
     // Test custom formatter
     const customFormatted = formatStateLedger(ledger, (l) => `CUSTOM:[${l.entities.length}]`);
@@ -85,7 +99,7 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
         ]
       } as any
     ];
-    const toolCallLedger = extractStateLedger(toolCallMsgs);
+    const toolCallLedger = extractNovelStateLedger(toolCallMsgs);
     expect(toolCallLedger.modifiedResources).toContain('doc_custom_section');
     expect(toolCallLedger.entities.some((e) => e.name === 'CharacterBeta')).toBe(true);
     expect(toolCallLedger.assets.some((a) => a.name === 'ToolItemA')).toBe(true);
@@ -96,7 +110,9 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
     const compactor = new SessionCompactor({
       triggerTokensThreshold: 30,
       preserveRecentCount: 1,
-      summarizer: async () => 'Core Summary: Key acquired and initialization completed.'
+      summarizer: async () => 'Core Summary: Key acquired and initialization completed.',
+      ledgerExtractors: [NarrativeSemanticLedgerExtractor],
+      ledgerFormatter: (ledger) => `entities=${ledger.entities.map((entity) => entity.name).join(',')}`
     });
 
     const messages: AgentMessage[] = [
