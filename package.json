@@ -15,14 +15,12 @@
     "bundle": "node scripts/bundle.ts",
     "build:binaries": "node scripts/build-binaries.mjs",
     "check:pinned-deps": "node scripts/check-pinned-deps.mjs",
-
     "lint": "biome check packages tests scripts",
     "format": "biome format --write packages tests scripts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check": "npm run check:pinned-deps && tsc -b"
   },
-
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@types/node": "22.13.0",

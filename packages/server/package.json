@@ -15,9 +15,9 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "*",
-    "@inkpi/ai": "*",
-    "@inkpi/editor-core": "*",
-    "@inkpi/session-backends": "*"
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/ai": "workspace:*",
+    "@inkpi/editor-core": "workspace:*",
+    "@inkpi/session-backends": "workspace:*"
   }
 }

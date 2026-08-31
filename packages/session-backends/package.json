@@ -15,7 +15,7 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "*",
-    "@inkpi/storage": "*"
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/storage": "workspace:*"
   }
 }

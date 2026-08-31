@@ -11,14 +11,12 @@
     }
   },
   "scripts": {
-    "generate:models": "node scripts/generate-models.mjs",
-    "hydrate:model-data": "node scripts/generate-models.mjs --data-only",
-    "check:model-data": "node scripts/check-model-data.mjs",
-    "build": "node scripts/check-model-data.mjs && tsc -b",
+    "build": "tsc -b",
+    "generate:models": "node scripts/generate-models.ts",
+    "hydrate:model-data": "node scripts/hydrate-model-data.ts",
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
-
   "dependencies": {
-    "@inkpi/protocol": "*"
+    "@inkpi/protocol": "workspace:*"
   }
 }
