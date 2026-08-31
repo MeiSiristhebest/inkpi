@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-release:
-    name: Build Multi-OS Binaries
+    name: Build Multi-OS Binaries (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -24,8 +24,17 @@ jobs:
         with:
           node-version: 22.x
 
+      - name: Enable Corepack & Setup pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
       - name: Install Dependencies
-        run: npm ci
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
+      - name: Typecheck & Build Monorepo
+        run: pnpm run build
 
       - name: Build Standalone Executables
         run: node scripts/build-binaries.mjs
