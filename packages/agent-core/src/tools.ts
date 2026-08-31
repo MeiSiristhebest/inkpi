@@ -1,4 +1,5 @@
-import type { AgentTool, ToolCallContent, ToolResultMessage, ToolResult } from '@inkpi/protocol';
+import { validateSchema } from '@inkpi/protocol';
+import type { AgentTool, ToolCallContent, ToolResultMessage, ToolResult, TSchema } from '@inkpi/protocol';
 import type { ToolExecutionMode } from './types.js';
 
 export class ToolRegistry {
@@ -22,16 +23,10 @@ export class ToolRegistry {
 
   public validateParameters(tool: AgentTool, args: Record<string, unknown>): { valid: boolean; error?: string } {
     if (!tool.parameters) return { valid: true };
-    // Basic TypeBox / JSON Schema required fields check
-    const paramsSchema = tool.parameters as { required?: string[]; properties?: Record<string, unknown> };
-    if (paramsSchema.required && Array.isArray(paramsSchema.required)) {
-      for (const req of paramsSchema.required) {
-        if (args[req] === undefined || args[req] === null) {
-          return { valid: false, error: `Missing required parameter: '${req}' for tool '${tool.name}'` };
-        }
-      }
-    }
-    return { valid: true };
+    const result = validateSchema(tool.parameters as TSchema, args);
+    return result.valid
+      ? { valid: true }
+      : { valid: false, error: result.errors.map((error) => `${error.path} ${error.message}`).join('; ') };
   }
 
   public async executeTool(

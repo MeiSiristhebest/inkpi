@@ -112,6 +112,138 @@ export interface ValidationError {
   value: any;
 }
 
+function jsonSchemaErrors(schema: TSchema, value: unknown, path: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (schema.const !== undefined && value !== schema.const) {
+    errors.push({ path: path || '/', message: `Expected constant ${String(schema.const)}`, value });
+  }
+
+  if (Array.isArray(schema.enum) && !schema.enum.some((candidate: unknown) => Object.is(candidate, value))) {
+    errors.push({ path: path || '/', message: 'Value is not one of the allowed enum values', value });
+  }
+
+  const alternatives = Array.isArray(schema.anyOf) ? schema.anyOf : undefined;
+  if (alternatives && !alternatives.some((candidate: TSchema) => jsonSchemaErrors(candidate, value, path).length === 0)) {
+    errors.push({ path: path || '/', message: 'Value did not match any schema in anyOf', value });
+    return errors;
+  }
+
+  const oneOf = Array.isArray(schema.oneOf) ? schema.oneOf : undefined;
+  if (oneOf) {
+    const matches = oneOf.filter((candidate: TSchema) => jsonSchemaErrors(candidate, value, path).length === 0).length;
+    if (matches !== 1) {
+      errors.push({ path: path || '/', message: `Value matched ${matches} schemas in oneOf, expected exactly one`, value });
+      return errors;
+    }
+  }
+
+  if (schema.type !== undefined) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    const matchesType = types.some((type: string) => {
+      switch (type) {
+        case 'null':
+          return value === null;
+        case 'object':
+          return typeof value === 'object' && value !== null && !Array.isArray(value);
+        case 'array':
+          return Array.isArray(value);
+        case 'string':
+          return typeof value === 'string';
+        case 'number':
+          return typeof value === 'number' && Number.isFinite(value);
+        case 'integer':
+          return typeof value === 'number' && Number.isInteger(value);
+        case 'boolean':
+          return typeof value === 'boolean';
+        default:
+          return true;
+      }
+    });
+    if (!matchesType) {
+      errors.push({ path: path || '/', message: `Expected ${types.join(' or ')}, got ${Array.isArray(value) ? 'array' : typeof value}`, value });
+      return errors;
+    }
+  }
+
+  if (typeof value === 'string') {
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      errors.push({ path: path || '/', message: `String length must be >= ${schema.minLength}`, value });
+    }
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+      errors.push({ path: path || '/', message: `String length must be <= ${schema.maxLength}`, value });
+    }
+    if (schema.pattern !== undefined) {
+      try {
+        if (!new RegExp(schema.pattern).test(value)) {
+          errors.push({ path: path || '/', message: `String does not match pattern ${schema.pattern}`, value });
+        }
+      } catch {
+        errors.push({ path: path || '/', message: `Invalid regular expression pattern ${schema.pattern}`, value });
+      }
+    }
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      errors.push({ path: path || '/', message: `Number must be >= ${schema.minimum}`, value });
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      errors.push({ path: path || '/', message: `Number must be <= ${schema.maximum}`, value });
+    }
+  }
+
+  if (Array.isArray(value)) {
+    if (schema.minItems !== undefined && value.length < schema.minItems) {
+      errors.push({ path: path || '/', message: `Array length must be >= ${schema.minItems}`, value });
+    }
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      errors.push({ path: path || '/', message: `Array length must be <= ${schema.maxItems}`, value });
+    }
+    if (schema.items) {
+      for (let index = 0; index < value.length; index += 1) {
+        errors.push(...jsonSchemaErrors(schema.items, value[index], `${path}[${index}]`));
+      }
+    }
+  }
+
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const properties = schema.properties && typeof schema.properties === 'object'
+      ? schema.properties as Record<string, TSchema>
+      : {};
+    const required = Array.isArray(schema.required) ? schema.required as string[] : [];
+    for (const key of required) {
+      if (!(key in value)) {
+        errors.push({ path: `${path}/${key}`, message: 'Missing required property', value: undefined });
+      }
+    }
+    for (const [key, propertySchema] of Object.entries(properties)) {
+      if (key in value) {
+        errors.push(...jsonSchemaErrors(propertySchema, (value as Record<string, unknown>)[key], `${path}/${key}`));
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!(key in properties)) {
+          errors.push({
+            path: `${path}/${key}`,
+            message: `Unexpected additional property '${key}'`,
+            value: (value as Record<string, unknown>)[key]
+          });
+        }
+      }
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+      for (const [key, propertyValue] of Object.entries(value)) {
+        if (!(key in properties)) {
+          errors.push(...jsonSchemaErrors(schema.additionalProperties as TSchema, propertyValue, `${path}/${key}`));
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
 export const Value = {
   Check(schema: TSchema, value: any): boolean {
     return Value.Errors(schema, value).length === 0;
@@ -122,6 +254,7 @@ export const Value = {
     if (!schema) return errors;
 
     const kind = schema[TypeBoxKind];
+    if (!kind) return jsonSchemaErrors(schema, value, path);
 
     if (value === undefined) {
       if (schema.optional) return errors;
