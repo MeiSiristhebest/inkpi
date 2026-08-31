@@ -290,4 +290,15 @@ export class InkRpcClient {
   public exportOpenTelemetry() {
     return this.request<string>('telemetry.exportOtel');
   }
+
+  public onNotification(handler: (notif: RpcNotification) => void): () => void {
+    return this.transport.onNotification(handler);
+  }
+
+  public async close(): Promise<void> {
+    if ((this.transport as any).close) {
+      (this.transport as any).close();
+    }
+  }
 }
+

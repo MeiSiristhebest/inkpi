@@ -170,6 +170,34 @@ export interface TelemetrySpan {
   attributes?: Record<string, unknown>;
 }
 
+export interface CreativeInteractionMetrics {
+  ghostText: {
+    totalSuggestions: number;
+    acceptedFull: number;
+    acceptedWord: number;
+    acceptedLine: number;
+    dismissed: number;
+    acceptedChars: number;
+    dismissedChars: number;
+    acceptanceRate: number;
+  };
+  branching: {
+    branchCount: number;
+    rollbackCount: number;
+    rollbackRate: number;
+  };
+  invariants: {
+    conflictsBlockedCount: number;
+    conflictRules: string[];
+  };
+}
+
+export type TelemetryEvent =
+  | { type: 'ghost_text_interaction'; action: 'accept_full' | 'accept_word' | 'accept_line' | 'dismiss'; charCount: number; timestamp: number }
+  | { type: 'branch_rollback'; branchId: string; depth: number; timestamp: number }
+  | { type: 'invariant_conflict'; rule: string; details?: string; timestamp: number }
+  | { type: 'turn_telemetry'; stats: TelemetryStats; timestamp: number };
+
 /** 实时时延与缓存度量 (1:1 对标 repos/pi Timings & CacheStats) */
 export interface TelemetryStats {
   ttftMs: number; // Time to first token
@@ -179,7 +207,9 @@ export interface TelemetryStats {
   estimatedCostUsd: number;
   thinkingTokens?: number;
   spans?: TelemetrySpan[];
+  creativeMetrics?: CreativeInteractionMetrics;
 }
+
 
 /** 会话多格式导出选项 (1:1 对标 repos/pi SessionExport) */
 export interface ExportOptions {

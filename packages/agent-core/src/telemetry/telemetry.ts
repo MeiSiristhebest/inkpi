@@ -1,8 +1,16 @@
-import type { TelemetryStats, AssistantMessage, TelemetrySpan, Usage } from '@inkpi/protocol';
+import type {
+  TelemetryStats,
+  AssistantMessage,
+  TelemetrySpan,
+  Usage,
+  CreativeInteractionMetrics,
+  TelemetryEvent
+} from '@inkpi/protocol';
 
 /**
  * OpenTelemetry 规范全链路可观测性度量收集器 (1:1 对标 repos/pi packages/telemetry)
- * 支持 4 阶段多 Agent 流水线 Span 分段、TTFT 首字延迟、Prompt Caching 命中率与成本核算
+ * 支持 4 阶段多 Agent 流水线 Span 分段、TTFT 首字延迟、Prompt Caching 命中率、
+ * 以及 Ghost Text 采纳漏斗、分支回滚与状态不变量冲突拦截等创作专属度量
  */
 export class TelemetryCollector {
   private startTime = 0;
@@ -14,10 +22,46 @@ export class TelemetryCollector {
   private thinkingTokens = 0;
   private spans: TelemetrySpan[] = [];
   private activeSpans = new Map<string, TelemetrySpan>();
+  private eventListeners: Array<(event: TelemetryEvent) => void> = [];
+
+  // Creative Interaction Metrics
+  private ghostMetrics = {
+    totalSuggestions: 0,
+    acceptedFull: 0,
+    acceptedWord: 0,
+    acceptedLine: 0,
+    dismissed: 0,
+    acceptedChars: 0,
+    dismissedChars: 0
+  };
+
+  private branchMetrics = {
+    branchCount: 0,
+    rollbackCount: 0
+  };
+
+  private invariantMetrics = {
+    conflictsBlockedCount: 0,
+    conflictRules: new Set<string>()
+  };
 
   private modelInputCostPerM = 2.0; // Default $2 / 1M tokens
   private modelOutputCostPerM = 8.0; // Default $8 / 1M tokens
   private modelCacheReadCostPerM = 0.5; // Default $0.5 / 1M tokens
+
+  public onEvent(listener: (event: TelemetryEvent) => void): () => void {
+    this.eventListeners.push(listener);
+    return () => {
+      const idx = this.eventListeners.indexOf(listener);
+      if (idx !== -1) this.eventListeners.splice(idx, 1);
+    };
+  }
+
+  private emitEvent(event: TelemetryEvent): void {
+    for (const listener of this.eventListeners) {
+      listener(event);
+    }
+  }
 
   public startTurn(): void {
     this.startTime = Date.now();
@@ -43,6 +87,101 @@ export class TelemetryCollector {
     this.totalOutputTokens += usage.outputTokens || 0;
     this.cacheReadTokens += usage.cacheReadTokens || 0;
     this.thinkingTokens += usage.reasoningTokens || 0;
+  }
+
+  /**
+   * 记录创作者幽灵文本交互（采纳全量、单字、单行或拒绝）
+   */
+  public recordGhostTextInteraction(
+    action: 'accept_full' | 'accept_word' | 'accept_line' | 'dismiss',
+    charCount: number
+  ): void {
+    this.ghostMetrics.totalSuggestions += 1;
+    if (action === 'accept_full') {
+      this.ghostMetrics.acceptedFull += 1;
+      this.ghostMetrics.acceptedChars += charCount;
+    } else if (action === 'accept_word') {
+      this.ghostMetrics.acceptedWord += 1;
+      this.ghostMetrics.acceptedChars += charCount;
+    } else if (action === 'accept_line') {
+      this.ghostMetrics.acceptedLine += 1;
+      this.ghostMetrics.acceptedChars += charCount;
+    } else if (action === 'dismiss') {
+      this.ghostMetrics.dismissed += 1;
+      this.ghostMetrics.dismissedChars += charCount;
+    }
+
+    this.emitEvent({
+      type: 'ghost_text_interaction',
+      action,
+      charCount,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 记录创意分支创建与回滚
+   */
+  public recordBranchCreation(): void {
+    this.branchMetrics.branchCount += 1;
+  }
+
+  public recordBranchReversion(branchId: string, depth = 1): void {
+    this.branchMetrics.rollbackCount += 1;
+    this.emitEvent({
+      type: 'branch_rollback',
+      branchId,
+      depth,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 记录世界状态账本冲突拦截
+   */
+  public recordInvariantConflict(rule: string, details?: string): void {
+    this.invariantMetrics.conflictsBlockedCount += 1;
+    this.invariantMetrics.conflictRules.add(rule);
+    this.emitEvent({
+      type: 'invariant_conflict',
+      rule,
+      details,
+      timestamp: Date.now()
+    });
+  }
+
+  public getCreativeMetrics(): CreativeInteractionMetrics {
+    const totalAccepted =
+      this.ghostMetrics.acceptedFull +
+      this.ghostMetrics.acceptedWord +
+      this.ghostMetrics.acceptedLine;
+    const totalDecisions = totalAccepted + this.ghostMetrics.dismissed;
+    const acceptanceRate = totalDecisions > 0 ? totalAccepted / totalDecisions : 0;
+
+    const totalBranches = Math.max(1, this.branchMetrics.branchCount);
+    const rollbackRate = this.branchMetrics.rollbackCount / totalBranches;
+
+    return {
+      ghostText: {
+        totalSuggestions: this.ghostMetrics.totalSuggestions,
+        acceptedFull: this.ghostMetrics.acceptedFull,
+        acceptedWord: this.ghostMetrics.acceptedWord,
+        acceptedLine: this.ghostMetrics.acceptedLine,
+        dismissed: this.ghostMetrics.dismissed,
+        acceptedChars: this.ghostMetrics.acceptedChars,
+        dismissedChars: this.ghostMetrics.dismissedChars,
+        acceptanceRate: Math.round(acceptanceRate * 1000) / 1000
+      },
+      branching: {
+        branchCount: this.branchMetrics.branchCount,
+        rollbackCount: this.branchMetrics.rollbackCount,
+        rollbackRate: Math.round(rollbackRate * 1000) / 1000
+      },
+      invariants: {
+        conflictsBlockedCount: this.invariantMetrics.conflictsBlockedCount,
+        conflictRules: Array.from(this.invariantMetrics.conflictRules)
+      }
+    };
   }
 
   /**
@@ -111,15 +250,24 @@ export class TelemetryCollector {
       (this.totalOutputTokens / 1_000_000) * this.modelOutputCostPerM +
       (this.cacheReadTokens / 1_000_000) * this.modelCacheReadCostPerM;
 
-    return {
+    const stats: TelemetryStats = {
       ttftMs,
       totalDurationMs: durationMs,
       tokensPerSecond: Math.round(tokensPerSecond * 10) / 10,
       cacheHitRate: Math.round(cacheHitRate * 100) / 100,
       estimatedCostUsd: Math.round(estimatedCostUsd * 100000) / 100000,
       thinkingTokens: this.thinkingTokens,
-      spans: this.getSpans()
+      spans: this.getSpans(),
+      creativeMetrics: this.getCreativeMetrics()
     };
+
+    this.emitEvent({
+      type: 'turn_telemetry',
+      stats,
+      timestamp: Date.now()
+    });
+
+    return stats;
   }
 
   public getStats(): TelemetryStats {
@@ -128,6 +276,27 @@ export class TelemetryCollector {
 
   public getMetrics(): TelemetryStats {
     return this.endTurn();
+  }
+
+  public reset(): void {
+    this.startTurn();
+    this.ghostMetrics = {
+      totalSuggestions: 0,
+      acceptedFull: 0,
+      acceptedWord: 0,
+      acceptedLine: 0,
+      dismissed: 0,
+      acceptedChars: 0,
+      dismissedChars: 0
+    };
+    this.branchMetrics = {
+      branchCount: 0,
+      rollbackCount: 0
+    };
+    this.invariantMetrics = {
+      conflictsBlockedCount: 0,
+      conflictRules: new Set<string>()
+    };
   }
 
   /**

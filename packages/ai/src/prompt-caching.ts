@@ -8,6 +8,21 @@ export interface OptimizedCachedPromptResult {
   messages: AgentMessage[];
 }
 
+export interface CacheSlot {
+  id: string;
+  type: 'system' | 'lore' | 'ledger' | 'turn';
+  content: string;
+  cacheControl: CacheControl;
+  estimatedTokens: number;
+}
+
+export interface MultiSlotCachedPromptResult {
+  slots: CacheSlot[];
+  totalEstimatedTokens: number;
+  cachedSystemPrompt: string;
+  messages: AgentMessage[];
+}
+
 /**
  * 通用 Prompt Caching 优化器 (1:1 对标 repos/pi Anthropic/DeepSeek Prompt Caching 机制)
  * 将高频、不可变的背景设定、核心规则、全量实体状态锁定为固定 Cache Prefix 断点，
@@ -50,7 +65,6 @@ export class PromptCacheOptimizer {
     }
 
     const cachedSystemPrompt = prefixSections.join('\n\n');
-    // 粗略估算 Token 数 (~0.7 tokens / char for Chinese text)
     const estimatedPrefixTokens = Math.ceil(cachedSystemPrompt.length * 0.7);
 
     return {
@@ -58,6 +72,73 @@ export class PromptCacheOptimizer {
       cacheControl: { type: 'ephemeral' },
       estimatedPrefixTokens,
       messages: params.currentTurnMessages
+    };
+  }
+
+  /**
+   * 构建针对长篇创作的四级精确 Cache Slot 断点 (1:1 对标 pi-ai anthropic-messages prompt caching)
+   */
+  public static buildMultiSlotCacheBreakpoints(params: {
+    baseSystemPrompt: string;
+    worldLore?: string;
+    stateLedger?: StateLedger;
+    recentMessages: AgentMessage[];
+    maxBreakpoints?: number;
+  }): MultiSlotCachedPromptResult {
+    const slots: CacheSlot[] = [];
+    const maxSlots = params.maxBreakpoints || 4;
+
+    // Slot 1: Base System Prompt & Directives (Immutable)
+    const baseContent = params.baseSystemPrompt.trim();
+    slots.push({
+      id: 'slot_1_system',
+      type: 'system',
+      content: baseContent,
+      cacheControl: { type: 'ephemeral' },
+      estimatedTokens: Math.ceil(baseContent.length * 0.7)
+    });
+
+    // Slot 2: Long-form World Lore & Setting (Immutable)
+    if (params.worldLore && slots.length < maxSlots) {
+      const loreContent = `=== 🌐 [World Lore & Invariants] ===\n${params.worldLore.trim()}`;
+      slots.push({
+        id: 'slot_2_lore',
+        type: 'lore',
+        content: loreContent,
+        cacheControl: { type: 'ephemeral' },
+        estimatedTokens: Math.ceil(loreContent.length * 0.7)
+      });
+    }
+
+    // Slot 3: Structured State Ledger Snapshot
+    if (params.stateLedger && slots.length < maxSlots) {
+      const parts: string[] = [];
+      if (params.stateLedger.entities?.length) {
+        parts.push(`Entities: ${params.stateLedger.entities.map((e) => `${e.name}(${e.status || 'Active'})`).join(', ')}`);
+      }
+      if (params.stateLedger.assets?.length) {
+        parts.push(`Assets: ${params.stateLedger.assets.map((a) => `${a.name}[${a.holder || 'None'}]`).join(', ')}`);
+      }
+      if (parts.length > 0) {
+        const ledgerContent = `=== 📜 [State Ledger Snapshot] ===\n${parts.join('\n')}`;
+        slots.push({
+          id: 'slot_3_ledger',
+          type: 'ledger',
+          content: ledgerContent,
+          cacheControl: { type: 'ephemeral' },
+          estimatedTokens: Math.ceil(ledgerContent.length * 0.7)
+        });
+      }
+    }
+
+    const combinedSystemPrompt = slots.map((s) => s.content).join('\n\n');
+    const totalEstimatedTokens = slots.reduce((sum, s) => sum + s.estimatedTokens, 0);
+
+    return {
+      slots,
+      totalEstimatedTokens,
+      cachedSystemPrompt: combinedSystemPrompt,
+      messages: params.recentMessages
     };
   }
 

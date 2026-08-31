@@ -279,3 +279,67 @@ export async function retryAssistantStream<T>(
 
   throw lastError;
 }
+
+export interface ResilientStreamOptions extends RetryOptions {
+  isRetryable?: (error: string) => boolean;
+}
+
+/**
+ * 弹性流式包装器 (Resilient Stream Wrapper)
+ * 遇网络抖动或提供商暂时中断时，自动重试并透明衔接事件流
+ */
+export function createResilientStream(
+  factory: (attempt: number) => AssistantEventStream | Promise<AssistantEventStream>,
+  options: ResilientStreamOptions = {}
+): AssistantEventStream {
+  const outerStream = new AssistantEventStream();
+  const maxRetries = options.maxRetries ?? 3;
+  let attempt = 0;
+
+  async function runStream(): Promise<void> {
+    attempt++;
+    let shouldRetry = false;
+    let retryError: any = null;
+
+    try {
+      const inner = await factory(attempt);
+      for await (const event of inner) {
+        if (event.type === 'error') {
+          const retryable = options.isRetryable ? options.isRetryable(event.error) : true;
+          if (retryable && attempt < maxRetries) {
+            shouldRetry = true;
+            retryError = new Error(event.error);
+            break;
+          }
+        }
+        outerStream.push(event);
+      }
+
+      if (shouldRetry) {
+        const delay = (options.initialDelayMs ?? 50) * Math.pow(options.backoffFactor ?? 2, attempt - 1);
+        options.onRetry?.(attempt, retryError, delay);
+        setTimeout(() => {
+          runStream();
+        }, delay);
+        return;
+      }
+
+      outerStream.end();
+    } catch (err: any) {
+      if (attempt < maxRetries) {
+        const delay = (options.initialDelayMs ?? 50) * Math.pow(options.backoffFactor ?? 2, attempt - 1);
+        options.onRetry?.(attempt, err, delay);
+        setTimeout(() => {
+          runStream();
+        }, delay);
+      } else {
+        outerStream.error(err?.message || String(err));
+      }
+    }
+  }
+
+  runStream();
+  return outerStream;
+}
+
+
