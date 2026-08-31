@@ -3,7 +3,7 @@ import type { StateLedger, SelectListOptions, TypographyOptions } from '@inkpi/p
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
 import { SlashCommandRegistry } from '../slash-commands.js';
-import { ANSI, drawBox, DifferentialRenderer } from './render.js';
+import { ANSI, drawBox, DifferentialRenderer } from '@inkpi/tui';
 
 export type StudioFocusMode = 'editor' | 'outline' | 'copilot' | 'ledger';
 

@@ -3,7 +3,7 @@ import type { TypographyOptions } from '@inkpi/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
 import { SlashCommandRegistry } from '../slash-commands.js';
-import { ANSI, drawBox } from './render.js';
+import { ANSI, drawBox } from '@inkpi/tui';
 
 export interface TerminalHarnessOptions {
   agent?: Agent;

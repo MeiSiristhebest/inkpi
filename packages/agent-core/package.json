@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@inkpi/protocol": "workspace:*",
+    "@inkpi/tui": "workspace:*",
     "@inkpi/ai": "workspace:*",
     "@inkpi/editor-core": "workspace:*",
     "@inkpi/storage": "workspace:*"

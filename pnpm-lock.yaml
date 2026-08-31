@@ -38,6 +38,9 @@ importers:
       '@inkpi/storage':
         specifier: workspace:*
         version: link:../storage
+      '@inkpi/tui':
+        specifier: workspace:*
+        version: link:../tui
 
   packages/ai:
     dependencies:
