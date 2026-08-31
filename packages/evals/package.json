@@ -18,5 +18,6 @@
     "@meisiristhebest/protocol": "workspace:*",
     "@meisiristhebest/agent-core": "workspace:*",
     "@meisiristhebest/storage": "workspace:*"
-  }
+  },
+  "private": true
 }
