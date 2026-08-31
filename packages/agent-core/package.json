@@ -21,5 +21,16 @@
     "@inkpi/editor-core": "workspace:*",
     "@inkpi/storage": "workspace:*",
     "ws": "8.21.3"
-  }
+  },
+  "description": "Core Agent runtime, dual-loop state machine, steering queues, and session tree for creative writing",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }

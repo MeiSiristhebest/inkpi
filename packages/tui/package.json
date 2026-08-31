@@ -17,5 +17,16 @@
   "dependencies": {
     "@inkpi/protocol": "workspace:*",
     "@inkpi/editor-core": "workspace:*"
-  }
+  },
+  "description": "Terminal UI studio with differential rendering, CJK wide-character layout, and overlay management",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }

@@ -19,5 +19,16 @@
     "@inkpi/ai": "workspace:*",
     "@inkpi/editor-core": "workspace:*",
     "@inkpi/session-backends": "workspace:*"
-  }
+  },
+  "description": "Headless JSON-RPC 2.0 daemon and LiveSessionManager for InkPi creative workstation",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }

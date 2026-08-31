@@ -16,5 +16,16 @@
   },
   "dependencies": {
     "@inkpi/protocol": "workspace:*"
-  }
+  },
+  "description": "Pure headless rich text editor state machine, typography rules, IME handling, and Ghost Text autocomplete",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }

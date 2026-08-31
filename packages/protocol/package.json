@@ -13,5 +13,16 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
-  }
+  },
+  "description": "Domain types, TypeBox schemas, and JSON-RPC 2.0 protocol contracts for InkPi creative workstation",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }

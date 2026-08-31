@@ -18,5 +18,16 @@
   },
   "dependencies": {
     "@inkpi/protocol": "workspace:*"
-  }
+  },
+  "description": "Unified multi-provider AI engine with 4-level prompt caching, streaming recovery, and model catalog",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }

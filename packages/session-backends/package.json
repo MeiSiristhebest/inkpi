@@ -17,5 +17,16 @@
   "dependencies": {
     "@inkpi/protocol": "workspace:*",
     "@inkpi/storage": "workspace:*"
-  }
+  },
+  "description": "Hexagonal session persistence ports with SQLite, JSONL, and In-Memory storage adapters",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme"
 }
