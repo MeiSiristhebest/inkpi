@@ -13,19 +13,19 @@ Thank you for your interest in contributing to InkPi!
 
 ```bash
 # 1. Install dependencies
-npm install
+pnpm install
 
 # 2. Build monorepo
-npm run build
+pnpm run build
 
 # 3. Run test coverage
-npm run test:coverage
+pnpm run test:coverage
 
 # 4. Check pinned dependencies
-npm run check:pinned-deps
+pnpm run check:pinned-deps
 ```
 
 ## 📜 Pull Request Guidelines
 
-- Ensure `npm run build` and `npm run test:coverage` pass locally before opening a PR.
+- Ensure `pnpm run build` and `pnpm run test:coverage` pass locally before opening a PR.
 - Link relevant issues and explain the rationale for changes in detail.
