@@ -144,12 +144,26 @@ Optimizes long-context inference cost and latency through 4-tier breakpoint cach
 
 ## ⚙️ Requirements
 
-- **Node.js**: $\ge 20.0.0$ (LTS recommended)
+- **Node.js**: $\ge 22.0.0$ (LTS recommended)
 - **Package Manager**: `pnpm` $\ge 9.0.0$
 
 ---
 
 ## 📦 Installation & Setup
+
+### 1. Global Installation (Recommended for Writers & Creators)
+
+```bash
+# Install globally via pnpm or npm
+pnpm add -g inkpi
+# or
+npm install -g inkpi
+
+# Or run instantly without installation
+npx inkpi
+```
+
+### 2. Monorepo Source Development
 
 ```bash
 # Clone the repository
@@ -167,19 +181,30 @@ pnpm run build
 
 ## 🚀 Quick Start
 
-### 1. Run Complete Test Suite & Coverage Gate
+### 1. Unified CLI Commands
+
+| Command | Action | Example |
+| :--- | :--- | :--- |
+| `inkpi` / `inkpi studio` | Launch interactive terminal creative workstation (TUI) | `inkpi` |
+| `inkpi init [name]` | Scaffold a new structured creative workspace | `inkpi init my-novel` |
+| `inkpi write <chapter>` | Open a specific chapter in immersive studio mode | `inkpi write chapters/01.md` |
+| `inkpi daemon` | Start headless background JSON-RPC 2.0 daemon | `inkpi daemon --port 8848` |
+| `inkpi doctor` | Diagnose Node environment, SQLite engine, API keys | `inkpi doctor` |
+| `inkpi print -p <text>` | Single-shot headless non-interactive creative generation | `inkpi -p "Write an intro scene"` |
+
+### 2. Run Complete Test Suite & Coverage Gate
 
 ```bash
 pnpm run test:coverage
 ```
 
-### 2. Verify Supply-Chain Hardened Dependencies
+### 3. Verify Supply-Chain Hardened Dependencies
 
 ```bash
 pnpm run check:pinned-deps
 ```
 
-### 3. Programmatic Usage Example
+### 4. Programmatic SDK Usage Example
 
 ```typescript
 import { LiveSessionManager } from '@inkpi/server';

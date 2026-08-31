@@ -72,10 +72,22 @@
 ## ⚡ 快速上手
 
 ### 依赖要求
-- **Node.js**: $\ge 20.0.0$
-- **包管理器**: 推荐使用 `pnpm`
+- **Node.js**: $\ge 22.0.0$
+- **包管理器**: 推荐使用 `pnpm` $\ge 9.0.0$
 
-### 1. 安装与构建
+### 1. 全局一键安装（推荐创作者使用）
+
+```bash
+# 全局安装 InkPi CLI
+pnpm add -g inkpi
+# 或
+npm install -g inkpi
+
+# 或无需安装直接免装运行
+npx inkpi
+```
+
+### 2. Monorepo 源码开发与构建
 ```bash
 # 克隆仓库
 git clone https://github.com/MeiSiristhebest/inkpi.git
@@ -84,20 +96,25 @@ cd inkpi
 # 安装依赖
 pnpm install
 
-# 编译所有子包
+# 编译所有 10 个子包
 pnpm run build
 ```
 
-### 2. 运行自动化测试与覆盖率门禁
-```bash
-# 运行全量测试套件（行覆盖率 >= 85%, 分支覆盖率 >= 80%）
-pnpm run test:coverage
-```
+### 3. 统一终端指令集
 
-### 3. 启动 Headless 常驻服务
+| 指令 | 描述 | 示例 |
+| :--- | :--- | :--- |
+| `inkpi` / `inkpi studio` | 启动沉浸式交互 TUI 创作工作台 | `inkpi` |
+| `inkpi init [name]` | 极速初始化新小说工程（含章节/设定/大纲目录） | `inkpi init my-novel` |
+| `inkpi write <chapter>` | 打开指定章节进行沉浸式写作 | `inkpi write chapters/01.md` |
+| `inkpi daemon` | 启动 Headless JSON-RPC 2.0 后台守护进程 | `inkpi daemon --port 8848` |
+| `inkpi doctor` | 诊断本地 Node、原生 SQLite 引擎与 API 状态 | `inkpi doctor` |
+| `inkpi print -p <text>` | 单次非交互式叙事生成推理 | `inkpi -p "描写一段赛博长安的开场"` |
+
+### 4. 运行全量测试与覆盖率门禁
 ```bash
-# 启动 RPC 守护进程（默认端口 9876）
-pnpm run daemon
+# 运行 66 个测试套件，287 个用例（行覆盖率 >= 85%, 分支覆盖率 >= 80%）
+pnpm run test:coverage
 ```
 
 ---

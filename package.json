@@ -1,13 +1,21 @@
 {
-  "name": "inkpi-monorepo",
+  "name": "inkpi",
   "version": "1.0.0",
   "private": true,
   "description": "InkPi - Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)",
   "type": "module",
+  "bin": {
+    "inkpi": "./bin/inkpi.js"
+  },
+  "files": [
+    "bin",
+    "packages/*/dist"
+  ],
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
+    "inkpi": "node ./bin/inkpi.js",
     "build": "tsc -b",
     "build:offline": "tsc -b",
     "generate:models": "pnpm --filter @inkpi/ai run generate:models",
