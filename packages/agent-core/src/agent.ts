@@ -5,7 +5,6 @@ import type {
   ImageContent,
   UserMessage
 } from '@inkpi/protocol';
-import { getModelPreset } from '@inkpi/ai';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
 import { ToolRegistry } from './tools.js';
 import { SteeringQueue, FollowUpQueue } from './queues.js';
@@ -27,6 +26,7 @@ export class Agent {
   private listeners: AgentEventListener[] = [];
   private abortController: AbortController | null = null;
   private currentRunPromise: Promise<void> | null = null;
+  private runActive = false;
 
   constructor(options: AgentOptions = {}) {
     this.options = options;
@@ -35,9 +35,12 @@ export class Agent {
     this.toolExecution = options.toolExecution || 'parallel';
 
     const init = options.initialState;
+    if (!init?.model) {
+      throw new Error('Agent requires an explicit model configuration. Use initialState.model or a test fixture.');
+    }
     this.state = {
-      systemPrompt: init?.systemPrompt || '你是一位专精长篇小说与网文创作的顶尖文学 Agent 助手。',
-      model: init?.model || getModelPreset('mock-test'),
+      systemPrompt: init.systemPrompt ?? '',
+      model: init.model,
       thinkingLevel: init?.thinkingLevel || 'low',
       tools: init?.tools || [],
       messages: init?.messages ? [...init.messages] : [],
@@ -77,30 +80,37 @@ export class Agent {
   }
 
   public async prompt(prompt: string | AgentMessage, images?: ImageContent[]): Promise<void> {
+    this.claimRun();
     let msg: AgentMessage;
 
-    if (typeof prompt === 'string') {
-      const content = images && images.length > 0
-        ? [{ type: 'text' as const, text: prompt }, ...images]
-        : prompt;
+    try {
+      if (typeof prompt === 'string') {
+        const content = images && images.length > 0
+          ? [{ type: 'text' as const, text: prompt }, ...images]
+          : prompt;
 
-      msg = {
-        role: 'user',
-        content,
-        timestamp: Date.now()
-      } as UserMessage;
-    } else {
-      msg = prompt;
+        msg = {
+          role: 'user',
+          content,
+          timestamp: Date.now()
+        } as UserMessage;
+      } else {
+        msg = prompt;
+      }
+
+      this.state.messages.push(msg);
+      await this.emitEvent({ type: 'message_start', message: msg });
+      await this.emitEvent({ type: 'message_end', message: msg });
+
+      return this.run();
+    } catch (error) {
+      if (!this.currentRunPromise) this.runActive = false;
+      throw error;
     }
-
-    this.state.messages.push(msg);
-    await this.emitEvent({ type: 'message_start', message: msg });
-    await this.emitEvent({ type: 'message_end', message: msg });
-
-    return this.run();
   }
 
   public async continue(): Promise<void> {
+    this.claimRun();
     return this.run();
   }
 
@@ -125,6 +135,9 @@ export class Agent {
   }
 
   public reset(): void {
+    if (this.runActive || this.currentRunPromise) {
+      throw new Error('Agent is already processing. Wait for completion before resetting.');
+    }
     this.abort();
     this.state.messages = [];
     this.state.isStreaming = false;
@@ -148,7 +161,10 @@ export class Agent {
   }
 
   private async run(): Promise<void> {
-    this.abortController = new AbortController();
+    const abortController = this.abortController;
+    if (!abortController) {
+      throw new Error('Agent run was not claimed before starting.');
+    }
 
     const mergedTools = new ToolRegistry();
     for (const t of this.toolRegistry.getAll()) {
@@ -174,11 +190,27 @@ export class Agent {
       steeringQueue: this.steeringQueue,
       followUpQueue: this.followUpQueue,
       emitEvent: (ev) => this.emitEvent(ev),
-      signal: this.abortController.signal
+      signal: abortController.signal
     });
 
-    this.currentRunPromise = runPromise.then(() => {}).catch(() => {});
-    await runPromise;
-    this.currentRunPromise = null;
+    const settledRunPromise = runPromise.then(() => undefined, () => undefined);
+    this.currentRunPromise = settledRunPromise;
+    try {
+      await runPromise;
+    } finally {
+      if (this.currentRunPromise === settledRunPromise) {
+        this.currentRunPromise = null;
+      }
+      this.abortController = null;
+      this.runActive = false;
+    }
+  }
+
+  private claimRun(): void {
+    if (this.runActive) {
+      throw new Error('Agent already has a run in progress. Wait for it to finish or abort it before starting another run.');
+    }
+    this.runActive = true;
+    this.abortController = new AbortController();
   }
 }

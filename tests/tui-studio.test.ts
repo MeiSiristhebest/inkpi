@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { TuiStudio } from '@inkpi/agent-core';
 import { Agent } from '@inkpi/agent-core';
+import { getModelPreset } from '@inkpi/ai';
 
 describe('TuiStudio (Terminal Workstation)', () => {
   it('should initialize with default 3-pane layout and render full screen', () => {
     const studio = new TuiStudio({ width: 120, height: 30 });
     const screen = studio.renderScreen();
 
-    expect(screen).toContain('资源目录树');
-    expect(screen).toContain('编辑');
-    expect(screen).toContain('状态账本');
+    expect(screen).toContain('Resources');
+    expect(screen).toContain('Editor');
+    expect(screen).toContain('Runtime State');
   });
 
   it('should support differential screen rendering', () => {
@@ -21,15 +22,15 @@ describe('TuiStudio (Terminal Workstation)', () => {
 
     // Immediate second render without mutations -> empty diff
     const secondDiff = studio.renderDifferential();
-    expect(secondDiff.isDiff).toBe(true);
+    expect(secondDiff.isDiff).toBe(false);
     expect(secondDiff.content).toBe('');
   });
 
   it('should support document navigation and focus switching', () => {
     const studio = new TuiStudio({
       initialResources: [
-        { id: '1', title: 'Doc 1', size: 0, status: 'draft', active: true },
-        { id: '2', title: 'Doc 2', size: 0, status: 'draft', active: false }
+        { id: '1', title: 'Doc 1', wordCount: 0, status: 'draft', active: true },
+        { id: '2', title: 'Doc 2', wordCount: 0, status: 'draft', active: false }
       ]
     });
 
@@ -49,7 +50,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
   });
 
   it('should handle interactive input, ghost text acceptance, and commands', async () => {
-    const agent = new Agent();
+    const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
     const studio = new TuiStudio({ agent });
 
     // 1. Text input
@@ -77,7 +78,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
 
 
   it('should handle dimensions, document navigation boundaries, and agent event streaming', async () => {
-    const agent = new Agent();
+    const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
     const studio = new TuiStudio({ agent, width: 100, height: 28 });
 
     studio.setDimensions(140, 35);
@@ -113,9 +114,9 @@ describe('TuiStudio (Terminal Workstation)', () => {
     // Render screen with empty ledger and dialogue
     const emptyStudio = new TuiStudio({ width: 90, height: 26 });
     const emptyScreen = emptyStudio.renderScreen();
-    expect(emptyScreen).toContain('暂无实体记账');
-    expect(emptyScreen).toContain('暂无资产记账');
-    expect(emptyScreen).toContain('暂无追踪项');
+    expect(emptyScreen).toContain('no entities');
+    expect(emptyScreen).toContain('no assets');
+    expect(emptyScreen).toContain('no tracks');
     // Render screen with fully populated ledger
     const populatedStudio = new TuiStudio({ width: 100, height: 28 });
     populatedStudio.updateStateLedger({
@@ -174,6 +175,4 @@ describe('TuiStudio (Terminal Workstation)', () => {
     expect(studio.activeModal).toBeNull();
   });
 });
-
-
 

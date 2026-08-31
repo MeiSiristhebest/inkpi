@@ -223,6 +223,24 @@ export type ProviderHandler = (
 
 const providerRegistry = new Map<ProviderType, ProviderHandler>();
 
+/**
+ * Provider aliases do not necessarily match their credential environment
+ * variable names. Keep this mapping explicit so custom providers must provide
+ * credentials through ModelConfig instead of silently guessing.
+ */
+export const PROVIDER_API_KEY_ENV: Readonly<Record<string, string>> = {
+  deepseek: 'DEEPSEEK_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  claude: 'ANTHROPIC_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  gemini: 'GEMINI_API_KEY'
+};
+
+export function resolveProviderApiKeyEnv(provider: string): string | undefined {
+  return PROVIDER_API_KEY_ENV[provider];
+}
+
 // ----------------------------------------------------------------------
 // 1. Faux / Test Provider (仅作为显式测试夹具，1:1 对标 repos/pi packages/ai/src/providers/faux.ts)
 // ----------------------------------------------------------------------
@@ -357,11 +375,16 @@ function consumeFinalLine(buffer: string, onLine: (line: string) => void): void 
 export const openAiCompatibleProvider: ProviderHandler = (model, messages, options) => {
   const stream = new AssistantEventStream();
   const baseUrl = resolveProviderBaseUrl(model.provider, model.baseUrl);
-  const apiKey = model.apiKey || process.env[`${model.provider.toUpperCase()}_API_KEY`] || '';
+  const apiKeyEnv = resolveProviderApiKeyEnv(model.provider);
+  const apiKey = model.apiKey || (apiKeyEnv ? process.env[apiKeyEnv] : undefined) || '';
 
   if (!apiKey) {
     queueMicrotask(() => {
-      stream.error(`Missing API key for provider '${model.provider}'. Set apiKey or environment variable.`);
+      stream.error(
+        apiKeyEnv
+          ? `Missing API key for provider '${model.provider}'. Set model.apiKey or ${apiKeyEnv}.`
+          : `Missing API key for provider '${model.provider}'. Set model.apiKey explicitly.`
+      );
     });
     return stream;
   }

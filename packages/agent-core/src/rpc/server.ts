@@ -4,6 +4,7 @@ import type {
   RpcResponse,
   RpcNotification
 } from '@inkpi/protocol';
+import type { AgentMessage } from '@inkpi/protocol';
 import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
@@ -30,6 +31,7 @@ export interface ServerContext {
   pipeline?: WorkflowCoordinator;
   telemetry?: TelemetryCollector;
   extensionHost?: ExtensionHost;
+  branchSummarizer?: BranchSummarizer;
 }
 
 export type RpcNotificationSender = (notification: RpcNotification) => void;
@@ -40,7 +42,7 @@ export type RpcNotificationSender = (notification: RpcNotification) => void;
 export class InkRpcServer {
   private ctx: ServerContext;
   private notificationSender?: RpcNotificationSender;
-  private branchSummarizer = new BranchSummarizer();
+  private branchSummarizer?: BranchSummarizer;
   private boundTransports = new Set<RpcTransport>();
   private tcpServer: net.Server | null = null;
   private customHandlers = new Map<string, (params: any) => Promise<any> | any>();
@@ -50,6 +52,7 @@ export class InkRpcServer {
       ...ctx,
       slashRegistry: ctx.slashRegistry || new SlashCommandRegistry()
     };
+    this.branchSummarizer = this.ctx.branchSummarizer;
     this.notificationSender = notificationSender;
 
     // Attach agent event listener to stream notifications
@@ -181,19 +184,22 @@ export class InkRpcServer {
 
       case 'agent.prompt': {
         if (!this.ctx.agent) throw new Error('Agent not initialized');
+        if (typeof params.prompt !== 'string' || params.prompt.trim().length === 0) {
+          throw new Error('agent.prompt requires a non-empty prompt');
+        }
         await this.ctx.agent.prompt(params.prompt, params.images);
         return { success: true };
       }
 
       case 'agent.steer': {
         if (!this.ctx.agent) throw new Error('Agent not initialized');
-        this.ctx.agent.steer(params.message);
+        this.ctx.agent.steer(normalizeAgentMessage(params.message, 'agent.steer'));
         return { success: true };
       }
 
       case 'agent.followUp': {
         if (!this.ctx.agent) throw new Error('Agent not initialized');
-        this.ctx.agent.followUp(params.message);
+        this.ctx.agent.followUp(normalizeAgentMessage(params.message, 'agent.followUp'));
         return { success: true };
       }
 
@@ -215,7 +221,7 @@ export class InkRpcServer {
 
       // 2. Editor methods
       case 'editor.getText': {
-        if (!this.ctx.editor) return '';
+        if (!this.ctx.editor) throw new Error('Editor not initialized');
         return this.ctx.editor.getText();
       }
 
@@ -273,27 +279,45 @@ export class InkRpcServer {
 
       case 'tree.fork': {
         if (!this.ctx.tree) throw new Error('SessionTree not initialized');
-        const node = this.ctx.tree.branch(params.name || '分支', params.hypothesis);
-        return { leafId: node.id, node };
+        const fromNodeId = params.fromNodeId || params.targetNodeId;
+        if (typeof fromNodeId !== 'string' || fromNodeId.length === 0) {
+          throw new Error('tree.fork requires fromNodeId');
+        }
+        this.ctx.tree.selectLeaf(fromNodeId);
+        const node = this.ctx.tree.getNode(fromNodeId);
+        return { leafId: fromNodeId, currentLeafId: fromNodeId, created: false, node };
       }
 
       case 'tree.getBranches': {
-        if (!this.ctx.tree) return [];
-        return this.ctx.tree.getBranches ? this.ctx.tree.getBranches() : [];
+        if (!this.ctx.tree) throw new Error('SessionTree not initialized');
+        return this.ctx.tree.getBranches();
       }
 
       case 'tree.switchBranch':
       case 'tree.navigate': {
         if (!this.ctx.tree) throw new Error('SessionTree not initialized');
         const targetId = params.targetLeafId || params.nodeId;
-        const node = this.ctx.tree.navigate(targetId);
+        if (typeof targetId !== 'string' || targetId.length === 0) {
+          throw new Error('tree.navigate requires targetLeafId or nodeId');
+        }
+        if (!this.ctx.tree.navigate(targetId)) {
+          throw new Error(`SessionTree node '${targetId}' not found`);
+        }
+        const node = this.ctx.tree.getNode(targetId);
         return { currentLeafId: targetId, node };
       }
 
       case 'tree.getSummary': {
         if (!this.ctx.tree) throw new Error('SessionTree not initialized');
-        const fromLeaf = params.fromLeafId || params.targetNodeId || this.ctx.tree.getCurrentLeafId() || '';
-        const toLeaf = params.toLeafId || '';
+        if (!this.branchSummarizer) throw new Error('Branch summarization capability not configured');
+        const fromLeaf = params.fromLeafId || this.ctx.tree.getCurrentLeafId();
+        const toLeaf = params.toLeafId;
+        if (typeof fromLeaf !== 'string' || fromLeaf.length === 0) {
+          throw new Error('tree.getSummary requires fromLeafId');
+        }
+        if (typeof toLeaf !== 'string' || toLeaf.length === 0) {
+          throw new Error('tree.getSummary requires toLeafId');
+        }
         const summary = await this.branchSummarizer.summarizeBranch(this.ctx.tree, fromLeaf, toLeaf);
         return { summary };
       }
@@ -310,11 +334,25 @@ export class InkRpcServer {
       }
 
       // 6. Pipeline execution
+      case 'workflow.run': {
+        if (!this.ctx.pipeline) throw new Error('Pipeline not initialized');
+        return this.ctx.pipeline.runWorkflow(params);
+      }
+
       case 'pipeline.run': {
         if (!this.ctx.pipeline) throw new Error('Pipeline not initialized');
-        const bookTitle = params.bookTitle || params.title || '作品';
-        const chapterTitle = params.chapterTitle || params.documentTitle || '章节';
-        const userPrompt = params.userPrompt || params.initialPrompt || '';
+        const bookTitle = params.bookTitle || params.title;
+        const chapterTitle = params.chapterTitle || params.documentTitle;
+        const userPrompt = params.userPrompt || params.initialPrompt;
+        if (typeof bookTitle !== 'string' || bookTitle.trim().length === 0) {
+          throw new Error('pipeline.run requires bookTitle or title in legacy compatibility mode');
+        }
+        if (typeof chapterTitle !== 'string' || chapterTitle.trim().length === 0) {
+          throw new Error('pipeline.run requires chapterTitle or documentTitle in legacy compatibility mode');
+        }
+        if (typeof userPrompt !== 'string' || userPrompt.trim().length === 0) {
+          throw new Error('pipeline.run requires userPrompt or initialPrompt in legacy compatibility mode');
+        }
         const res = await this.ctx.pipeline.runPipeline(bookTitle, chapterTitle, userPrompt);
         return res;
       }
@@ -326,7 +364,7 @@ export class InkRpcServer {
       }
 
       case 'journal.getEntries': {
-        if (!this.ctx.journal) return [];
+        if (!this.ctx.journal) throw new Error('Journal not initialized');
         return this.ctx.journal.getEntries();
       }
 
@@ -340,7 +378,7 @@ export class InkRpcServer {
       // 9. FTS search
       case 'storage.searchFts':
       case 'fts.search': {
-        if (!this.ctx.fts) return [];
+        if (!this.ctx.fts) throw new Error('FTS search capability not initialized');
         const results = this.ctx.fts.search(params.query, params.limit);
         return results;
       }
@@ -348,12 +386,12 @@ export class InkRpcServer {
       // 10. Telemetry metrics
       case 'telemetry.getStats':
       case 'telemetry.getMetrics': {
-        if (!this.ctx.telemetry) return { totalDurationMs: 0 };
+        if (!this.ctx.telemetry) throw new Error('Telemetry capability not initialized');
         return this.ctx.telemetry.getMetrics();
       }
 
       case 'telemetry.exportOtel': {
-        if (!this.ctx.telemetry) return '{}';
+        if (!this.ctx.telemetry) throw new Error('Telemetry capability not initialized');
         return this.ctx.telemetry.exportOpenTelemetryJson();
       }
 
@@ -364,4 +402,15 @@ export class InkRpcServer {
         };
     }
   }
+}
+
+function normalizeAgentMessage(message: unknown, method: string): AgentMessage {
+  if (typeof message === 'string') {
+    if (message.trim().length === 0) throw new Error(`${method} requires a non-empty message`);
+    return { role: 'user', content: message, timestamp: Date.now() };
+  }
+  if (!message || typeof message !== 'object' || !('role' in message)) {
+    throw new Error(`${method} requires a string or AgentMessage`);
+  }
+  return message as AgentMessage;
 }

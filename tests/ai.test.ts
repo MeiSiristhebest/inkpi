@@ -654,4 +654,37 @@ describe('@inkpi/ai', () => {
     expect(message.stopReason).toBe('error');
     expect(message.errorMessage).toContain('explicit scripted response');
   });
+
+  it('should resolve the Claude provider alias through ANTHROPIC_API_KEY', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+    const originalClaudeKey = process.env.CLAUDE_API_KEY;
+    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n',
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n',
+      'data: {"type":"message_delta","usage":{"output_tokens":1}}\n\n',
+      'data: {"type":"message_stop"}\n\n'
+    ]));
+    globalThis.fetch = fetchMock as any;
+    process.env.ANTHROPIC_API_KEY = 'canonical-anthropic-key';
+    delete process.env.CLAUDE_API_KEY;
+
+    try {
+      const message = await streamAi(
+        { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1' },
+        [{ role: 'user', content: 'hello' }]
+      ).collect();
+
+      expect(message.stopReason).toBe('stop');
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+        headers: expect.objectContaining({ 'x-api-key': 'canonical-anthropic-key' })
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
+      if (originalClaudeKey === undefined) delete process.env.CLAUDE_API_KEY;
+      else process.env.CLAUDE_API_KEY = originalClaudeKey;
+    }
+  });
 });

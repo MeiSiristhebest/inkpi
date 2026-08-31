@@ -109,16 +109,14 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
 
     expect(defaultCompactor.shouldCompact(shortMessages)).toBe(false);
 
-    // Default summarizer branch
-    const { entry } = await defaultCompactor.compact([
+    await expect(defaultCompactor.compact([
       ...shortMessages,
       { role: 'user', content: 'more 1' },
       { role: 'assistant', content: [{ type: 'text', text: 'more 2' }] },
       { role: 'user', content: 'more 3' },
       { role: 'assistant', content: [{ type: 'text', text: 'more 4' }] },
       { role: 'user', content: 'more 5' }
-    ]);
-    expect(entry.summary).toContain('[Summary]');
+    ])).rejects.toThrow('explicit summarizer capability');
   });
 
   it('should test ModelRegistry & ScopedModelResolver unknown lookups and all scopes', () => {
@@ -126,7 +124,13 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
     expect(registry.get('totally_unknown_model_id')).toBeUndefined();
     expect(registry.getAll().length).toBeGreaterThan(0);
 
-    const resolver = new ScopedModelResolver(registry);
+    const resolver = new ScopedModelResolver(registry, {
+      scopeMappings: {
+        polishing: 'creative-pro',
+        linting: 'fast-draft',
+        'fast-ghost': 'local-offline'
+      }
+    });
     expect(resolver.getRegistry()).toBe(registry);
 
     // Test all scopes

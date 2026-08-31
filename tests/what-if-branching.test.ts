@@ -3,12 +3,13 @@ import { StoryBranchManager } from '@inkpi/agent-core';
 
 describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   it('should initialize with main canon branch and allow creating parallel what-if branches', () => {
-    const manager = new StoryBranchManager();
+    const manager = new StoryBranchManager(undefined, { mainBranchName: 'Canonical' });
     expect(manager.getActiveBranchId()).toBe('main');
 
     const canonBranch = manager.getBranch('main');
     expect(canonBranch).toBeDefined();
-    expect(canonBranch?.branchName).toContain('主线 (Mainline)');
+    expect(canonBranch?.branchName).toBe('Canonical');
+    expect(canonBranch?.premise).toBe('');
 
     // Create a What-If branch
     const whatIf = manager.createWhatIfBranch(
@@ -76,7 +77,10 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   });
 
   it('should switch branches and synthesize branch comparison summary', async () => {
-    const manager = new StoryBranchManager();
+    const manager = new StoryBranchManager(undefined, {
+      formatSwitchSummary: ({ currentBranch, targetBranch, diff }) =>
+        `${currentBranch.branchName} -> ${targetBranch.branchName}: ${diff.changedEntityStatuses.map((change) => `${change.name}: ${change.from} -> ${change.to}`).join(', ')}`
+    });
 
     manager.updateActiveLedger({
       entities: [{ name: 'UserB', status: 'Novice' }],
@@ -106,8 +110,7 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
     expect(switchResult.switched).toBe(true);
     expect(switchResult.branch.branchId).toBe('branch_rebellion');
     expect(switchResult.summary).toBeDefined();
-    expect(switchResult.summary).toContain('分支切换');
-    expect(switchResult.summary).toContain('Exile Branch');
+    expect(switchResult.summary).toContain('main -> Exile Branch');
     expect(switchResult.summary).toContain('UserB: Novice -> Exile (Level 5)');
     expect(manager.getActiveBranchId()).toBe('branch_rebellion');
   });

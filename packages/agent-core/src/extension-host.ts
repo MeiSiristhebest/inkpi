@@ -181,11 +181,7 @@ export class ExtensionHost implements ExtensionAPI {
     let current = [...messages];
     for (const tf of this.transformers) {
       if (signal?.aborted) break;
-      try {
-        current = await tf(current, signal);
-      } catch (err) {
-        console.error('[ExtensionHost] Error in context transformer:', err);
-      }
+      current = await tf(current, signal);
     }
     return current;
   }
@@ -197,15 +193,14 @@ export class ExtensionHost implements ExtensionAPI {
     if (this.uiDelegate?.showSelectList) {
       return this.uiDelegate.showSelectList(options);
     }
-    const items = options?.items || options?.assets || [];
-    return items[0]?.value;
+    return undefined;
   }
 
   public async showInput(options: InputDialogOptions): Promise<string | undefined> {
     if (this.uiDelegate?.showInput) {
       return this.uiDelegate.showInput(options);
     }
-    return options.defaultValue || '';
+    return undefined;
   }
 
   public flashNotification(options: FlashNotificationOptions | string): void {

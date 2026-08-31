@@ -3,12 +3,18 @@ import type { Agent } from './agent.js';
 import type { SessionTree } from './tree.js';
 import { findModelInCatalog, modelCatalogEntryToConfig } from '@inkpi/ai';
 
+export interface SlashCommandCapabilities {
+  compact?: (ctx: SlashCommandExecutionContext) => Promise<string> | string;
+  export?: (format: 'html' | 'markdown' | 'jsonl', ctx: SlashCommandExecutionContext) => Promise<string> | string;
+}
+
 export interface SlashCommandExecutionContext {
   agent?: Agent;
   tree?: SessionTree;
   editor?: any;
   args: string[];
   rawText: string;
+  capabilities?: SlashCommandCapabilities;
 }
 
 export type SlashCommandHandler = (
@@ -176,8 +182,10 @@ export class SlashCommandRegistry {
       description: '手动将当前长对话压缩为摘要并提取状态账本',
       handler: async (ctx) => {
         if (!ctx.agent) return { success: false, output: 'Agent 未初始化' };
-        // Trigger agent compaction
-        return { success: true, output: '📜 正在对会话生成摘要与状态账本压缩...' };
+        if (!ctx.capabilities?.compact) {
+          return { success: false, output: '会话压缩能力未配置。请注入 compact capability 后再执行。' };
+        }
+        return { success: true, output: await ctx.capabilities.compact(ctx) };
       }
     });
 
@@ -188,7 +196,13 @@ export class SlashCommandRegistry {
       argumentHint: '<html|markdown|jsonl>',
       handler: (ctx) => {
         const fmt = (ctx.args[0] || 'html').toLowerCase();
-        return { success: true, output: `📄 已请求导出格式: ${fmt}` };
+        if (fmt !== 'html' && fmt !== 'markdown' && fmt !== 'jsonl') {
+          return { success: false, output: `不支持的导出格式 '${fmt}'。可选值: html, markdown, jsonl` };
+        }
+        if (!ctx.capabilities?.export) {
+          return { success: false, output: '导出能力未配置。请注入 export capability 后再执行。' };
+        }
+        return Promise.resolve(ctx.capabilities.export(fmt, ctx)).then((output) => ({ success: true, output }));
       }
     });
 

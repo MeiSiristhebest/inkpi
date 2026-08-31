@@ -28,9 +28,27 @@ describe('InkPi System Clipboard Integration & KillRing Sync', () => {
     expect(ring.peek()).toBe('外部浏览器复制的素材');
   });
 
-  it('should test native driver fallback safely', () => {
-    const native = new NativeSystemClipboardDriver();
-    expect(typeof native.readText()).toBe('string');
-    expect(typeof native.writeText('测试复制')).toBe('boolean');
+  it('should execute native clipboard commands and preserve arbitrary text without a memory fallback', () => {
+    const calls: Array<{ executable: string; args: readonly string[]; options: Record<string, unknown> }> = [];
+    let clipboard = '';
+    const native = new NativeSystemClipboardDriver((executable, args, options) => {
+      calls.push({ executable, args, options });
+      if (args.at(-1) === 'Get-Clipboard') return clipboard;
+      clipboard = String(options.input || '');
+      return '';
+    }, 'win32');
+
+    expect(native.writeText("quotes ' and $variables" )).toBe(true);
+    expect(native.readText()).toBe("quotes ' and $variables");
+    expect(calls.map((call) => call.executable)).toEqual(['powershell.exe', 'powershell.exe']);
+  });
+
+  it('should report native clipboard failure instead of returning an in-memory value', () => {
+    const native = new NativeSystemClipboardDriver(() => {
+      throw new Error('clipboard unavailable');
+    }, 'win32');
+
+    expect(() => native.readText()).toThrow(/Unable to read the native system clipboard/);
+    expect(() => native.writeText('text')).toThrow(/Unable to write to the native system clipboard/);
   });
 });

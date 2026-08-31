@@ -15,8 +15,12 @@ export interface MermaidEdge {
   label?: string;
 }
 
+export interface MermaidRenderOptions {
+  title?: string;
+}
+
 export class TerminalMermaid {
-  public static renderAsciiFlowchart(mermaidCode: string): string[] {
+  public static renderAsciiFlowchart(mermaidCode: string, options: MermaidRenderOptions = {}): string[] {
     const lines = mermaidCode.trim().split('\n');
     const nodes: Map<string, string> = new Map();
     const edges: Array<{ from: string; to: string; label?: string }> = [];
@@ -46,7 +50,7 @@ export class TerminalMermaid {
     }
 
     const output: string[] = [];
-    output.push(`${ANSI.BOLD}${ANSI.FG_CYAN}📊 剧情 / 实体关系拓扑图 (Mermaid ASCII)${ANSI.RESET}`);
+    output.push(`${ANSI.BOLD}${ANSI.FG_CYAN}${options.title || 'Mermaid Flowchart'}${ANSI.RESET}`);
     output.push(`${ANSI.FG_GRAY}────────────────────────────────────────${ANSI.RESET}`);
 
     // Render nodes and outgoing links

@@ -3,6 +3,7 @@ import type {
   RpcResponse,
   RpcNotification
 } from '@inkpi/protocol';
+import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
 import type { RpcTransport } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -150,15 +151,15 @@ export class InkRpcClient {
   }
 
   // 1. Agent API
-  public prompt(prompt: string, images?: any[]) {
+  public prompt(prompt: string, images?: ImageContent[]) {
     return this.request('agent.prompt', { prompt, images });
   }
 
-  public steer(message: string) {
+  public steer(message: string | AgentMessage) {
     return this.request('agent.steer', { message });
   }
 
-  public followUp(message: string) {
+  public followUp(message: string | AgentMessage) {
     return this.request('agent.followUp', { message });
   }
 
@@ -236,8 +237,8 @@ export class InkRpcClient {
     return this.request('tree.navigate', { nodeId });
   }
 
-  public getBranchSummary(targetNodeId?: string) {
-    return this.request('tree.getSummary', { targetNodeId });
+  public getBranchSummary(fromLeafId?: string, toLeafId?: string) {
+    return this.request('tree.getSummary', { fromLeafId, toLeafId });
   }
 
   // 5. Slash Commands
@@ -250,6 +251,10 @@ export class InkRpcClient {
   }
 
   // 6. Pipeline
+  public runWorkflow<T = any>(context: Record<string, unknown>) {
+    return this.request<T>('workflow.run', context);
+  }
+
   public runPipeline(bookTitle: string, chapterTitle: string, userPrompt: string) {
     return this.request<any>('pipeline.run', { bookTitle, chapterTitle, userPrompt });
   }

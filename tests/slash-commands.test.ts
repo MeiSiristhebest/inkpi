@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { SlashCommandRegistry, Agent, SessionTree } from '@inkpi/agent-core';
+import { getModelPreset } from '@inkpi/ai';
 
 describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
   it('should execute built-in commands like /model, /thinking, /tree, /stats, /help', async () => {
     const registry = new SlashCommandRegistry();
-    const agent = new Agent();
+    const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
     const tree = new SessionTree();
 
     tree.addMessage({ role: 'user', content: '测试消息' } as any);
@@ -60,7 +61,7 @@ describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
   it('should test all built-in command branch conditions', async () => {
 
     const registry = new SlashCommandRegistry();
-    const agent = new Agent();
+    const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
     const tree = new SessionTree();
 
     // 1. /model without args
@@ -93,11 +94,18 @@ describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
     const c1 = await registry.execute('/compact', {});
     expect(c1.success).toBe(false);
     const c2 = await registry.execute('/compact', { agent });
-    expect(c2.success).toBe(true);
+    expect(c2.success).toBe(false);
+    expect(c2.output).toContain('能力未配置');
 
     // 7. /export
     const exp1 = await registry.execute('/export markdown', {});
-    expect(exp1.output).toContain('markdown');
+    expect(exp1.success).toBe(false);
+    expect(exp1.output).toContain('能力未配置');
+
+    const configured = await registry.execute('/export markdown', {
+      capabilities: { export: (format) => `exported:${format}` }
+    });
+    expect(configured).toMatchObject({ handled: true, success: true, output: 'exported:markdown' });
 
     // 8. Non-slash command
     const nonSlash = await registry.execute('not a slash', {});

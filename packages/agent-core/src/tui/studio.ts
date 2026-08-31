@@ -1,5 +1,5 @@
-import { HeadlessEditorState, GhostTextManager, formatChineseTypography } from '@inkpi/editor-core';
-import type { StateLedger, SelectListOptions } from '@inkpi/protocol';
+import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
+import type { StateLedger, SelectListOptions, TypographyOptions } from '@inkpi/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
 import { SlashCommandRegistry } from '../slash-commands.js';
@@ -11,7 +11,7 @@ export interface StudioResourceItem {
   id: string;
   title: string;
   wordCount: number;
-  status: 'draft' | 'review' | 'published';
+  status?: string;
   active: boolean;
 }
 
@@ -29,6 +29,18 @@ export interface StudioLabels {
   emptyTracksText?: string;
   emptyDialogueText?: string;
   statusReady?: string;
+  processingText?: string;
+  ghostSuggestion?: string;
+  acceptSuggestion?: string;
+  focusStatus?: (mode: StudioFocusMode) => string;
+  resourceMetric?: (wordCount: number) => string;
+  insertedStatus?: (count: number) => string;
+  commandExecutedStatus?: (command: string) => string;
+  statusBarTitle?: string;
+  statusBarWords?: string;
+  statusBarFocus?: string;
+  userRole?: string;
+  assistantRole?: string;
 }
 
 export interface TerminalStudioOptions {
@@ -38,11 +50,14 @@ export interface TerminalStudioOptions {
   height?: number;
   initialResources?: StudioResourceItem[];
   labels?: Partial<StudioLabels>;
+  typography?: (Partial<TypographyOptions> & { mode?: 'chinese' | 'western' | 'none' }) | false;
 }
 
 /**
- * 终端创作工作台核心 (1:1 对标 repos/pi packages/tui 架构)
- * 提供 3 栏全景工作台、差量更新缓冲、实时状态账本展示、模态弹窗与全快捷键交互。
+ * Terminal workstation primitives.
+ *
+ * The core owns layout, input routing, and rendering mechanics. Domain
+ * wording is supplied through labels so applications can adapt the surface.
  */
 export class TerminalStudio {
   public editor: HeadlessEditorState;
@@ -68,8 +83,9 @@ export class TerminalStudio {
   private height: number;
   private differentialRenderer = new DifferentialRenderer();
   private statusMessage: string;
+  private typography: TerminalStudioOptions['typography'];
 
-  // 滚动与模态状态
+  // Scroll and modal state
   public outlineScrollOffset = 0;
   public transcriptScrollOffset = 0;
   public activeModal: 'selectList' | 'input' | null = null;
@@ -85,28 +101,41 @@ export class TerminalStudio {
     this.tree = options.tree;
     this.width = Math.max(80, options.width || 120);
     this.height = Math.max(24, options.height || 32);
+    this.typography = options.typography;
 
     this.labels = {
-      leftBoxTitle: '📚 资源目录树 (Resources)',
-      editorTitle: '✍️ 编辑区 (Editor)',
-      rightBoxTitle: '📊 状态账本 & Copilot',
-      entitiesHeader: '👤 活跃实体 (Entities):',
-      assetsHeader: '📦 核心资产 (Assets):',
-      tracksHeader: '🔍 追踪线索 (Tracks):',
-      dialogueHeader: '🤖 对话历史 (Dialogue):',
-      emptyContentText: '(暂无内容，请在终端键入正文或调用 Agent 构思...)',
-      emptyEntitiesText: '   (暂无实体记账)',
-      emptyAssetsText: '   (暂无资产记账)',
-      emptyTracksText: '   (暂无追踪项)',
-      emptyDialogueText: ' (无活跃对话)',
-      statusReady: '就绪 (按 F1/Tab 采纳续写, /help 查看指令, Ctrl+O 切换焦点)',
+      leftBoxTitle: 'Resources',
+      editorTitle: 'Editor',
+      rightBoxTitle: 'Runtime State',
+      entitiesHeader: 'Entities:',
+      assetsHeader: 'Assets:',
+      tracksHeader: 'Tracks:',
+      dialogueHeader: 'Conversation:',
+      emptyContentText: '(empty)',
+      emptyEntitiesText: '   (no entities)',
+      emptyAssetsText: '   (no assets)',
+      emptyTracksText: '   (no tracks)',
+      emptyDialogueText: ' (no messages)',
+      statusReady: 'Ready',
+      processingText: 'Processing...',
+      ghostSuggestion: 'Suggestion',
+      acceptSuggestion: 'Tab to accept',
+      focusStatus: (mode) => `Focus: [${mode.toUpperCase()}]`,
+      resourceMetric: (wordCount) => `${wordCount}`,
+      insertedStatus: (count) => `Inserted ${count} characters`,
+      commandExecutedStatus: (command) => `Command executed: ${command}`,
+      statusBarTitle: 'Studio',
+      statusBarWords: 'Count',
+      statusBarFocus: 'Focus',
+      userRole: 'user',
+      assistantRole: 'assistant',
       ...options.labels
     };
 
     this.statusMessage = this.labels.statusReady || 'Ready';
 
     this.resources = options.initialResources || [
-      { id: 'doc_1', title: '新建文档', wordCount: 0, status: 'draft', active: true }
+      { id: 'resource_1', title: 'Untitled resource', wordCount: 0, status: 'draft', active: true }
     ];
 
     if (this.agent) {
@@ -114,7 +143,7 @@ export class TerminalStudio {
         if (event.type === 'message_start' && event.message.role === 'assistant') {
           this.dialogueHistory.push({
             role: 'assistant',
-            text: 'AI 思考中...',
+            text: this.labels.processingText || 'Processing...',
             timestamp: Date.now()
           });
         } else if (event.type === 'message_update' && event.message.role === 'assistant') {
@@ -124,7 +153,7 @@ export class TerminalStudio {
               .filter((c: any) => c.type === 'text')
               .map((c: any) => c.text)
               .join('');
-            last.text = textContent || 'AI 思考中...';
+            last.text = textContent || this.labels.processingText || 'Processing...';
           }
         }
       });
@@ -142,7 +171,7 @@ export class TerminalStudio {
 
   public setFocus(mode: StudioFocusMode): void {
     this.focusMode = mode;
-    this.statusMessage = `当前焦点: [${mode.toUpperCase()}]`;
+    this.statusMessage = this.labels.focusStatus?.(mode) || `Focus: [${mode.toUpperCase()}]`;
   }
 
   public updateStateLedger(ledger: StateLedger): void {
@@ -171,47 +200,47 @@ export class TerminalStudio {
     return false;
   }
 
-  /**
-   * 渲染三栏主工作台：
-   * [左: 目录结构 24列] | [中: 正文编辑与幽灵续写] | [右: 灵感副驾驶与状态账本 34列]
-   */
+  /** Render the three-pane workstation frame. */
   public renderScreen(): string {
     const leftWidth = 24;
     const rightWidth = 34;
     const centerWidth = Math.max(30, this.width - leftWidth - rightWidth - 2);
     const mainHeight = this.height - 3;
 
-    // 1. 左栏：大纲目录树
+    // 1. Resource list
     const outlineBorder = this.focusMode === 'outline' ? ANSI.FG_YELLOW : ANSI.FG_CYAN;
     const outlineLines: string[] = this.resources.map((res, idx) => {
       const activeMark = idx === this.activeResourceIndex ? '👉 ' : '   ';
-      const statusIcon = res.status === 'published' ? '🟢' : '🟡';
-      return `${activeMark}${statusIcon} ${res.title} (${res.wordCount}字)`;
+      const status = res.status ? `[${res.status}] ` : '';
+      const metric = this.labels.resourceMetric?.(res.wordCount) || `${res.wordCount}`;
+      return `${activeMark}${status}${res.title} (${metric})`;
     });
     const leftBox = drawBox(this.labels.leftBoxTitle || '📚 资源目录树', outlineLines, leftWidth, mainHeight, outlineBorder);
 
-    // 2. 中栏：正文编辑器与幽灵续写
+    // 2. Editor and ghost text
     const editorBorder = this.focusMode === 'editor' ? ANSI.FG_GREEN : ANSI.FG_GRAY;
-    const currentResource = this.resources[this.activeResourceIndex] || { title: '未命名资源' };
+    const currentResource = this.resources[this.activeResourceIndex] || { title: 'Untitled resource' };
     const rawContent = this.editor.getText();
-    const formattedContent = formatChineseTypography(rawContent);
-    const contentLines = formattedContent ? formattedContent.split('\n') : [this.labels.emptyContentText || '(暂无内容，请在终端键入正文或调用 Agent 构思...)'];
+    const formattedContent = this.typography
+      ? formatTypography(rawContent, this.typography)
+      : rawContent;
+    const contentLines = formattedContent ? formattedContent.split('\n') : [this.labels.emptyContentText || '(empty)'];
 
     if (this.ghost.hasGhostText()) {
       const gt = this.ghost.getGhostText();
       if (gt) {
-        contentLines.push(`${ANSI.FG_GRAY}👻 [续写推荐] ${gt.text} ${ANSI.FG_YELLOW}(Tab键采纳)${ANSI.RESET}`);
+        contentLines.push(`${ANSI.FG_GRAY}${this.labels.ghostSuggestion || 'Suggestion'}: ${gt.text} ${ANSI.FG_YELLOW}(${this.labels.acceptSuggestion || 'Tab to accept'})${ANSI.RESET}`);
       }
     }
     const centerBox = drawBox(
-      `${this.labels.editorTitle || '✍️ 编辑'} - ${currentResource.title} (${this.editor.getWordCount()}字)`,
+      `${this.labels.editorTitle || 'Editor'} - ${currentResource.title} (${this.labels.resourceMetric?.(this.editor.getWordCount()) || this.editor.getWordCount()})`,
       contentLines,
       centerWidth,
       mainHeight,
       editorBorder
     );
 
-    // 3. 右栏：AI 灵感副驾驶与设定账本
+    // 3. Runtime state and conversation
     const rightBorder = this.focusMode === 'copilot' || this.focusMode === 'ledger' ? ANSI.FG_MAGENTA : ANSI.FG_BLUE;
     const rightContentLines: string[] = [];
 
@@ -236,7 +265,8 @@ export class TerminalStudio {
     rightContentLines.push(`${ANSI.BOLD}${this.labels.tracksHeader || '🔍 追踪项:'}${ANSI.RESET}`);
     if (this.stateLedger.tracks.length > 0) {
       for (const f of this.stateLedger.tracks.slice(0, 2)) {
-        rightContentLines.push(` • ${f.clue.slice(0, 16)}...`);
+        const label = f.clue || f.summary || f.id || 'track';
+        rightContentLines.push(` • ${label.slice(0, 16)}...`);
       }
     } else {
       rightContentLines.push(this.labels.emptyTracksText || '   (暂无追踪项)');
@@ -246,7 +276,7 @@ export class TerminalStudio {
     rightContentLines.push(`${ANSI.BOLD}${this.labels.dialogueHeader || '🤖 对话流:'}${ANSI.RESET}`);
     if (this.dialogueHistory.length > 0) {
       for (const d of this.dialogueHistory.slice(-4)) {
-        rightContentLines.push(`[${d.role === 'user' ? '作' : 'AI'}] ${d.text.slice(0, 20)}`);
+        rightContentLines.push(`[${d.role === 'user' ? this.labels.userRole : this.labels.assistantRole}] ${d.text.slice(0, 20)}`);
       }
     } else {
       rightContentLines.push(this.labels.emptyDialogueText || ' (无活跃对话)');
@@ -263,7 +293,7 @@ export class TerminalStudio {
       combinedRows.push(`${l} ${c} ${rg}`);
     }
 
-    // 4. 底部状态栏
+    // 4. Status line
     const wordCount = this.editor.getWordCount();
     let statusText = this.statusMessage;
     if (this.flashMessage && Date.now() < this.flashMessage.expiresAt) {
@@ -271,10 +301,10 @@ export class TerminalStudio {
       statusText = `${color}⚡ [${this.flashMessage.level.toUpperCase()}] ${this.flashMessage.text}${ANSI.RESET}`;
     }
 
-    const statusLine = `${ANSI.BG_DARK_GRAY}${ANSI.FG_WHITE} 📖 Studio | 字数: ${wordCount} | 焦点: ${this.focusMode.toUpperCase()} | ${statusText}${ANSI.RESET}`;
+    const statusLine = `${ANSI.BG_DARK_GRAY}${ANSI.FG_WHITE} ${this.labels.statusBarTitle || 'Studio'} | ${this.labels.statusBarWords || 'Count'}: ${wordCount} | ${this.labels.statusBarFocus || 'Focus'}: ${this.focusMode.toUpperCase()} | ${statusText}${ANSI.RESET}`;
     combinedRows.push(statusLine);
 
-    // 5. 模态框渲染 (SelectList / Input)
+    // 5. Modal rendering
     if (this.activeModal === 'selectList' && this.activeSelectList) {
       const modalLines: string[] = [];
       modalLines.push(`${ANSI.BOLD}${this.activeSelectList.title}${ANSI.RESET}`);
@@ -286,7 +316,7 @@ export class TerminalStudio {
         const prefix = isSelected ? `${ANSI.FG_GREEN}👉 [*] ` : '   [ ] ';
         modalLines.push(`${prefix}${item.label}${item.description ? ` (${item.description})` : ''}${ANSI.RESET}`);
       }
-      const modalBox = drawBox('⚙️ 交互选择器 (SelectList)', modalLines, 50, Math.min(12, modalLines.length + 3), ANSI.FG_YELLOW);
+      const modalBox = drawBox('Select', modalLines, 50, Math.min(12, modalLines.length + 3), ANSI.FG_YELLOW);
       const startRow = Math.max(2, Math.floor((this.height - modalBox.length) / 2));
       for (let m = 0; m < modalBox.length; m++) {
         if (combinedRows[startRow + m]) {
@@ -349,11 +379,11 @@ export class TerminalStudio {
   }
 
   public renderEntityAvatar(entityName: string): string[] {
-    const char = (this.stateLedger.entities || []).find((c: StateLedger['entities'][number]) => c.name === entityName);
+    const entity = (this.stateLedger.entities || []).find((candidate: StateLedger['entities'][number]) => candidate.name === entityName);
     return [
       `┌───────────┐`,
-      `│  (•‿•)   │  实体: ${entityName}`,
-      `│  /| ★ |\\  │  状态: ${char?.status || '活跃'}`,
+      `│  (•‿•)   │  Entity: ${entityName}`,
+      `│  /| ★ |\\  │  Status: ${entity?.status || 'active'}`,
       `└───────────┘`
     ];
   }
@@ -366,7 +396,7 @@ export class TerminalStudio {
     const current = this.renderScreen();
     const result = this.differentialRenderer.render(current);
     return {
-      isDiff: result.changedLines === 0,
+      isDiff: result.changedLines > 0,
       content: result.changedLines === 0 ? '' : current
     };
   }
@@ -397,7 +427,7 @@ export class TerminalStudio {
     if (input === '\t' || trimmed.toUpperCase() === 'TAB') {
       if (this.ghost.hasGhostText()) {
         this.ghost.acceptGhostText();
-        this.statusMessage = '✅ 已采纳行内续写建议';
+        this.statusMessage = 'Ghost text accepted';
         return 'Ghost text accepted';
       }
       return 'No active ghost text';
@@ -427,12 +457,12 @@ export class TerminalStudio {
       });
       this.dialogueHistory.push({ role: 'user', text: trimmed, timestamp: Date.now() });
       this.dialogueHistory.push({ role: 'assistant', text: res.output, timestamp: Date.now() });
-      this.statusMessage = `执行指令: ${trimmed}`;
+      this.statusMessage = this.labels.commandExecutedStatus?.(trimmed) || `Command executed: ${trimmed}`;
       return res.output;
     }
 
     this.editor.insertText(this.editor.getText().length, trimmed + '\n');
-    this.statusMessage = `正文已写入 (+${trimmed.length}字)`;
+    this.statusMessage = this.labels.insertedStatus?.(trimmed.length) || `Inserted ${trimmed.length} characters`;
     return 'Text inserted';
   }
 }

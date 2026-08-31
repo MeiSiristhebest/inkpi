@@ -285,6 +285,75 @@ describe('@inkpi/agent-core', () => {
     expect(events).toEqual(['update-settled', 'message-end']);
   });
 
+  it('should preserve provider errors and clean transient state after stream failure', async () => {
+    const streamFailure = new Error('collect failed');
+    const failingAgent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      streamFn: () => ({
+        on: () => () => undefined,
+        waitForListeners: async () => undefined,
+        collect: async () => { throw streamFailure; },
+        abort: () => undefined,
+        [Symbol.asyncIterator]: async function* () { /* no events */ }
+      })
+    });
+
+    await expect(failingAgent.prompt('fail')).rejects.toThrow('collect failed');
+    expect(failingAgent.state.errorMessage).toBe('collect failed');
+    expect(failingAgent.state.isStreaming).toBe(false);
+    expect(failingAgent.state.streamingMessage).toBeUndefined();
+    expect(failingAgent.state.pendingToolCalls.size).toBe(0);
+
+    const errorMessageAgent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      streamFn: () => {
+        const stream = new AssistantEventStream();
+        stream.error('provider failed');
+        return stream;
+      }
+    });
+    await errorMessageAgent.prompt('provider error');
+    expect(errorMessageAgent.state.errorMessage).toBe('provider failed');
+    expect(errorMessageAgent.state.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      stopReason: 'error',
+      errorMessage: 'provider failed'
+    });
+  });
+
+  it('should allow a new prompt after aborting an active run', async () => {
+    let callCount = 0;
+    let streamStarted!: () => void;
+    const streamStartedPromise = new Promise<void>((resolve) => {
+      streamStarted = resolve;
+    });
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      streamFn: (_model, _messages, options) => {
+        callCount += 1;
+        const stream = new AssistantEventStream();
+        if (callCount === 1) {
+          streamStarted();
+          options?.signal?.addEventListener('abort', () => stream.abort(), { once: true });
+        } else {
+          stream.push({ type: 'text_delta', textDelta: 'second run' });
+          stream.end();
+        }
+        return stream;
+      }
+    });
+
+    const firstRun = agent.prompt('first run');
+    await streamStartedPromise;
+    agent.abort();
+    await firstRun;
+    await agent.prompt('second run');
+    expect(agent.state.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'second run' }]
+    });
+  });
+
   it('should honor parallel tool execution in the agent loop', async () => {
     let active = 0;
     let maxActive = 0;

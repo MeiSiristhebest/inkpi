@@ -4,7 +4,7 @@ import { SessionTree, type SessionTreeNode } from './tree.js';
 export interface WhatIfBranchInfo {
   branchId: string;
   branchName: string;
-  premise: string; // "What if condition..."
+  premise: string;
   forkPointNodeId: string | null;
   currentLeafId: string | null;
   createdAt: number;
@@ -57,8 +57,9 @@ export interface BranchManagerOptions {
 }
 
 /**
- * 通用多线推演管理器 (1:1 落地 repos/pi SessionTree & Branch Summarization 架构)
- * 允许在任意节点开辟平行时间线，进行 What-If 假设推演、自动对比状态账本与文档差异。
+ * Generic branch manager built on SessionTree and explicit state/document
+ * projections. It can compare arbitrary branch scenarios without assuming a
+ * content domain.
  */
 export class BranchManager {
   private tree: SessionTree;
@@ -110,7 +111,7 @@ export class BranchManager {
   }
 
   /**
-   * 从当前节点（或指定节点）分叉出一条新的 What-If 推演分支
+   * Create a branch scenario from the current tree position.
    */
   public createWhatIfBranch(
     branchId: string,
@@ -290,7 +291,7 @@ export class BranchManager {
   }
 
   /**
-   * 生成平行推演决策报告 (What-If Executive Report)
+   * Generate a branch comparison report.
    */
   public generateExecutiveReport(baseBranchId: string, targetBranchId: string): WhatIfExecutiveReport {
     const baseBranch = this.branches.get(baseBranchId);

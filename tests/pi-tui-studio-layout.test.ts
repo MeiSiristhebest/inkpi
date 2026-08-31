@@ -52,9 +52,9 @@ describe('Pi TUI Engine Integration & Studio Layout', () => {
   it('should render TuiStudio with dual screen layout and handle select list modal', async () => {
     const studio = new TuiStudio({ width: 120, height: 30 });
     const screen = studio.renderScreen();
-    expect(screen).toContain('资源目录树');
-    expect(screen).toContain('编辑');
-    expect(screen).toContain('状态账本');
+    expect(screen).toContain('Resources');
+    expect(screen).toContain('Editor');
+    expect(screen).toContain('Runtime State');
 
     // Flash toast
     studio.flash('测试提示信息', 'success');
@@ -97,6 +97,7 @@ describe('Pi TUI Engine Integration & Studio Layout', () => {
     const avatar = studio.renderEntityAvatar('Alice');
     expect(avatar.join('\n')).toContain('Alice');
     expect(avatar.join('\n')).toContain('指挥官');
+    expect(avatar.join('\n')).toContain('Status:');
 
     studio.scrollOutline(5);
     expect(studio.outlineScrollOffset).toBe(5);

@@ -142,8 +142,38 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
 
     const recovery = compaction.recoverDocument('ch_t');
     expect(recovery.contentMarkdown).toBe('REPLACED_TEXT');
+    expect(recovery.replayedDeltasCount).toBe(3);
+    expect(recovery.recoveryErrors).toEqual([]);
 
     db.checkpoint();
+    db.close();
+  });
+
+  it('should fail strict recovery on malformed deltas and report them in lenient mode', () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const compaction = new CompactionEngine(db, repo);
+    const now = Date.now();
+
+    repo.createWorkspace({ id: 'b_bad_delta', title: 't', owner: 'a', createdAt: now, updatedAt: now });
+    repo.createFolder({ id: 'v_bad_delta', workspaceId: 'b_bad_delta', title: 'v', orderIndex: 1, createdAt: now, updatedAt: now });
+    repo.createDocument({ id: 'ch_bad_delta', folderId: 'v_bad_delta', workspaceId: 'b_bad_delta', title: 'c', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: now, updatedAt: now });
+    repo.appendDelta({
+      documentId: 'ch_bad_delta',
+      stepJson: '{not-json}',
+      clientTimestamp: now,
+      createdAt: now
+    });
+
+    expect(() => compaction.recoverDocument('ch_bad_delta')).toThrow(/Failed to replay delta/);
+    const errors: string[] = [];
+    const recovered = compaction.recoverDocument('ch_bad_delta', {
+      strict: false,
+      onError: (error) => errors.push(error.message)
+    });
+    expect(recovered.replayedDeltasCount).toBe(0);
+    expect(recovered.recoveryErrors).toHaveLength(1);
+    expect(errors).toEqual(recovered.recoveryErrors.map((error) => error.message));
     db.close();
   });
 
@@ -333,13 +363,15 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     const formatted = formatChineseTypography('第一段\n\n第二段', { indentSpaces: 2 });
     expect(formatted).toContain('\u3000\u3000第一段');
 
-    // DeepSeek without API key fallback to mock
+    // A real provider without credentials must surface an error, never a fake success.
     const noKeyStream = deepSeekProvider(
       { id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: '' },
       [{ role: 'user', content: 'test' }]
     );
     const noKeyMsg = await noKeyStream.collect();
     expect(noKeyMsg.role).toBe('assistant');
+    expect(noKeyMsg.stopReason).toBe('error');
+    expect(noKeyMsg.errorMessage).toContain('Missing API key');
   });
 
   it('should test Agent prompt with images, AgentMessage object, and tool terminate flag', async () => {

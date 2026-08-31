@@ -96,6 +96,16 @@ describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extensio
     expect(untransformed.length).toBe(1);
   });
 
+  it('should surface context transformer failures instead of reusing stale context', async () => {
+    const host = new ExtensionHost();
+    host.addContextTransformer(async () => {
+      throw new Error('transformer failed');
+    });
+
+    const initial: AgentMessage[] = [{ role: 'user', content: '原始上下文' }];
+    await expect(host.transformContext(initial)).rejects.toThrow('transformer failed');
+  });
+
   it('should load extensions safely through ExtensionRunner and isolate errors', async () => {
     const host = new ExtensionHost();
     const runner = new ExtensionRunner(host);

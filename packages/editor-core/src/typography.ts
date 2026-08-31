@@ -45,7 +45,7 @@ export function formatWesternTypography(text: string): string {
 
 export function formatTypography(
   text: string,
-  options: Partial<TypographyOptions> & { mode?: 'chinese' | 'western' | 'none' } = { mode: 'chinese' }
+  options: Partial<TypographyOptions> & { mode?: 'chinese' | 'western' | 'none' } = { mode: 'none' }
 ): string {
   if (options.enabled === false || options.mode === 'none') {
     return text;
@@ -53,5 +53,6 @@ export function formatTypography(
   if (options.mode === 'western') {
     return formatWesternTypography(text);
   }
+  if (options.mode === undefined) return text;
   return formatChineseTypography(text, options);
 }

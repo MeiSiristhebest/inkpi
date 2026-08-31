@@ -12,8 +12,8 @@ export class BranchSummarizer {
     options: { idGenerator?: () => string; clock?: () => number } = {}
   ) {
     this.customSummarizer = summarizer;
-    this.idGenerator = options.idGenerator || (() => `branch_summary_${this.clock()}`);
     this.clock = options.clock || Date.now;
+    this.idGenerator = options.idGenerator || (() => `branch_summary_${this.clock()}`);
   }
 
   /**
@@ -23,6 +23,12 @@ export class BranchSummarizer {
     divergedNodes: SessionTreeNode[];
     commonAncestorId: string | null;
   } {
+    if (!tree.getNode(fromLeafId)) {
+      throw new Error(`Source branch node '${fromLeafId}' not found`);
+    }
+    if (!tree.getNode(toLeafId)) {
+      throw new Error(`Target branch node '${toLeafId}' not found`);
+    }
     const commonAncestorId = tree.findCommonAncestor(fromLeafId, toLeafId);
     const divergedNodes: SessionTreeNode[] = [];
 
@@ -107,13 +113,16 @@ export class BranchSummarizer {
     fromLeafId?: string
   ): Promise<{ summaryDetails: BranchSummaryDetails; summaryNodeId: string } | null> {
     const effectiveFromId = fromLeafId || tree.getCurrentLeafId();
+    if (!tree.getNode(toLeafId)) {
+      throw new Error(`Target branch node '${toLeafId}' not found`);
+    }
     if (!effectiveFromId || effectiveFromId === toLeafId) {
-      tree.navigate(toLeafId);
+      tree.selectLeaf(toLeafId);
       return null;
     }
 
     const details = await this.summarizeBranch(tree, effectiveFromId, toLeafId);
-    tree.navigate(toLeafId);
+    tree.selectLeaf(toLeafId);
 
     if (!details || details.divergedNodeCount === 0) {
       return null;

@@ -142,6 +142,6 @@ describe('@inkpi/editor-core', () => {
     expect(formatTypography('text', { mode: 'none' })).toBe('text');
     expect(formatTypography('hello   world', { mode: 'western' })).toBe('hello world');
     expect(formatTypography('中文段落', { mode: 'chinese' })).toContain('\u3000\u3000中文段落');
-    expect(formatTypography('默认中文')).toContain('\u3000\u3000默认中文');
+    expect(formatTypography('默认中文')).toBe('默认中文');
   });
 });

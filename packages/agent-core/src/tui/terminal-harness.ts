@@ -1,4 +1,5 @@
-import { HeadlessEditorState, GhostTextManager, formatChineseTypography } from '@inkpi/editor-core';
+import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
+import type { TypographyOptions } from '@inkpi/protocol';
 import type { Agent } from '../agent.js';
 import type { SessionTree } from '../tree.js';
 import { SlashCommandRegistry } from '../slash-commands.js';
@@ -9,26 +10,44 @@ export interface TerminalHarnessOptions {
   tree?: SessionTree;
   width?: number;
   height?: number;
+  initialResources?: Array<{ title: string; wordCount: number; active?: boolean }>;
+  labels?: Partial<TerminalHarnessLabels>;
+  typography?: (Partial<TypographyOptions> & { mode?: 'chinese' | 'western' | 'none' }) | false;
+}
+
+export interface TerminalHarnessLabels {
+  resources: string;
+  editor: string;
+  console: string;
+  ghostSuggestion: string;
+  acceptSuggestion: string;
+  inserted: string;
+  accepted: string;
+  ready: string;
+  resourceMetric: (wordCount: number) => string;
 }
 
 /**
- * InkPi 终端工作台 (1:1 对标 repos/pi Interactive Terminal Mode)
+ * Headless terminal interaction harness.
+ *
+ * It owns input routing and frame composition. Product wording and resource
+ * semantics are injected by labels and initial resources.
  */
-export class TerminalWriterHarness {
+export class TerminalHarness {
   public editor: HeadlessEditorState;
   public ghost: GhostTextManager;
   public slashRegistry: SlashCommandRegistry;
   public agent?: Agent;
   public tree?: SessionTree;
   
-  public currentResourceTitle = '新建文档';
-  public resourceList = [
-    { title: '新建文档', wordCount: 0, active: true }
-  ];
+  public currentResourceTitle = 'Untitled resource';
+  public resourceList: Array<{ title: string; wordCount: number; active: boolean }>;
 
-  private logs: string[] = ['欢迎使用 InkPi 终端。输入 /help 查看指令。'];
+  private logs: string[];
   private width: number;
   private height: number;
+  private typography: TerminalHarnessOptions['typography'];
+  private labels: TerminalHarnessLabels;
 
   constructor(options: TerminalHarnessOptions = {}) {
     this.editor = new HeadlessEditorState();
@@ -38,6 +57,29 @@ export class TerminalWriterHarness {
     this.tree = options.tree;
     this.width = options.width || 90;
     this.height = options.height || 26;
+    this.typography = options.typography;
+    this.labels = {
+      resources: 'Resources',
+      editor: 'Editor',
+      console: 'Console',
+      ghostSuggestion: 'Suggestion',
+      acceptSuggestion: 'Tab to accept',
+      inserted: 'Inserted',
+      accepted: 'Suggestion accepted',
+      ready: 'Ready',
+      resourceMetric: (wordCount) => `${wordCount}`,
+      ...options.labels
+    };
+    this.resourceList = (options.initialResources || [
+      { title: 'Untitled resource', wordCount: 0, active: true }
+    ]).map((resource, index) => ({
+      ...resource,
+      active: resource.active ?? index === 0
+    }));
+    this.currentResourceTitle = this.resourceList.find((resource) => resource.active)?.title
+      || this.resourceList[0]?.title
+      || 'Untitled resource';
+    this.logs = [this.labels.ready];
   }
 
   /**
@@ -52,24 +94,26 @@ export class TerminalWriterHarness {
     // 1. 左侧资源栏
     const outlineLines: string[] = this.resourceList.map((res) => {
       const prefix = res.active ? `${ANSI.FG_CYAN}👉 ` : '   ';
-      const title = `${res.title} (${res.wordCount}字)`;
+      const title = `${res.title} (${this.labels.resourceMetric(res.wordCount)})`;
       return `${prefix}${title}${ANSI.RESET}`;
     });
-    const leftBox = drawBox('📚 资源列表', outlineLines, leftWidth, topHeight, ANSI.FG_CYAN);
+    const leftBox = drawBox(this.labels.resources, outlineLines, leftWidth, topHeight, ANSI.FG_CYAN);
 
     // 2. 右侧编辑与幽灵提示
     const rawText = this.editor.getText();
-    const formatted = formatChineseTypography(rawText);
+    const formatted = this.typography
+      ? formatTypography(rawText, this.typography)
+      : rawText;
     const textLines = formatted.split('\n');
 
     if (this.ghost.hasGhostText()) {
       const ghost = this.ghost.getGhostText();
       if (ghost) {
-        textLines.push(`${ANSI.FG_GRAY}👻 [建议] ${ghost.text} ${ANSI.FG_YELLOW}(Tab采纳)${ANSI.RESET}`);
+        textLines.push(`${ANSI.FG_GRAY}${this.labels.ghostSuggestion}: ${ghost.text} ${ANSI.FG_YELLOW}(${this.labels.acceptSuggestion})${ANSI.RESET}`);
       }
     }
 
-    const rightBox = drawBox(`✍️ 编辑 - ${this.currentResourceTitle}`, textLines, rightWidth, topHeight, ANSI.FG_GREEN);
+    const rightBox = drawBox(`${this.labels.editor} - ${this.currentResourceTitle}`, textLines, rightWidth, topHeight, ANSI.FG_GREEN);
 
     // Combine top left & right
     const combinedTop: string[] = [];
@@ -78,7 +122,7 @@ export class TerminalWriterHarness {
     }
 
     // 3. 底部 AI 副驾驶与控制台
-    const bottomBox = drawBox('🤖 AI 副驾驶 & 控制台', this.logs.slice(-bottomHeight + 3), this.width, bottomHeight, ANSI.FG_YELLOW);
+    const bottomBox = drawBox(this.labels.console, this.logs.slice(-bottomHeight + 3), this.width, bottomHeight, ANSI.FG_YELLOW);
 
     return combinedTop.join('\n') + '\n' + bottomBox.join('\n');
   }
@@ -93,7 +137,7 @@ export class TerminalWriterHarness {
     if (input === '\t' || trimmed.toUpperCase() === 'TAB') {
       if (this.ghost.hasGhostText()) {
         const accepted = this.ghost.acceptGhostText();
-        this.logs.push(`✅ 已采纳 AI 幽灵建议 (${accepted ? '成功' : '失败'})`);
+        this.logs.push(`${this.labels.accepted}: ${accepted ? 'ok' : 'failed'}`);
         return 'Ghost text accepted';
       }
       return 'No active ghost text';
@@ -110,9 +154,10 @@ export class TerminalWriterHarness {
       return res.output;
     }
 
-    // 3. 默认文本输入写入正文
+    // Default input is an editor operation; the harness does not infer a
+    // document type or invoke a domain-specific generation workflow.
     this.editor.insertText(this.editor.getText().length, trimmed + '\n');
-    this.logs.push(`✍️ 写入内容: ${trimmed.slice(0, 30)}...`);
+    this.logs.push(`${this.labels.inserted}: ${trimmed.slice(0, 30)}...`);
     return 'Text inserted';
   }
 
@@ -120,3 +165,6 @@ export class TerminalWriterHarness {
     this.logs.push(msg);
   }
 }
+
+/** @deprecated Use TerminalHarness. */
+export const TerminalWriterHarness = TerminalHarness;

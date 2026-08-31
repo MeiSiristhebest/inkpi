@@ -3,7 +3,15 @@ import { BranchManager } from '../packages/agent-core/src/branch-what-if.js';
 
 describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi)', () => {
   it('should create What-If branch with document snapshots and compare diffs', () => {
-    const manager = new BranchManager();
+    const manager = new BranchManager(undefined, {
+      mainBranchName: 'Base',
+      formatExecutiveReport: ({ baseBranch, targetBranch, ledgerDiff }) => [
+        `平行推演决策报告: ${baseBranch.branchName} -> ${targetBranch.branchName}`,
+        `${targetBranch.premise}`,
+        ...ledgerDiff.changedEntityStatuses.map((change) => `${change.name}(${change.from} -> ${change.to})`),
+        ...ledgerDiff.resolvedTracks.map((track) => `闭环线索与状态: ${track}`)
+      ].join('\n')
+    });
 
     // 1. Set baseline in mainline
     manager.updateActiveLedger({
@@ -37,7 +45,7 @@ describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi
     // 3. Generate Executive Report
     const report = manager.generateExecutiveReport('main', 'timeline-demon-path');
 
-    expect(report.baseBranchName).toContain('主线');
+    expect(report.baseBranchName).toBe('Base');
     expect(report.targetBranchName).toBe('魔道叛门线');
     expect(report.premise).toContain('假设林玄在第一章拒绝交出玉佩');
 
@@ -59,4 +67,3 @@ describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi
     expect(report.executiveSummary).toContain('闭环线索与状态: 身世玉佩之谜');
   });
 });
-

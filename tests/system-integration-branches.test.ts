@@ -16,8 +16,10 @@ import {
   TelemetryCollector,
   KillRing,
   MockClipboardDriver,
-  SyncedClipboard
+  SyncedClipboard,
+  createStandardEntitySafetyRules
 } from '@inkpi/agent-core';
+import { BranchSummarizer } from '@inkpi/agent-core';
 import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
 import { AppendOnlySessionJournal, InkDb, FtsSearchEngine } from '@inkpi/storage';
 import {
@@ -27,7 +29,6 @@ import {
 } from '@inkpi/protocol';
 import {
   convertMessagesToStandard,
-  setFauxScript,
   getModelPreset,
   streamAi
 } from '@inkpi/ai';
@@ -70,31 +71,34 @@ describe('System Integration & Edge Cases Suite', () => {
     await expectError('journal.append', { type: 'test', payload: {} });
     await expectError('jit.retrieve', {});
 
-    // Methods that return empty defaults
+    // Unconfigured capabilities must fail explicitly instead of pretending to
+    // be initialized with empty data.
     const editorText = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 2, method: 'editor.getText' });
-    expect(editorText.result).toBe('');
+    expect(editorText.error?.message).toBe('Editor not initialized');
 
     const branches = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 3, method: 'tree.getBranches' });
-    expect(branches.result).toEqual([]);
+    expect(branches.error?.message).toBe('SessionTree not initialized');
 
     const journalEntries = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 4, method: 'journal.getEntries' });
-    expect(journalEntries.result).toEqual([]);
+    expect(journalEntries.error?.message).toBe('Journal not initialized');
 
     const fts = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 5, method: 'storage.searchFts', params: { query: 'test' } });
-    expect(fts.result).toEqual([]);
+    expect(fts.error?.message).toBe('FTS search capability not initialized');
 
     const stats = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 6, method: 'telemetry.getStats' });
-    expect(stats.result).toBeDefined();
+    expect(stats.error?.message).toBe('Telemetry capability not initialized');
 
     const otel = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 7, method: 'telemetry.exportOtel' });
-    expect(otel.result).toBe('{}');
+    expect(otel.error?.message).toBe('Telemetry capability not initialized');
   });
 
   it('should test all InkRpcClient helper methods on full server', async () => {
     const editor = new HeadlessEditorState('初始章节内容');
     const ghost = new GhostTextManager(editor);
+    const agentModel = getModelPreset('mock-test');
+    agentModel.fauxScript = { text: 'agent provider output', inputTokens: 5, outputTokens: 7 };
     const agent = new Agent({
-      initialState: { model: getModelPreset('mock-test'), systemPrompt: '测试' }
+      initialState: { model: agentModel, systemPrompt: '测试' }
     });
     const tree = new SessionTree([
       { id: 'm1', role: 'user', content: '第一句', timestamp: Date.now() },
@@ -114,7 +118,8 @@ describe('System Integration & Edge Cases Suite', () => {
       journal,
       slashRegistry,
       telemetry,
-      fts
+      fts,
+      branchSummarizer: new BranchSummarizer(async (serialized) => `summary:${serialized}`)
     });
 
     const client = new InkRpcClient(new InMemoryTransport(fullServer));
@@ -136,9 +141,9 @@ describe('System Integration & Edge Cases Suite', () => {
     await client.dismissGhost();
 
     // Tree methods
-    await client.branchTree('if_branch_1', '如果主角没有掉下悬崖');
+    const branchResult = await client.branchTree('if_branch_1', '如果主角没有掉下悬崖') as { node: { id: string } };
     await client.navigateTree('m1');
-    await client.getBranchSummary();
+    await client.getBranchSummary(branchResult.node.id, 'm1');
 
     // Slash & Fts & Telemetry
     await client.executeSlash('/help');
@@ -151,6 +156,7 @@ describe('System Integration & Edge Cases Suite', () => {
     fs.writeFileSync(tmpTrustCorrupted, '{ bad json file', 'utf8');
     const mgr1 = new ProjectTrustManager(tmpTrustCorrupted);
     expect(mgr1.listTrusted().length).toBe(0);
+    expect(mgr1.getDiagnostics().loadError).toBeInstanceOf(Error);
     fs.unlinkSync(tmpTrustCorrupted);
 
     const testPath = path.resolve(process.cwd(), 'trusted_proj');
@@ -166,6 +172,7 @@ describe('System Integration & Edge Cases Suite', () => {
     const res = await runPrintMode({
       prompt: '请构思一段情节',
       role: 'architect',
+      model: 'mock-test',
       systemPrompt: '你是总策划',
       thinkingLevel: 'high',
       output: tmpFile,
@@ -247,19 +254,19 @@ describe('System Integration & Edge Cases Suite', () => {
     expect(stdMessages[3].role).toBe('tool');
 
     // Faux provider script
-    setFauxScript({
+    const model = getModelPreset('mock-test');
+    model.fauxScript = {
       thinking: '深度构思中...',
       text: '生成的测试正文',
       toolCalls: [{ id: 'tc_99', name: 'check_plot', arguments: {} }],
       inputTokens: 50,
       outputTokens: 30
-    });
+    };
 
-    const stream = streamAi(getModelPreset('mock-test'), [{ role: 'user', content: '测试' }]);
+    const stream = streamAi(model, [{ role: 'user', content: '测试' }]);
     const msg = await stream.collect();
     expect(msg.content.some((c) => c.type === 'thinking')).toBe(true);
     expect(msg.content.some((c) => c.type === 'toolCall')).toBe(true);
-    setFauxScript(null);
 
     // Missing API keys for real providers
     const openaiStream = streamAi({ id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', contextWindow: 128000, maxTokens: 4096 }, [{ role: 'user', content: 'hi' }]);
@@ -277,6 +284,8 @@ describe('System Integration & Edge Cases Suite', () => {
 
   it('should test WorkflowCoordinator hooks, gate decisions, custom executor, and transformOutput branches', async () => {
     const { WorkflowCoordinator } = await import('@inkpi/agent-core');
+    const model = getModelPreset('mock-test');
+    model.fauxScript = { text: 'provider stage output', inputTokens: 5, outputTokens: 7 };
     
     let beforeOutlineHit = false;
     let draftGenHit = false;
@@ -284,6 +293,7 @@ describe('System Integration & Edge Cases Suite', () => {
     let polishDoneHit = false;
 
     const coordinator = new WorkflowCoordinator({
+      model,
       hooks: [{
         onBeforeOutline: async () => { beforeOutlineHit = true; return '大纲前置提示'; },
         onDraftGenerated: async () => { draftGenHit = true; return '正文后置修饰'; },
@@ -316,6 +326,7 @@ describe('System Integration & Edge Cases Suite', () => {
     // Test rejection in quality gate
     const rejectingCoordinator = new WorkflowCoordinator({
       enablePlotGate: true,
+      customGateRules: createStandardEntitySafetyRules(),
       plotGateHandler: async () => ({ approved: false, feedback: '设定严重冲突' })
     });
     // Add a conflict to trigger gate
@@ -380,7 +391,7 @@ describe('System Integration & Edge Cases Suite', () => {
 
 
   it('should test StateLedger extraction: items/clue branches and XML tags', async () => {
-    const { extractStateLedger } = await import('@inkpi/agent-core');
+    const { extractNovelStateLedger } = await import('@inkpi/agent-core');
 
     // 触发 tool calls and standard tags
     const msgsWithItems = [
@@ -393,7 +404,7 @@ describe('System Integration & Edge Cases Suite', () => {
         ]
       } as any
     ];
-    const ledger1 = extractStateLedger(msgsWithItems);
+    const ledger1 = extractNovelStateLedger(msgsWithItems);
     expect(ledger1.entities.length).toBeGreaterThan(0);
     expect(ledger1.assets.length).toBeGreaterThan(0);
     expect(ledger1.tracks.length).toBeGreaterThan(0);
@@ -402,7 +413,7 @@ describe('System Integration & Edge Cases Suite', () => {
     const msgsXml = [
       { role: 'assistant', content: [{ type: 'text', text: '<location name="CommandCenter" /> <track content="ServerRoom" status="resolved" />' }] } as any
     ];
-    const ledger2 = extractStateLedger(msgsXml);
+    const ledger2 = extractNovelStateLedger(msgsXml);
     expect(ledger2.locations.length).toBeGreaterThan(0);
     expect(ledger2.tracks.some((t) => t.status === 'resolved')).toBe(true);
 
@@ -410,7 +421,7 @@ describe('System Integration & Edge Cases Suite', () => {
     const msgsToolResult = [
       { role: 'toolResult', toolCallId: 't1', toolName: 'test', content: [{ type: 'text', text: '<track clue="AuditLog" status="pending" />' }] } as any
     ];
-    const ledger3 = extractStateLedger(msgsToolResult);
+    const ledger3 = extractNovelStateLedger(msgsToolResult);
     expect(ledger3).toBeDefined();
   });
 });

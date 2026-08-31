@@ -6,6 +6,7 @@ import {
   WorkflowCoordinator,
   TelemetryCollector
 } from '@inkpi/agent-core';
+import { getModelPreset } from '@inkpi/ai';
 import {
   InkDb,
   InkRepository,
@@ -16,13 +17,15 @@ import {
 
 describe('Advanced JSON-RPC Server & Client Features', () => {
   it('should support journal, jit memory, pipeline run and telemetry via RPC', async () => {
+    const model = getModelPreset('mock-test');
+    model.fauxScript = { text: 'rpc provider output', inputTokens: 5, outputTokens: 7 };
     const db = new InkDb(':memory:');
     const repo = new InkRepository(db);
     const fts = new FtsSearchEngine(db);
     const journal = new AppendOnlySessionJournal('rpc_session_1');
     const jitRetriever = new JitMemoryRetriever({ repository: repo, ftsEngine: fts });
     const telemetry = new TelemetryCollector();
-    const pipeline = new WorkflowCoordinator({ telemetry });
+    const pipeline = new WorkflowCoordinator({ telemetry, model });
 
     const server = new InkRpcServer({
       storage: repo,
@@ -35,6 +38,10 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
 
     const transport = new InMemoryTransport(server);
     const client = new InkRpcClient(transport);
+
+    await expect(client.call('pipeline.run', {
+      userPrompt: '缺少显式标题'
+    })).rejects.toThrow('requires bookTitle or title');
 
     // 1. Journal RPC
     const appRes = await client.appendJournal('user_message', { content: 'RPC用户输入' }, 'evt_rpc_1');
@@ -69,5 +76,3 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
     db.close();
   });
 });
-
-

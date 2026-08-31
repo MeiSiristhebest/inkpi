@@ -24,6 +24,7 @@ export interface RunLoopParams {
 export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[]> {
   const { state, options, toolRegistry, steeringQueue, followUpQueue, emitEvent, signal } = params;
 
+  state.errorMessage = undefined;
   await emitEvent({ type: 'agent_start' });
 
   try {
@@ -69,6 +70,12 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
         thinkingBudget: state.thinkingLevel === 'off' ? 0 : 2000,
         tools: toolsMetadata
       });
+      const abortStream = (): void => stream.abort();
+      if (signal?.aborted) {
+        stream.abort();
+      } else {
+        signal?.addEventListener('abort', abortStream, { once: true });
+      }
 
       state.isStreaming = true;
 
@@ -116,11 +123,19 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       await emitEvent({ type: 'message_start', message: initialAssistantMsg });
       releaseMessageStart();
 
-      const assistantMessage = await stream.collect();
-      await stream.waitForListeners?.();
+      let assistantMessage: AssistantMessage;
+      try {
+        assistantMessage = await stream.collect();
+        await stream.waitForListeners?.();
+      } finally {
+        signal?.removeEventListener('abort', abortStream);
+      }
       state.isStreaming = false;
       state.streamingMessage = undefined;
       state.messages.push(assistantMessage);
+      if (assistantMessage.stopReason === 'error') {
+        state.errorMessage = assistantMessage.errorMessage || 'Model stream ended with an error.';
+      }
       await emitEvent({ type: 'message_end', message: assistantMessage });
 
       // 4. Extract tool calls
@@ -296,6 +311,9 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       // No more tools, steering, or follow-ups -> settle loop
       continueLoop = false;
     }
+  } catch (error) {
+    state.errorMessage = error instanceof Error ? error.message : String(error);
+    throw error;
   } finally {
     state.isStreaming = false;
     state.streamingMessage = undefined;

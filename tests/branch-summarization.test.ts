@@ -75,5 +75,9 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
     const defaultSummarizer = new BranchSummarizer();
     await expect(defaultSummarizer.summarizeBranch(tree, leafA, rootAssistant))
       .rejects.toThrow('explicit summarizer capability');
+    await expect(defaultSummarizer.summarizeBranch(tree, 'missing', rootAssistant))
+      .rejects.toThrow("Source branch node 'missing' not found");
+    await expect(summarizer.switchBranchWithSummary(tree, 'missing', leafA))
+      .rejects.toThrow("Target branch node 'missing' not found");
   });
 });

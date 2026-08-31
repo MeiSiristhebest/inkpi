@@ -67,12 +67,24 @@ export class SessionTree {
     return id;
   }
 
-  public fork(fromNodeId: string): string {
+  /**
+   * Move the active leaf to an existing node.
+   *
+   * Adding a message after this call creates a new in-memory branch. This
+   * method does not clone or persist a separate session; durable session
+   * forking belongs to the storage/session repository layer.
+   */
+  public selectLeaf(fromNodeId: string): string {
     if (!this.nodes.has(fromNodeId)) {
       throw new Error(`Node ${fromNodeId} not found in SessionTree`);
     }
     this.currentLeafId = fromNodeId;
     return fromNodeId;
+  }
+
+  /** Backward-compatible alias for callers that use Pi's branch terminology. */
+  public fork(fromNodeId: string): string {
+    return this.selectLeaf(fromNodeId);
   }
 
   public branch(name: string, hypothesis?: string): SessionTreeNode {

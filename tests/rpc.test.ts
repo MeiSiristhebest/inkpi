@@ -63,7 +63,8 @@ describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', 
     expect(Array.isArray(branchesBefore)).toBe(true);
 
     const forkRes = await client.call<any>('tree.fork', { fromNodeId: rootNodeId });
-    expect(forkRes.leafId).toBeDefined();
+    expect(forkRes.leafId).toBe(rootNodeId);
+    expect(forkRes.node.id).toBe(rootNodeId);
 
 
     const switchRes = await client.switchBranch(forkRes.leafId);
@@ -106,11 +107,11 @@ describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', 
     await expect(client.call('ghost.set', { pos: 0, text: 'b' })).rejects.toThrow('Ghost text manager not initialized');
     await expect(client.call('ghost.accept')).rejects.toThrow('Ghost text manager not initialized');
     
-    // Empty storage/tree/editor returns default fallbacks
-    expect(await client.call('tree.getBranches')).toEqual([]);
-    expect(await client.call('editor.getText')).toBe('');
-    expect(await client.call('storage.searchFts', { query: 'test' })).toEqual([]);
+    // Unconfigured capabilities must be reported explicitly; an empty result
+    // is reserved for an initialized capability with no matching data.
+    await expect(client.call('tree.getBranches')).rejects.toThrow('SessionTree not initialized');
+    await expect(client.call('editor.getText')).rejects.toThrow('Editor not initialized');
+    await expect(client.call('storage.searchFts', { query: 'test' }))
+      .rejects.toThrow('FTS search capability not initialized');
   });
 });
-
-
