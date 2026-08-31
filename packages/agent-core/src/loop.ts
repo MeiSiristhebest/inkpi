@@ -57,6 +57,15 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       }
 
       // 3. Invoke LLM Stream
+      const streamOpId = `op_stream_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      if (options.journal) {
+        options.journal.append('operation_intent', {
+          id: streamOpId,
+          type: 'provider_stream',
+          intent: { model: state.model?.id, messageCount: llmMessages.length }
+        });
+      }
+
       const streamFn = options.streamFn || streamAi;
       const toolsMetadata = toolRegistry.getAll().map(t => ({
         name: t.name,
@@ -136,6 +145,17 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       if (assistantMessage.stopReason === 'error') {
         state.errorMessage = assistantMessage.errorMessage || 'Model stream ended with an error.';
       }
+
+      if (options.journal) {
+        options.journal.append('operation_settlement', {
+          id: streamOpId,
+          type: 'provider_stream',
+          settlement: { usage: assistantMessage.usage, stopReason: assistantMessage.stopReason },
+          error: assistantMessage.stopReason === 'error' ? assistantMessage.errorMessage : undefined
+        });
+        options.journal.append('agent_turn', assistantMessage);
+      }
+
       await emitEvent({ type: 'message_end', message: assistantMessage });
 
       // 4. Extract tool calls
@@ -151,8 +171,17 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
 
       if (toolCalls.length > 0) {
         const executeOne = async (call: ToolCallContent): Promise<ToolResultMessage & { terminate?: boolean }> => {
+          const toolOpId = `op_tool_${call.id}`;
+          if (options.journal) {
+            options.journal.append('operation_intent', {
+              id: toolOpId,
+              type: 'tool_call',
+              intent: { name: call.name, arguments: call.arguments }
+            });
+          }
+
           if (signal?.aborted) {
-            return {
+            const abortedRes: ToolResultMessage = {
               role: 'toolResult',
               toolCallId: call.id,
               toolName: call.name,
@@ -160,6 +189,16 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
               content: [{ type: 'text', text: 'Tool execution aborted by signal' }],
               timestamp: Date.now()
             };
+            if (options.journal) {
+              options.journal.append('operation_settlement', {
+                id: toolOpId,
+                type: 'tool_call',
+                error: 'Tool execution aborted by signal',
+                settlement: abortedRes
+              });
+              options.journal.append('tool_execution', abortedRes);
+            }
+            return abortedRes;
           }
 
           state.pendingToolCalls.add(call.id);
@@ -241,6 +280,16 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
             };
           } finally {
             state.pendingToolCalls.delete(call.id);
+          }
+
+          if (options.journal) {
+            options.journal.append('operation_settlement', {
+              id: toolOpId,
+              type: 'tool_call',
+              settlement: { content: toolRes.content, details: toolRes.details },
+              error: toolRes.isError ? (toolRes.content?.[0] as any)?.text || 'Tool execution error' : undefined
+            });
+            options.journal.append('tool_execution', toolRes);
           }
 
           if (toolRes.terminate) shouldTerminateFromTools = true;

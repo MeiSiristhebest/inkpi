@@ -144,4 +144,34 @@ CREATE TABLE IF NOT EXISTS session_compaction_records (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_compaction_session_id ON session_compaction_records(session_id);
+
+-- 12. Operations (原子操作状态追踪表 - 1:1 对标 pi operations)
+CREATE TABLE IF NOT EXISTS operations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  state TEXT NOT NULL,
+  intent_json TEXT,
+  settlement_json TEXT,
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_operations_session_state ON operations(session_id, state);
+
+-- 13. Session Entries (持久化会话日志条目表 - 1:1 对标 pi entries)
+CREATE TABLE IF NOT EXISTS session_entries (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  parent_id TEXT,
+  lane_id TEXT,
+  operation_id TEXT,
+  type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  version INTEGER DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_session_entries_lookup ON session_entries(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_session_entries_parent ON session_entries(parent_id);
 `;

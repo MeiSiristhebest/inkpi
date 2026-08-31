@@ -22,4 +22,6 @@ export * from './package-manager/package-manager.js';
 export * from './package-manager-cli.js';
 export * from './trust/project-trust.js';
 export * from './sandbox/index.js';
+export * from './reducer/session-reducer.js';
+
 

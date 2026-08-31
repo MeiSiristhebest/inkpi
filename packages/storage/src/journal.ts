@@ -298,9 +298,48 @@ export class AppendOnlySessionJournal {
             break;
           }
 
+          case 'operation_intent': {
+            const op = entry.payload;
+            if (op && typeof op.id === 'string') {
+              repo.saveOperation({
+                id: op.id,
+                sessionId: this.sessionId,
+                type: op.type || 'custom',
+                state: 'running',
+                intent: op.intent,
+                createdAt: entry.timestamp,
+                updatedAt: entry.timestamp
+              });
+              projected = true;
+            }
+            break;
+          }
+
+          case 'operation_settlement': {
+            const op = entry.payload;
+            if (op && typeof op.id === 'string') {
+              repo.saveOperation({
+                id: op.id,
+                sessionId: this.sessionId,
+                type: op.type || 'custom',
+                state: op.error ? 'failed' : 'settled',
+                intent: op.intent,
+                settlement: op.settlement,
+                error: op.error,
+                createdAt: op.createdAt || entry.timestamp,
+                updatedAt: entry.timestamp
+              });
+              projected = true;
+            }
+            break;
+          }
+
           default:
             break;
         }
+
+        // Always save every session entry to relational session_entries projection
+        repo.saveSessionEntry(entry);
         if (projected) replayedCount++;
       }
     });
@@ -321,6 +360,8 @@ const JOURNAL_ENTRY_TYPES = new Set<JournalEntryType>([
   'ledger_mutation',
   'compaction',
   'tool_execution',
+  'operation_intent',
+  'operation_settlement',
   'pipeline_stage',
   'custom'
 ]);

@@ -142,8 +142,25 @@ export interface WriterLeaseInfo {
   metadata?: string;
 }
 
+/** 结构化原子操作状态机契约 (1:1 对标 repos/pi Operation 意图结算与崩溃恢复) */
+export type OperationState = 'pending' | 'running' | 'settled' | 'failed' | 'interrupted';
+
+export type OperationType = 'provider_stream' | 'tool_call' | 'workflow_stage' | 'custom';
+
+export interface OperationRecord {
+  id: string;
+  sessionId: string;
+  type: OperationType;
+  state: OperationState;
+  intent: unknown;
+  settlement?: unknown;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** 事件溯源日志类型 (1:1 对标 repos/pi Append-Only JSONL 会话存储) */
-export type JournalEntryType =
+export type SessionEntryType =
   | 'session_start'
   | 'user_message'
   | 'agent_turn'
@@ -151,21 +168,30 @@ export type JournalEntryType =
   | 'ledger_mutation'
   | 'compaction'
   | 'tool_execution'
+  | 'operation_intent'
+  | 'operation_settlement'
   | 'pipeline_stage'
   | 'custom';
 
-export interface JournalEntry<TPayload = any> {
+export type JournalEntryType = SessionEntryType;
+
+export interface SessionEntry<TPayload = any> {
   id: string;
   sessionId: string;
   /** Session-wide monotonically increasing journal sequence. */
   seq: number;
   /** Immutable tree placement; null means this entry starts a root. */
   parentId: string | null;
-  type: JournalEntryType;
+  laneId?: string;
+  operationId?: string;
+  type: SessionEntryType;
   timestamp: number;
   payload: TPayload;
   hash?: string;
+  version?: number;
 }
+
+export type JournalEntry<TPayload = any> = SessionEntry<TPayload>;
 
 /** JIT 分层记忆检索查询契约 (L1 工作记忆 + L2 摘要 + L3 全局 FTS5 实体) */
 export interface JitContextQuery {

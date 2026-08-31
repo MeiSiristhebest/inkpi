@@ -99,6 +99,9 @@ export class Agent {
       }
 
       this.state.messages.push(msg);
+      if (this.options.journal) {
+        this.options.journal.append('user_message', msg);
+      }
       await this.emitEvent({ type: 'message_start', message: msg });
       await this.emitEvent({ type: 'message_end', message: msg });
 

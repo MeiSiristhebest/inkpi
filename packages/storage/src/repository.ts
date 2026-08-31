@@ -1,4 +1,4 @@
-import type { Workspace, Folder, Document, DocumentSnapshot, DocumentDelta } from '@inkpi/protocol';
+import type { Workspace, Folder, Document, DocumentSnapshot, DocumentDelta, OperationRecord, SessionEntry } from '@inkpi/protocol';
 import type { InkDb } from './db.js';
 
 export class InkRepository {
@@ -205,5 +205,107 @@ export class InkRepository {
       contentSize: Number(row.content_size),
       updatedAt: Number(row.updated_at)
     };
+  }
+
+  public saveOperation(record: OperationRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO operations (id, session_id, type, state, intent_json, settlement_json, error, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        state = excluded.state,
+        intent_json = excluded.intent_json,
+        settlement_json = excluded.settlement_json,
+        error = excluded.error,
+        updated_at = excluded.updated_at
+    `);
+    stmt.run(
+      record.id,
+      record.sessionId,
+      record.type,
+      record.state,
+      record.intent !== undefined ? JSON.stringify(record.intent) : null,
+      record.settlement !== undefined ? JSON.stringify(record.settlement) : null,
+      record.error || null,
+      record.createdAt,
+      record.updatedAt
+    );
+  }
+
+  public getOperation(id: string): OperationRecord | undefined {
+    const stmt = this.db.prepare(`SELECT * FROM operations WHERE id = ?`);
+    const row = stmt.get(id) as any;
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      type: row.type,
+      state: row.state,
+      intent: row.intent_json ? JSON.parse(row.intent_json) : undefined,
+      settlement: row.settlement_json ? JSON.parse(row.settlement_json) : undefined,
+      error: row.error || undefined,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at)
+    };
+  }
+
+  public getOperations(sessionId: string): OperationRecord[] {
+    const stmt = this.db.prepare(`SELECT * FROM operations WHERE session_id = ? ORDER BY created_at ASC`);
+    const rows = stmt.all(sessionId) as any[];
+    return rows.map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      type: row.type,
+      state: row.state,
+      intent: row.intent_json ? JSON.parse(row.intent_json) : undefined,
+      settlement: row.settlement_json ? JSON.parse(row.settlement_json) : undefined,
+      error: row.error || undefined,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at)
+    }));
+  }
+
+  public saveSessionEntry(entry: SessionEntry): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO session_entries (id, session_id, seq, parent_id, lane_id, operation_id, type, payload_json, timestamp, version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        seq = excluded.seq,
+        parent_id = excluded.parent_id,
+        lane_id = excluded.lane_id,
+        operation_id = excluded.operation_id,
+        type = excluded.type,
+        payload_json = excluded.payload_json,
+        timestamp = excluded.timestamp,
+        version = excluded.version
+    `);
+    stmt.run(
+      entry.id,
+      entry.sessionId,
+      entry.seq,
+      entry.parentId || null,
+      entry.laneId || null,
+      entry.operationId || null,
+      entry.type,
+      JSON.stringify(entry.payload),
+      entry.timestamp,
+      entry.version || 1
+    );
+  }
+
+  public getSessionEntries(sessionId: string): SessionEntry[] {
+    const stmt = this.db.prepare(`SELECT * FROM session_entries WHERE session_id = ? ORDER BY seq ASC`);
+    const rows = stmt.all(sessionId) as any[];
+    return rows.map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      seq: Number(row.seq),
+      parentId: row.parent_id || null,
+      laneId: row.lane_id || undefined,
+      operationId: row.operation_id || undefined,
+      type: row.type,
+      payload: JSON.parse(row.payload_json),
+      timestamp: Number(row.timestamp),
+      version: Number(row.version) || 1
+    }));
   }
 }

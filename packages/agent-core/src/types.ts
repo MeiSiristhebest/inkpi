@@ -26,6 +26,8 @@ export interface AgentState {
   streamingMessage?: AssistantMessage;
   pendingToolCalls: Set<string>;
   errorMessage?: string;
+  sessionId?: string;
+  operations?: Map<string, any>;
 }
 
 export interface BeforeToolCallContext {
@@ -74,6 +76,7 @@ export interface AgentOptions {
   toolExecution?: ToolExecutionMode;
   streamFn?: StreamFn;
   sessionId?: string;
+  journal?: any;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | void>;
   afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | void>;
   shouldStopAfterTurn?: (ctx: ShouldStopAfterTurnContext, signal?: AbortSignal) => Promise<boolean>;
