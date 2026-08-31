@@ -25,8 +25,6 @@ export type KnownModelId =
   | 'gemini-2.5-flash'
   | 'ollama/qwen2.5:14b'
   | 'qwen2.5:14b'
-  | 'mock/mock-model-v1'
-  | 'mock-model-v1'
   | 'tencent/hy4-preview'
   | 'hy4-preview'
   | 'inclusionai/ling-3.0-flash-fin:free'
@@ -436,36 +434,6 @@ export const GENERATED_MODELS: GeneratedModelMeta[] = [
       "outputPerMillionUsd": 0
     },
     "description": "本地离线隐私部署模型"
-  },
-  {
-    "id": "mock/mock-model-v1",
-    "name": "Faux Deterministic Test Model",
-    "provider": "custom",
-    "contextWindow": 32768,
-    "maxTokens": 4096,
-    "supportsThinking": true,
-    "supportsTools": true,
-    "supportsVision": true,
-    "cost": {
-      "inputPerMillionUsd": 0,
-      "outputPerMillionUsd": 0
-    },
-    "description": "显式测试夹具模型"
-  },
-  {
-    "id": "mock-model-v1",
-    "name": "Faux Deterministic Test Model",
-    "provider": "custom",
-    "contextWindow": 32768,
-    "maxTokens": 4096,
-    "supportsThinking": true,
-    "supportsTools": true,
-    "supportsVision": true,
-    "cost": {
-      "inputPerMillionUsd": 0,
-      "outputPerMillionUsd": 0
-    },
-    "description": "显式测试夹具模型"
   },
   {
     "id": "tencent/hy4-preview",
@@ -12803,4 +12771,3 @@ export function findGeneratedModel(idOrName: string): GeneratedModelMeta | undef
 export function listGeneratedModelsByProvider(provider: string): GeneratedModelMeta[] {
   return GENERATED_MODELS.filter((m) => m.provider === provider);
 }
-

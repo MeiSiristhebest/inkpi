@@ -5,7 +5,8 @@ import {
   findModelInCatalog,
   getThinkingBudgetForLevel,
   streamAi,
-  registerProvider
+  registerProvider,
+  createFauxProvider
 } from '@inkpi/ai';
 
 describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
@@ -51,6 +52,12 @@ describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
   });
 
   it('should stream AI responses with thinking extraction and usage stats', async () => {
+    registerProvider('custom', createFauxProvider({
+      thinking: 'thinking fixture',
+      text: 'text fixture',
+      inputTokens: 5,
+      outputTokens: 7
+    }));
     const model = findModelInCatalog('deepseek-reasoner') || KNOWN_MODELS[0];
     const stream = streamAi(
       {

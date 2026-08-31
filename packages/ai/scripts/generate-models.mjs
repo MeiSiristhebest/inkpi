@@ -239,18 +239,6 @@ const OFFLINE_CORE_MODELS = [
     cost: { inputPerMillionUsd: 0.0, outputPerMillionUsd: 0.0 },
     description: '本地离线隐私部署模型'
   },
-  {
-    id: 'mock/mock-model-v1',
-    name: 'Faux Deterministic Test Model',
-    provider: 'custom',
-    contextWindow: 32768,
-    maxTokens: 4096,
-    supportsThinking: true,
-    supportsTools: true,
-    supportsVision: true,
-    cost: { inputPerMillionUsd: 0.0, outputPerMillionUsd: 0.0 },
-    description: '显式测试夹具模型'
-  }
 ];
 
 async function main() {
@@ -277,7 +265,11 @@ async function main() {
     }
   }
 
-  const allModels = Array.from(modelMap.values());
+  // Faux/test transports belong to test fixtures, never to the production catalog.
+  const allModels = Array.from(modelMap.values()).filter((model) => {
+    const id = String(model.id || '').toLowerCase();
+    return model.provider !== 'faux' && !id.startsWith('mock/');
+  });
   console.log(`📦 Consolidated dynamic catalog size: ${allModels.length} models across all providers.`);
 
   const dataDir = path.join(packageRoot, 'src');

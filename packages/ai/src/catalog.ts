@@ -26,9 +26,19 @@ export interface ModelCatalogEntry {
 }
 
 /**
- * 动态水合的全量模型列表 (1:1 动态生成自 OpenRouter / 远程端点与离线基准)
+ * Runtime model catalog.
+ *
+ * Test-only faux entries are deliberately excluded even if an old generated
+ * artifact still contains one. This keeps test transport configuration out of
+ * production model discovery.
  */
-export const KNOWN_MODELS: ModelCatalogEntry[] = GENERATED_MODELS as unknown as ModelCatalogEntry[];
+export const KNOWN_MODELS: ModelCatalogEntry[] = (GENERATED_MODELS as unknown as ModelCatalogEntry[])
+  .filter((model) => !isTestOnlyModel(model));
+
+function isTestOnlyModel(model: Pick<ModelCatalogEntry, 'id' | 'provider'>): boolean {
+  const id = model.id.toLowerCase();
+  return model.provider === 'faux' || id === 'mock-model-v1' || id.startsWith('mock/');
+}
 
 export function getThinkingBudgetForLevel(level: ThinkingLevel): number {
   switch (level) {
@@ -176,4 +186,3 @@ export class ModelCatalogManager {
     return this.getAllModels();
   }
 }
-

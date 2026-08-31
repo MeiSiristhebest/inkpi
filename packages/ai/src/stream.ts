@@ -10,7 +10,8 @@ import type { EventStream } from './types.js';
 
 export class AssistantEventStream implements EventStream<AssistantMessageEvent> {
   private queue: AssistantMessageEvent[] = [];
-  private listeners: Array<(event: AssistantMessageEvent) => void> = [];
+  private listeners: Array<(event: AssistantMessageEvent) => void | Promise<void>> = [];
+  private listenerPromises = new Set<Promise<void>>();
   private resolvers: Array<(value: IteratorResult<AssistantMessageEvent>) => void> = [];
   private isEnded = false;
   private aborted = false;
@@ -20,7 +21,17 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     if (this.isEnded || this.aborted) return;
     for (const listener of this.listeners) {
       try {
-        listener(event);
+        const result = listener(event);
+        if (result && typeof result.then === 'function') {
+          const settled = Promise.resolve(result)
+            .catch((err) => {
+              console.error('Error in event stream listener:', err);
+            })
+            .finally(() => {
+              this.listenerPromises.delete(settled);
+            });
+          this.listenerPromises.add(settled);
+        }
       } catch (err) {
         console.error('Error in event stream listener:', err);
       }
@@ -54,7 +65,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     this.end();
   }
 
-  public on(listener: (event: AssistantMessageEvent) => void): () => void {
+  public on(listener: (event: AssistantMessageEvent) => void | Promise<void>): () => void {
     this.listeners.push(listener);
     return () => {
       const index = this.listeners.indexOf(listener);
@@ -62,6 +73,12 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
         this.listeners.splice(index, 1);
       }
     };
+  }
+
+  public async waitForListeners(): Promise<void> {
+    while (this.listenerPromises.size > 0) {
+      await Promise.all([...this.listenerPromises]);
+    }
   }
 
   public [Symbol.asyncIterator](): AsyncIterator<AssistantMessageEvent> {
@@ -84,10 +101,15 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
   public async collect(): Promise<AssistantMessage> {
     let fullText = '';
     let fullThinking = '';
-    const toolCallsMap = new Map<string, { id: string; name: string; argsStr: string }>();
-    let finalUsage: Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-    let hasError = false;
+    const toolCallsMap = new Map<string, { id: string; name: string; argsStr: string; ended: boolean }>();
+    let finalUsage: Usage | undefined;
+    let hasError = Boolean(this.currentError);
     let errorMessage: string | undefined = this.currentError;
+
+    const fail = (message: string): void => {
+      hasError = true;
+      errorMessage ||= message;
+    };
 
     for await (const event of this) {
       switch (event.type) {
@@ -98,26 +120,63 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
           fullThinking += event.thinkingDelta;
           break;
         case 'tool_call_start':
+          if (!event.toolCallId) {
+            fail('Tool call start is missing toolCallId.');
+            break;
+          }
+          if (toolCallsMap.has(event.toolCallId)) {
+            fail(`Duplicate tool call start for '${event.toolCallId}'.`);
+            break;
+          }
           toolCallsMap.set(event.toolCallId, {
             id: event.toolCallId,
             name: event.toolName,
-            argsStr: ''
+            argsStr: '',
+            ended: false
           });
           break;
         case 'tool_call_delta': {
           const item = toolCallsMap.get(event.toolCallId);
-          if (item) {
-            item.argsStr += event.argsDelta;
+          if (!item) {
+            fail(`Tool call delta received before start for '${event.toolCallId}'.`);
+            break;
           }
+          item.argsStr += event.argsDelta;
           break;
         }
-        case 'tool_call_end':
+        case 'tool_call_end': {
+          if (!toolCallsMap.has(event.toolCall.id)) {
+            fail(`Tool call end received before start for '${event.toolCall.id}'.`);
+            break;
+          }
+          const existing = toolCallsMap.get(event.toolCall.id)!;
+          if (existing.ended) {
+            fail(`Duplicate tool call end for '${event.toolCall.id}'.`);
+            break;
+          }
+          let endedArgs = JSON.stringify(event.toolCall.arguments);
+          if (existing.argsStr) {
+            let partialArguments: unknown;
+            try {
+              partialArguments = JSON.parse(existing.argsStr);
+            } catch {
+              partialArguments = undefined;
+            }
+            if (partialArguments === undefined) {
+              endedArgs = existing.argsStr;
+            } else if (existing.argsStr !== endedArgs) {
+              fail(`Tool call '${event.toolCall.id}' ended with conflicting arguments.`);
+              break;
+            }
+          }
           toolCallsMap.set(event.toolCall.id, {
             id: event.toolCall.id,
             name: event.toolCall.name,
-            argsStr: JSON.stringify(event.toolCall.arguments)
+            argsStr: endedArgs,
+            ended: true
           });
           break;
+        }
         case 'usage':
           finalUsage = { ...event.usage };
           break;
@@ -139,12 +198,22 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     }
 
     for (const [id, item] of toolCallsMap.entries()) {
+      if (!item.name) {
+        fail(`Tool call '${id}' is missing a tool name.`);
+        continue;
+      }
+      if (!item.ended) {
+        fail(`Tool call '${id}' ended without a tool_call_end event.`);
+        continue;
+      }
       let parsedArgs: Record<string, unknown> = {};
       try {
         parsedArgs = item.argsStr ? JSON.parse(item.argsStr) : {};
       } catch {
-        parsedArgs = { raw: item.argsStr };
+        fail(`Tool call '${id}' has malformed JSON arguments.`);
+        continue;
       }
+      if (hasError) continue;
       content.push({
         type: 'toolCall',
         id,
@@ -167,7 +236,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
       content,
       stopReason,
       errorMessage,
-      usage: finalUsage,
+      ...(finalUsage ? { usage: finalUsage } : {}),
       timestamp: Date.now()
     };
   }
@@ -210,4 +279,3 @@ export async function retryAssistantStream<T>(
 
   throw lastError;
 }
-

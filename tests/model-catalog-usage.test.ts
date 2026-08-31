@@ -31,6 +31,13 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     expect(config.id).toBe(dsReasoner!.id);
   });
 
+  it('should keep faux test fixtures out of the production model catalog', () => {
+    expect(KNOWN_MODELS.some((model) => model.provider === 'faux')).toBe(false);
+    expect(KNOWN_MODELS.some((model) => model.id === 'mock-model-v1')).toBe(false);
+    expect(findModelInCatalog('mock-model-v1')).toBeUndefined();
+    expect(getModelPreset('mock-test').provider).toBe('faux');
+  });
+
   it('should test getModelPreset across preset names', () => {
     expect(getModelPreset('creative-pro').id).toBe('deepseek-chat');
     expect(getModelPreset('creative-fast').id).toBe('deepseek-chat');
@@ -39,7 +46,7 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     expect(getModelPreset('fast-draft').id).toBe('deepseek-chat');
     expect(getModelPreset('local-offline').id).toBe('qwen2.5:14b');
     expect(getModelPreset('mock-test').id).toBe('mock-model-v1');
-    expect(getModelPreset('unknown-preset').id).toBe('deepseek-chat');
+    expect(() => getModelPreset('unknown-preset')).toThrow(/Unknown model preset/);
   });
 
   it('should foreshadowing token usage and calculate USD costs accurately', () => {

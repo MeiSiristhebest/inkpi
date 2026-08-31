@@ -81,6 +81,14 @@ export interface StandardLlmMessage {
   role: StandardLlmRole;
   content: string;
   toolCallId?: string;
+  toolCalls?: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 }
 
 export type ProviderType =
@@ -95,6 +103,9 @@ export type ProviderType =
   | 'xai'
   | 'openrouter'
   | 'azure'
+  | 'siliconflow'
+  | 'qwen'
+  | 'faux'
   | 'custom';
 
 export interface ModelConfig {

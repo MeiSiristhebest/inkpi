@@ -101,10 +101,27 @@ export const ToolResultMessageSchema = Type.Object({
   timestamp: Type.Optional(TimestampSchema)
 });
 
+export const SystemMessageSchema = Type.Object({
+  id: Type.Optional(IdSchema),
+  role: Type.Literal('system'),
+  content: Type.String(),
+  timestamp: Type.Optional(TimestampSchema)
+});
+
+export const CustomMessageSchema = Type.Object({
+  id: Type.Optional(IdSchema),
+  role: Type.Literal('custom'),
+  customType: Type.String({ minLength: 1 }),
+  content: Type.Any(),
+  timestamp: Type.Optional(TimestampSchema)
+});
+
 export const AgentMessageSchema = Type.Union([
   UserMessageSchema,
   AssistantMessageSchema,
-  ToolResultMessageSchema
+  ToolResultMessageSchema,
+  SystemMessageSchema,
+  CustomMessageSchema
 ]);
 
 // 6. 通用状态账本 Schemas (Entity / Asset / Track / Resource)

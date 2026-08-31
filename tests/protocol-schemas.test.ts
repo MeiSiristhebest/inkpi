@@ -5,6 +5,7 @@ import {
   validateSchema,
   assertValid,
   sanitizeStateLedger,
+  sanitizeNovelStateLedger,
   ThinkingLevelSchema,
   UsageSchema,
   UserMessageSchema,
@@ -108,5 +109,37 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
     expect(sanitized.assets.length).toBe(1);
     expect(sanitized.tracks.length).toBe(1);
     expect(sanitized.locations.length).toBe(1);
+  });
+
+  it('should keep generic ledger sanitization free of inferred domain semantics', () => {
+    const sanitized = sanitizeStateLedger({
+      entities: [{ name: 'Entity A' }],
+      assets: [{ name: 'Asset A' }],
+      tracks: [{ summary: 'A generic work item' }],
+      locations: [{ name: 'Place A' }],
+      modifiedResources: ['resource-a'],
+      customField: { source: 'caller' }
+    });
+
+    expect(sanitized.entities[0]).toEqual({ name: 'Entity A' });
+    expect(sanitized.assets[0]).toEqual({ name: 'Asset A' });
+    expect(sanitized.tracks[0]).toEqual({ summary: 'A generic work item' });
+    expect(sanitized.locations[0]).toEqual({ name: 'Place A' });
+    expect(sanitized.modifiedResources).toEqual(['resource-a']);
+    expect((sanitized as any).customField).toBeUndefined();
+  });
+
+  it('should expose novel defaults only through the explicit novel adapter', () => {
+    const sanitized = sanitizeNovelStateLedger({
+      entities: [{ name: 'Character A' }],
+      assets: [{ name: 'Object A' }],
+      tracks: [{ summary: 'Unresolved thread' }],
+      locations: [{ name: 'Location A' }]
+    });
+
+    expect(sanitized.entities[0]).toMatchObject({ id: 'Character A', status: 'active' });
+    expect(sanitized.assets[0]).toMatchObject({ id: 'Object A', state: 'normal' });
+    expect(sanitized.tracks[0]).toMatchObject({ id: 'track-0', clue: 'Unresolved thread', status: 'open' });
+    expect(sanitized.locations[0]).toMatchObject({ id: 'Location A', currentInhabitants: [] });
   });
 });

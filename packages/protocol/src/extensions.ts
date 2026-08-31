@@ -91,10 +91,33 @@ export interface UIDelegate {
 }
 
 export interface PipelineHooks {
+  /** Generic lifecycle hook. Prefer this over stage-name-specific hooks. */
+  onBeforeStage?: (ctx: {
+    stageId: string;
+    context: unknown;
+    prompt: string;
+  }) => Promise<string | void> | string | void;
+  /** Generic lifecycle hook. Prefer this over stage-name-specific hooks. */
+  onAfterStage?: (ctx: {
+    stageId: string;
+    context: unknown;
+    output: string;
+  }) => Promise<string | void> | string | void;
+  /** Generic output notification after a stage has settled. */
+  onStageOutput?: (ctx: {
+    stageId: string;
+    context: unknown;
+    output: string;
+  }) => Promise<void> | void;
+  /** @deprecated Use generic lifecycle hooks above. */
   onBeforeOutline?: (ctx: { workspaceTitle?: string; documentTitle?: string; bookTitle?: string; chapterTitle?: string; sectionTitle?: string; userPrompt: string }) => Promise<string | void> | string | void;
+  /** @deprecated Use generic lifecycle hooks above. */
   onBeforeDraft?: (ctx: { workspaceTitle?: string; documentTitle?: string; bookTitle?: string; chapterTitle?: string; sectionTitle?: string; userPrompt: string }) => Promise<string | void> | string | void;
+  /** @deprecated Use generic lifecycle hooks above. */
   onDraftGenerated?: (ctx: { workspaceTitle?: string; documentTitle?: string; bookTitle?: string; chapterTitle?: string; sectionTitle?: string; draftText: string }) => Promise<string | void> | string | void;
+  /** @deprecated Use generic lifecycle hooks above. */
   onAuditPass?: (ctx: { auditNotes: string[]; passed: boolean }) => Promise<void> | void;
+  /** @deprecated Use generic lifecycle hooks above. */
   onPolishDone?: (ctx: { polishedText: string }) => Promise<string | void> | string | void;
   [key: string]: unknown;
 }

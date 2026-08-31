@@ -4,6 +4,18 @@ import { streamAi, getModelPreset, UsageTracker, PromptCacheOptimizer } from '@i
 describe('AI Layer - Prompt Caching & Cost Calculation', () => {
   it('should stream with prompt caching enabled and capture cache token usage', async () => {
     const model = getModelPreset('mock-test');
+    model.fauxScript = {
+      thinking: 'cache planning',
+      text: 'cached response',
+      usage: {
+        inputTokens: 5,
+        outputTokens: 7,
+        cacheReadTokens: 30,
+        cacheWriteTokens: 10,
+        reasoningTokens: 20,
+        totalTokens: 42
+      }
+    };
     model.supportsPromptCache = true;
 
     const stream = streamAi(

@@ -126,18 +126,17 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
     expect(host.getNovelHooks().length).toBe(0);
   });
 
-  it('should test UI fallback behavior without UI delegate and unregistration methods', async () => {
+  it('should report unavailable UI capabilities without a UI delegate', async () => {
     const host = new ExtensionHost(); // No UI delegate provided
 
-    // Fallbacks without delegate
-    const fallbackVal = await host.showSelectList({
+    const selected = await host.showSelectList({
       title: '测试无委托选择',
       assets: [{ id: '1', label: '默认项', value: 42 }]
     });
-    expect(fallbackVal).toBe(42);
+    expect(selected).toBeUndefined();
 
-    const inputVal = await host.showInput({ title: '测试输入', defaultValue: '初始值' });
-    expect(inputVal).toBe('初始值');
+    const input = await host.showInput({ title: '测试输入', defaultValue: '初始值' });
+    expect(input).toBeUndefined();
 
     // Tool registration and unregistration
     host.registerTool({

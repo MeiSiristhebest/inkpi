@@ -55,9 +55,12 @@ export const MODEL_PRESETS: Record<string, ModelConfig> = {
   'mock-test': {
     id: 'mock-model-v1',
     name: 'Faux Test Model',
-    provider: 'custom',
+    provider: 'faux',
     supportsThinking: true,
-    temperature: 0.0
+    temperature: 0.0,
+    fauxScript: {
+      text: 'Faux test response'
+    }
   }
 };
 
@@ -65,5 +68,9 @@ export const MODEL_PRESETS: Record<string, ModelConfig> = {
 
 
 export function getModelPreset(name: string): ModelConfig {
-  return MODEL_PRESETS[name] || MODEL_PRESETS['creative-pro'];
+  const preset = MODEL_PRESETS[name];
+  if (!preset) {
+    throw new Error(`Unknown model preset '${name}'. Register or configure a model explicitly.`);
+  }
+  return { ...preset };
 }

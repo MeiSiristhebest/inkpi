@@ -290,36 +290,6 @@
     "description": "本地离线隐私部署模型"
   },
   {
-    "id": "mock/mock-model-v1",
-    "name": "Faux Deterministic Test Model",
-    "provider": "custom",
-    "contextWindow": 32768,
-    "maxTokens": 4096,
-    "supportsThinking": true,
-    "supportsTools": true,
-    "supportsVision": true,
-    "cost": {
-      "inputPerMillionUsd": 0,
-      "outputPerMillionUsd": 0
-    },
-    "description": "显式测试夹具模型"
-  },
-  {
-    "id": "mock-model-v1",
-    "name": "Faux Deterministic Test Model",
-    "provider": "custom",
-    "contextWindow": 32768,
-    "maxTokens": 4096,
-    "supportsThinking": true,
-    "supportsTools": true,
-    "supportsVision": true,
-    "cost": {
-      "inputPerMillionUsd": 0,
-      "outputPerMillionUsd": 0
-    },
-    "description": "显式测试夹具模型"
-  },
-  {
     "id": "tencent/hy4-preview",
     "name": "Tencent: Hy4 preview",
     "provider": "tencent",
