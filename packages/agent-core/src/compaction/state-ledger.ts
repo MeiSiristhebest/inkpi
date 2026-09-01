@@ -119,7 +119,7 @@ export function extractStateLedger(messages: AgentMessage[], customExtractors: L
 }
 
 /**
- * Compatibility adapter for the former novel-oriented default behavior.
+ * Compatibility adapter for legacy document state ledger.
  * Generic code should use extractStateLedger() and pass its own extractors.
  */
 export function extractNovelStateLedger(

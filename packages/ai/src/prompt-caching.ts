@@ -25,7 +25,7 @@ export interface MultiSlotCachedPromptResult {
 
 /**
  * 通用 Prompt Caching 优化器 (1:1 对标 repos/pi Anthropic/DeepSeek Prompt Caching 机制)
- * 将高频、不可变的背景设定、核心规则、全量实体状态锁定为固定 Cache Prefix 断点，
+ * 将高频、不可变的系统提示词、核心规则、全量状态上下文锁定为固定 Cache Prefix 断点，
  * 实现后续多轮交互、复杂推演与状态更新时 90%+ 的 Token 缓存命中率与首字极速响应。
  */
 export class PromptCacheOptimizer {

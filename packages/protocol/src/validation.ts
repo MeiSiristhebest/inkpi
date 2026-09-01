@@ -119,7 +119,7 @@ export function sanitizeStateLedger(raw: any): StateLedger {
 }
 
 /**
- * Explicit compatibility adapter for the former novel-shaped ledger.
+ * Explicit compatibility adapter for legacy document-shaped ledger.
  * The generic sanitizer intentionally does not manufacture these meanings.
  */
 export function sanitizeNovelStateLedger(raw: any): StateLedger {

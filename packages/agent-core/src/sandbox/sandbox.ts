@@ -1,6 +1,6 @@
 /**
  * 微虚拟机 / 容器安全沙箱隔离引擎 (1:1 对标 Pi Gondolin / 微容器隔离架构)
- * 用于安全执行第三方世界观规则脚本、跑团骰子模拟（Dice Roll / Rule Engine）与计算仿真逻辑，
+ * 用于安全隔离执行第三方规则引擎脚本、自定义表达式求值与计算仿真逻辑，
  * 具备 CPU 超时熔断（Timeout Protection）、内存隔离、越权系统调用（fs/net/process）拦截与输出流截断。
  */
 
@@ -62,7 +62,7 @@ export class NodeVMSandbox implements ISandboxRunner {
       }
     };
 
-    // 内置常用安全辅助函数（如跑团骰子模拟）
+    // 内置常用安全辅助函数（如随机数与数值计算）
     const safeHelpers = {
       roll: (diceNotation: string): number => {
         // e.g. "1d20", "3d6+2"
@@ -147,7 +147,7 @@ export class SandboxManager {
   }
 
   /**
-   * 执行一段世界观规则引擎脚本（如科幻重力计算、战斗伤害结算、跑团检定）
+   * 执行一段自定义规则引擎脚本（如数值计算、规则求值与逻辑检定）
    */
   public async runRuleScript<T = any>(
     scriptCode: string,

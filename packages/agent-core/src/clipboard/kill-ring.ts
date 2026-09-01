@@ -1,6 +1,6 @@
 /**
  * Emacs 风格 Kill-Ring 多级剪贴板环 (1:1 移植自 repos/pi packages/tui/src/kill-ring.ts)
- * 防止作家误删重要灵感段落，支持无限级旋转找回
+ * 防止用户误删重要文本段落，支持无限级旋转找回历史缓冲区
  */
 export class KillRing {
   private ring: string[] = [];
