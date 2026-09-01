@@ -1,7 +1,7 @@
 {
   "name": "@inkpi/creative-agent",
   "version": "1.0.0",
-  "description": "InkPi - Extensible AI Agent Creative Harness & Workstation Platform (Inspired by Pi Architecture)",
+  "description": "InkPi - Extensible AI Agent Harness & Workstation Platform (Inspired by Pi Architecture)",
   "type": "module",
   "bin": {
     "inkpi": "./bin/inkpi.js"

@@ -22,7 +22,7 @@
     "@inkpi/storage": "workspace:*",
     "ws": "8.21.3"
   },
-  "description": "Core Agent runtime, dual-loop state machine, steering queues, and session tree for creative writing",
+  "description": "Core Agent runtime with dual-loop state machine, steering queues, session tree, and tool execution engine",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {

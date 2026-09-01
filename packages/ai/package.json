@@ -19,7 +19,7 @@
   "dependencies": {
     "@inkpi/protocol": "workspace:*"
   },
-  "description": "Unified multi-provider AI engine with 4-level prompt caching, streaming recovery, and model catalog",
+  "description": "Unified multi-provider AI engine with 4-level prompt caching, streaming resilience, and model catalog",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {

@@ -14,7 +14,7 @@
     "build": "tsc -b",
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
-  "description": "Domain types, TypeBox schemas, and JSON-RPC 2.0 protocol contracts for InkPi creative workstation",
+  "description": "Domain types, TypeBox schemas, and JSON-RPC 2.0 protocol contracts",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {

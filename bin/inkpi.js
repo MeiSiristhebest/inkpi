@@ -11,19 +11,19 @@ import * as readline from 'node:readline';
 const VERSION = '1.0.0';
 
 const HELP_TEXT = `
-🖋️ InkPi CLI - The Extensible AI Agent Creative Harness & Workstation (v${VERSION})
+🖋️ InkPi CLI - The Extensible AI Agent Harness & Workstation (v${VERSION})
 
 USAGE:
   inkpi [command] [options]
-  npx inkpi [command]
+  npx @inkpi/creative-agent [command]
 
 COMMANDS:
-  studio, write [chapter]   Launch the interactive terminal creative workstation (TUI)
+  studio, write [path]      Launch the interactive terminal workstation (TUI)
   daemon, server            Start the headless JSON-RPC 2.0 background daemon
-  init [name]               Initialize a new InkPi creative writing project & workspace
-  print, -p <prompt>        Run headless non-interactive creative generation
+  init [name]               Initialize a new InkPi project workspace
+  print, -p <prompt>        Run headless non-interactive generation
   doctor                    Diagnose local runtime, SQLite driver & model configurations
-  plugin <list|add|remove>  Manage creative writing extension plugins
+  plugin <list|add|remove>  Manage extension plugins
   version, -v, --version    Show current version
   help, -h, --help          Show this help message
 
@@ -32,15 +32,15 @@ OPTIONS:
   -m, --model <id>          Model identifier (e.g. deepseek-chat, gpt-4o, claude-3-5-sonnet)
   --port <number>           TCP port for daemon server (default: 8848)
   --ws-port <number>        WebSocket port for daemon server (default: TCP port + 1)
-  --role <role>             Agent role preset for creative pipeline
+  --role <role>             Agent role preset for pipeline
   --json                    Output structured JSON responses
-  --chinese                 Enable Chinese typography formatting (\u3000\u3000 full-width indents)
+  --chinese                 Enable typography formatting (\u3000\u3000 full-width indents)
 
 EXAMPLES:
   $ inkpi                   # Launch interactive TUI Studio
-  $ inkpi init my-novel     # Initialize new novel project workspace
+  $ inkpi init my-workspace # Initialize new project workspace
   $ inkpi daemon --port 8848 # Start headless JSON-RPC daemon
-  $ inkpi -p "Write an opening scene set in ancient cyberpunk Chang'an"
+  $ inkpi -p "Analyze architectural invariants for state machine"
 `;
 
 async function main() {
@@ -59,14 +59,14 @@ async function main() {
 
   switch (command) {
     case 'init': {
-      const projectName = args[1] || 'inkpi-novel';
+      const projectName = args[1] || 'inkpi-workspace';
       const targetDir = resolve(process.cwd(), projectName);
       if (!existsSync(targetDir)) {
         mkdirSync(targetDir, { recursive: true });
       }
-      mkdirSync(join(targetDir, 'chapters'), { recursive: true });
+      mkdirSync(join(targetDir, 'docs'), { recursive: true });
       mkdirSync(join(targetDir, 'codex'), { recursive: true });
-      mkdirSync(join(targetDir, 'outlines'), { recursive: true });
+      mkdirSync(join(targetDir, 'sessions'), { recursive: true });
 
       const config = {
         name: projectName,
@@ -77,13 +77,13 @@ async function main() {
       };
       writeFileSync(join(targetDir, 'inkpi.config.json'), JSON.stringify(config, null, 2), 'utf8');
       writeFileSync(
-        join(targetDir, 'chapters', '001_prologue.md'),
-        `# 第一章：序章\n\n\u3000\u3000夜幕低垂，长安城沉浸在霓虹与古钟的长鸣之中。\n`,
+        join(targetDir, 'docs', '001_intro.md'),
+        `# Introduction\n\n\u3000\u3000InkPi Agent Workstation Workspace Initialized.\n`,
         'utf8'
       );
-      console.log(`\n✨ Successfully initialized InkPi creative project in: ${targetDir}`);
-      console.log(`📁 Directories created: chapters/, codex/, outlines/`);
-      console.log(`🚀 Run 'cd ${projectName} && inkpi' to start writing!\n`);
+      console.log(`\n✨ Successfully initialized InkPi workspace in: ${targetDir}`);
+      console.log(`📁 Directories created: docs/, codex/, sessions/`);
+      console.log(`🚀 Run 'cd ${projectName} && inkpi' to start!\n`);
       break;
     }
 

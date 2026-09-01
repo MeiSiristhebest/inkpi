@@ -20,7 +20,7 @@
     "@inkpi/storage": "workspace:*"
   },
   "private": true,
-  "description": "Narrative consistency, foreshadowing-payoff, and character voice evaluation benchmark runner",
+  "description": "Agent trajectory evaluation, consistency benchmarks, and test harness",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {

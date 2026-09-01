@@ -1,8 +1,8 @@
-# InkPi 创意工作站与 AI Agent 架构基座
+# InkPi Agent 架构基座与工作站平台
 
 <div align="center">
 
-**面向长篇小说、剧本与专业创作领域的 Agent-Native 可扩展创作工作站引擎**
+**面向长文本、复杂工具调用与智能体工作流的 Agent-Native 可扩展架构基座**
 
 [English](./README.md) | [中文文档](./README_zh.md) | [开发 SOP](./DEVELOPMENT_SOP.md)
 
@@ -12,9 +12,9 @@
 
 ## 📖 项目简介
 
-**InkPi** 是一个模块化、高内聚、面向长文本与创意创作领域的 AI Agent 架构基座。灵感源自 Pi 的经典分层设计，采用 **六边形架构 (Ports & Adapters)** 与 **严格的单一职责原则 (SRP)**，将领域模型、会话持久化、RPC 守护进程与端侧界面彻底解耦。
+**InkPi** 是一个模块化、高内聚、工业级的 AI Agent 架构基座与工作站平台。灵感源自 Pi 的经典分层设计，采用 **六边形架构 (Ports & Adapters)** 与 **严格的单一职责原则 (SRP)**，将领域模型、会话持久化、RPC 守护进程与端侧界面彻底解耦。
 
-无论是构建终端 TUI 写作工具、Web 富文本工作台、Obsidian/VS Code 插件，还是无头 Headless 自动化创作代理，InkPi 均可作为统一的底层运行时。
+无论是构建终端 TUI 工具、Web 工作台、IDE 插件，还是无头 Headless 自动化智能体流水线，InkPi 均可作为统一的高性能底层运行时。
 
 ---
 
@@ -48,7 +48,7 @@
 ┌──────────────────┐      ┌──────────────────┐
 │@inkpi/editor-core│      │   @inkpi/tui     │
 │(无头编辑器状态机 │      │ (ANSI 差分渲染、 │
-│ 幽灵补全与排版)  │      │  终端图像与布局) │
+│ 幽灵补全与排版)  │      │  布局与视口管理) │
 └──────────────────┘      └──────────────────┘
 ```
 
@@ -61,11 +61,11 @@
 | **`@inkpi/server`** | 后台常驻守护进程与服务端 | `InkPiDaemon`、`LiveSessionManager`、`InkRpcServer` |
 | **`@inkpi/client`** | 多通道客户端 SDK | `InkRpcClient`、`TcpSocketTransport`、`WebSocketTransport`、`MemoryTransport` |
 | **`@inkpi/agent-core`** | 纯 Agent 状态机与执行循环 | `AgentEngine`、`SessionTree`、`WorkflowCoordinator`、`StateLedger` |
-| **`@inkpi/editor-core`** | 无头编辑器与创作体验 | `HeadlessEditorState`、`GhostTextManager`、`TypographyEngine` |
+| **`@inkpi/editor-core`** | 无头编辑器与缓冲区状态机 | `HeadlessEditorState`、`GhostTextManager`、`TypographyEngine` |
 | **`@inkpi/storage`** | 工业级本地持久化引擎 | SQLite、FTS5 BM25 全文检索、并发写租约、快照 Compaction |
-| **`@inkpi/tui`** | 终端界面与渲染管线 | 差分渲染器 `DifferentialRenderer`、中文 CJK 等宽计算、终端图像展示 |
-| **`@inkpi/ai`** | 创作级多模型抽象 | 4 级 Prompt Caching 断点、流式断流恢复、用量账本 |
-| **`@inkpi/evals`** | 创作质量基准评测 | 叙事一致性打分、创作质量门禁 |
+| **`@inkpi/tui`** | 终端界面与渲染管线 | 差分渲染器 `DifferentialRenderer`、中文 CJK 等宽计算、浮层与视口管理 |
+| **`@inkpi/ai`** | 统一多模型抹平与适配层 | 4 级 Prompt Caching 断点、流式断流恢复、用量账本 |
+| **`@inkpi/evals`** | 智能体基准评测套件 | 一致性打分、轨迹回放、测试基准 |
 
 ---
 

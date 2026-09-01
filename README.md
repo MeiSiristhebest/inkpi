@@ -13,7 +13,7 @@
 > 📚 Explore the technical blueprint: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 <p align="center">
-  <b>The Extensible AI Agent Creative Harness & Workstation Platform</b>
+  <b>The Extensible AI Agent Harness & Workstation Platform</b>
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <em>A modular creative writing & agent harness infrastructure providing AI agents with discrete engineering primitives: 10-package decoupled Monorepo, pluggable session backends (Memory/JSONL/SQLite+FTS5), 4-tier prompt caching breakpoints, and differential ANSI TUI.</em>
+  <em>A modular, industrial-grade agent harness infrastructure providing AI agents with discrete engineering primitives: 10-package decoupled Monorepo, pluggable session backends (Memory/JSONL/SQLite+FTS5), 4-tier prompt caching breakpoints, and differential ANSI TUI.</em>
 </p>
 
 ---
@@ -37,7 +37,7 @@
   - [1. 10-Package Hexagonal Topology](#1-10-package-hexagonal-topology)
   - [2. Pluggable Session Backends](#2-pluggable-session-backends)
   - [3. 4-Tier Prompt Caching & Stream Resilience](#3-4-tier-prompt-caching--stream-resilience)
-  - [4. Headless Editor & Ghost Text Engine](#4-headless-editor--ghost-text-engine)
+  - [4. Headless Buffer & Ghost Text Engine](#4-headless-buffer--ghost-text-engine)
   - [5. Terminal Differential Renderer & CJK Layout](#5-terminal-differential-renderer--cjk-layout)
 - [⚙️ Requirements](#️-requirements)
 - [📦 Installation & Setup](#-installation--setup)
@@ -53,7 +53,7 @@
 
 ### What is InkPi?
 
-InkPi is an **extensible creative writing and domain-specific agent foundation** inspired by Pi's architecture. It provides AI agents (such as Google Antigravity, Claude Code, Cursor, Codex, or custom creative agents) with discrete engineering primitives to construct long-form novels, screenplays, visual novels, and structured documentation with deterministic state machines and durable persistence.
+InkPi is an **extensible AI agent harness and workstation foundation** inspired by Pi's architecture. It provides AI agents (such as Google Antigravity, Claude Code, Cursor, Codex, or custom autonomous agents) with discrete engineering primitives to construct long-context agent loops, documents, workflows, and tools with deterministic state machines and durable persistence.
 
 ### What InkPi is NOT
 

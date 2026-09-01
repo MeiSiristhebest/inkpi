@@ -17,7 +17,7 @@
   "dependencies": {
     "@inkpi/protocol": "workspace:*"
   },
-  "description": "Pure headless rich text editor state machine, typography rules, IME handling, and Ghost Text autocomplete",
+  "description": "Headless text buffer state machine, typography formatting, IME handling, and Ghost Text autocomplete",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {

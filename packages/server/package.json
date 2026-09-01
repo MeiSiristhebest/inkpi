@@ -20,7 +20,7 @@
     "@inkpi/editor-core": "workspace:*",
     "@inkpi/session-backends": "workspace:*"
   },
-  "description": "Headless JSON-RPC 2.0 daemon and LiveSessionManager for InkPi creative workstation",
+  "description": "Headless JSON-RPC 2.0 daemon and LiveSessionManager",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {
