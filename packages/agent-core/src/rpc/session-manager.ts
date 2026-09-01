@@ -36,7 +36,7 @@ export interface SessionSummary {
 
 /**
  * 实时多会话管理器 (LiveSessionManager)
- * 1:1 对标 pi-server 的 LiveSessionManager，支持多 Client 并发挂载不同创作 Session
+ * 1:1 对标 pi-server 的 LiveSessionManager，支持多 Client 并发挂载不同活跃 Session
  */
 export class LiveSessionManager {
   private sessions = new Map<string, ManagedSession>();

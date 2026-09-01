@@ -10,7 +10,7 @@ import type {
 /**
  * OpenTelemetry 规范全链路可观测性度量收集器 (1:1 对标 repos/pi packages/telemetry)
  * 支持 4 阶段多 Agent 流水线 Span 分段、TTFT 首字延迟、Prompt Caching 命中率、
- * 以及 Ghost Text 采纳漏斗、分支回滚与状态不变量冲突拦截等创作专属度量
+ * 以及 Ghost Text 采纳漏斗、分支回滚与状态不变量冲突拦截等遥测度量
  */
 export class TelemetryCollector {
   private startTime = 0;
@@ -90,7 +90,7 @@ export class TelemetryCollector {
   }
 
   /**
-   * 记录创作者幽灵文本交互（采纳全量、单字、单行或拒绝）
+   * 记录用户幽灵文本交互（采纳全量、单字、单行或拒绝）
    */
   public recordGhostTextInteraction(
     action: 'accept_full' | 'accept_word' | 'accept_line' | 'dismiss',

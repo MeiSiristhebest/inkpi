@@ -76,7 +76,7 @@ export class PromptCacheOptimizer {
   }
 
   /**
-   * 构建针对长篇创作的四级精确 Cache Slot 断点 (1:1 对标 pi-ai anthropic-messages prompt caching)
+   * 构建四级精确 Cache Slot 断点 (1:1 对标 pi-ai anthropic-messages prompt caching)
    */
   public static buildMultiSlotCacheBreakpoints(params: {
     baseSystemPrompt: string;

@@ -116,7 +116,7 @@ export class JitMemoryRetriever {
           const searchResults = this.fts.search(kw, query.maxFtsResults ?? 4);
           for (const res of searchResults) {
             if (query.currentDocumentId && res.documentId === query.currentDocumentId) {
-              continue; // 过滤当前正在编辑的章节自身
+              continue; // 过滤当前正在编辑的文档自身
             }
             if (!l3GlobalLore.some((item) => item.documentId === res.documentId)) {
               l3GlobalLore.push(res);

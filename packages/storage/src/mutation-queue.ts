@@ -11,8 +11,8 @@ export interface MutationTask<T = unknown> {
 }
 
 /**
- * 章节原子修改与事务锁队列 (1:1 移植自 repos/pi packages/agent/src/harness/tools/file-mutation-queue.ts)
- * 解决多 Agent (如大纲 Agent、伏笔检测 Agent、润色 Agent) 与人类作者并发写库冲突
+ * 文档原子修改与事务锁队列 (1:1 移植自 repos/pi packages/agent/src/harness/tools/file-mutation-queue.ts)
+ * 解决多 Agent 协作并发写库冲突 (基于资源粒度串行锁机制)
  */
 export class DocumentMutationQueue {
   private leaseManager: WriterLeaseManager;
@@ -28,7 +28,7 @@ export class DocumentMutationQueue {
   }
 
   /**
-   * 将修改操作入队并按章节串行原子化执行
+   * 将修改操作入队并按资源标识串行原子化执行
    */
   public enqueue<T>(documentId: string, holderId: string, mutationFn: () => Promise<T> | T): Promise<T> {
     return new Promise<T>((resolve, reject) => {

@@ -85,7 +85,7 @@ export {
 } from './legacy-narrative.js';
 
 /**
- * 纯通用多 Agent 创作工作流编排引擎 (1:1 对标 repos/pi handoff & multi-agent workflow 范式)
+ * 多 Agent 协作与工作流编排引擎 (1:1 对标 repos/pi handoff & multi-agent workflow 范式)
  * 具备 0 业务偏见，支持任意动态注册的流水线阶段 (Stages)、动态角色 (Roles)、
  * 动态人机交互门禁 (Quality Gate Rules) 与上下文流转。
  */

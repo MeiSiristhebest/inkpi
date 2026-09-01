@@ -148,7 +148,7 @@ export interface ExtensionAPI {
   showInput(options: InputDialogOptions): Promise<string | undefined>;
   flashNotification(options: FlashNotificationOptions | string): void;
 
-  // 内容创作生命周期钩子
+  // 扩展生命周期钩子
   registerPipelineHooks(hooks: PipelineHooks): () => void;
   getPipelineHooks(): PipelineHooks[];
 }

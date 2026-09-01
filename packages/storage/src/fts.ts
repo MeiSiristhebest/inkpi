@@ -9,7 +9,7 @@ export class FtsSearchEngine {
   }
 
   /**
-   * 执行全书全文检索 (BM25 排序，返回匹配章节与高亮摘要片段)
+   * 执行全文检索 (BM25 排序，返回匹配文档与高亮摘要片段)
    */
   public search(query: string, limit = 20): FtsSearchResult[] {
     const trimmed = query.trim();

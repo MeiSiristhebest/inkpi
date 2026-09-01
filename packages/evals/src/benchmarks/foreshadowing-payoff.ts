@@ -11,8 +11,8 @@ export interface ForeshadowingScoreResult {
 }
 
 /**
- * 伏笔线索追踪与闭环率评分器 (Foreshadowing Payoff Scorer)
- * 量化长篇多轮会话中各支线悬念与线索的状态推进闭环率。
+ * 长程线索追踪与闭环率评分器 (Foreshadowing Payoff Scorer)
+ * 量化多轮会话中各支线状态线索推进闭环率。
  */
 export class ForeshadowingPayoffScorer {
   public score(

@@ -169,7 +169,7 @@ export class LaneManager {
   }
 
   /**
-   * 从指定源泳道派生 (Fork) 出新的平行剧情泳道，并克隆所有最新章节游标
+   * 从指定源泳道派生 (Fork) 出新的平行分支泳道，并克隆所有最新游标
    */
   public forkLane(sourceLaneId: string, targetLaneId: string, targetName: string, description?: string): Lane {
     const sourceLane = this.getLane(sourceLaneId);

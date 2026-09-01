@@ -42,8 +42,8 @@ const DEFAULT_API_KEY_REGEX = /\b(sk-[a-zA-Z0-9_-]{20,}|Bearer\s+[a-zA-Z0-9_\-\.
 const DEFAULT_PATH_REGEX = /([A-Za-z]:\\[\w\s\.\-\\]+|\/(?:home|Users|var|tmp|etc)\/[\w\s\.\-\/]+)/g;
 
 /**
- * 创作者会话脱敏与社区分享引擎 (1:1 对标 pi-share-hf 与 Radius Sharing)
- * 支持将小说大纲推演、多轮头脑风暴与状态流变安全导出为 Hugging Face / Gist 规范的数据集与独立 HTML
+ * 会话脱敏与导出分享引擎 (1:1 对标 pi-share-hf 与 Radius Sharing)
+ * 支持将多轮 Agent 交互轨迹、会话树推演与状态流变安全导出为 Hugging Face / Gist 规范的数据集与独立 HTML
  */
 export class SessionShareManager {
   /**
