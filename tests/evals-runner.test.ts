@@ -29,7 +29,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       {
         id: 'length',
         weight: 2,
-        evaluate: ({ content }) => ({ score: content.length === 3 ? 100 : 0, passed: content.length === 3 })
+        evaluate: ({ content }: { content: string }) => ({ score: content.length === 3 ? 100 : 0, passed: content.length === 3 })
       },
       {
         id: 'constant',
@@ -409,7 +409,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       [
         {
           character: 'UserD',
-          condition: (_text, status) => status === 'Active',
+          condition: (_text: string, status?: string) => status === 'Active',
           requiredKeywords: ['ActiveSignal']
         }
       ]

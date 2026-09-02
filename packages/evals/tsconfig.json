@@ -8,7 +8,8 @@
   "references": [
     { "path": "../protocol" },
     { "path": "../editor-core" },
-    { "path": "../agent-core" }
+    { "path": "../agent-core" },
+    { "path": "../storage" }
   ],
   "include": ["src/**/*"]
 }

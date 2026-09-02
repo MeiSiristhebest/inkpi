@@ -23,6 +23,7 @@
     "@inkpi/server": "workspace:*",
     "@inkpi/session-backends": "workspace:*",
     "@inkpi/storage": "workspace:*",
+    "@inkpi/evals": "workspace:*",
     "@inkpi/tui": "workspace:*"
   },
   "scripts": {

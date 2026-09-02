@@ -4,7 +4,11 @@
     "composite": true,
     "noEmit": true,
     "types": ["node", "vitest/globals"],
-    "tsBuildInfoFile": "../node_modules/.cache/tsc-tests.tsbuildinfo"
+    "tsBuildInfoFile": "../node_modules/.cache/tsc-tests.tsbuildinfo",
+    "baseUrl": ".",
+    "paths": {
+      "@inkpi/*": ["../packages/*/src"]
+    }
   },
   "references": [
     { "path": "../packages/protocol" },
