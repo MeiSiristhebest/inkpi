@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ExtensionHost, ExtensionRunner } from '@inkpi/agent-core';
-import type { AgentTool, SlashCommand, ShortcutHandler, AgentMessage } from '@inkpi/protocol';
+import type { AgentTool, SlashCommand, ShortcutHandler, AgentMessage, ExtensionAPI } from '@inkpi/protocol';
 
 describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extension Ecosystem)', () => {
   it('should register, list, and unregister tools dynamically', () => {
@@ -46,7 +46,7 @@ describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extensio
 
   it('should register, list, and unregister keyboard shortcuts', async () => {
     const host = new ExtensionHost();
-    const shortcut: ShortcutHandler = {
+    const shortcut = {
       key: 'Ctrl+Shift+L',
       description: 'Trigger lint',
       execute: async () => true
@@ -111,7 +111,7 @@ describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extensio
     const runner = new ExtensionRunner(host);
 
     // 1. Success load
-    const ok = await runner.loadExtension(async (pi) => {
+    const ok = await runner.loadExtension(async (pi: ExtensionAPI) => {
       pi.registerCommand({
         name: 'greet',
         description: 'Greet',

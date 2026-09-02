@@ -1,6 +1,7 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage } from '@inkpi/protocol';
 import { AssistantEventStream } from './stream.js';
 import type { FauxScriptedResponse, ModelConfig, StreamOptions, EventStream, ProviderType } from './types.js';
+import { ProviderNotImplementedError } from './errors.js';
 
 export function convertMessagesToStandard(messages: AgentMessage[], systemPrompt?: string): StandardLlmMessage[] {
   const result: StandardLlmMessage[] = [];
@@ -1104,9 +1105,16 @@ providerRegistry.set('xai', openAiCompatibleProvider);
 providerRegistry.set('openrouter', openAiCompatibleProvider);
 providerRegistry.set('siliconflow', openAiCompatibleProvider);
 providerRegistry.set('qwen', openAiCompatibleProvider);
-providerRegistry.set('azure', openAiCompatibleProvider);
-providerRegistry.set('bedrock', anthropicProvider);
-providerRegistry.set('faux', fauxProvider);
+// 未实现的 provider 不静默映射到其它传输层，而是显式失败，
+// 避免请求被悄悄发往错误的端点（如 bedrock 错误转发到 Anthropic 公开 API）。
+function unsupportedProvider(name: string): ProviderHandler {
+  return () => {
+    throw new ProviderNotImplementedError(name);
+  };
+}
+
+providerRegistry.set('azure', unsupportedProvider('azure'));
+providerRegistry.set('bedrock', unsupportedProvider('bedrock'));
 
 
 export function deepSeekProvider(

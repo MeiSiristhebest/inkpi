@@ -1,8 +1,9 @@
 import type { AgentMessage } from '@inkpi/protocol';
+import type { Clock, IdGenerator } from './ports/index.js';
 
 export interface SessionTreeOptions {
-  idGenerator?: () => string;
-  clock?: () => number;
+  idGenerator?: IdGenerator;
+  clock?: Clock;
 }
 
 export interface SessionTreeNode {
@@ -18,8 +19,8 @@ export class SessionTree {
   private nodes = new Map<string, SessionTreeNode>();
   private rootId: string | null = null;
   private currentLeafId: string | null = null;
-  private readonly idGenerator: () => string;
-  private readonly clock: () => number;
+  private readonly idGenerator: IdGenerator;
+  private readonly clock: Clock;
   private generatedId = 0;
 
   constructor(initialMessages?: AgentMessage[], options: SessionTreeOptions = {}) {
@@ -80,11 +81,6 @@ export class SessionTree {
     }
     this.currentLeafId = fromNodeId;
     return fromNodeId;
-  }
-
-  /** Backward-compatible alias for callers that use Pi's branch terminology. */
-  public fork(fromNodeId: string): string {
-    return this.selectLeaf(fromNodeId);
   }
 
   public branch(name: string, hypothesis?: string): SessionTreeNode {

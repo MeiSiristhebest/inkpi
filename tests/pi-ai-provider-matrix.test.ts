@@ -35,8 +35,7 @@ describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
       maxTokens: 4096,
       supportsThinking: false,
       supportsTools: true,
-      cost: { inputPerMillionUsd: 1.0, outputPerMillionUsd: 2.0 },
-      recommendedFor: 'prose'
+      cost: { inputPerMillionUsd: 1.0, outputPerMillionUsd: 2.0 }
     });
 
     expect(manager.getModel('custom-author-model')).toBeDefined();

@@ -96,7 +96,6 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
       l1WorkingMemory: {
         activeEntities: ['Alice'],
         activeAssets: ['Sword'],
-        activeTracks: ['t1'],
         activeReferences: [],
         activeLedger: {
           entities: [{ name: 'Alice', status: 'Active' }, { name: 'Bob' }],

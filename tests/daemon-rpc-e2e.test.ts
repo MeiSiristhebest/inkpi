@@ -1,9 +1,8 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { InkPiDaemon, InkRpcClient } from '@inkpi/agent-core';
+import { InkPiDaemon, InkRpcClient } from '@inkpi/server';
 
 describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () => {
-  const TEST_PORT = 42831;
-  const daemon = new InkPiDaemon({ port: TEST_PORT, host: '127.0.0.1' });
+  const daemon = new InkPiDaemon({ host: '127.0.0.1' });
   let client: InkRpcClient;
 
   afterAll(async () => {
@@ -14,13 +13,15 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
   });
 
   it('should start daemon and respond to daemon.status and session management RPCs', async () => {
-    await daemon.start();
+    // Bind to port 0 so the OS assigns a free port (no hard-coded port collisions).
+    await daemon.start(0);
     const statusBefore = daemon.getStatus();
     expect(statusBefore.running).toBe(true);
-    expect(statusBefore.port).toBe(TEST_PORT);
+    const assignedPort = statusBefore.port;
+    expect(assignedPort).toBeGreaterThan(0);
 
-    // Connect RPC Client
-    client = await InkRpcClient.connectTcp(TEST_PORT, '127.0.0.1');
+    // Connect RPC Client using the OS-assigned port
+    client = await InkRpcClient.connectTcp(assignedPort!, '127.0.0.1');
 
     // 1. Check daemon status over RPC
     const statusRpc = await client.request<any>('daemon.status');
@@ -86,7 +87,7 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     const dismissRes = await client.request<any>('session.ghost.dismiss', {
       sessionId: 'sess_novel_1'
     });
-    expect(dismissRes.dismissed).toBe(true);
+    expect(dismissRes.success).toBe(true);
 
     // 6. Get session state
     const stateRes = await client.request<any>('session.get_state', {
@@ -112,7 +113,7 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     expect(events.length).toBeGreaterThan(0);
 
     // 8. Test session.abort and ghost.accept with mode 'all'
-    const createRes2 = await client.request<any>('session.create', { sessionId: 'sess_novel_2' });
+    const createRes2 = await client.request<any>('session.create', { sessionId: 'sess_novel_2', model: 'mock-test' });
     expect(createRes2.sessionId).toBe('sess_novel_2');
 
     await client.request('session.ghost.suggest', { sessionId: 'sess_novel_2', text: '全部采纳内容' });

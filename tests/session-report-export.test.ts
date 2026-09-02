@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { SessionReportExporter, SessionTree } from '@inkpi/agent-core';
+import type { AgentMessage } from '@inkpi/protocol';
 
 describe('SessionReportExporter', () => {
   it('renders protocol data without narrative defaults', () => {
     const tree = new SessionTree();
-    const user = { id: 'u1', role: 'user', content: 'inspect this state' } as const;
-    const assistant = {
+    const user: AgentMessage = { id: 'u1', role: 'user', content: 'inspect this state' };
+    const assistant: AgentMessage = {
       id: 'a1',
       role: 'assistant',
       content: [
@@ -13,7 +14,7 @@ describe('SessionReportExporter', () => {
         { type: 'text', text: 'state is consistent' },
         { type: 'toolCall', id: 't1', name: 'inspect', arguments: { path: '<safe>' } }
       ]
-    } as const;
+    };
     tree.addMessage(user);
     tree.addMessage(assistant);
 

@@ -9,7 +9,9 @@
     { "path": "../protocol" },
     { "path": "../ai" },
     { "path": "../editor-core" },
-    { "path": "../session-backends" }
+    { "path": "../session-backends" },
+    { "path": "../agent-core" },
+    { "path": "../storage" }
   ],
   "include": ["src/**/*"]
 }

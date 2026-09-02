@@ -4,9 +4,9 @@
  * 支持实时流式追加、耗时统计、Token 计数与一键折叠/展开呈现
  */
 
-import { Component, type RenderContext } from '../layout.js';
-import { visibleWidth, ANSI } from '../render.js';
-import type { KeyEvent } from '../keys.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { visibleWidth, ANSI } from '../../render.js';
+import type { KeyEvent } from '../../keys.js';
 
 export interface ThinkingAccordionOptions {
   thinkingText?: string;

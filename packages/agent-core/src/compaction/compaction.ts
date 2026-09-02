@@ -1,6 +1,7 @@
 import type { AgentMessage, CompactionEntry, AssistantMessage } from '@inkpi/protocol';
 import { serializeConversationForSummary, GENERIC_SUMMARIZATION_SYSTEM_PROMPT } from './utils.js';
 import { extractStateLedger, type LedgerExtractor } from './state-ledger.js';
+import type { Clock } from '../ports/index.js';
 
 export interface CompactionConfig {
   /** Trigger threshold in tokens (e.g. 100,000) */
@@ -13,6 +14,8 @@ export interface CompactionConfig {
   ledgerExtractors?: LedgerExtractor[];
   /** Optional domain adapter for rendering the extracted state into the summary message. */
   ledgerFormatter?: (ledger: ReturnType<typeof extractStateLedger>) => string;
+  /** Injectable clock for timestamps / ids. Defaults to `Date.now`. */
+  clock?: Clock;
 }
 
 interface ResolvedCompactionConfig {
@@ -25,8 +28,10 @@ interface ResolvedCompactionConfig {
 
 export class SessionCompactor {
   private config: ResolvedCompactionConfig;
+  private clock: Clock;
 
   constructor(config: CompactionConfig = {}) {
+    this.clock = config.clock ?? Date.now;
     this.config = {
       triggerTokensThreshold: config.triggerTokensThreshold ?? 50000,
       preserveRecentCount: config.preserveRecentCount ?? 4,
@@ -96,13 +101,13 @@ export class SessionCompactor {
       : `【Context Summary / 会话前情提要】\n${summaryText}`;
 
     const entry: CompactionEntry = {
-      id: `compaction_${Date.now()}`,
+      id: `compaction_${this.clock()}`,
       type: 'compaction',
       summary: summaryText,
       firstKeptEntryId: keptMessages[0]?.id || 'kept_first',
       tokensBefore,
       estimatedTokensAfter: this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * 0.7),
-      createdAt: Date.now(),
+      createdAt: this.clock(),
       details: stateLedger ? { stateLedger } : undefined
     };
 
@@ -114,7 +119,7 @@ export class SessionCompactor {
         { type: 'text', text: fullSummaryContent }
       ],
       stopReason: 'stop',
-      timestamp: Date.now()
+      timestamp: this.clock()
     };
 
     const compactedMessages: AgentMessage[] = [summaryAssistantMessage, ...keptMessages];

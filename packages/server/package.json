@@ -18,7 +18,10 @@
     "@inkpi/protocol": "workspace:*",
     "@inkpi/ai": "workspace:*",
     "@inkpi/editor-core": "workspace:*",
-    "@inkpi/session-backends": "workspace:*"
+    "@inkpi/session-backends": "workspace:*",
+    "@inkpi/agent-core": "workspace:*",
+    "@inkpi/storage": "workspace:*",
+    "ws": "8.21.3"
   },
   "description": "Headless JSON-RPC 2.0 daemon and LiveSessionManager",
   "author": "InkPi Contributors",

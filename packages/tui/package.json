@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@inkpi/protocol": "workspace:*",
-    "@inkpi/editor-core": "workspace:*"
+    "@inkpi/editor-core": "workspace:*",
+    "@inkpi/agent-core": "workspace:*"
   },
   "description": "Terminal UI studio with differential rendering, CJK wide-character layout, and overlay management",
   "author": "InkPi Contributors",

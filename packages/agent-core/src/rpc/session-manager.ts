@@ -4,6 +4,8 @@ import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
 import { SessionTree } from '../tree.js';
 import type { ModelConfig } from '@inkpi/protocol';
 import { getModelPreset } from '@inkpi/ai';
+import { NoModelConfiguredError } from '../errors.js';
+import type { Clock, SessionStore } from '../ports/index.js';
 
 export interface ManagedSession {
   sessionId: string;
@@ -38,27 +40,36 @@ export interface SessionSummary {
  * 实时多会话管理器 (LiveSessionManager)
  * 1:1 对标 pi-server 的 LiveSessionManager，支持多 Client 并发挂载不同活跃 Session
  */
-export class LiveSessionManager {
+export class LiveSessionManager implements SessionStore {
   private sessions = new Map<string, ManagedSession>();
-  private defaultModel: ModelConfig;
+  private defaultModel?: ModelConfig;
+  private clock: Clock;
 
-  constructor(defaultModel?: ModelConfig) {
-    this.defaultModel = defaultModel || getModelPreset('mock-test');
+  constructor(defaultModel?: ModelConfig, clock: Clock = Date.now) {
+    // 注意：不再静默回落到假模型。defaultModel 可选，但当会话既未显式指定模型、
+    // 管理器也无默认模型时，createSession 会抛出明确的错误。
+    this.defaultModel = defaultModel;
+    this.clock = clock;
   }
 
   public createSession(options: SessionCreateOptions = {}): ManagedSession {
-    const sessionId = options.sessionId || `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const sessionId = options.sessionId || `sess_${this.clock()}_${Math.random().toString(36).slice(2, 7)}`;
     if (this.sessions.has(sessionId)) {
       return this.sessions.get(sessionId)!;
     }
 
-    const model = typeof options.model === 'string'
+    const requestedModel = typeof options.model === 'string'
       ? getModelPreset(options.model)
-      : (options.model || this.defaultModel);
+      : options.model;
+
+    const resolvedModel = requestedModel || this.defaultModel;
+    if (!resolvedModel) {
+      throw new NoModelConfiguredError();
+    }
 
     const agent = new Agent({
       initialState: {
-        model,
+        model: resolvedModel,
         systemPrompt: options.systemPrompt || 'You are an expert creative AI co-writer and assistant.'
       }
     });
@@ -73,8 +84,8 @@ export class LiveSessionManager {
       editor,
       ghost,
       tree,
-      createdAt: Date.now(),
-      lastActiveAt: Date.now(),
+      createdAt: this.clock(),
+      lastActiveAt: this.clock(),
       metadata: options.metadata
     };
 
@@ -83,11 +94,8 @@ export class LiveSessionManager {
   }
 
   public getSession(sessionId: string): ManagedSession | undefined {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.lastActiveAt = Date.now();
-    }
-    return session;
+    // 纯读：不再在 getter 中改写 lastActiveAt，避免读取操作产生副作用。
+    return this.sessions.get(sessionId);
   }
 
   public getOrCreateSession(sessionId?: string, options?: SessionCreateOptions): ManagedSession {

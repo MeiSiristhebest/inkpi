@@ -12,7 +12,7 @@ describe('Custom Third-Party Extension Capability', () => {
       api.registerCommand({
         name: 'custom-command',
         description: 'Third-party user command',
-        execute: async (args) => `Executed: ${args}`
+        execute: async (args: string) => `Executed: ${args}`
       });
 
       api.registerTool({

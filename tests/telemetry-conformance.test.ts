@@ -17,7 +17,8 @@ describe('Creative Telemetry & Conformance Suite (1:1 Ported from pi-telemetry)'
       inputTokens: 1000,
       outputTokens: 300,
       cacheReadTokens: 500,
-      reasoningTokens: 100
+      reasoningTokens: 100,
+      totalTokens: 1900
     });
 
     // 2. Creative Ghost Text interactions
@@ -38,6 +39,8 @@ describe('Creative Telemetry & Conformance Suite (1:1 Ported from pi-telemetry)'
 
     // 5. Check stats
     const stats = collector.getStats();
+    // getStats() is a pure read; finalize the turn explicitly to emit turn_telemetry.
+    collector.endTurn();
     expect(stats.ttftMs).toBeGreaterThanOrEqual(0);
     expect(stats.totalDurationMs).toBeGreaterThanOrEqual(1);
     expect(stats.spans?.length).toBe(1);

@@ -9,7 +9,8 @@ import type {
   TextContent,
   ImageContent
 } from '@inkpi/protocol';
-import type { ModelConfig, StreamFn } from '@inkpi/ai';
+import type { ModelConfig } from '@inkpi/ai';
+import type { ModelStreamer } from './ports/index.js';
 
 export type { ToolExecutionMode };
 export type QueueMode = 'all' | 'one-at-a-time';
@@ -74,7 +75,7 @@ export interface AgentOptions {
   steeringMode?: QueueMode;
   followUpMode?: QueueMode;
   toolExecution?: ToolExecutionMode;
-  streamFn?: StreamFn;
+  streamFn?: ModelStreamer;
   sessionId?: string;
   journal?: any;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | void>;

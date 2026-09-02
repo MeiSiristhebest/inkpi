@@ -51,18 +51,12 @@ export const MODEL_PRESETS: Record<string, ModelConfig> = {
     baseUrl: 'http://localhost:11434',
     temperature: 0.75,
     maxTokens: 2048
-  },
-  'mock-test': {
-    id: 'mock-model-v1',
-    name: 'Faux Test Model',
-    provider: 'faux',
-    supportsThinking: true,
-    temperature: 0.0,
-    fauxScript: {
-      text: 'Faux test response'
-    }
   }
 };
+
+// 注意：`mock-test` 预设是测试夹具，已从生产预设表中移除。
+// 它现在由 `installTestDoubles()`（test-fixtures.ts）在测试环境中显式注册，
+// 避免在缺少真实模型配置时静默回落到一个返回固定字符串的假模型。
 
 
 
@@ -73,4 +67,16 @@ export function getModelPreset(name: string): ModelConfig {
     throw new Error(`Unknown model preset '${name}'. Register or configure a model explicitly.`);
   }
   return { ...preset };
+}
+
+/**
+ * 运行时注册一个自定义模型预设（供测试夹具或动态配置使用）。
+ * 生产代码不得用它来注册假模型；测试环境通过 `installTestDoubles()` 使用。
+ */
+export function registerModelPreset(name: string, config: ModelConfig): void {
+  MODEL_PRESETS[name] = config;
+}
+
+export function hasModelPreset(name: string): boolean {
+  return Object.prototype.hasOwnProperty.call(MODEL_PRESETS, name);
 }

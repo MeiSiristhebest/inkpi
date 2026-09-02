@@ -7,13 +7,10 @@
   },
   "references": [
     { "path": "../protocol" },
-    { "path": "../tui" },
     { "path": "../ai" },
     { "path": "../editor-core" },
-    { "path": "../storage" },
     { "path": "../session-backends" },
-    { "path": "../client" },
-    { "path": "../server" }
+    { "path": "../client" }
   ],
   "include": ["src/**/*"]
 }

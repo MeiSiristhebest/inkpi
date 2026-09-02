@@ -1,5 +1,6 @@
 import { assertValid, AgentMessageSchema, type AgentMessage, type ExportOptions } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
+import { escapeHtml } from './html.js';
 
 export interface MessageJsonlImportOptions {
   strict?: boolean;
@@ -152,10 +153,6 @@ export class SessionExporter {
   }
 
   private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    return escapeHtml(text);
   }
 }

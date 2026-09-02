@@ -24,10 +24,6 @@ import {
   layoutVStack,
   renderScrollView
 } from '@inkpi/tui';
-import { Box as CompBox } from '../packages/tui/src/components/box.js';
-import { HStack as CompHStack } from '../packages/tui/src/components/h-stack.js';
-import { VStack as CompVStack } from '../packages/tui/src/components/v-stack.js';
-import { Spacer as CompSpacer } from '../packages/tui/src/components/spacer.js';
 
 describe('@inkpi/tui Independent Framework', () => {
   it('should calculate visible width correctly with CJK, Fullwidth, and Emoji characters', () => {
@@ -115,10 +111,16 @@ describe('@inkpi/tui Independent Framework', () => {
     const box1 = new Box({ title: '左栏', content: ['分卷 1', '分卷 2'] });
     const box2 = new Box({ title: '右栏', content: ['正文内容'] });
     box1.addChild(new Spacer(1));
-    expect(new CompBox({ title: 't' })).toBeDefined();
-    expect(new CompHStack()).toBeDefined();
-    expect(new CompVStack()).toBeDefined();
-    expect(new CompSpacer(1)).toBeDefined();
+
+    // 构造函数应产生可用的实例（取代原先仅 `toBeDefined()` 的覆盖刷行断言）。
+    const bareBox = new Box({ title: 't' });
+    expect(bareBox.render({ width: 10, height: 3 }).length).toBeGreaterThan(0);
+    const bareHStack = new HStack();
+    expect(bareHStack.render({ width: 10, height: 3 }).length).toBeGreaterThan(0);
+    const bareVStack = new VStack();
+    expect(bareVStack.render({ width: 10, height: 3 }).length).toBeGreaterThan(0);
+    const bareSpacer = new Spacer(1);
+    expect(bareSpacer.render({ width: 10, height: 3 }).length).toBeGreaterThan(0);
 
     const hstack = new HStack();
     hstack.add(box1, 20);

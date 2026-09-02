@@ -14,7 +14,7 @@ import {
 import { MemorySessionBackend } from '@inkpi/session-backends';
 
 describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
-  const testPort = 19892;
+  const testPort = 0;
   let daemon: InkPiDaemon;
   let client: InkRpcClient;
 
@@ -94,16 +94,18 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
   });
 
   it('should cover all InkRpcClient high-level methods via RemoteStreamTransport and Daemon', async () => {
-    const sessionManager = new LiveSessionManager(() => new MemorySessionBackend());
-    daemon = new InkPiDaemon({ port: testPort, sessionManager });
+    daemon = new InkPiDaemon({ port: testPort });
     await daemon.start();
 
-    client = await InkRpcClient.connectTcp(testPort);
+    client = await InkRpcClient.connectTcp(daemon.getPort());
 
-    // Session creation & listing
+    // Session creation & listing. The server daemon no longer silently echoes a
+    // fake response; we pass the explicit `mock-test` fixture model (installed in
+    // the global test setup) so the RPC plumbing is exercised end-to-end.
     const createRes = await client.request<{ sessionId: string; createdAt: number }>('session.create', {
       sessionId: 'sess_e2e_all',
-      initialText: '初始文本内容。'
+      initialText: '初始文本内容。',
+      model: 'mock-test'
     });
     expect(createRes.sessionId).toBe('sess_e2e_all');
 

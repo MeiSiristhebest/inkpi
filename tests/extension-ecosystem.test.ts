@@ -12,7 +12,7 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
         name: 'sample_custom_tool',
         description: '用于测试接口注册机制的自定义工具',
         parameters: { type: 'object', properties: { key: { type: 'string' } } },
-        execute: async (_id, params: { key?: string }) => ({
+        execute: async (_id: string, params: { key?: string }) => ({
           content: [{ type: 'text', text: `Result for ${params.key || 'default'}` }],
           details: { key: params.key }
         })
@@ -21,7 +21,7 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
       api.registerCommand({
         name: 'sample_command',
         description: '测试自定义命令',
-        execute: async (args) => `Command executed with: ${args}`
+        execute: async (args: string) => `Command executed with: ${args}`
       });
     };
 
@@ -52,7 +52,7 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
     const host = new ExtensionHost({
       showSelectList: async (opt) => {
         selectListShown = true;
-        return opt.assets[0].value;
+        return opt.assets?.[0]?.value;
       },
       showInput: async (opt) => {
         inputPromptShown = true;

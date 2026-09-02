@@ -21,7 +21,7 @@ describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi
       ],
       assets: [{ id: 'a1', name: '青锋剑', holder: '林玄' }],
       tracks: [{ id: 't1', clue: '身世玉佩之谜', status: 'pending' }],
-      locations: ['青云宗'],
+      locations: [{ name: '青云宗' }],
       modifiedResources: ['ch1']
     });
 

@@ -5,6 +5,10 @@
  */
 
 import * as vm from 'node:vm';
+import { InvalidDiceNotationError } from '../errors.js';
+
+/** 沙箱执行的统一默认超时（毫秒）。原先 3000 / 2000 / 1000 三处魔法值统一收敛到这里。 */
+export const DEFAULT_SANDBOX_TIMEOUT_MS = 3000;
 
 export interface SandboxExecutionOptions {
   timeoutMs?: number;
@@ -34,7 +38,7 @@ export class NodeVMSandbox implements ISandboxRunner {
   private maxOutputChars: number;
 
   constructor(options: { defaultTimeoutMs?: number; maxOutputChars?: number } = {}) {
-    this.defaultTimeoutMs = options.defaultTimeoutMs || 3000;
+    this.defaultTimeoutMs = options.defaultTimeoutMs || DEFAULT_SANDBOX_TIMEOUT_MS;
     this.maxOutputChars = options.maxOutputChars || 65536;
   }
 
@@ -67,7 +71,9 @@ export class NodeVMSandbox implements ISandboxRunner {
       roll: (diceNotation: string): number => {
         // e.g. "1d20", "3d6+2"
         const match = diceNotation.match(/^(\d+)d(\d+)([+-]\d+)?$/i);
-        if (!match) return Math.floor(Math.random() * 20) + 1;
+        if (!match) {
+          throw new InvalidDiceNotationError(diceNotation);
+        }
         const count = parseInt(match[1], 10);
         const sides = parseInt(match[2], 10);
         const mod = match[3] ? parseInt(match[3], 10) : 0;
@@ -152,7 +158,7 @@ export class SandboxManager {
   public async runRuleScript<T = any>(
     scriptCode: string,
     contextGlobals: Record<string, any> = {},
-    timeoutMs = 2000
+    timeoutMs: number = DEFAULT_SANDBOX_TIMEOUT_MS
   ): Promise<SandboxExecutionResult<T>> {
     return await this.runner.execute<T>(scriptCode, {
       timeoutMs,
@@ -168,7 +174,7 @@ export class SandboxManager {
     contextGlobals: Record<string, any> = {}
   ): Promise<SandboxExecutionResult<T>> {
     return await this.runner.execute<T>(`return (${expression});`, {
-      timeoutMs: 1000,
+      timeoutMs: DEFAULT_SANDBOX_TIMEOUT_MS,
       globals: contextGlobals
     });
   }

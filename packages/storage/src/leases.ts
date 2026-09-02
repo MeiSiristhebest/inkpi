@@ -91,13 +91,5 @@ export class WriterLeaseManager {
     const now = Date.now();
     return lease.expiresAt >= now && lease.holderId !== currentHolderId;
   }
-
-  public acquireLease(leaseId: string, holderId: string, ttlMs = this.defaultTtlMs, metadata?: string): boolean {
-    return this.acquire(leaseId, holderId, ttlMs, metadata);
-  }
-
-  public releaseLease(leaseId: string, holderId: string): boolean {
-    return this.release(leaseId, holderId);
-  }
 }
 

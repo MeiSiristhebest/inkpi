@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { STORAGE_SCHEMA_DDL } from './ddl.js';
+import type { IDb, PreparedStatement } from './ports.js';
 
-export class InkDb {
+export class InkDb implements IDb {
   private db: DatabaseSync;
   private dbPath: string;
 
@@ -76,11 +77,10 @@ export class InkDb {
 
 
   public checkpoint(): void {
-    try {
-      this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
-    } catch {
-      // Memory db may ignore wal checkpoint
-    }
+    // Best-effort WAL truncation. In-memory databases accept the pragma as a
+    // no-op, so there is no need to swallow errors here; a genuine failure
+    // (corrupt WAL, I/O error) must surface rather than be silently ignored.
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
   }
 
   public close(): void {

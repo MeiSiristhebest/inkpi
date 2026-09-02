@@ -6,13 +6,20 @@ import type {
   CreativeInteractionMetrics,
   TelemetryEvent
 } from '@inkpi/protocol';
+import type { Clock } from '../ports/index.js';
 
 /**
- * OpenTelemetry 规范全链路可观测性度量收集器 (1:1 对标 repos/pi packages/telemetry)
- * 支持 4 阶段多 Agent 流水线 Span 分段、TTFT 首字延迟、Prompt Caching 命中率、
- * 以及 Ghost Text 采纳漏斗、分支回滚与状态不变量冲突拦截等遥测度量
+ * OpenTelemetry 规范全链路可观测性度量收集器。
+ *
+ * 契约：
+ * - `startTurn()` / `endTurn()` 界定一个 turn；`getStats()` / `getMetrics()` 是纯读，
+ *   不会终结 turn 或发射 `turn_telemetry` 事件（终结请用显式的 `endTurn()`）。
+ * - 所有时间戳来自可注入的 `clock`（默认即 `Date.now`），便于测试冻结时间。
+ * - 支持 4 阶段多 Agent 流水线 Span 分段、TTFT 首字延迟、Prompt Caching 命中率、
+ *   以及 Ghost Text 采纳漏斗、分支回滚与状态不变量冲突拦截等遥测度量。
  */
 export class TelemetryCollector {
+  private clock: Clock;
   private startTime = 0;
   private firstTokenTime: number | null = null;
   private endTime: number | null = null;
@@ -45,6 +52,10 @@ export class TelemetryCollector {
     conflictRules: new Set<string>()
   };
 
+  constructor(clock: Clock = Date.now) {
+    this.clock = clock;
+  }
+
   private modelInputCostPerM = 2.0; // Default $2 / 1M tokens
   private modelOutputCostPerM = 8.0; // Default $8 / 1M tokens
   private modelCacheReadCostPerM = 0.5; // Default $0.5 / 1M tokens
@@ -64,7 +75,7 @@ export class TelemetryCollector {
   }
 
   public startTurn(): void {
-    this.startTime = Date.now();
+    this.startTime = this.clock();
     this.firstTokenTime = null;
     this.endTime = null;
     this.totalOutputTokens = 0;
@@ -77,7 +88,7 @@ export class TelemetryCollector {
 
   public recordFirstToken(): void {
     if (this.firstTokenTime === null) {
-      this.firstTokenTime = Date.now();
+      this.firstTokenTime = this.clock();
     }
   }
 
@@ -115,7 +126,7 @@ export class TelemetryCollector {
       type: 'ghost_text_interaction',
       action,
       charCount,
-      timestamp: Date.now()
+      timestamp: this.clock()
     });
   }
 
@@ -132,7 +143,7 @@ export class TelemetryCollector {
       type: 'branch_rollback',
       branchId,
       depth,
-      timestamp: Date.now()
+      timestamp: this.clock()
     });
   }
 
@@ -146,7 +157,7 @@ export class TelemetryCollector {
       type: 'invariant_conflict',
       rule,
       details,
-      timestamp: Date.now()
+      timestamp: this.clock()
     });
   }
 
@@ -189,11 +200,11 @@ export class TelemetryCollector {
    */
   public startSpan(name: string, stage?: string, role?: string, attributes?: Record<string, unknown>): TelemetrySpan {
     const span: TelemetrySpan = {
-      id: `span_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `span_${this.clock()}_${Math.random().toString(36).slice(2, 7)}`,
       name,
       stage,
       role,
-      startTime: Date.now(),
+      startTime: this.clock(),
       attributes: attributes || {}
     };
     this.activeSpans.set(span.id, span);
@@ -207,7 +218,7 @@ export class TelemetryCollector {
     const span = this.activeSpans.get(spanId);
     if (!span) return undefined;
 
-    span.endTime = Date.now();
+    span.endTime = this.clock();
     span.durationMs = Math.max(1, span.endTime - span.startTime);
 
     if (usage) {
@@ -236,11 +247,11 @@ export class TelemetryCollector {
     return [...this.spans];
   }
 
-  public endTurn(): TelemetryStats {
-    this.endTime = Date.now();
-    const durationMs = Math.max(1, this.endTime - this.startTime);
+  private computeStats(): TelemetryStats {
+    const endTime = this.endTime ?? this.clock();
+    const durationMs = Math.max(1, endTime - this.startTime);
     const ttftMs = this.firstTokenTime ? this.firstTokenTime - this.startTime : 0;
-    const tokensPerSecond = (this.totalOutputTokens / (durationMs / 1000));
+    const tokensPerSecond = this.totalOutputTokens / (durationMs / 1000);
 
     const totalInput = this.inputTokens + this.cacheReadTokens;
     const cacheHitRate = totalInput > 0 ? this.cacheReadTokens / totalInput : 0;
@@ -261,21 +272,29 @@ export class TelemetryCollector {
       creativeMetrics: this.getCreativeMetrics()
     };
 
-    this.emitEvent({
-      type: 'turn_telemetry',
-      stats,
-      timestamp: Date.now()
-    });
-
     return stats;
   }
 
-  public getStats(): TelemetryStats {
-    return this.endTurn();
+  /** Finalize the current turn: snapshot stats and emit a `turn_telemetry` event. */
+  public endTurn(): TelemetryStats {
+    this.endTime = this.clock();
+    const stats = this.computeStats();
+    this.emitEvent({
+      type: 'turn_telemetry',
+      stats,
+      timestamp: this.clock()
+    });
+    return stats;
   }
 
+  /** Read-only snapshot of current turn stats. Does NOT finalize the turn or emit events. */
+  public getStats(): TelemetryStats {
+    return this.computeStats();
+  }
+
+  /** Alias of {@link getStats} for metric-oriented callers. Pure read. */
   public getMetrics(): TelemetryStats {
-    return this.endTurn();
+    return this.computeStats();
   }
 
   public reset(): void {
@@ -303,7 +322,7 @@ export class TelemetryCollector {
    * 导出为 OpenTelemetry JSON 格式 payload
    */
   public exportOpenTelemetryJson(): string {
-    const stats = this.endTurn();
+    const stats = this.computeStats();
     return JSON.stringify({
       resourceSpans: [
         {
@@ -321,7 +340,7 @@ export class TelemetryCollector {
                 spanId: s.id,
                 name: s.name,
                 startTimeUnixNano: s.startTime * 1_000_000,
-                endTimeUnixNano: (s.endTime || Date.now()) * 1_000_000,
+                endTimeUnixNano: (s.endTime || this.clock()) * 1_000_000,
                 attributes: [
                   { key: 'agent.stage', value: { stringValue: s.stage || 'unknown' } },
                   { key: 'agent.role', value: { stringValue: s.role || 'unknown' } },

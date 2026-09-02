@@ -60,7 +60,7 @@ export class CompactionEngine {
       };
 
       this.repo.upsertSnapshot(snapshot);
-      const deleted = this.repo.deleteDeltas(documentId, now);
+      const deleted = this.repo.deleteDeltasBefore(documentId, now);
 
       const updateStmt = this.db.prepare(`
         UPDATE documents SET content_size = ?, updated_at = ? WHERE id = ?
@@ -83,7 +83,8 @@ export class CompactionEngine {
   public recoverDocument(documentId: string, options: RecoveryOptions = {}): RecoveryResult {
     const snapshot = this.repo.getSnapshot(documentId);
     const snapshotTime = snapshot ? snapshot.updatedAt : 0;
-    const pendingDeltas = this.repo.getDeltas(documentId, snapshotTime);
+    // 按创建时间取快照之后的待回放增量（与契约化的 getDeltas(id) 区分）。
+    const pendingDeltas = this.repo.getDeltasSince(documentId, snapshotTime);
 
     let currentMarkdown = snapshot ? snapshot.contentMarkdown : '';
     let currentJson = snapshot ? snapshot.contentJson : '{"type":"doc","content":[]}';

@@ -108,7 +108,8 @@ export interface StateLedger {
   assets: AssetRecord[];
   tracks: TrackRecord[];
   locations: LocationRecord[];
-  modifiedResources: string[];
+  /** Optional in practice: all readers fall back to modifiedChapters/modifiedDocuments. */
+  modifiedResources?: string[];
   // 兼容别名
   characters?: EntityRecord[];
   items?: AssetRecord[];

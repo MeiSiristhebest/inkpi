@@ -192,7 +192,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       locations: [],
       modifiedDocuments: []
     }, [
-      { entity: 'UserC', forbiddenTransitions: ['joins faction Z'] }
+      { character: 'UserC', forbiddenTransitions: ['joins faction Z'] }
     ]);
     expect(invRes.violations.length).toBe(1);
 

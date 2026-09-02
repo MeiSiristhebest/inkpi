@@ -10,7 +10,5 @@
       "project": ["src/**/*.ts!"]
     }
   },
-  "ignoreDependencies": [
-    "@inkpi/*"
-  ]
+  "ignoreDependencies": []
 }

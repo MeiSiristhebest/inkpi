@@ -2,9 +2,9 @@
  * 键盘驱动的选择列表组件 (1:1 对标 pi-tui SelectList)
  */
 
-import { Component, type RenderContext } from '../layout.js';
-import { visibleWidth, truncateToWidth, ANSI } from '../render.js';
-import type { KeyEvent } from '../keys.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { visibleWidth, truncateToWidth, ANSI } from '../../render.js';
+import type { KeyEvent } from '../../keys.js';
 
 export interface SelectListItem<T = any> {
   id: string;

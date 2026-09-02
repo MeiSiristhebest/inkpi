@@ -2,8 +2,8 @@
  * 虚拟化滚动容器组件 (1:1 对标 pi-tui ScrollView)
  */
 
-import { Component, type RenderContext } from '../layout.js';
-import { visibleWidth, ANSI } from '../render.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { visibleWidth, ANSI } from '../../render.js';
 
 export interface ScrollViewOptions {
   content?: string[];

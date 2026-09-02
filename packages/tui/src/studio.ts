@@ -1,9 +1,9 @@
 import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
 import type { StateLedger, SelectListOptions, TypographyOptions } from '@inkpi/protocol';
-import type { Agent } from '../agent.js';
-import type { SessionTree } from '../tree.js';
-import { SlashCommandRegistry } from '../slash-commands.js';
-import { ANSI, drawBox, DifferentialRenderer } from '@inkpi/tui';
+import type { Agent } from '@inkpi/agent-core';
+import type { SessionTree } from '@inkpi/agent-core';
+import { SlashCommandRegistry } from '@inkpi/agent-core';
+import { ANSI, drawBox, DifferentialRenderer } from './render.js';
 
 export type StudioFocusMode = 'editor' | 'outline' | 'copilot' | 'ledger';
 
@@ -56,8 +56,10 @@ export interface TerminalStudioOptions {
 /**
  * Terminal workstation primitives.
  *
- * The core owns layout, input routing, and rendering mechanics. Domain
- * wording is supplied through labels so applications can adapt the surface.
+ * 原位于 `@inkpi/agent-core/src/tui/studio.ts`，作为表现层被错误地放在领域核心包内。
+ * 现迁移至 `@inkpi/tui`（表现层包）。领域类型（Agent/SessionTree/SlashCommandRegistry）
+ * 从 `@inkpi/agent-core` 引入，渲染原语（ANSI/drawBox/DifferentialRenderer）取包内实现。
+ * 详见 ARCHITECTURE.md §5。
  */
 export class TerminalStudio {
   public editor: HeadlessEditorState;
@@ -450,7 +452,7 @@ export class TerminalStudio {
       return 'Focused on ledger';
     }
 
-    if (this.slashRegistry.isSlashCommand(trimmed)) {
+    if (this.slashRegistry.isSlashSyntax(trimmed)) {
       const res = await this.slashRegistry.execute(trimmed, {
         agent: this.agent,
         tree: this.tree

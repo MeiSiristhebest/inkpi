@@ -3,9 +3,9 @@
  * 具备 Kill-Ring（剪切环栈）、Undo/Redo 多级撤销、硬件光标定位与 @/#/ 智能触发补全
  */
 
-import { Component, type RenderContext } from '../layout.js';
-import { visibleWidth, ANSI } from '../render.js';
-import type { KeyEvent } from '../keys.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { visibleWidth, ANSI } from '../../render.js';
+import type { KeyEvent } from '../../keys.js';
 
 export interface AutocompleteItem {
   label: string;

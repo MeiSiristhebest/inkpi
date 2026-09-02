@@ -1,314 +1,233 @@
 import * as net from 'node:net';
-import type {
-  RpcRequest,
-  RpcResponse,
-  RpcNotification,
-  AgentMessage
-} from '@inkpi/protocol';
-import { RPC_ERROR_CODES } from '@inkpi/protocol';
-import { LiveSessionManager } from './sessions.js';
-import { streamAi } from '@inkpi/ai';
-import type { RpcNotificationSender } from './types.js';
+import { InkRpcServer, type ServerContext } from './server.js';
+import { LiveSessionManager, type ManagedSession, type SessionCreateOptions } from '@inkpi/agent-core';
+import type { RpcTransport } from './transport.js';
+import { TcpSocketTransport } from './tcp-transport.js';
+import type { ModelConfig } from '@inkpi/protocol';
 
 export interface DaemonOptions {
   port?: number;
   host?: string;
-  sessionManager?: LiveSessionManager;
+  wsPort?: number;
+  defaultModel?: ModelConfig;
+  context?: Partial<ServerContext>;
+}
+
+export interface DaemonStatus {
+  running: boolean;
+  port?: number;
+  host?: string;
+  wsPort?: number | null;
+  activeSessions: number;
+  uptimeMs: number;
 }
 
 /**
- * InkPi 常驻守护进程与多端会话分发路由服务 (1:1 对标 pi-server daemon)
+ * InkPi 常驻守护进程 (InkPi Daemon)
+ *
+ * 原位于 `@inkpi/agent-core/src/rpc/daemon.ts`，作为表现/传输层被错误地放在了
+ * 领域核心包内。现迁移至 `@inkpi/server`（传输层包），使 agent-core 成为不依赖
+ * 表现层 / 基础设施 / 传输层的纯净领域核心。详见 ARCHITECTURE.md §5。
  */
 export class InkPiDaemon {
-  private port: number;
-  private host: string;
+  private rpcServer: InkRpcServer;
   private sessionManager: LiveSessionManager;
+  private startTime = 0;
+  private running = false;
   private tcpServer: net.Server | null = null;
-  private isRunning = false;
+  private wsPort: number | null = null;
+  private options: DaemonOptions;
 
   constructor(options: DaemonOptions = {}) {
-    this.port = options.port || 9876;
-    this.host = options.host || '127.0.0.1';
-    this.sessionManager = options.sessionManager || new LiveSessionManager();
+    this.options = {
+      port: 41829,
+      host: '127.0.0.1',
+      ...options
+    };
+    this.sessionManager = new LiveSessionManager(options.defaultModel);
+    this.rpcServer = new InkRpcServer(options.context as ServerContext);
+    this.registerDaemonMethods();
   }
 
   public getSessionManager(): LiveSessionManager {
     return this.sessionManager;
   }
 
-  public async start(): Promise<InkPiDaemon> {
-    if (this.isRunning) return this;
+  public getRpcServer(): InkRpcServer {
+    return this.rpcServer;
+  }
 
-    return new Promise((resolve, reject) => {
-      this.tcpServer = net.createServer((socket) => {
-        this.handleClientSocket(socket);
-      });
+  /** 返回守护进程实际监听的 TCP 端口（端口 0 时由操作系统分配）。 */
+  public getPort(): number {
+    return this.options.port ?? 0;
+  }
 
-      this.tcpServer.on('error', (err) => {
-        reject(err);
-      });
+  private registerDaemonMethods(): void {
+    // 1. Session Management RPCs
+    this.rpcServer.registerMethod('daemon.status', () => this.getStatus());
 
-      this.tcpServer.listen(this.port, this.host, () => {
-        this.isRunning = true;
-        resolve(this);
+    this.rpcServer.registerMethod('session.create', (params: SessionCreateOptions) => {
+      const session = this.sessionManager.createSession(params);
+      // Hook session agent events to broadcast
+      session.agent.subscribe((event) => {
+        this.rpcServer.notify('session.event', {
+          sessionId: session.sessionId,
+          event
+        });
       });
+      return {
+        sessionId: session.sessionId,
+        createdAt: session.createdAt,
+        messageCount: session.agent.state.messages.length
+      };
     });
+
+    this.rpcServer.registerMethod('session.list', () => {
+      return this.sessionManager.listSessions();
+    });
+
+    this.rpcServer.registerMethod('session.close', (params: { sessionId: string }) => {
+      return { success: this.sessionManager.closeSession(params?.sessionId) };
+    });
+
+    this.rpcServer.registerMethod('session.prompt', async (params: { sessionId: string; prompt: string }) => {
+      const session = this.withSession(params?.sessionId);
+      await session.agent.prompt(params.prompt);
+      return {
+        success: true,
+        sessionId: session.sessionId,
+        messageCount: session.agent.state.messages.length,
+        lastMessage: session.agent.state.messages[session.agent.state.messages.length - 1]
+      };
+    });
+
+    this.rpcServer.registerMethod('session.abort', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      session.agent.abort();
+      return { success: true };
+    });
+
+    const getStateHandler = (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      return {
+        sessionId: session.sessionId,
+        messages: session.agent.state.messages,
+        isStreaming: session.agent.state.isStreaming,
+        editorText: session.editor.getText(),
+        hasGhostText: session.ghost.hasGhostText(),
+        ghostText: session.ghost.getGhostText()
+      };
+    };
+    // session.getState 为 client SDK 兼容别名
+    this.rpcServer.registerMethod('session.get_state', getStateHandler);
+    this.rpcServer.registerMethod('session.getState', getStateHandler);
+
+    // 2. Editor Multi-session RPCs
+    this.rpcServer.registerMethod('session.editor.insert', (params: { sessionId: string; pos: number; text: string }) => {
+      const session = this.withSession(params?.sessionId);
+      session.editor.insertText(params.pos, params.text);
+      return { text: session.editor.getText(), version: session.editor.getVersion() };
+    });
+
+    this.rpcServer.registerMethod('session.editor.undo', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      const success = session.editor.undo();
+      return { success, text: session.editor.getText() };
+    });
+
+    this.rpcServer.registerMethod('session.editor.redo', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      const success = session.editor.redo();
+      return { success, text: session.editor.getText() };
+    });
+
+    this.rpcServer.registerMethod('session.ghost.suggest', (params: { sessionId: string; text: string; pos?: number }) => {
+      const session = this.withSession(params?.sessionId);
+      const suggestion = session.ghost.suggest(params.text, params.pos);
+      return suggestion;
+    });
+
+    this.rpcServer.registerMethod('session.ghost.accept', (params: { sessionId: string; mode?: 'all' | 'word' | 'line' }) => {
+      const session = this.withSession(params?.sessionId);
+      let accepted = false;
+      if (params.mode === 'word') {
+        accepted = session.ghost.acceptWord();
+      } else if (params.mode === 'line') {
+        accepted = session.ghost.acceptLine();
+      } else {
+        accepted = session.ghost.acceptGhostText();
+      }
+      return { accepted, text: session.editor.getText() };
+    });
+
+    this.rpcServer.registerMethod('session.ghost.dismiss', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      session.ghost.dismiss();
+      return { success: true };
+    });
+  }
+
+  /**
+   * 提取「取会话 / 找不到就抛错」的样板（原在 registerDaemonMethods 中重复 9 次）。
+   * 既消除重复，也成为后续 RPC 方法注册表（OCP）的统一前置守卫。
+   */
+  private withSession(sessionId: string): ManagedSession {
+    const session = this.sessionManager.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session '${sessionId}' not found.`);
+    }
+    return session;
+  }
+
+  public async start(port = this.options.port, host = this.options.host): Promise<this> {
+    if (this.running) return this;
+    this.startTime = Date.now();
+    this.tcpServer = await this.rpcServer.listenTcp(port!, host!);
+    this.running = true;
+    // When binding to port 0 the OS assigns a free port; record the real one so
+    // clients (and tests) can discover it instead of assuming the requested port.
+    const addr = this.tcpServer.address();
+    if (addr && typeof addr === 'object') {
+      this.options.port = addr.port;
+    } else {
+      this.options.port = port;
+      this.options.host = host;
+    }
+    return this;
+  }
+
+  /**
+   * 额外开启 WebSocket 监听 (浏览器 / Tauri WebView GUI 客户端入口)
+   * 默认端口为 TCP 端口 + 1
+   */
+  public async startWebSocket(wsPort = (this.options.port ?? 41829) + 1, host = this.options.host): Promise<this> {
+    this.wsPort = wsPort;
+    this.options.wsPort = wsPort;
+    await this.rpcServer.listenWebSocket(wsPort!, host!);
+    return this;
+  }
+
+  public attachTransport(transport: RpcTransport): void {
+    this.rpcServer.bindTransport(transport);
   }
 
   public async stop(): Promise<void> {
-    if (!this.isRunning || !this.tcpServer) return;
-    return new Promise((resolve) => {
-      this.tcpServer!.close(() => {
-        this.isRunning = false;
-        this.tcpServer = null;
-        resolve();
-      });
-    });
+    if (!this.running) return;
+    this.running = false;
+    this.sessionManager.clear();
+    await this.rpcServer.close();
+    this.tcpServer = null;
+    this.wsPort = null;
   }
 
-  public getPort(): number {
-    return this.port;
-  }
-
-  public attachTransport(
-    sendNotification: RpcNotificationSender
-  ): (request: RpcRequest) => Promise<RpcResponse> {
-    return (req) => this.dispatchRequest(req, sendNotification);
-  }
-
-  private handleClientSocket(socket: net.Socket): void {
-    socket.setEncoding('utf8');
-    let buffer = '';
-
-    const sendNotification: RpcNotificationSender = (notif) => {
-      if (!socket.destroyed) {
-        socket.write(JSON.stringify(notif) + '\n');
-      }
+  public getStatus(): DaemonStatus {
+    return {
+      running: this.running,
+      port: this.options.port,
+      host: this.options.host,
+      wsPort: this.wsPort,
+      activeSessions: this.sessionManager.size,
+      uptimeMs: this.running ? Date.now() - this.startTime : 0
     };
-
-    socket.on('data', async (chunk: string) => {
-      buffer += chunk;
-      let newlineIdx = buffer.indexOf('\n');
-      while (newlineIdx !== -1) {
-        const line = buffer.slice(0, newlineIdx).trim();
-        buffer = buffer.slice(newlineIdx + 1);
-
-        if (line) {
-          try {
-            const req = JSON.parse(line) as RpcRequest;
-            const res = await this.dispatchRequest(req, sendNotification);
-            if (!socket.destroyed) {
-              socket.write(JSON.stringify(res) + '\n');
-            }
-          } catch (err: any) {
-            if (!socket.destroyed) {
-              const errRes: RpcResponse = {
-                jsonrpc: '2.0',
-                id: null as any,
-                error: {
-                  code: RPC_ERROR_CODES.PARSE_ERROR,
-                  message: 'Parse error: ' + (err?.message || String(err))
-                }
-              };
-
-              socket.write(JSON.stringify(errRes) + '\n');
-            }
-          }
-        }
-        newlineIdx = buffer.indexOf('\n');
-      }
-    });
   }
-
-  public async dispatchRequest(
-    req: RpcRequest,
-    sendNotification?: RpcNotificationSender
-  ): Promise<RpcResponse> {
-    try {
-      const result = await this.handleMethod(req.method, req.params || {}, sendNotification);
-      return {
-        jsonrpc: '2.0',
-        id: req.id,
-        result
-      };
-    } catch (err: any) {
-      return {
-        jsonrpc: '2.0',
-        id: req.id,
-        error: {
-          code: err.code || RPC_ERROR_CODES.INTERNAL_ERROR,
-          message: err.message || String(err),
-          data: err.data
-        }
-      };
-    }
-  }
-
-  private async handleMethod(
-    method: string,
-    params: any,
-    sendNotification?: RpcNotificationSender
-  ): Promise<any> {
-    switch (method) {
-      case 'session.create': {
-        const sessionId = params.sessionId || `sess_${Date.now()}`;
-        const session = this.sessionManager.createSession(sessionId, {
-          model: params.model,
-          initialText: params.initialText
-        });
-        return { sessionId: session.sessionId, createdAt: session.createdAt };
-      }
-
-      case 'session.list': {
-        return this.sessionManager.listSessions();
-      }
-
-      case 'session.close': {
-        const success = this.sessionManager.closeSession(params.sessionId);
-        return { success };
-      }
-
-      case 'session.get_state':
-      case 'session.getState': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        return {
-          sessionId: session.sessionId,
-          editorText: session.editor.getText(),
-          cursor: session.editor.getSelection().to,
-          ghostText: session.ghost.getSuggestion(),
-          messages: session.messages,
-          lastActiveAt: session.lastActiveAt
-        };
-      }
-
-      case 'session.prompt': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-
-        const userMsg: AgentMessage = {
-          id: `msg_u_${Date.now()}`,
-          role: 'user',
-          content: params.prompt
-        };
-        session.messages.push(userMsg);
-
-        // Stream notification to client
-        if (sendNotification) {
-          sendNotification({
-            jsonrpc: '2.0',
-            method: 'session.event',
-            params: {
-              sessionId: session.sessionId,
-              event: { type: 'message_start', message: userMsg }
-            }
-          });
-        }
-
-        let replyText: string;
-        if (session.modelConfig) {
-          // 真实模型路径: 接 @inkpi/ai 的 streamAi (按会话 modelConfig 调用真实 provider)
-          const stream = streamAi(session.modelConfig, session.messages, {});
-          const assistant = await stream.collect();
-          replyText = assistantText(assistant);
-        } else {
-          // 离线回显: 未配置模型时的 fixture 行为 (保持向后兼容, 供离线测试使用)
-          replyText = `InkPi Response for [${session.sessionId}]: ${params.prompt}`;
-        }
-
-        const asstMsg: AgentMessage = {
-          id: `msg_a_${Date.now()}`,
-          role: 'assistant',
-          content: [{ type: 'text', text: replyText }]
-        };
-        session.messages.push(asstMsg);
-
-        if (sendNotification) {
-          sendNotification({
-            jsonrpc: '2.0',
-            method: 'session.event',
-            params: {
-              sessionId: session.sessionId,
-              event: { type: 'message_end', message: asstMsg }
-            }
-          });
-        }
-
-        return { success: true, messageCount: session.messages.length };
-      }
-
-      case 'session.abort': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        return { success: true };
-      }
-
-      case 'session.editor.insert': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        const pos = params.pos ?? session.editor.getSelection().to;
-        session.editor.insertText(pos, params.text || '');
-        return { text: session.editor.getText(), cursor: session.editor.getSelection().to };
-      }
-
-      case 'session.editor.undo': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        const tr = session.editor.undo();
-        return { success: Boolean(tr), text: session.editor.getText() };
-      }
-
-      case 'session.editor.redo': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        const tr = session.editor.redo();
-        return { success: Boolean(tr), text: session.editor.getText() };
-      }
-
-      case 'session.ghost.suggest': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        session.ghost.suggest(params.text || '');
-        return { success: true, ghostText: session.ghost.getSuggestion() };
-      }
-
-      case 'session.ghost.accept': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        const mode = params.mode || 'all';
-        let accepted = false;
-        if (mode === 'word') accepted = session.ghost.acceptWord();
-        else if (mode === 'line') accepted = session.ghost.acceptLine();
-        else accepted = session.ghost.accept();
-        return { accepted, currentText: session.editor.getText() };
-      }
-
-      case 'session.ghost.dismiss': {
-        const session = this.sessionManager.getSession(params.sessionId);
-        if (!session) throw new Error(`Session '${params.sessionId}' not found.`);
-        session.ghost.dismissGhostText();
-        return { success: true };
-      }
-
-      default:
-        throw {
-          code: RPC_ERROR_CODES.METHOD_NOT_FOUND,
-          message: `Method '${method}' not found.`
-        };
-    }
-  }
-}
-
-/**
- * 从 AssistantMessage 中提取纯文本回复 (兼容 string 与 content block 数组两种形态)
- */
-function assistantText(message: any): string {
-  const raw = message?.content ?? message?.text ?? '';
-  if (typeof raw === 'string') return raw;
-  if (Array.isArray(raw)) {
-    return raw
-      .map((block: any) => (typeof block === 'string' ? block : block?.text ?? ''))
-      .join('');
-  }
-  return String(raw);
 }

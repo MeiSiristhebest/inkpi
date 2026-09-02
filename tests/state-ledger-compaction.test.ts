@@ -51,9 +51,9 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
     expect(ledger.entities.some((c) => c.name === 'Alice')).toBe(true);
     expect(ledger.entities.some((c) => c.name === 'Bob')).toBe(true);
     expect(ledger.assets.some((i) => i.name.includes('QuantumKey'))).toBe(true);
-    expect(ledger.tracks.some((f) => f.clue.includes('CoreDatabase'))).toBe(true);
+    expect(ledger.tracks.some((f) => f.clue?.includes('CoreDatabase'))).toBe(true);
     expect(ledger.tracks.some((f) => f.clue === 'CustomSignalCaptured')).toBe(true);
-    expect(ledger.modifiedResources.some((ch) => ch.includes('doc_12'))).toBe(true);
+    expect(ledger.modifiedResources?.some((ch) => ch.includes('doc_12'))).toBe(true);
 
     const formatted = formatStateLedger(ledger);
     expect(formatted).toContain('Entities:');

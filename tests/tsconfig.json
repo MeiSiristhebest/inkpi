@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "types": ["node", "vitest/globals"],
+    "tsBuildInfoFile": "../node_modules/.cache/tsc-tests.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../packages/protocol" },
+    { "path": "../packages/tui" },
+    { "path": "../packages/ai" },
+    { "path": "../packages/editor-core" },
+    { "path": "../packages/storage" },
+    { "path": "../packages/session-backends" },
+    { "path": "../packages/client" },
+    { "path": "../packages/server" },
+    { "path": "../packages/agent-core" },
+    { "path": "../packages/evals" }
+  ],
+  "include": ["./**/*.ts"]
+}

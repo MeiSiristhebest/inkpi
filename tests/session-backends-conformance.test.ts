@@ -131,18 +131,16 @@ describe('Pluggable Session Backends Conformance Suite (LSP Verification)', () =
         expect(deltas[0].documentId).toBe('doc_alpha');
 
         const filteredDeltas = await backend.getDeltas('doc_alpha', 2);
-        expect(filteredDeltas.length).toBeGreaterThanOrEqual(1);
+        // LSP: all backends must agree on `id >= fromId` (inclusive) semantics.
+        // Two deltas were appended (auto ids 1, 2), so only id >= 2 is returned.
+        expect(filteredDeltas.length).toBe(1);
+        expect(filteredDeltas.every((d) => (d.id ?? 0) >= 2)).toBe(true);
 
         // 4. Search capability
         if (backend.search) {
           const results = await backend.search('江湖', 5);
           expect(results.length).toBeGreaterThan(0);
           expect(results[0].documentId).toBe('doc_alpha');
-        }
-
-        if (backend instanceof SqliteSessionBackend) {
-          expect(backend.getRepository()).toBeDefined();
-          expect(backend.getDb()).toBeDefined();
         }
 
         await backend.close();

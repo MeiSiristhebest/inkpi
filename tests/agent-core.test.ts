@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   Agent,
   ToolRegistry,
-  SteeringQueue,
-  FollowUpQueue,
+  MessageQueue,
   SessionTree,
   ExtensionHost,
   ExtensionRunner
@@ -13,7 +12,7 @@ import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
 
 describe('@inkpi/agent-core', () => {
   it('should manage MessageQueues with different queue modes', () => {
-    const queue = new SteeringQueue();
+    const queue = new MessageQueue();
     const msg1: AgentMessage = { role: 'user', content: '纠偏1' };
     const msg2: AgentMessage = { role: 'user', content: '纠偏2' };
 
@@ -127,7 +126,7 @@ describe('@inkpi/agent-core', () => {
     expect(tree.getHistory().length).toBe(2);
 
     // Fork from m1
-    tree.fork('m1');
+    tree.selectLeaf('m1');
     const msg3: AgentMessage = { id: 'm3', role: 'assistant', content: [{ type: 'text', text: '主角转身离去' }] };
     tree.addMessage(msg3);
 
@@ -144,7 +143,7 @@ describe('@inkpi/agent-core', () => {
 
     expect(() => tree.addMessage({ id: 'm2', role: 'assistant', content: [] })).toThrow('already exists');
     expect(() => tree.addMessage({ role: 'user', content: 'orphan' }, 'missing')).toThrow('Parent node');
-    expect(() => tree.branch()).toThrow('requires a non-empty label');
+    expect(() => tree.branch('')).toThrow('requires a non-empty label');
 
     tree.clear();
     expect(tree.size()).toBe(0);

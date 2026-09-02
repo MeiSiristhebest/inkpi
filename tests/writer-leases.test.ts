@@ -40,12 +40,12 @@ describe('@inkpi/storage -> WriterLeaseManager (Multi-process Concurrency Safety
     expect(released).toBe(true);
 
     // 8. Process B can now acquire the released lease
-    const acquiredBAfter = leases.acquireLease(leaseId, processB, 1000);
+    const acquiredBAfter = leases.acquire(leaseId, processB, 1000);
     expect(acquiredBAfter).toBe(true);
 
     expect(leases.getLease('non_existent')).toBeUndefined();
     expect(leases.isLockedByOther('non_existent', 'anyone')).toBe(false);
-    expect(leases.releaseLease('non_existent', 'nobody')).toBe(false);
+    expect(leases.release('non_existent', 'nobody')).toBe(false);
 
     db.close();
   });

@@ -12,10 +12,16 @@
  */
 
 import { runPrintMode } from '../packages/agent-core/dist/modes/print-mode.js';
-import { TerminalStudio } from '../packages/agent-core/dist/tui/studio.js';
+import { TerminalStudio } from '../packages/tui/dist/studio.js';
 import { runPackageManagerCli } from '../packages/agent-core/dist/package-manager-cli.js';
-import { InkRpcServer } from '../packages/agent-core/dist/rpc/server.js';
-import { InkPiDaemon } from '../packages/agent-core/dist/rpc/daemon.js';
+import { InkRpcServer } from '../packages/server/dist/server.js';
+import { InkPiDaemon } from '../packages/server/dist/daemon.js';
+// The standalone harness is the dev/test entrypoint exercised by the integration
+// suite (e.g. `--model mock-test`). Mock providers are NOT silently registered on
+// the production path; we opt into them explicitly here so headless tests can run
+// without real API keys. Real models are unaffected.
+import { installTestDoubles } from '../packages/ai/dist/test-fixtures.js';
+installTestDoubles();
 
 const args = process.argv.slice(2);
 

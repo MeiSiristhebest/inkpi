@@ -7,7 +7,7 @@ import type {
 } from '@inkpi/protocol';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
 import { ToolRegistry } from './tools.js';
-import { SteeringQueue, FollowUpQueue } from './queues.js';
+import { MessageQueue } from './queues.js';
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
 import { runAgentLoop } from './loop.js';
 
@@ -26,8 +26,8 @@ export class Agent {
 
   private options: AgentOptions;
   private toolRegistry = new ToolRegistry();
-  private steeringQueue = new SteeringQueue();
-  private followUpQueue = new FollowUpQueue();
+  private steeringQueue = new MessageQueue();
+  private followUpQueue = new MessageQueue();
   private extensionHost = new ExtensionHost();
   private extensionRunner: ExtensionRunner;
   private listeners: AgentEventListener[] = [];

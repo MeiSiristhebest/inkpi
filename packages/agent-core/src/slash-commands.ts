@@ -63,8 +63,18 @@ export class SlashCommandRegistry {
     return Array.from(this.commands.values());
   }
 
-  public isSlashCommand(input: string): boolean {
+  /**
+   * Syntax check: does the input *look like* a slash command (starts with `/`)?
+   * It only checks syntax, not whether the command is registered — use
+   * {@link hasCommand} for that.
+   */
+  public isSlashSyntax(input: string): boolean {
     return input.trim().startsWith('/');
+  }
+
+  /** Whether a command name is registered (case-folded to lower-case). */
+  public hasCommand(name: string): boolean {
+    return this.commands.has(name.toLowerCase());
   }
 
   /**
@@ -171,8 +181,8 @@ export class SlashCommandRegistry {
         if (!ctx.tree) return { success: false, output: '当前会话树未启用' };
         const fromId = ctx.args[0] || ctx.tree.getCurrentLeafId();
         if (!fromId) return { success: false, output: '无法确定分叉源节点' };
-        ctx.tree.fork(fromId);
-        return { success: true, output: `🌿 已从节点 ${fromId} 成功分叉出新推演分支！` };
+        ctx.tree.selectLeaf(fromId);
+        return { success: true, output: `🌿 已将活跃推演指针移动到节点 ${fromId}` };
       }
     });
 

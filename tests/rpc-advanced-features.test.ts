@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   InkRpcServer,
   InkRpcClient,
-  InMemoryTransport,
+  InMemoryTransport
+} from '@inkpi/server';
+import {
   WorkflowCoordinator,
   TelemetryCollector
 } from '@inkpi/agent-core';

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { InkRpcServer, InkRpcClient, InMemoryTransport, Agent, SessionTree } from '@inkpi/agent-core';
+import { InkRpcServer, InkRpcClient, InMemoryTransport } from '@inkpi/server';
+import { Agent, SessionTree } from '@inkpi/agent-core';
 import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
 import { InkDb, FtsSearchEngine, InkRepository } from '@inkpi/storage';
 import { getModelPreset } from '@inkpi/ai';

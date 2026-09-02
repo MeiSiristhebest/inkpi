@@ -1,8 +1,3 @@
-export * from './server.js';
-export * from './client.js';
-export * from './transport.js';
-export * from './tcp-transport.js';
-export * from './ws-transport.js';
+// 传输层（daemon / server / client / transports）已迁移至 @inkpi/server 包。
+// agent-core 作为领域核心，仅保留领域对象 LiveSessionManager（实现 SessionStore 端口）。
 export * from './session-manager.js';
-export * from './daemon.js';
-

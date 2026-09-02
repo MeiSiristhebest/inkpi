@@ -9,20 +9,23 @@ import type {
 import { streamAi } from '@inkpi/ai';
 import type { AgentOptions, AgentState } from './types.js';
 import type { ToolRegistry } from './tools.js';
-import type { SteeringQueue, FollowUpQueue } from './queues.js';
+import type { MessageQueue } from './queues.js';
+import type { Clock } from './ports/index.js';
 
 export interface RunLoopParams {
   state: AgentState;
   options: AgentOptions;
   toolRegistry: ToolRegistry;
-  steeringQueue: SteeringQueue;
-  followUpQueue: FollowUpQueue;
+  steeringQueue: MessageQueue;
+  followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;
   signal?: AbortSignal;
+  /** Injectable clock for timestamps / ids. Defaults to `Date.now`. */
+  clock?: Clock;
 }
 
 export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[]> {
-  const { state, options, toolRegistry, steeringQueue, followUpQueue, emitEvent, signal } = params;
+  const { state, options, toolRegistry, steeringQueue, followUpQueue, emitEvent, signal, clock = Date.now } = params;
 
   state.errorMessage = undefined;
   await emitEvent({ type: 'agent_start' });
@@ -57,7 +60,7 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       }
 
       // 3. Invoke LLM Stream
-      const streamOpId = `op_stream_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const streamOpId = `op_stream_${clock()}_${Math.random().toString(36).slice(2, 6)}`;
       if (options.journal) {
         options.journal.append('operation_intent', {
           id: streamOpId,
@@ -91,7 +94,7 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
       const initialAssistantMsg: AssistantMessage = {
         role: 'assistant',
         content: [],
-        timestamp: Date.now()
+        timestamp: clock()
       };
       state.streamingMessage = initialAssistantMsg;
 
@@ -187,7 +190,7 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
               toolName: call.name,
               isError: true,
               content: [{ type: 'text', text: 'Tool execution aborted by signal' }],
-              timestamp: Date.now()
+              timestamp: clock()
             };
             if (options.journal) {
               options.journal.append('operation_settlement', {
@@ -234,7 +237,7 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
                 toolName: call.name,
                 isError: true,
                 content: [{ type: 'text', text: blockReason }],
-                timestamp: Date.now()
+                timestamp: clock()
               };
             } else {
               toolRes = await toolRegistry.executeTool(
@@ -276,7 +279,7 @@ export async function runAgentLoop(params: RunLoopParams): Promise<AgentMessage[
               isError: true,
               terminate: true,
               content: [{ type: 'text', text: `Tool lifecycle error: ${message}` }],
-              timestamp: Date.now()
+              timestamp: clock()
             };
           } finally {
             state.pendingToolCalls.delete(call.id);

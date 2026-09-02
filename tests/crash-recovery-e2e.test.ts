@@ -3,9 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   AppendOnlySessionJournal,
-  createInkDb,
-  InkRepository,
-  createTestDb
+  InkRepository
 } from '@inkpi/storage';
 import {
   Agent,
@@ -63,6 +61,7 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
           stream.push({
             type: 'tool_call_end',
             toolCall: {
+              type: 'toolCall',
               id: 'call_lookup_1',
               name: 'lookup_data',
               arguments: { query: 'creative assets' }

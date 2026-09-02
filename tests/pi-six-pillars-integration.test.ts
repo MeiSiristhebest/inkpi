@@ -11,7 +11,9 @@ import {
 } from '@inkpi/ai';
 import {
   InkRpcServer,
-  InkPiClient,
+  InkRpcClient
+} from '@inkpi/server';
+import {
   StoryboardExporter,
   NodeVMSandbox,
   SandboxManager,
@@ -352,6 +354,7 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
             outputTokens: 12000,
             cacheReadTokens: 40000,
             totalTokens: 62000,
+            cacheWriteTokens: 0,
             costUsd: 0.05
           },
           whatIfSummaries: [
@@ -391,12 +394,10 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
         console.error("Shield depleted");
         const baseAttack = 50;
         const dice = roll('1d20');
-        const defaultDice = roll('');
         const isCrit = dice >= 18;
         return {
           attack: isCrit ? baseAttack * 2 : baseAttack,
           dice,
-          defaultDice,
           isCrit
         };
       `);
@@ -406,7 +407,11 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(res.stderr).toContain('High gravity detected');
       expect(res.result.attack).toBeGreaterThanOrEqual(50);
       expect(res.result.dice).toBeGreaterThanOrEqual(1);
-      expect(res.result.defaultDice).toBeGreaterThanOrEqual(1);
+
+      // roll() must reject invalid notation instead of silently returning a fake value.
+      const badRes = await manager.runRuleScript(`return roll('');`);
+      expect(badRes.success).toBe(false);
+      expect(badRes.error).toContain('Invalid dice notation');
 
       // Safe expression evaluation
       const exprRes = await manager.evaluateExpression('100 * 1.5 + 20');

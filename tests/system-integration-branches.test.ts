@@ -4,12 +4,16 @@ import * as path from 'node:path';
 import {
   InkRpcServer,
   InkRpcClient,
-  InMemoryTransport,
-  ProjectTrustManager,
-  runPrintMode,
+  InMemoryTransport
+} from '@inkpi/server';
+import {
   Editor,
   SelectList,
-  parseKey,
+  parseKey
+} from '@inkpi/tui';
+import {
+  ProjectTrustManager,
+  runPrintMode,
   Agent,
   SessionTree,
   SlashCommandRegistry,
@@ -17,9 +21,9 @@ import {
   KillRing,
   MockClipboardDriver,
   SyncedClipboard,
-  createStandardEntitySafetyRules
+  createStandardEntitySafetyRules,
+  BranchSummarizer
 } from '@inkpi/agent-core';
-import { BranchSummarizer } from '@inkpi/agent-core';
 import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
 import { AppendOnlySessionJournal, InkDb, FtsSearchEngine } from '@inkpi/storage';
 import {
@@ -244,7 +248,7 @@ describe('System Integration & Edge Cases Suite', () => {
     const stdMessages = convertMessagesToStandard([
       { role: 'user', content: [{ type: 'text', text: '用户文本块' }] },
       { role: 'assistant', content: [{ type: 'text', text: '助手回答' }] },
-      { role: 'toolResult', toolCallId: 'tc_1', content: [{ type: 'text', text: '工具输出' }] }
+      { role: 'toolResult', toolCallId: 'tc_1', toolName: 'testTool', content: [{ type: 'text', text: '工具输出' }] }
     ], '系统提示词');
 
     expect(stdMessages.length).toBe(4);
@@ -269,15 +273,15 @@ describe('System Integration & Edge Cases Suite', () => {
     expect(msg.content.some((c) => c.type === 'toolCall')).toBe(true);
 
     // Missing API keys for real providers
-    const openaiStream = streamAi({ id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', contextWindow: 128000, maxTokens: 4096 }, [{ role: 'user', content: 'hi' }]);
+    const openaiStream = streamAi({ id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', maxTokens: 4096 }, [{ role: 'user', content: 'hi' }]);
     const openaiMsg = await openaiStream.collect();
     expect(openaiMsg.errorMessage).toContain('Missing API key');
 
-    const anthropicStream = streamAi({ id: 'claude-3-7-sonnet', name: 'Claude', provider: 'anthropic', contextWindow: 200000, maxTokens: 8192 }, [{ role: 'user', content: 'hi' }]);
+    const anthropicStream = streamAi({ id: 'claude-3-7-sonnet', name: 'Claude', provider: 'claude', maxTokens: 8192 }, [{ role: 'user', content: 'hi' }]);
     const anthropicMsg = await anthropicStream.collect();
     expect(anthropicMsg.errorMessage).toBeDefined();
 
-    const geminiStream = streamAi({ id: 'gemini-2.5-pro', name: 'Gemini', provider: 'gemini', contextWindow: 1000000, maxTokens: 8192 }, [{ role: 'user', content: 'hi' }]);
+    const geminiStream = streamAi({ id: 'gemini-2.5-pro', name: 'Gemini', provider: 'gemini', maxTokens: 8192 }, [{ role: 'user', content: 'hi' }]);
     const geminiMsg = await geminiStream.collect();
     expect(geminiMsg.errorMessage).toBeDefined();
   });

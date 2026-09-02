@@ -39,7 +39,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
       shouldStopAfterTurn: async () => true
     });
 
-    agent.subscribe((ev) => events.push(ev));
+    agent.subscribe((ev) => { events.push(ev); });
 
     agent.getToolRegistry().register({
       name: 'update_tool',
@@ -346,7 +346,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     const msgInit: AgentMessage = { role: 'user', content: 'init' };
     const treeWithInit = new SessionTree([msgInit]);
     expect(treeWithInit.size()).toBe(1);
-    expect(() => treeWithInit.fork('non_existing')).toThrow();
+    expect(() => treeWithInit.selectLeaf('non_existing')).toThrow();
 
     // Editor multi-line insert and word count combinations
     const wcTest = new HeadlessEditorState('Hello World 123');
@@ -360,7 +360,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     expect(editTest.getText()).toContain('第一行');
 
     // Typography multi-paragraph test
-    const formatted = formatChineseTypography('第一段\n\n第二段', { indentSpaces: 2 });
+    const formatted = formatChineseTypography('第一段\n\n第二段');
     expect(formatted).toContain('\u3000\u3000第一段');
 
     // A real provider without credentials must surface an error, never a fake success.

@@ -8,18 +8,15 @@ export * from './cursor.js';
 export * from './overlay.js';
 export * from './keys.js';
 export * from './layout.js';
-export * from './components/box.js';
-export * from './components/h-stack.js';
-export * from './components/v-stack.js';
-export * from './components/spacer.js';
-export * from './components/scroll-view.js';
-export * from './components/editor.js';
-export * from './components/select-list.js';
-export * from './components/markdown.js';
-export * from './components/thinking-accordion.js';
+// Components (atomic design: atoms / molecules / organisms — see ./components/index.js)
+export * from './components/index.js';
 export * from './terminal-image.js';
 
 export * from './mermaid.js';
 export * from './tui-screens.js';
 export * from './tui.js';
+
+// 表现层原语：从 agent-core 迁移而来的工作台与无头交互编排（详见 ARCHITECTURE.md §5）。
+export * from './studio.js';
+export * from './terminal-harness.js';
 

@@ -1,10 +1,10 @@
 import type { Workspace, Folder, Document, DocumentSnapshot, DocumentDelta, OperationRecord, SessionEntry } from '@inkpi/protocol';
-import type { InkDb } from './db.js';
+import type { IRepository, IDb } from './ports.js';
 
-export class InkRepository {
-  private db: InkDb;
+export class InkRepository implements IRepository {
+  private db: IDb;
 
-  constructor(db: InkDb) {
+  constructor(db: IDb) {
     this.db = db;
   }
 
@@ -147,13 +147,17 @@ export class InkRepository {
     return Number(res.lastInsertRowid);
   }
 
-  public getDeltas(documentId: string, afterTimestamp = 0): DocumentDelta[] {
+  /**
+   * 按自增 id 闭区间过滤增量（与 memory / jsonl 后端语义一致，满足 LSP 等价）。
+   * @param afterId 返回的增量满足 `id >= afterId`；省略时返回该文档全部增量。
+   */
+  public getDeltas(documentId: string, afterId = 0): DocumentDelta[] {
     const stmt = this.db.prepare(`
       SELECT * FROM document_deltas
-      WHERE document_id = ? AND created_at > ?
-      ORDER BY created_at ASC, id ASC
+      WHERE document_id = ? AND id >= ?
+      ORDER BY id ASC
     `);
-    const rows = stmt.all(documentId, afterTimestamp) as any[];
+    const rows = stmt.all(documentId, afterId) as any[];
     return rows.map((r) => ({
       id: Number(r.id),
       documentId: r.document_id,
@@ -163,12 +167,41 @@ export class InkRepository {
     }));
   }
 
-  public deleteDeltas(documentId: string, upToTimestamp: number): number {
+  /**
+   * 按创建时间过滤增量，仅供快照压缩（Compaction）回放使用。
+   * 与 `getDeltas` 的 id 契约区分开，避免把时间戳误当作增量 id。
+   */
+  public getDeltasSince(documentId: string, sinceTimestamp: number): DocumentDelta[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM document_deltas
+      WHERE document_id = ? AND created_at > ?
+      ORDER BY id ASC
+    `);
+    const rows = stmt.all(documentId, sinceTimestamp) as any[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      documentId: r.document_id,
+      stepJson: r.step_json,
+      clientTimestamp: Number(r.client_timestamp),
+      createdAt: Number(r.created_at)
+    }));
+  }
+
+  public deleteDeltas(documentId: string, upToId: number): number {
+    const stmt = this.db.prepare(`
+      DELETE FROM document_deltas
+      WHERE document_id = ? AND id <= ?
+    `);
+    const res = stmt.run(documentId, upToId);
+    return Number(res.changes);
+  }
+
+  public deleteDeltasBefore(documentId: string, beforeTimestamp: number): number {
     const stmt = this.db.prepare(`
       DELETE FROM document_deltas
       WHERE document_id = ? AND created_at <= ?
     `);
-    const res = stmt.run(documentId, upToTimestamp);
+    const res = stmt.run(documentId, beforeTimestamp);
     return Number(res.changes);
   }
 

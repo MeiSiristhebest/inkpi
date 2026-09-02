@@ -1,9 +1,9 @@
 import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
 import type { TypographyOptions } from '@inkpi/protocol';
-import type { Agent } from '../agent.js';
-import type { SessionTree } from '../tree.js';
-import { SlashCommandRegistry } from '../slash-commands.js';
-import { ANSI, drawBox } from '@inkpi/tui';
+import type { Agent } from '@inkpi/agent-core';
+import type { SessionTree } from '@inkpi/agent-core';
+import { SlashCommandRegistry } from '@inkpi/agent-core';
+import { ANSI, drawBox } from './render.js';
 
 export interface TerminalHarnessOptions {
   agent?: Agent;
@@ -30,8 +30,9 @@ export interface TerminalHarnessLabels {
 /**
  * Headless terminal interaction harness.
  *
- * It owns input routing and frame composition. Product wording and resource
- * semantics are injected by labels and initial resources.
+ * 原位于 `@inkpi/agent-core/src/tui/terminal-harness.ts`，作为表现层被错误地放在
+ * 领域核心包内。现迁移至 `@inkpi/tui`。领域类型从 `@inkpi/agent-core` 引入，
+ * 渲染原语取包内实现。详见 ARCHITECTURE.md §5。
  */
 export class TerminalHarness {
   public editor: HeadlessEditorState;
@@ -39,7 +40,7 @@ export class TerminalHarness {
   public slashRegistry: SlashCommandRegistry;
   public agent?: Agent;
   public tree?: SessionTree;
-  
+
   public currentResourceTitle = 'Untitled resource';
   public resourceList: Array<{ title: string; wordCount: number; active: boolean }>;
 
@@ -144,7 +145,7 @@ export class TerminalHarness {
     }
 
     // 2. 斜杠指令
-    if (this.slashRegistry.isSlashCommand(trimmed)) {
+    if (this.slashRegistry.isSlashSyntax(trimmed)) {
       const res = await this.slashRegistry.execute(trimmed, {
         agent: this.agent,
         tree: this.tree

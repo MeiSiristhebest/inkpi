@@ -116,7 +116,7 @@ async function main() {
       const wsPortIdx = args.indexOf('--ws-port');
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
-      const { InkPiDaemon } = await import('@inkpi/agent-core');
+      const { InkPiDaemon } = await import('@inkpi/server');
       const daemon = new InkPiDaemon({ port, host: '127.0.0.1' });
       await daemon.start(port, '127.0.0.1');
       await daemon.startWebSocket(wsPort, '127.0.0.1');
@@ -178,7 +178,7 @@ async function main() {
 }
 
 async function startInteractiveStudio(args) {
-  const { TerminalStudio } = await import('@inkpi/agent-core');
+  const { TerminalStudio } = await import('@inkpi/tui');
   const { ANSI } = await import('@inkpi/tui');
 
   const studio = new TerminalStudio({

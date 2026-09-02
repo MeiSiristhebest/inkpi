@@ -16,11 +16,8 @@
   },
   "dependencies": {
     "@inkpi/protocol": "workspace:*",
-    "@inkpi/tui": "workspace:*",
     "@inkpi/ai": "workspace:*",
-    "@inkpi/editor-core": "workspace:*",
-    "@inkpi/storage": "workspace:*",
-    "ws": "8.21.3"
+    "@inkpi/editor-core": "workspace:*"
   },
   "description": "Core Agent runtime with dual-loop state machine, steering queues, session tree, and tool execution engine",
   "author": "InkPi Contributors",

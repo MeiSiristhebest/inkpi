@@ -35,6 +35,3 @@ export class MessageQueue {
     return [...this.queue];
   }
 }
-
-export class SteeringQueue extends MessageQueue {}
-export class FollowUpQueue extends MessageQueue {}

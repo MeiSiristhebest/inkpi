@@ -5,7 +5,7 @@ import {
   layoutHStack,
   layoutVStack,
   renderScrollView
-} from '@inkpi/agent-core';
+} from '@inkpi/tui';
 
 describe('Pi TUI Engine Integration & Studio Layout', () => {
   it('should compute differential rendering updates correctly', () => {

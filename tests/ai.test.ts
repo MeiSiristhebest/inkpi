@@ -355,7 +355,7 @@ describe('@inkpi/ai', () => {
         { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://provider.test/v1', apiKey: 'sk-test' },
         [{ role: 'user', content: 'prompt' }]
       );
-      stream.on((event) => observedEvents.push(event.type));
+      stream.on((event) => { observedEvents.push(event.type); });
       const message = await stream.collect();
       expect(observedEvents).toContain('tool_call_start');
       expect(observedEvents).toContain('tool_call_delta');

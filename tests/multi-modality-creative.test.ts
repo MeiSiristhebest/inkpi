@@ -41,7 +41,7 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         ],
         assets: [{ id: 'prop_file', name: '机密档案袋', holder: '陆警官' }],
         tracks: [{ id: 'clue_fire', clue: '十二年前北郊火灾真相', status: 'pending' }],
-        locations: ['警局审讯室'],
+        locations: [{ name: '警局审讯室' }],
         modifiedResources: ['SCENE_01']
       };
 
@@ -112,7 +112,7 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         entities: [{ id: 'heroine', name: '夏目铃', status: '好感度:80' }],
         assets: [],
         tracks: [{ id: 'flag_confession', clue: '天台告白支线', status: 'pending' }],
-        locations: ['学院天台'],
+        locations: [{ name: '学院天台' }],
         modifiedResources: ['VN_ACT_02']
       };
 

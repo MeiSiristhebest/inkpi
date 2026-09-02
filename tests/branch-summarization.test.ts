@@ -15,7 +15,7 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
     const leaf1 = tree.addMessage({ role: 'assistant', content: [{ type: 'text', text: '拜入Guild A下' }] } as AssistantMessage);
 
     // Branch 2 from nodeA1
-    tree.fork(nodeA1);
+    tree.selectLeaf(nodeA1);
     const nodeC1 = tree.addMessage({ role: 'user', content: '分支2：主角选择魔道万毒门' } as UserMessage);
     const leaf2 = tree.addMessage({ role: 'assistant', content: [{ type: 'text', text: '拜入万毒门下' }] } as AssistantMessage);
 
@@ -39,7 +39,7 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
     } as AssistantMessage);
 
     // Fork Line B from rootAssistant
-    tree.fork(rootAssistant);
+    tree.selectLeaf(rootAssistant);
     const leafB = tree.addMessage({ role: 'user', content: '试写：主角选择隐忍调查' } as UserMessage);
 
     let now = 1000;

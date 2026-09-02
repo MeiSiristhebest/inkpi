@@ -1,5 +1,6 @@
 import type { StateLedger } from '@inkpi/protocol';
 import { SessionTree, type SessionTreeNode } from './tree.js';
+import type { Clock, IdGenerator } from './ports/index.js';
 
 export interface WhatIfBranchInfo {
   branchId: string;
@@ -41,8 +42,8 @@ export interface WhatIfExecutiveReport {
 export interface BranchManagerOptions {
   mainBranchName?: string;
   mainBranchPremise?: string;
-  idGenerator?: () => string;
-  clock?: () => number;
+  idGenerator?: IdGenerator;
+  clock?: Clock;
   formatSwitchSummary?: (input: {
     currentBranch: WhatIfBranchInfo;
     targetBranch: WhatIfBranchInfo;
@@ -66,8 +67,8 @@ export class BranchManager {
   private options: BranchManagerOptions;
   private branches = new Map<string, WhatIfBranchInfo>();
   private activeBranchId = 'main';
-  private idGenerator: () => string;
-  private clock: () => number;
+  private idGenerator: IdGenerator;
+  private clock: Clock;
 
   constructor(tree?: SessionTree, options: BranchManagerOptions = {}) {
     this.tree = tree || new SessionTree();

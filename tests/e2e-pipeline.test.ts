@@ -71,7 +71,7 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
         name: 'world_query',
         description: '动态世界观检索工具',
         parameters: { type: 'object', properties: { query: { type: 'string' } } },
-        execute: async (_callId, params) => ({
+        execute: async (_callId: string, params: { query: string }) => ({
           content: [{ type: 'text', text: `【检索结果】关于「${params.query}」的设定信息。` }]
         })
       });
@@ -89,7 +89,7 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
     expect(loaded).toBe(true);
 
     const emittedEvents: AgentEvent[] = [];
-    agent.subscribe((ev) => emittedEvents.push(ev));
+    agent.subscribe((ev) => { emittedEvents.push(ev); });
 
     // 7. Request Agent to continue with context awareness and tool execution
     await agent.prompt('lookup_codex 请续写下一句。');

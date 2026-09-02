@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TuiStudio } from '@inkpi/agent-core';
+import { TuiStudio } from '@inkpi/tui';
 import { Agent } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
 

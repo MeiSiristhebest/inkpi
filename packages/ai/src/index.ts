@@ -6,5 +6,7 @@ export * from './catalog.js';
 export * from './usage.js';
 export * from './prompt-caching.js';
 export * from './models.generated.js';
+export * from './errors.js';
+export * from './test-fixtures.js';
 
 

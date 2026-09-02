@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 import type { AgentMessage, StateLedger } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
+import { escapeHtml } from './html.js';
 
 export interface CreativeSessionShareOptions {
   title?: string;
@@ -224,14 +225,4 @@ export class SessionShareManager {
 </body>
 </html>`;
   }
-}
-
-function escapeHtml(str: string): string {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { InkDb, LaneManager, StorageConformanceSuite } from '@inkpi/storage';
+import { InkDb, LaneManager } from '@inkpi/storage';
+import { StorageConformanceSuite } from './storage-conformance-suite.js';
 
 describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
   it('should manage lanes and branch tips accurately', () => {
@@ -234,7 +235,8 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
     expect(brokenSuite.verifyFts5AutoSync().passed).toBe(false);
     expect(brokenSuite.verifyLaneForkingAndTipIsolation().passed).toBe(false);
     expect(brokenSuite.verifyWriterLeaseFencing().passed).toBe(false);
-    expect(brokenSuite.verifyWalCheckpoint().passed).toBe(true);
+    // A closed database cannot checkpoint; the previously-swallowed error must now surface.
+    expect(brokenSuite.verifyWalCheckpoint().passed).toBe(false);
   });
 });
 

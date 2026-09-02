@@ -7,7 +7,7 @@ import {
   RemoteStreamTransport,
   TcpSocketTransport,
   WebSocketRpcTransport
-} from '@inkpi/agent-core';
+} from '@inkpi/server';
 import { HeadlessEditorState } from '@inkpi/editor-core';
 
 describe('InkPi RPC Remote Transports & Server/Client', () => {

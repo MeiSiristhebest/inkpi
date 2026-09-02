@@ -1,9 +1,5 @@
-import type { InkDb } from './db.js';
-import { InkRepository } from './repository.js';
-import { LaneManager } from './lanes.js';
-import { FtsSearchEngine } from './fts.js';
-import { CompactionEngine } from './compaction.js';
-import { WriterLeaseManager } from './leases.js';
+import type { InkDb } from '@inkpi/storage';
+import { InkRepository, LaneManager, FtsSearchEngine, CompactionEngine, WriterLeaseManager } from '@inkpi/storage';
 
 export interface ConformanceCheckResult {
   suiteName: string;
@@ -21,8 +17,18 @@ export interface StorageConformanceReport {
 }
 
 /**
- * 存储一致性与崩溃安全验证套件 (1:1 对标 repos/pi packages/session-backends conformance test suite)
- * 验证事务原子性、LSM Delta 重放准确性、FTS5 全文索引同步、多泳道游标隔离及写租约有效性。
+ * Storage consistency & crash-safety conformance harness.
+ *
+ * Contract-checked invariants:
+ *  - transaction atomicity (a thrown error inside `transaction` rolls back)
+ *  - event-sourcing delta replay + snapshot compaction round-trip
+ *  - FTS5 index auto-sync on snapshot upsert
+ *  - multi-lane fork tip isolation
+ *  - writer-lease fencing (mutual exclusion + safe re-acquisition)
+ *  - WAL checkpoint executes without error
+ *
+ * Lives under `tests/` (not the `@inkpi/storage` public API) because it is a
+ * self-test harness, not a runtime feature.
  */
 export class StorageConformanceSuite {
   private db: InkDb;

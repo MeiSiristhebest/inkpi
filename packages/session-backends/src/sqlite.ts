@@ -124,12 +124,4 @@ export class SqliteSessionBackend implements ISessionBackend {
   public async search(query: string, limit = 20): Promise<FtsSearchResult[]> {
     return this.fts.search(query, limit);
   }
-
-  public getRepository(): InkRepository {
-    return this.repo;
-  }
-
-  public getDb(): InkDb {
-    return this.db;
-  }
 }

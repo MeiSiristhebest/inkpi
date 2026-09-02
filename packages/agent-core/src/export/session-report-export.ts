@@ -7,6 +7,7 @@ import type {
 } from '@inkpi/protocol';
 import type { UsageCostBreakdown } from '@inkpi/ai';
 import type { SessionTree } from '../tree.js';
+import { escapeHtml } from './html.js';
 
 export interface SessionReportBranchSummary {
   branchName: string;
@@ -287,13 +288,4 @@ export class SessionReportExporter {
 function formatTimestamp(value: string | number | Date | undefined): string {
   if (value === undefined) return new Date().toISOString();
   return new Date(value).toISOString();
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
