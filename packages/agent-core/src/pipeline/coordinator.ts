@@ -23,6 +23,8 @@ import {
   createVisualNovelGateRules
 } from './legacy-narrative.js';
 import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
+import { mergeLedgers } from './ledger-merge.js';
+import { detectGateIssues } from './gate-detection.js';
 
 import type { ModelConfig } from '@inkpi/ai';
 import { getModelPreset, streamAi } from '@inkpi/ai';
@@ -160,34 +162,7 @@ export class WorkflowCoordinator {
     ledger?: StateLedger,
     context?: any
   ): (QualityGateIssue & { entityOrEntity?: string })[] {
-    const safeLedger: StateLedger = ledger || {
-      entities: [],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedResources: []
-    };
-    const issues: (QualityGateIssue & { entityOrEntity?: string })[] = [];
-
-    for (const rule of this.gateRules) {
-      if (rule.pattern) {
-        const regex = typeof rule.pattern === 'string' ? new RegExp(rule.pattern, 'g') : rule.pattern;
-        regex.lastIndex = 0;
-        if (regex.test(content)) {
-          issues.push({
-            type: rule.type,
-            description: rule.description,
-            severity: rule.severity
-          });
-        }
-      }
-      if (rule.detector) {
-        const issue = rule.detector(content, safeLedger, context);
-        if (issue) issues.push(issue);
-      }
-    }
-
-    return issues;
+    return detectGateIssues(content, this.gateRules, ledger, context).map((i) => ({ ...i }));
   }
 
   public detectGateIssues(content: string, ledger?: StateLedger, context?: any): QualityGateIssue[] {
@@ -273,7 +248,7 @@ export class WorkflowCoordinator {
         if (typeof res === 'object') {
           stageUsage = res.usage;
           if (res.modifiedLedger) {
-            ctx.stateLedger = this.mergeLedgers(
+            ctx.stateLedger = mergeLedgers(
               ctx.stateLedger,
               res.modifiedLedger,
               options.compatibilityMode === 'legacy-pipeline'
@@ -321,7 +296,7 @@ export class WorkflowCoordinator {
       // 门禁检查 (Quality Gate)
       const stageRules = [...this.gateRules, ...(stage.gateRules || [])];
       if (stage.enableGate || isGateActive || stageRules.length > 0) {
-        const issues = this.detectIssues(outputText, ctx.stateLedger, ctx, stageRules);
+        const issues = detectGateIssues(outputText, stageRules, ctx.stateLedger, ctx);
         if (issues.length > 0) {
           ctx.qualityIssues = issues;
           ctx.qualityGateIssues = issues;
@@ -439,7 +414,7 @@ export class WorkflowCoordinator {
 
       if (options.ledgerExtractor) {
         const extracted = options.ledgerExtractor(outputText, ctx);
-        ctx.stateLedger = this.mergeLedgers(
+        ctx.stateLedger = mergeLedgers(
           ctx.stateLedger,
           extracted,
           options.compatibilityMode === 'legacy-pipeline'
@@ -545,22 +520,6 @@ export class WorkflowCoordinator {
     return { text: texts, usage: assistantMsg.usage };
   }
 
-  private detectIssues(content: string, ledger: StateLedger, context: any, rules: QualityGateRule[]): QualityGateIssue[] {
-    const issues: QualityGateIssue[] = [];
-    for (const rule of rules) {
-      if (rule.pattern) {
-        const regex = typeof rule.pattern === 'string' ? new RegExp(rule.pattern, 'g') : rule.pattern;
-        regex.lastIndex = 0;
-        if (regex.test(content)) issues.push({ type: rule.type, description: rule.description, severity: rule.severity });
-      }
-      if (rule.detector) {
-        const issue = rule.detector(content, ledger, context);
-        if (issue) issues.push(issue);
-      }
-    }
-    return issues;
-  }
-
   private emptyLedger(): StateLedger {
     return { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] } as StateLedger;
   }
@@ -571,89 +530,6 @@ export class WorkflowCoordinator {
     }
   }
 
-  private mergeLedgers(
-    base: StateLedger,
-    addition: Partial<StateLedger>,
-    includeLegacyAliases = false
-  ): StateLedger {
-    const baseEntities = base.entities || base.characters || [];
-    const addEntities = addition.entities || addition.characters || [];
-    const charMap = new Map<string, any>(
-      baseEntities.map((c: any, index) => [c.id || c.name || `entity-${index}`, c])
-    );
-    for (const c of addEntities) {
-      const key = c.id || c.name || `entity-${charMap.size}`;
-      const existing = charMap.get(key);
-      charMap.set(key, existing ? { ...existing, ...c } : { ...c });
-    }
-
-    const baseAssets = base.assets || base.items || [];
-    const addAssets = addition.assets || addition.items || [];
-    const itemMap = new Map<string, any>(
-      baseAssets.map((i: any, index) => [i.id || i.name || `asset-${index}`, i])
-    );
-    for (const item of addAssets) {
-      const key = item.id || item.name || `asset-${itemMap.size}`;
-      const existing = itemMap.get(key);
-      itemMap.set(key, existing ? { ...existing, ...item } : { ...item });
-    }
-
-    const chapters = new Set([
-      ...(base.modifiedResources || base.modifiedChapters || base.modifiedDocuments || []),
-      ...(addition.modifiedResources || addition.modifiedChapters || addition.modifiedDocuments || []),
-    ]);
-
-    const characters = Array.from(charMap.values());
-    const items = Array.from(itemMap.values());
-    const tracks = mergeRecords(base.tracks || [], addition.tracks || [], (track: any, index) =>
-      track.id || track.clue || track.summary || `track-${index}`
-    );
-    const locations = mergeRecords(base.locations || [], addition.locations || [], (location: any, index) =>
-      location.id || location.name || `location-${index}`
-    );
-
-    const result: StateLedger = {
-      ...base,
-      ...addition,
-      locations,
-      entities: characters,
-      assets: items,
-      tracks,
-      modifiedResources: Array.from(chapters)
-    } as StateLedger;
-
-    if (!includeLegacyAliases) {
-      delete (result as any).characters;
-      delete (result as any).items;
-      delete (result as any).foreshadowings;
-      delete (result as any).modifiedChapters;
-      delete (result as any).modifiedDocuments;
-      return result;
-    }
-
-    Object.assign(result, {
-      characters,
-      items,
-      foreshadowings: tracks,
-      modifiedChapters: Array.from(chapters),
-      modifiedDocuments: Array.from(chapters)
-    });
-    return result;
-  }
-}
-
-function mergeRecords<T extends Record<string, unknown>>(
-  base: T[],
-  addition: T[],
-  keyOf: (record: T, index: number) => string
-): T[] {
-  const records = new Map<string, T>();
-  for (const [index, record] of [...base, ...addition].entries()) {
-    const key = keyOf(record, index);
-    const previous = records.get(key);
-    records.set(key, previous ? { ...previous, ...record } : { ...record });
-  }
-  return Array.from(records.values());
 }
 
 /** 别名兼容 */

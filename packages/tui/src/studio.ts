@@ -61,6 +61,41 @@ export interface TerminalStudioOptions {
  * 从 `@inkpi/agent-core` 引入，渲染原语（ANSI/drawBox/DifferentialRenderer）取包内实现。
  * 详见 ARCHITECTURE.md §5。
  */
+
+/**
+ * 构造 TerminalStudio 的默认标签集合。纯函数，无副作用。
+ * 原内联于构造函数，抽出后便于单测与按需覆写（构造时以 `options.labels` 浅合并覆盖）。
+ */
+function buildDefaultStudioLabels(): StudioLabels {
+  return {
+    leftBoxTitle: 'Resources',
+    editorTitle: 'Editor',
+    rightBoxTitle: 'Runtime State',
+    entitiesHeader: 'Entities:',
+    assetsHeader: 'Assets:',
+    tracksHeader: 'Tracks:',
+    dialogueHeader: 'Conversation:',
+    emptyContentText: '(empty)',
+    emptyEntitiesText: '   (no entities)',
+    emptyAssetsText: '   (no assets)',
+    emptyTracksText: '   (no tracks)',
+    emptyDialogueText: ' (no messages)',
+    statusReady: 'Ready',
+    processingText: 'Processing...',
+    ghostSuggestion: 'Suggestion',
+    acceptSuggestion: 'Tab to accept',
+    focusStatus: (mode) => `Focus: [${mode.toUpperCase()}]`,
+    resourceMetric: (wordCount) => `${wordCount}`,
+    insertedStatus: (count) => `Inserted ${count} characters`,
+    commandExecutedStatus: (command) => `Command executed: ${command}`,
+    statusBarTitle: 'Studio',
+    statusBarWords: 'Count',
+    statusBarFocus: 'Focus',
+    userRole: 'user',
+    assistantRole: 'assistant'
+  };
+}
+
 export class TerminalStudio {
   public editor: HeadlessEditorState;
   public ghost: GhostTextManager;
@@ -105,34 +140,7 @@ export class TerminalStudio {
     this.height = Math.max(24, options.height || 32);
     this.typography = options.typography;
 
-    this.labels = {
-      leftBoxTitle: 'Resources',
-      editorTitle: 'Editor',
-      rightBoxTitle: 'Runtime State',
-      entitiesHeader: 'Entities:',
-      assetsHeader: 'Assets:',
-      tracksHeader: 'Tracks:',
-      dialogueHeader: 'Conversation:',
-      emptyContentText: '(empty)',
-      emptyEntitiesText: '   (no entities)',
-      emptyAssetsText: '   (no assets)',
-      emptyTracksText: '   (no tracks)',
-      emptyDialogueText: ' (no messages)',
-      statusReady: 'Ready',
-      processingText: 'Processing...',
-      ghostSuggestion: 'Suggestion',
-      acceptSuggestion: 'Tab to accept',
-      focusStatus: (mode) => `Focus: [${mode.toUpperCase()}]`,
-      resourceMetric: (wordCount) => `${wordCount}`,
-      insertedStatus: (count) => `Inserted ${count} characters`,
-      commandExecutedStatus: (command) => `Command executed: ${command}`,
-      statusBarTitle: 'Studio',
-      statusBarWords: 'Count',
-      statusBarFocus: 'Focus',
-      userRole: 'user',
-      assistantRole: 'assistant',
-      ...options.labels
-    };
+    this.labels = { ...buildDefaultStudioLabels(), ...options.labels };
 
     this.statusMessage = this.labels.statusReady || 'Ready';
 
@@ -209,7 +217,37 @@ export class TerminalStudio {
     const centerWidth = Math.max(30, this.width - leftWidth - rightWidth - 2);
     const mainHeight = this.height - 3;
 
-    // 1. Resource list
+    const leftBox = this.renderResourcePane(leftWidth, mainHeight);
+    const centerBox = this.renderEditorPane(centerWidth, mainHeight);
+    const rightBox = this.renderStatePane(rightWidth, mainHeight);
+
+    const combinedRows: string[] = [];
+    for (let r = 0; r < mainHeight; r++) {
+      const l = leftBox[r] || ' '.repeat(leftWidth);
+      const c = centerBox[r] || ' '.repeat(centerWidth);
+      const rg = rightBox[r] || ' '.repeat(rightWidth);
+      combinedRows.push(`${l} ${c} ${rg}`);
+    }
+
+    // Status line
+    const wordCount = this.editor.getWordCount();
+    let statusText = this.statusMessage;
+    if (this.flashMessage && Date.now() < this.flashMessage.expiresAt) {
+      const color = this.flashMessage.level === 'error' ? ANSI.FG_RED : this.flashMessage.level === 'warning' ? ANSI.FG_YELLOW : ANSI.FG_GREEN;
+      statusText = `${color}⚡ [${this.flashMessage.level.toUpperCase()}] ${this.flashMessage.text}${ANSI.RESET}`;
+    }
+
+    const statusLine = `${ANSI.BG_DARK_GRAY}${ANSI.FG_WHITE} ${this.labels.statusBarTitle || 'Studio'} | ${this.labels.statusBarWords || 'Count'}: ${wordCount} | ${this.labels.statusBarFocus || 'Focus'}: ${this.focusMode.toUpperCase()} | ${statusText}${ANSI.RESET}`;
+    combinedRows.push(statusLine);
+
+    // Modal rendering
+    this.applyModalOverlay(combinedRows);
+
+    return combinedRows.join('\n');
+  }
+
+  /** 左栏：资源目录树。 */
+  private renderResourcePane(leftWidth: number, mainHeight: number): string[] {
     const outlineBorder = this.focusMode === 'outline' ? ANSI.FG_YELLOW : ANSI.FG_CYAN;
     const outlineLines: string[] = this.resources.map((res, idx) => {
       const activeMark = idx === this.activeResourceIndex ? '👉 ' : '   ';
@@ -217,9 +255,11 @@ export class TerminalStudio {
       const metric = this.labels.resourceMetric?.(res.wordCount) || `${res.wordCount}`;
       return `${activeMark}${status}${res.title} (${metric})`;
     });
-    const leftBox = drawBox(this.labels.leftBoxTitle || '📚 资源目录树', outlineLines, leftWidth, mainHeight, outlineBorder);
+    return drawBox(this.labels.leftBoxTitle || '📚 资源目录树', outlineLines, leftWidth, mainHeight, outlineBorder);
+  }
 
-    // 2. Editor and ghost text
+  /** 中栏：编辑器与 ghost 文本。 */
+  private renderEditorPane(centerWidth: number, mainHeight: number): string[] {
     const editorBorder = this.focusMode === 'editor' ? ANSI.FG_GREEN : ANSI.FG_GRAY;
     const currentResource = this.resources[this.activeResourceIndex] || { title: 'Untitled resource' };
     const rawContent = this.editor.getText();
@@ -234,15 +274,17 @@ export class TerminalStudio {
         contentLines.push(`${ANSI.FG_GRAY}${this.labels.ghostSuggestion || 'Suggestion'}: ${gt.text} ${ANSI.FG_YELLOW}(${this.labels.acceptSuggestion || 'Tab to accept'})${ANSI.RESET}`);
       }
     }
-    const centerBox = drawBox(
+    return drawBox(
       `${this.labels.editorTitle || 'Editor'} - ${currentResource.title} (${this.labels.resourceMetric?.(this.editor.getWordCount()) || this.editor.getWordCount()})`,
       contentLines,
       centerWidth,
       mainHeight,
       editorBorder
     );
+  }
 
-    // 3. Runtime state and conversation
+  /** 右栏：运行时状态账本与对话流。 */
+  private renderStatePane(rightWidth: number, mainHeight: number): string[] {
     const rightBorder = this.focusMode === 'copilot' || this.focusMode === 'ledger' ? ANSI.FG_MAGENTA : ANSI.FG_BLUE;
     const rightContentLines: string[] = [];
 
@@ -284,29 +326,11 @@ export class TerminalStudio {
       rightContentLines.push(this.labels.emptyDialogueText || ' (无活跃对话)');
     }
 
-    const rightBox = drawBox(this.labels.rightBoxTitle || '📊 状态账本 & Copilot', rightContentLines, rightWidth, mainHeight, rightBorder);
+    return drawBox(this.labels.rightBoxTitle || '📊 状态账本 & Copilot', rightContentLines, rightWidth, mainHeight, rightBorder);
+  }
 
-    // 合并三栏
-    const combinedRows: string[] = [];
-    for (let r = 0; r < mainHeight; r++) {
-      const l = leftBox[r] || ' '.repeat(leftWidth);
-      const c = centerBox[r] || ' '.repeat(centerWidth);
-      const rg = rightBox[r] || ' '.repeat(rightWidth);
-      combinedRows.push(`${l} ${c} ${rg}`);
-    }
-
-    // 4. Status line
-    const wordCount = this.editor.getWordCount();
-    let statusText = this.statusMessage;
-    if (this.flashMessage && Date.now() < this.flashMessage.expiresAt) {
-      const color = this.flashMessage.level === 'error' ? ANSI.FG_RED : this.flashMessage.level === 'warning' ? ANSI.FG_YELLOW : ANSI.FG_GREEN;
-      statusText = `${color}⚡ [${this.flashMessage.level.toUpperCase()}] ${this.flashMessage.text}${ANSI.RESET}`;
-    }
-
-    const statusLine = `${ANSI.BG_DARK_GRAY}${ANSI.FG_WHITE} ${this.labels.statusBarTitle || 'Studio'} | ${this.labels.statusBarWords || 'Count'}: ${wordCount} | ${this.labels.statusBarFocus || 'Focus'}: ${this.focusMode.toUpperCase()} | ${statusText}${ANSI.RESET}`;
-    combinedRows.push(statusLine);
-
-    // 5. Modal rendering
+  /** 在已组合的行上叠加 selectList 模态框（原地修改 combinedRows）。 */
+  private applyModalOverlay(combinedRows: string[]): void {
     if (this.activeModal === 'selectList' && this.activeSelectList) {
       const modalLines: string[] = [];
       modalLines.push(`${ANSI.BOLD}${this.activeSelectList.title}${ANSI.RESET}`);
@@ -326,8 +350,6 @@ export class TerminalStudio {
         }
       }
     }
-
-    return combinedRows.join('\n');
   }
 
   public flash(text: string, level: 'info' | 'success' | 'warning' | 'error' = 'info', durationMs = 3000): void {

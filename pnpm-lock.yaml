@@ -63,15 +63,6 @@ importers:
       '@inkpi/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@inkpi/storage':
-        specifier: workspace:*
-        version: link:../storage
-      '@inkpi/tui':
-        specifier: workspace:*
-        version: link:../tui
-      ws:
-        specifier: 8.21.3
-        version: 8.21.3
 
   packages/ai:
     dependencies:
@@ -110,6 +101,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@inkpi/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
       '@inkpi/ai':
         specifier: workspace:*
         version: link:../ai
@@ -122,6 +116,12 @@ importers:
       '@inkpi/session-backends':
         specifier: workspace:*
         version: link:../session-backends
+      '@inkpi/storage':
+        specifier: workspace:*
+        version: link:../storage
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
 
   packages/session-backends:
     dependencies:
@@ -140,6 +140,9 @@ importers:
 
   packages/tui:
     dependencies:
+      '@inkpi/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
       '@inkpi/editor-core':
         specifier: workspace:*
         version: link:../editor-core

@@ -7,7 +7,7 @@
 
 > **整改状态（Remediation status）**：
 > - **阶段 1（止血）**：7/7 已完成（`tests/` 已纳入 `tsc -b`，动态端口已落地）。
-> - **阶段 2（治本）**：8 项中 **6 项已完成**（#8 领域端口声明 / #11 storage `IDb`/`IRepository` 抽象 / #15 `conformance` 去公开 API 且修复恒真断言 / #9 包提取 / #10 删依赖 / #14 RPC `withSession` 高阶函数（部分）），**2 项未开始**（#12 Studio MVC 拆分 / #13 Coordinator·loop 拆分——行为正确但仍是巨型类，列为最终结构性债务，blind 重构有破坏绿 suite 的风险）。
+> - **阶段 2（治本）**：8 项中 **6 项已完成**（#8 领域端口声明 / #11 storage `IDb`/`IRepository` 抽象 / #15 `conformance` 去公开 API 且修复恒真断言 / #9 包提取 / #10 删依赖 / #14 RPC `withSession` 高阶函数（部分）），**2 项已开始**（#12 Studio MVC 拆分 / #13 Coordinator·loop 拆分——纯函数抽取与 `renderScreen` 拆方法已完成，行为零变化；深层类/策略拆分仍待，列为最终结构性债务）。
 > - **阶段 3（抛光）**：6 项中 **4 项已完成**（#17 解析器剥离 / #18 `Clock` 统一注入 / #21 文档同步 / #16 TUI 原子化重组），**1 项部分完成**（#19 命名清理：已完成 `fork→selectLeaf`、telemetry 纯读、`isSlashCommand→isSlashSyntax`+`hasCommand`，其余后缀/别名/名实不符未做；别名导出组为兼容保留），**1 项受阻**（#20 `perFile` 覆盖率——被沙箱 safe-delete 守卫阻断而无法实测）。
 >
 > 本报告的 15 项原则裁定中，核心正确性缺陷（硬编码/mock、LSP、XSS、恒真断言）已被实质性修复；
@@ -30,8 +30,8 @@
 > 新增守卫测试：`tests/architecture-invariants.test.ts`（无静默假模型）、
 > `tests/dependency-direction.test.ts`（依赖方向棘轮，见 §3 阶段 2 状态表）。
 >
-> **核心已治本，残余为巨型类拆分**：`agent-core` 已不再是杂物抽屉——`src/tui/` 与 `src/rpc/` 已迁出（分别进入 `@inkpi/tui` 与 `@inkpi/server`），运行时依赖已收敛为 `@inkpi/protocol` / `@inkpi/ai` / `@inkpi/editor-core`，依赖方向棘轮 `BASELINE` 已清空。
-> 仅剩 `TerminalStudio` 与 `WorkflowCoordinator` / `runAgentLoop` 等巨型类尚未按职责拆分（行为正确、测试全绿，但违反 SRP），以及大量 P1/P2 硬编码与 `perFile` 覆盖率未启用。这些属于阶段 2/3，需结构性重构，非局部修改可达成。
+> **核心已治本，巨型类已增量瘦身**：`agent-core` 已不再是杂物抽屉——`src/tui/` 与 `src/rpc/` 已迁出（分别进入 `@inkpi/tui` 与 `@inkpi/server`），运行时依赖已收敛为 `@inkpi/protocol` / `@inkpi/ai` / `@inkpi/editor-core`，依赖方向棘轮 `BASELINE` 已清空。
+> `WorkflowCoordinator` 的门禁检测去重为纯 `detectGateIssues()`、账本合并抽为纯 `mergeLedgers`/`mergeRecords`（`pipeline/gate-detection.ts` / `pipeline/ledger-merge.ts`）；`runAgentLoop` 抽纯 `extractToolCalls()`；`TerminalStudio` 抽纯 `buildDefaultStudioLabels()` 且 `renderScreen()` 拆为 `renderResourcePane`/`renderEditorPane`/`renderStatePane`/`applyModalOverlay`。复杂逻辑已单测覆盖，类体积显著下降。深层职责拆分（`StudioModel`/`StudioView`/`StudioController`、`StageRegistry`+`GateEvaluator`+`WorkflowExecutor`、管线四段）仍待，以及大量 P1/P2 硬编码与 `perFile` 覆盖率未启用。这些属于阶段 2/3，需结构性重构，非局部修改可达成。
 
 ---
 
@@ -230,16 +230,16 @@ traceId: 'inkpi_trace_' + s.id,   // OTel 要求 32 位十六进制，导出到�
 
 | 类 / 函数 | 位置 | 规模 | 职责数 |
 |---|---|---|---|
-| `WorkflowCoordinator` | `pipeline/coordinator.ts:92-643` | 551 行 | 9 |
-| `TerminalStudio` | `tui/studio.ts:62-468` | 470 行 | 14 |
+| `WorkflowCoordinator` | `pipeline/coordinator.ts:94-543` | ~450 行（门禁检测去重为纯 `detectGateIssues()`、账本合并抽为纯 `mergeLedgers`/`mergeRecords`） | 9 |
+| `TerminalStudio` | `tui/studio.ts:99-494` | ~395 行（标签默认值抽纯 `buildDefaultStudioLabels()`、`renderScreen()` 拆为四方法） | 14 |
 | `InkRpcServer` | `rpc/server.ts:43-454` | 465 行 | 8 |
-| `runAgentLoop` | `loop.ts:24-374` | 单函数 350 行 | 10 |
+| `runAgentLoop` | `loop.ts:27-375` | 单函数 ~350 行（已抽纯 `extractToolCalls()`） | 10 |
 | `SessionReportExporter` | `export/session-report-export.ts:96-285` | 299 行 | 8 |
 | `InkPiDaemon` | `rpc/daemon.ts:29-221` | 221 行 | 7 |
 | `ExtensionHost` | `extension-host.ts:28-243` | 216 行 | 7 |
 
 **`WorkflowCoordinator` 职责枚举**
-① 阶段注册表 ② 门禁规则注册表 ③ 事件总线（`:150` 直接 `console.error`） ④ 门禁检测（`detectPlotGateIssues` 与 `detectIssues` **两份重复实现**） ⑤ 执行编排（`executeWorkflow` **单方法 256 行**） ⑥ LLM 调用与提示词装配 ⑦ 遗留兼容分支（`compatibilityMode === 'legacy-pipeline'` 在 **10 处**散布判断） ⑧ 状态账本合并（含 5 处 `delete (result as any).characters` 运行时字段删除） ⑨ 遥测 span 生命周期。
+① 阶段注册表 ② 门禁规则注册表 ③ 事件总线（`:150` 直接 `console.error`） ④ 门禁检测（原 `detectPlotGateIssues` 与 `detectIssues` **两份重复实现**，**已收敛为单一纯 `detectGateIssues()`**，见 `pipeline/gate-detection.ts`） ⑤ 执行编排（`executeWorkflow` **单方法 256 行**） ⑥ LLM 调用与提示词装配 ⑦ 遗留兼容分支（`compatibilityMode === 'legacy-pipeline'` 在 **10 处**散布判断） ⑧ 状态账本合并（**已抽为纯 `mergeLedgers`/`mergeRecords`**，见 `pipeline/ledger-merge.ts`；含 5 处 `delete (result as any).characters` 运行时字段删除） ⑨ 遥测 span 生命周期。
 
 **`TerminalStudio` 职责枚举**
 编辑器状态 · 幽灵文本 · 斜杠命令注册表与执行 · **领域状态账本** · Agent 事件订阅与对话历史 · 焦点模式 · 资源列表 · 布局数学 · 三栏 ANSI 渲染 · 差分渲染 · 模态状态机 · 滚动状态 · toast 与墙钟过期 · 键盘输入路由。
@@ -249,7 +249,7 @@ traceId: 'inkpi_trace_' + s.id,   // OTel 要求 32 位十六进制，导出到�
 **`SessionReportExporter` 尤为典型**：第 90-95 行注释称 *"The core renders protocol data only"*，紧跟着就是 40 行内嵌 `<style>`（128-164）和 9 行内嵌 `<script>`（184-192）。
 
 **重构方向**
-1. `WorkflowCoordinator` 拆为：`StageRegistry`（注册表）、`GateEvaluator`（门禁，策略模式）、`WorkflowExecutor`（编排，调前者）、`LedgerMerger`（纯函数）、`TelemetryTracer`（装饰器）。`detectPlotGateIssues` / `detectIssues` 合并为一个 `GateRule` 集合的 `evaluate()`。
+1. `WorkflowCoordinator` 拆为：`StageRegistry`（注册表）、`GateEvaluator`（门禁，策略模式）、`WorkflowExecutor`（编排，调前者）、`LedgerMerger`（纯函数，**已完成**）、`TelemetryTracer`（装饰器）。`detectPlotGateIssues` / `detectIssues` 合并为一个 `GateRule` 集合的 `evaluate()`（**已完成**：纯 `detectGateIssues()`）。
 2. `runAgentLoop` 拆为：`ContextTransformer` → `StreamInvoker` → `ToolDispatcher`（含并发策略） → `TurnFinalizer`。工具并发策略已有两份实现（`loop.ts:376 executeSequential` 与 `tools.ts:113 executeBatch`），必须合并为一处。
 3. `TerminalStudio` 按 §2.12 拆为 Model / View / Controller 三层。
 4. `SessionReportExporter` 抽出 `ReportTemplate`（模板）与 `HtmlRenderer`（渲染器），CSS/JS 移到独立资源文件。
@@ -894,8 +894,8 @@ expect(emptyScreen).toContain('no entities');
 | 9 | 从 `agent-core` 迁出 `src/tui/` → `@inkpi/tui`，`src/rpc/`（daemon/server/client/transports）→ `@inkpi/server`，CLI 留在 `bin/`·`scripts/` | 关注点分离 | ✅ 已完成（`@inkpi/server` 与 `@inkpi/tui` 原已是桩，覆盖为完整实现并清空棘轮基线；`LiveSessionManager` 作为领域对象留在 `agent-core` 并由 `server` 再导出，依赖单向 `server→core`，断裂了原 `tui↔agent-core↔server` 循环图） |
 | 10 | 从 `agent-core/package.json` 删除 `tui` / `storage` / `ws` 依赖（保留被允许的 `@inkpi/ai`） | 依赖倒置 | ✅ 已完成（现仅依赖 `protocol` / `ai` / `editor-core`；棘轮 `BASELINE` 已清空） |
 | 11 | `storage` 提供 `IDb` / `IRepository` 抽象，`InkDb` 降级为 `node:sqlite` 的一个实现 | 存储可插拔 | ✅ 已完成（`ports.ts` 定义 `IDb`/`IRepository`，`InkDb`/`InkRepository` 分别实现） |
-| 12 | `TerminalStudio` 拆为 `StudioModel` / `StudioView` / `StudioController` | 被动视图 | ❌ 未开始（类仍 ~472 行、行为正确、测试全绿；blind 拆分核心对话类风险高，列为最终结构性债务，建议增量拆分并逐步验证） |
-| 13 | `WorkflowCoordinator` 拆为 5 个协作对象；`runAgentLoop` 拆为 4 段管线 | SRP | ❌ 未开始（`WorkflowCoordinator` ~551 行、`runAgentLoop` ~350 行，行为正确、测试全绿；`compatibilityMode` 的 10 处分支尚未收敛为策略对象，列为最终结构性债务） |
+| 12 | `TerminalStudio` 拆为 `StudioModel` / `StudioView` / `StudioController` | 被动视图 | ⚠️ 部分完成（标签默认值抽为纯 `buildDefaultStudioLabels()`、`renderScreen()` 拆为 `renderResourcePane`/`renderEditorPane`/`renderStatePane`/`applyModalOverlay`，输出字节一致、测试全绿；深层 `StudioModel`/`StudioView`/`StudioController` 三层分离仍待） |
+| 13 | `WorkflowCoordinator` 拆为 5 个协作对象；`runAgentLoop` 拆为 4 段管线 | SRP | ⚠️ 部分完成（`WorkflowCoordinator` 门禁检测去重为纯 `detectGateIssues()`、账本合并抽为纯 `mergeLedgers`/`mergeRecords`；`runAgentLoop` 抽纯 `extractToolCalls()`；类体积下降、复杂逻辑已单测；深层 5 对象/4 段管线拆分与 `compatibilityMode` 策略对象仍待） |
 | 14 | RPC 改注册表 + `withSession()` 高阶函数；`compatibilityMode` 改策略对象 | OCP | ⚠️ 部分完成（`@inkpi/server` RPC 层已用 `registerMethod()` 注册表，且 `InkPiDaemon` 的 9 处「取会话/未找到即抛」样板已抽为 `withSession()`；`compatibilityMode` 策略对象尚未做，留在 `WorkflowCoordinator`） |
 | 15 | 建立跨后端参数化一致性套件，删除 `storage/conformance.ts` 或移入 `tests/` | LSP 验证 | ✅ 已完成（`conformance.ts` 移入 `tests/storage-conformance-suite.ts` 并去公开导出；`db.checkpoint()` 诚实重抛，原恒真断言改为断言 `false`） |
 
