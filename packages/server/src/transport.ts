@@ -1,5 +1,5 @@
 /**
- * 通用 RPC 传输层抽象 (1:1 对标 pi-client / pi-server transport)
+ * 通用 RPC 传输层抽象
  */
 
 export interface RpcTransport {

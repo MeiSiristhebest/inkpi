@@ -15,7 +15,7 @@ export interface InvariantRule {
 }
 
 /**
- * 实体状态与上下文一致性基准评分器 (1:1 对标 pi-evals benchmark 体系)
+ * 实体状态与上下文一致性基准评分器
  * 检查模型生成文本与会话状态账本之间是否违背不变式约束。
  */
 export class EntityConsistencyScorer {

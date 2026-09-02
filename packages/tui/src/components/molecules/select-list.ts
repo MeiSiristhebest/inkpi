@@ -1,5 +1,5 @@
 /**
- * 键盘驱动的选择列表组件 (1:1 对标 pi-tui SelectList)
+ * 键盘驱动的选择列表组件
  */
 
 import { Component, type RenderContext } from '../../layout.js';

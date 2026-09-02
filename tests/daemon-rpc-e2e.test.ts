@@ -180,7 +180,7 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
       client.request('session.ghost.dismiss', { sessionId: 'non_existent' })
     ).rejects.toThrow(/not found/);
 
-    // Direct LiveSessionManager helper coverage
+    // Direct SessionRegistry helper coverage
     const sm = daemon.getSessionManager();
     const sOrCreate = sm.getOrCreateSession('sess_created', { model: 'mock-test' });
     expect(sOrCreate.sessionId).toBe('sess_created');

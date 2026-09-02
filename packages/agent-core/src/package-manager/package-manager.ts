@@ -22,7 +22,7 @@ export interface PackageManagerDiagnostics {
   malformedPackages: Array<{ directory: string; error: Error }>;
 }
 
-export class ExtensionPackageManager {
+export class ExtensionInstaller {
   private baseDir: string;
   private diagnostics: PackageManagerDiagnostics = { malformedPackages: [] };
   private operationSequence = 0;
@@ -88,7 +88,11 @@ export class ExtensionPackageManager {
     }
   }
 
-  public remove(pkgName: string): boolean {
+  /**
+   * 将已安装的扩展移入隔离区（.trash），不立即物理删除。
+   * 命名说明：此操作是"移入回收站"而非"彻底删除"，故命名为 trash 而非 remove/purge。
+   */
+  public trash(pkgName: string): boolean {
     const pkgDir = this.packageDirectory(pkgName);
     if (fs.existsSync(pkgDir)) {
       const quarantinePath = this.uniqueQuarantinePath(path.basename(pkgDir));

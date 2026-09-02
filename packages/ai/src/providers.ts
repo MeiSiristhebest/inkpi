@@ -243,7 +243,7 @@ export function resolveProviderApiKeyEnv(provider: string): string | undefined {
 }
 
 // ----------------------------------------------------------------------
-// 1. Faux / Test Provider (仅作为显式测试夹具，1:1 对标 repos/pi packages/ai/src/providers/faux.ts)
+// 1. Faux / Test Provider（仅作为显式测试夹具，不在生产注册表注册）
 // ----------------------------------------------------------------------
 export function createFauxProvider(script?: FauxScriptedResponse): ProviderHandler {
   return (model, messages, options) =>
@@ -625,7 +625,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
 };
 
 // ----------------------------------------------------------------------
-// 3. Anthropic Messages API Provider (1:1 对标 repos/pi anthropic-messages.ts)
+// 3. Anthropic Messages API Provider
 // ----------------------------------------------------------------------
 export const anthropicProvider: ProviderHandler = (model, messages, options) => {
   const stream = new AssistantEventStream();

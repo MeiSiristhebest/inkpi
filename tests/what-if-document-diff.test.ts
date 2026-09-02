@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { BranchManager } from '../packages/agent-core/src/branch-what-if.js';
+import { BranchExplorer } from '../packages/agent-core/src/branch-what-if.js';
 
 describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi)', () => {
   it('should create What-If branch with document snapshots and compare diffs', () => {
-    const manager = new BranchManager(undefined, {
+    const manager = new BranchExplorer(undefined, {
       mainBranchName: 'Base',
       formatExecutiveReport: ({ baseBranch, targetBranch, ledgerDiff }) => [
         `平行推演决策报告: ${baseBranch.branchName} -> ${targetBranch.branchName}`,

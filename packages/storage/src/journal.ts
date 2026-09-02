@@ -28,7 +28,7 @@ export interface JsonlImportOptions {
 }
 
 /**
- * 事件溯源不可变日志管理器 (1:1 对标 repos/pi Append-Only JSONL 会话存储架构)
+ * 事件溯源不可变日志管理器
  * 记录每一次交互、文档变更、状态演化与流水线阶段，提供崩溃恢复与 SQLite 状态视图全量投影能力。
  */
 export class AppendOnlySessionJournal {

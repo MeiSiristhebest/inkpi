@@ -11,7 +11,7 @@
 
 import type { AgentMessage, AssistantMessageEvent, ModelConfig } from '@inkpi/protocol';
 import type { EventStream, StreamOptions } from '@inkpi/ai';
-import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rpc/session-manager.js';
+import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rpc/session-registry.js';
 import * as nodeFs from 'node:fs';
 
 /** Wall-clock / monotonic time source. Inject a test clock; never call `Date.now()` directly. */
@@ -69,7 +69,7 @@ export interface ModelStreamer {
 }
 
 /**
- * Multi-session store port. The live in-memory `LiveSessionManager` is one
+ * Multi-session store port. The live in-memory `SessionRegistry` is one
  * adapter; a persisted or remote adapter could replace it without the domain
  * loop knowing.
  */

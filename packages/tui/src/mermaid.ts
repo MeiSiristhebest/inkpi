@@ -1,5 +1,5 @@
 /**
- * 终端 Mermaid ASCII / ANSI 图表渲染器 (1:1 对标 pi-tui grok-mermaid)
+ * 终端 Mermaid ASCII / ANSI 图表渲染器
  *
  * Parsing is delegated to `./parsers/mermaid-parser.js`; this module only
  * applies ANSI styling to the parsed node/edge graph.

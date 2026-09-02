@@ -27,7 +27,7 @@ export class ScopedModelResolver {
   }
 
   /**
-   * 根据具体任务场景，智能解析最佳模型配置 (1:1 对标 repos/pi ScopedModelResolver)
+   * 根据具体任务场景，智能解析最佳模型配置
    */
   public resolveForTask(scope: TaskScope): ModelConfig {
     const targetAlias = this.scopeMappings.get(scope) || this.fallbackModel;

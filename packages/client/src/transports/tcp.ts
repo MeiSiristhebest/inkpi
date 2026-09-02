@@ -2,7 +2,7 @@ import * as net from 'node:net';
 import type { RpcTransport } from '../types.js';
 
 /**
- * Node.js 原生 TCP RPC 传输层实现 (带换行符消息帧隔离) (1:1 对标 pi-client socket)
+ * Node.js 原生 TCP RPC 传输层实现 (带换行符消息帧隔离)
  */
 export class TcpSocketTransport implements RpcTransport {
   private socket: net.Socket;

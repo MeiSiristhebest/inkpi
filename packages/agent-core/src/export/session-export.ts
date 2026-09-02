@@ -121,7 +121,7 @@ export class SessionExporter {
   }
 
   /**
-   * 导出为可重放、可断点恢复的标准 JSONL 会话流 (1:1 对标 repos/pi Session JSONL Codec)
+   * 导出为可重放、可断点恢复的标准 JSONL 会话流
    */
   public exportToJsonl(messages: AgentMessage[]): string {
     return messages.map((m) => JSON.stringify(m)).join('\n');

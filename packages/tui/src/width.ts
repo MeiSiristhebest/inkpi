@@ -1,5 +1,5 @@
 /**
- * 终端宽字符与 ANSI 转义序列安全切片与可见宽度计算 (1:1 对标 pi-tui visibleWidth & sliceWithWidth)
+ * 终端宽字符与 ANSI 转义序列安全切片与可见宽度计算
  * 支持中日韩汉字、全角标点、全角空格 \u3000、Emoji 以及 ANSI 样式保持。
  */
 

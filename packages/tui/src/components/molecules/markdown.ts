@@ -1,5 +1,5 @@
 /**
- * 终端 Markdown 渲染器 (1:1 对标 pi-tui Markdown)
+ * 终端 Markdown 渲染器
  *
  * Parsing is delegated to `../parsers/markdown-parser.js`; this component only
  * applies ANSI styling to the resulting block AST.

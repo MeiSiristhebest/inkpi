@@ -1,5 +1,5 @@
 /**
- * InkPi TUI 差量渲染与 ANSI 样式生成器 (1:1 对标 pi-tui)
+ * InkPi TUI 差量渲染与 ANSI 样式生成器
  */
 
 export interface ScreenDimensions {
@@ -61,7 +61,7 @@ export { stripAnsi, visibleWidth };
 
 
 /**
- * 按终端可视列宽截断字符串 (1:1 对标 pi truncateToWidth)
+ * 按终端可视列宽截断字符串
  */
 export function truncateToWidth(str: string, maxWidth: number, ellipsis = '...'): string {
   if (maxWidth <= 0) return '';
@@ -119,7 +119,7 @@ export function drawBox(
 }
 
 /**
- * 差量渲染缓冲计算器 (1:1 对标 pi-tui DifferentialRenderer)
+ * 差量渲染缓冲计算器
  */
 export class DifferentialRenderer {
   private lastBuffer: string[] = [];

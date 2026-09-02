@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   NoModelConfiguredError,
   InvalidDiceNotationError,
-  LiveSessionManager,
+  SessionRegistry,
   SandboxManager
 } from '@inkpi/agent-core';
 
@@ -26,8 +26,8 @@ describe('NoModelConfiguredError', () => {
     expect(err.message).toBe('custom: no model');
   });
 
-  it('由 LiveSessionManager 在无模型时抛出，且可按类型捕获', () => {
-    const sm = new LiveSessionManager();
+  it('由 SessionRegistry 在无模型时抛出，且可按类型捕获', () => {
+    const sm = new SessionRegistry();
     expect(() => sm.createSession({ sessionId: 'err-session' })).toThrow(NoModelConfiguredError);
     try {
       sm.createSession({ sessionId: 'err-session-2' });

@@ -1,5 +1,5 @@
 /**
- * 虚拟化滚动容器组件 (1:1 对标 pi-tui ScrollView)
+ * 虚拟化滚动容器组件
  */
 
 import { Component, type RenderContext } from '../../layout.js';

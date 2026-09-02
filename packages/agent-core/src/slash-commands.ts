@@ -17,7 +17,7 @@ export interface SlashCommandExecutionContext {
   capabilities?: SlashCommandCapabilities;
 }
 
-export type SlashCommandHandler = (
+export type SlashCommandExecutor = (
   ctx: SlashCommandExecutionContext
 ) => Promise<{ success: boolean; output: string }> | { success: boolean; output: string };
 
@@ -26,12 +26,12 @@ export interface BuiltinCommandDefinition {
   description: string;
   argumentHint?: string;
   usage?: string;
-  handler: SlashCommandHandler;
+  handler: SlashCommandExecutor;
   execute?: (args: string, context?: unknown) => Promise<string | void> | (string | void);
 }
 
 /**
- * 通用斜杠指令系统 (1:1 对标 repos/pi BuiltinSlashCommands)
+ * 通用斜杠指令系统
  */
 export class SlashCommandRegistry {
   private commands = new Map<string, BuiltinCommandDefinition>();

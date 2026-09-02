@@ -37,10 +37,10 @@ export interface SessionSummary {
 }
 
 /**
- * 实时多会话管理器 (LiveSessionManager)
- * 1:1 对标 pi-server 的 LiveSessionManager，支持多 Client 并发挂载不同活跃 Session
+ * 实时多会话注册表 (SessionRegistry)
+ * 多会话注册表：支持多 Client 并发挂载不同活跃 Session，实现 SessionStore 端口。
  */
-export class LiveSessionManager implements SessionStore {
+export class SessionRegistry implements SessionStore {
   private sessions = new Map<string, ManagedSession>();
   private defaultModel?: ModelConfig;
   private clock: Clock;

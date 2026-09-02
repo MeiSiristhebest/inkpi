@@ -39,7 +39,7 @@ export interface WhatIfExecutiveReport {
   executiveSummary?: string;
 }
 
-export interface BranchManagerOptions {
+export interface BranchExplorerOptions {
   mainBranchName?: string;
   mainBranchPremise?: string;
   idGenerator?: IdGenerator;
@@ -58,19 +58,19 @@ export interface BranchManagerOptions {
 }
 
 /**
- * Generic branch manager built on SessionTree and explicit state/document
+ * Generic branch explorer built on SessionTree and explicit state/document
  * projections. It can compare arbitrary branch scenarios without assuming a
  * content domain.
  */
-export class BranchManager {
+export class BranchExplorer {
   private tree: SessionTree;
-  private options: BranchManagerOptions;
+  private options: BranchExplorerOptions;
   private branches = new Map<string, WhatIfBranchInfo>();
   private activeBranchId = 'main';
   private idGenerator: IdGenerator;
   private clock: Clock;
 
-  constructor(tree?: SessionTree, options: BranchManagerOptions = {}) {
+  constructor(tree?: SessionTree, options: BranchExplorerOptions = {}) {
     this.tree = tree || new SessionTree();
     this.options = options;
     this.idGenerator = options.idGenerator || (() => `branch_${this.clock()}`);
@@ -320,4 +320,3 @@ export class BranchManager {
   }
 }
 
-export const StoryBranchManager = BranchManager;

@@ -120,14 +120,14 @@ describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extensio
     }, 'greet-extension');
     expect(ok).toBe(true);
     expect(host.getCommand('greet')).toBeDefined();
-    expect(runner.getLoadedDocuments().length).toBe(1);
+    expect(runner.getLoadedExtensions().length).toBe(1);
 
     // 2. Error isolated load
     const fail = await runner.loadExtension(async () => {
       throw new Error('Extension crash during init');
     }, 'broken-extension');
     expect(fail).toBe(false);
-    expect(runner.getLoadedDocuments().length).toBe(1); // Didn't crash the host!
+    expect(runner.getLoadedExtensions().length).toBe(1); // Didn't crash the host!
 
     // 3. Batch loadAll
     await runner.loadAll([

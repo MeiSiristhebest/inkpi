@@ -1,5 +1,5 @@
 /**
- * 主屏幕与备用全屏管理器 (1:1 对标 pi-tui tui-main-screen.ts / tui-alt-screen.ts)
+ * 主屏幕与备用全屏管理器
  */
 
 import { ANSI } from './render.js';

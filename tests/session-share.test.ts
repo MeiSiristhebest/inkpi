@@ -36,7 +36,7 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
   it('should export structured dataset payload with branches, ledger, and metadata', () => {
     const tree = new SessionTree();
     tree.addMessage({ id: 'root_1', role: 'user', content: '根节点' });
-    tree.branch('Alternative Climax Branch');
+    tree.addBranchMarker('Alternative Climax Branch');
 
 
     const messages: AgentMessage[] = [

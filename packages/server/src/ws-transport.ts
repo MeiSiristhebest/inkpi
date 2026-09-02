@@ -1,5 +1,5 @@
 /**
- * WebSocket / HTTP 兼容 RPC 传输层 (1:1 对标 pi-server ws)
+ * WebSocket / HTTP 兼容 RPC 传输层
  */
 
 import type { RpcTransport } from './transport.js';

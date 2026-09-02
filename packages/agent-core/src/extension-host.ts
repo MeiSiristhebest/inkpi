@@ -21,7 +21,7 @@ export interface CommandDefinition {
 }
 
 /**
- * 纯通用扩展宿主核心 (1:1 对标 repos/pi packages/extensions 微内核架构)
+ * 纯通用扩展宿主核心
  * 提供无侵入生命周期事件订阅、自定义斜杠指令注册、键盘快捷键绑定、
  * 工具动态注入、上下文管道拦截以及终端 UI 弹窗调用原语。
  */
@@ -288,11 +288,8 @@ export class ExtensionRunner {
     return Array.from(this.loadedModules.values());
   }
 
+  /** @deprecated 名实不符（返回的是模块而非文档），已由 getLoadedModules 取代。 */
   public getLoadedExtensions(): ExtensionModule[] {
-    return this.getLoadedModules();
-  }
-
-  public getLoadedDocuments(): ExtensionModule[] {
     return this.getLoadedModules();
   }
 }

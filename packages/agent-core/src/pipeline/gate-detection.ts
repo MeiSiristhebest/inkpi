@@ -1,8 +1,5 @@
 import type { QualityGateIssue, QualityGateRule, StateLedger } from '@inkpi/protocol';
-
-function emptyLedger(): StateLedger {
-  return { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
-}
+import { emptyLedger } from './ledger-merge.js';
 
 /**
  * 纯函数：按一组门禁规则检测内容，返回命中的质量问题列表。无副作用、无 I/O。

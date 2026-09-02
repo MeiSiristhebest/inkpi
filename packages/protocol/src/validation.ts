@@ -1,5 +1,5 @@
 /**
- * 运行时校验与数据清洗工具 (1:1 对标 pi-protocol validation)
+ * 运行时校验与数据清洗工具
  */
 
 import { Value, type TSchema, type ValidationError } from './typebox.js';

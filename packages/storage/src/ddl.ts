@@ -104,7 +104,7 @@ BEGIN
   FROM documents c WHERE c.id = new.document_id;
 END;
 
--- 9. Lanes (多泳道/平行分支线表 - 1:1 对标 pi-session lanes)
+-- 9. Lanes (多泳道/平行分支线表：同一会话内的平行推演线)
 CREATE TABLE IF NOT EXISTS lanes (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS lanes (
 );
 CREATE INDEX IF NOT EXISTS idx_lanes_workspace_id ON lanes(workspace_id);
 
--- 10. Branch Tips (分支游标/快照版本追踪表 - 1:1 对标 pi branch-tips)
+-- 10. Branch Tips (分支游标/快照版本追踪表)
 CREATE TABLE IF NOT EXISTS branch_tips (
   lane_id TEXT NOT NULL,
   document_id TEXT NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS session_compaction_records (
 );
 CREATE INDEX IF NOT EXISTS idx_compaction_session_id ON session_compaction_records(session_id);
 
--- 12. Operations (原子操作状态追踪表 - 1:1 对标 pi operations)
+-- 12. Operations (原子操作状态追踪表)
 CREATE TABLE IF NOT EXISTS operations (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS operations (
 );
 CREATE INDEX IF NOT EXISTS idx_operations_session_state ON operations(session_id, state);
 
--- 13. Session Entries (持久化会话日志条目表 - 1:1 对标 pi entries)
+-- 13. Session Entries (持久化会话日志条目表)
 CREATE TABLE IF NOT EXISTS session_entries (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,

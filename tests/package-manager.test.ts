@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ExtensionPackageManager, runPackageManagerCli } from '@inkpi/agent-core';
+import { ExtensionInstaller, runPackageManagerCli } from '@inkpi/agent-core';
 
 describe('InkPi Extension Package Manager', () => {
   const testBaseDir = path.join(process.cwd(), '.tmp-inkpi-extensions-test');
@@ -19,7 +19,7 @@ describe('InkPi Extension Package Manager', () => {
   });
 
   it('should install, list, update, and remove packages', () => {
-    const pm = new ExtensionPackageManager(testBaseDir);
+    const pm = new ExtensionInstaller(testBaseDir);
 
     expect(pm.getInstalledPackages().length).toBe(0);
 
@@ -52,7 +52,7 @@ describe('InkPi Extension Package Manager', () => {
       .toContain('1.1.0');
 
     // Remove
-    const removed = pm.remove('@inkpi/xianxia-worldview');
+    const removed = pm.trash('@inkpi/xianxia-worldview');
     expect(removed).toBe(true);
     expect(pm.getInstalledPackages().length).toBe(0);
   });
@@ -87,7 +87,7 @@ describe('InkPi Extension Package Manager', () => {
   });
 
   it('should reject invalid manifests and file paths before touching an existing package', () => {
-    const pm = new ExtensionPackageManager(testBaseDir);
+    const pm = new ExtensionInstaller(testBaseDir);
     const manifest = {
       name: '@inkpi/stable',
       version: '1.0.0',
@@ -110,7 +110,7 @@ describe('InkPi Extension Package Manager', () => {
   });
 
   it('should expose malformed installed package manifests through diagnostics', () => {
-    const pm = new ExtensionPackageManager(testBaseDir);
+    const pm = new ExtensionInstaller(testBaseDir);
     const malformedDir = path.join(testBaseDir, 'broken');
     fs.mkdirSync(malformedDir, { recursive: true });
     fs.writeFileSync(path.join(malformedDir, 'package.json'), '{"name":"broken"}', 'utf8');
@@ -123,7 +123,7 @@ describe('InkPi Extension Package Manager', () => {
   });
 
   it('should reject manifest validation failures and handle CLI fallback commands', async () => {
-    const pm = new ExtensionPackageManager(testBaseDir);
+    const pm = new ExtensionInstaller(testBaseDir);
 
     expect(() => (pm as any).validateManifest(null, {})).toThrow('Package manifest must be an object');
     expect(() => (pm as any).validateManifest({ name: '' }, {})).toThrow('name must not be empty');

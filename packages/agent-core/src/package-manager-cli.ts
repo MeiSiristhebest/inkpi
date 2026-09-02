@@ -1,8 +1,8 @@
 /**
- * InkPi 扩展包管理命令行分发器 (1:1 对标 pi-coding-agent package-manager-cli.ts)
+ * InkPi 扩展包管理命令行分发器
  */
 
-import { ExtensionPackageManager, type InkPackageBundle } from './package-manager/package-manager.js';
+import { ExtensionInstaller, type InkPackageBundle } from './package-manager/package-manager.js';
 
 export interface PackageManagerCliOptions {
   baseDir?: string;
@@ -11,7 +11,7 @@ export interface PackageManagerCliOptions {
 
 export async function runPackageManagerCli(args: string[], options: PackageManagerCliOptions = {}): Promise<string> {
   const [subcommand, pkgName] = args;
-  const pm = new ExtensionPackageManager(options.baseDir);
+  const pm = new ExtensionInstaller(options.baseDir);
 
   switch (subcommand) {
     case 'list': {
@@ -37,8 +37,8 @@ export async function runPackageManagerCli(args: string[], options: PackageManag
 
     case 'remove': {
       if (!pkgName) return 'A package name is required: inkpi remove <package>';
-      const removed = pm.remove(pkgName);
-      return removed ? `Removed '${pkgName}'.` : `Package '${pkgName}' is not installed.`;
+      const trashed = pm.trash(pkgName);
+      return trashed ? `Removed '${pkgName}'.` : `Package '${pkgName}' is not installed.`;
     }
 
     case 'update': {

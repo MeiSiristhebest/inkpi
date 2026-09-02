@@ -46,7 +46,7 @@ export class BranchSummarizer {
   }
 
   /**
-   * 汇总被放弃分支的推演成果与试写内容 (1:1 对标 repos/pi BranchSummarization)
+   * 汇总被放弃分支的推演成果与试写内容
    */
   public async summarizeBranch(
     tree: SessionTree,

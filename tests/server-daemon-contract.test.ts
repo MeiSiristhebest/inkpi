@@ -20,7 +20,7 @@ describe('@inkpi/server InkPiDaemon contract', () => {
   });
 
   function makeDaemon(port = 0): InkPiDaemon {
-    // 完整版 InkPiDaemon 自行创建领域层 LiveSessionManager（无默认模型时不静默回落）。
+    // 完整版 InkPiDaemon 自行创建领域层 SessionRegistry（无默认模型时不静默回落）。
     daemon = new InkPiDaemon({ port });
     return daemon;
   }

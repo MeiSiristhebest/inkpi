@@ -143,7 +143,7 @@ describe('@inkpi/agent-core', () => {
 
     expect(() => tree.addMessage({ id: 'm2', role: 'assistant', content: [] })).toThrow('already exists');
     expect(() => tree.addMessage({ role: 'user', content: 'orphan' }, 'missing')).toThrow('Parent node');
-    expect(() => tree.branch('')).toThrow('requires a non-empty label');
+    expect(() => tree.addBranchMarker('')).toThrow('requires a non-empty label');
 
     tree.clear();
     expect(tree.size()).toBe(0);
@@ -157,7 +157,7 @@ describe('@inkpi/agent-core', () => {
 
     expect(() => tree.addMessage({ id: rootId, role: 'assistant', content: [] })).toThrow('already exists');
 
-    const branchNode = tree.branch('alternate', 'test premise');
+    const branchNode = tree.addBranchMarker('alternate', 'test premise');
     expect(branchNode.message).toMatchObject({
       role: 'custom',
       customType: 'branch',

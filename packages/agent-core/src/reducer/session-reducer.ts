@@ -1,5 +1,5 @@
 /**
- * Pure Function SessionReducer (1:1 对标 Pi 架构的不可变状态归约与重放机)
+ * Pure Function SessionReducer
  * 接收 SessionEntry[] 日志流，纯函数计算物化会话状态 (MaterializedSessionState)。
  */
 

@@ -1,5 +1,5 @@
 /**
- * 多层级 9 锚点浮动 Overlay 弹窗系统 (1:1 对标 pi-tui Overlay & Modal Architecture)
+ * 多层级 9 锚点浮动 Overlay 弹窗系统
  * 支持中心模态、边缘抽屉、光标锚定悬浮菜单与键盘焦点管理。
  */
 

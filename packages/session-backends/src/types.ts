@@ -14,7 +14,7 @@ export interface SessionBackendCapabilities {
 
 /**
  * 统一会话持久化端口契约 (Ports & Adapters Architecture)
- * 1:1 对标 Pi SessionBackend 抽象设计
+ * 会话后端抽象：后端实现负责会话的持久化与装载，领域核心仅依赖本接口。
  */
 export interface ISessionBackend {
   readonly name: string;

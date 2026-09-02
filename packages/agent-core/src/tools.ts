@@ -1,6 +1,7 @@
 import { validateSchema } from '@inkpi/protocol';
 import type { AgentTool, ToolCallContent, ToolResultMessage, ToolResult, TSchema } from '@inkpi/protocol';
 import type { ToolExecutionMode } from './types.js';
+import { runWithConcurrency } from './concurrency.js';
 
 export class ToolRegistry {
   private tools = new Map<string, AgentTool>();
@@ -110,29 +111,16 @@ export class ToolRegistry {
   ): Promise<Array<ToolResultMessage & { terminate?: boolean }>> {
     if (toolCalls.length === 0) return [];
 
-    if (mode === 'sequential') {
-      const results: Array<ToolResultMessage & { terminate?: boolean }> = [];
-      for (const call of toolCalls) {
-        const res = await this.executeTool(
+    return runWithConcurrency(
+      toolCalls,
+      (call) =>
+        this.executeTool(
           call,
           signal,
           (update) => onProgress?.(call.id, update),
           context
-        );
-        results.push(res);
-      }
-      return results;
-    }
-
-    // Parallel execution
-    const promises = toolCalls.map((call) =>
-      this.executeTool(
-        call,
-        signal,
-        (update) => onProgress?.(call.id, update),
-        context
-      )
+        ),
+      mode
     );
-    return Promise.all(promises);
   }
 }

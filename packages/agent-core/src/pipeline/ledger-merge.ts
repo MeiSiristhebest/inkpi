@@ -1,6 +1,16 @@
 import type { StateLedger } from '@inkpi/protocol';
 
 /**
+ * 构造一个全空的领域状态账本。
+ *
+ * 全仓库唯一定义：门禁检测、角色调用、工作流上下文初始化共用它，
+ * 避免各处散落形状不一致的空账本字面量。
+ */
+export function emptyLedger(): StateLedger {
+  return { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
+}
+
+/**
  * 合并两个领域状态账本。纯函数，无副作用，无 I/O。
  *
  * 原位于 `WorkflowCoordinator.mergeLedgers`（私有方法），现抽出为独立纯函数以便单测与复用。

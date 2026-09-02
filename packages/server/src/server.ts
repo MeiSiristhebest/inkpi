@@ -323,7 +323,7 @@ export class InkRpcServer {
       // 4. Session Tree & Branches
       case 'tree.branch': {
         if (!this.ctx.tree) throw new Error('SessionTree not initialized');
-        const node = this.ctx.tree.branch(params.name, params.hypothesis);
+        const node = this.ctx.tree.addBranchMarker(params.name, params.hypothesis);
         return { node };
       }
 

@@ -11,7 +11,7 @@ export class WriterLeaseManager {
   }
 
   /**
-   * 尝试获取指定资源的独占排他写锁租约 (1:1 对标 repos/pi acquireLease)
+   * 尝试获取指定资源的独占排他写锁租约
    */
   public acquire(leaseId: string, holderId: string, ttlMs = this.defaultTtlMs, metadata?: string): boolean {
     const now = Date.now();

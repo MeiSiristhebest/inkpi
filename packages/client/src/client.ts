@@ -99,7 +99,7 @@ export class RemoteStreamTransport implements Transport {
 }
 
 /**
- * InkPi 类型安全 RPC 客户端 (1:1 对标 pi-client)
+ * InkPi 类型安全 RPC 客户端
  */
 export class InkRpcClient {
   private transport: Transport;

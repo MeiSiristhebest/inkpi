@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import {
   InkPiDaemon,
-  LiveSessionManager,
+  SessionRegistry,
   InkRpcServer
 } from '@inkpi/server';
 import {

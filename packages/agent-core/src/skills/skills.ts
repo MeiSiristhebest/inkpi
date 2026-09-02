@@ -3,7 +3,7 @@ import { join, basename } from 'node:path';
 import type { SkillInfo } from '@inkpi/protocol';
 
 /**
- * 轻量 YAML Frontmatter 解析器 (1:1 对标 repos/pi parseFrontmatter)
+ * 轻量 YAML Frontmatter 解析器
  */
 export function parseSkillMarkdown(content: string, filePath: string): SkillInfo | null {
   const trimmed = content.trim();
@@ -53,7 +53,7 @@ export class SkillDiscoveryEngine {
   }
 
   /**
-   * 递归扫描所有技能目录并加载技能 (1:1 对标 repos/pi loadSkills)
+   * 递归扫描所有技能目录并加载技能
    */
   public discover(): SkillInfo[] {
     this.cachedSkills.clear();

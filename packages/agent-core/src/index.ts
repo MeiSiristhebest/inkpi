@@ -6,6 +6,7 @@ export * from './tools.js';
 export * from './tree.js';
 export * from './extension-host.js';
 export * from './loop.js';
+export * from './concurrency.js';
 export * from './agent.js';
 export * from './compaction/index.js';
 export * from './skills/index.js';
@@ -24,6 +25,7 @@ export * from './package-manager-cli.js';
 export * from './trust/project-trust.js';
 export * from './sandbox/index.js';
 export * from './reducer/session-reducer.js';
+export * from './deprecations.js';
 export type { QualityGateIssue, ExtensionFactory, ProviderType } from '@inkpi/protocol';
 
 

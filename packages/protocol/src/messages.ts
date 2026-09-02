@@ -144,7 +144,7 @@ export interface BranchSummaryDetails {
   discardedIdeas?: string[];
 }
 
-/** 通用技能模型 (1:1 对标 repos/pi Skills) */
+/** 通用技能模型 */
 export interface SkillInfo {
   name: string;
   description: string;
@@ -198,7 +198,7 @@ export type TelemetryEvent =
   | { type: 'invariant_conflict'; rule: string; details?: string; timestamp: number }
   | { type: 'turn_telemetry'; stats: TelemetryStats; timestamp: number };
 
-/** 实时时延与缓存度量 (1:1 对标 repos/pi Timings & CacheStats) */
+/** 实时时延与缓存度量 */
 export interface TelemetryStats {
   ttftMs: number; // Time to first token
   totalDurationMs: number;
@@ -211,7 +211,7 @@ export interface TelemetryStats {
 }
 
 
-/** 会话多格式导出选项 (1:1 对标 repos/pi SessionExport) */
+/** 会话多格式导出选项 */
 export interface ExportOptions {
   format: 'html' | 'markdown' | 'json' | 'jsonl';
   title?: string;

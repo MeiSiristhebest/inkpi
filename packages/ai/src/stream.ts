@@ -251,7 +251,7 @@ export interface RetryOptions {
 }
 
 /**
- * 带指数退避与抖动的可靠 Stream 执行器 (1:1 对标 repos/pi retryAssistantCall)
+ * 带指数退避与抖动的可靠 Stream 执行器
  */
 export async function retryAssistantStream<T>(
   fn: () => Promise<T>,

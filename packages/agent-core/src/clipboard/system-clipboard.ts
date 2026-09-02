@@ -1,5 +1,5 @@
 /**
- * 跨平台系统原生剪贴板与 KillRing 同步器 (1:1 对标 pi native clipboard)
+ * 跨平台系统原生剪贴板与 KillRing 同步器
  */
 
 import { execFileSync } from 'node:child_process';

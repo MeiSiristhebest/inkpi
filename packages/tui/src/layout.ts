@@ -1,5 +1,5 @@
 /**
- * InkPi TUI 弹性布局原语 (1:1 对标 pi-tui layout.ts)
+ * InkPi TUI 弹性布局原语
  */
 
 import { visibleWidth, ANSI } from './render.js';

@@ -83,9 +83,13 @@ export class SessionTree {
     return fromNodeId;
   }
 
-  public branch(name: string, hypothesis?: string): SessionTreeNode {
+  /**
+   * 在当前叶子处追加一条"分支标记"消息（命名一个推演点），不创建新节点、不改变拓扑。
+   * 命名说明：旧名 branch() 曾让调用方误以为会真正分叉出新分支，故更名为 addBranchMarker。
+   */
+  public addBranchMarker(name: string, hypothesis?: string): SessionTreeNode {
     if (!name || !name.trim()) {
-      throw new Error('SessionTree.branch requires a non-empty label');
+      throw new Error('SessionTree.addBranchMarker requires a non-empty label');
     }
     this.addMessage({
       role: 'custom',
@@ -93,6 +97,11 @@ export class SessionTree {
       content: { label: name, hypothesis }
     });
     return this.nodes.get(this.currentLeafId!)!;
+  }
+
+  /** @deprecated 名实不符（只追加标记消息，并不分叉），已由 addBranchMarker 取代。 */
+  public branch(name: string, hypothesis?: string): SessionTreeNode {
+    return this.addBranchMarker(name, hypothesis);
   }
 
   public navigate(toNodeId: string): boolean {
@@ -160,7 +169,7 @@ export class SessionTree {
 
   /**
    * 计算两个分支节点的最近公共祖先 (Lowest Common Ancestor, LCA)
-   * 1:1 对标 repos/pi branch-summarization.ts commonAncestorId
+   * 返回两个节点最近公共祖先的 id；任一节点不存在时抛错。
    */
   public findCommonAncestor(nodeAId: string, nodeBId: string): string | null {
     if (!this.nodes.has(nodeAId) || !this.nodes.has(nodeBId)) return null;

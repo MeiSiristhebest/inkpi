@@ -1,6 +1,6 @@
 import * as net from 'node:net';
 import { InkRpcServer, type ServerContext } from './server.js';
-import { LiveSessionManager, type ManagedSession, type SessionCreateOptions } from '@inkpi/agent-core';
+import { SessionRegistry, type ManagedSession, type SessionCreateOptions } from '@inkpi/agent-core';
 import type { RpcTransport } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { ModelConfig } from '@inkpi/protocol';
@@ -31,7 +31,7 @@ export interface DaemonStatus {
  */
 export class InkPiDaemon {
   private rpcServer: InkRpcServer;
-  private sessionManager: LiveSessionManager;
+  private sessionManager: SessionRegistry;
   private startTime = 0;
   private running = false;
   private tcpServer: net.Server | null = null;
@@ -44,12 +44,12 @@ export class InkPiDaemon {
       host: '127.0.0.1',
       ...options
     };
-    this.sessionManager = new LiveSessionManager(options.defaultModel);
+    this.sessionManager = new SessionRegistry(options.defaultModel);
     this.rpcServer = new InkRpcServer(options.context as ServerContext);
     this.registerDaemonMethods();
   }
 
-  public getSessionManager(): LiveSessionManager {
+  public getSessionManager(): SessionRegistry {
     return this.sessionManager;
   }
 

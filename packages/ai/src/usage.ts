@@ -45,7 +45,7 @@ export class UsageTracker {
   };
 
   /**
-   * 记录一次模型调用的 Token 用量并自动折算美元/人民币成本 (1:1 对标 repos/pi UsageTotals)
+   * 记录一次模型调用的 Token 用量并自动折算美元/人民币成本
    */
   public recordUsage(usage: Usage, modelIdOrName?: string): void {
     const input = usage.inputTokens || 0;

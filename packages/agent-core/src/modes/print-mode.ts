@@ -1,5 +1,5 @@
 /**
- * InkPi Print Mode (非交互批处理与自动化脚本模式) (1:1 对标 pi-coding-agent print-mode.ts)
+ * InkPi Print Mode (非交互批处理与自动化脚本模式)
  */
 
 import * as fs from 'node:fs';

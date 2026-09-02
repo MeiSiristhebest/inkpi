@@ -1,5 +1,5 @@
 /**
- * InkPi 核心 TypeBox 协议与数据结构 Schema (1:1 对标 pi-protocol schemas.ts)
+ * InkPi 核心 TypeBox 协议与数据结构 Schema
  */
 
 import { Type, type Static } from './typebox.js';

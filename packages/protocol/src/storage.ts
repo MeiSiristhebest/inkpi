@@ -123,7 +123,7 @@ export type NovelStateLedger = StateLedger;
 export type CharacterRecord = EntityRecord;
 export type ForeshadowingRecord = TrackRecord;
 
-/** 结构化 Compaction 摘要条目 (1:1 对标 repos/pi CompactionEntry) */
+/** 结构化 Compaction 摘要条目 */
 export interface CompactionEntry {
   id: string;
   type: 'compaction';
@@ -135,7 +135,7 @@ export interface CompactionEntry {
   details?: Record<string, unknown> | { stateLedger?: StateLedger; [key: string]: unknown };
 }
 
-/** 多进程排他写锁租约 (1:1 对标 repos/pi WriterLease) */
+/** 多进程排他写锁租约 */
 export interface WriterLeaseInfo {
   holderId: string;
   acquiredAt: number;
@@ -143,7 +143,7 @@ export interface WriterLeaseInfo {
   metadata?: string;
 }
 
-/** 结构化原子操作状态机契约 (1:1 对标 repos/pi Operation 意图结算与崩溃恢复) */
+/** 结构化原子操作状态机契约 */
 export type OperationState = 'pending' | 'running' | 'settled' | 'failed' | 'interrupted';
 
 export type OperationType = 'provider_stream' | 'tool_call' | 'workflow_stage' | 'custom';
@@ -160,7 +160,7 @@ export interface OperationRecord {
   updatedAt: number;
 }
 
-/** 事件溯源日志类型 (1:1 对标 repos/pi Append-Only JSONL 会话存储) */
+/** 事件溯源日志类型 */
 export type SessionEntryType =
   | 'session_start'
   | 'user_message'

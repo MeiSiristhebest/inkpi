@@ -1,11 +1,11 @@
 /**
- * 项目与第三方扩展信任沙箱 (1:1 对标 pi project-trust.ts & TrustSelectorComponent)
+ * 项目与第三方扩展信任沙箱
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export interface TrustStoreData {
+export interface TrustStoreFile {
   trustedDirectories: string[];
   lastUpdated: number;
 }
@@ -59,7 +59,7 @@ export class ProjectTrustManager {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const data: TrustStoreData = {
+    const data: TrustStoreFile = {
       trustedDirectories: Array.from(this.memoryStore),
       lastUpdated: Date.now()
     };

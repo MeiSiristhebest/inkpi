@@ -98,7 +98,7 @@ export function modelCatalogEntryToConfig(entry: ModelCatalogEntry): ModelConfig
 }
 
 /**
- * 动态模型目录管理器 (1:1 对标 repos/pi ModelCatalogManager)
+ * 动态模型目录管理器
  */
 export class ModelCatalogManager {
   private models = new Map<string, ModelCatalogEntry>();

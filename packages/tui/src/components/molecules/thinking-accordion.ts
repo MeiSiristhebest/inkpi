@@ -1,5 +1,5 @@
 /**
- * 思考链原生流式折叠组件 (ThinkingAccordion) (1:1 对标 pi-tui 思考折叠机制)
+ * 思考链原生流式折叠组件 (ThinkingAccordion)
  * 专门处理 DeepSeek-R1 / Claude 3.7 Sonnet / o3-mini 推理思考流
  * 支持实时流式追加、耗时统计、Token 计数与一键折叠/展开呈现
  */

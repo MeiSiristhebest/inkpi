@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { StoryBranchManager } from '@inkpi/agent-core';
+import { BranchExplorer } from '@inkpi/agent-core';
 
 describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   it('should initialize with main canon branch and allow creating parallel what-if branches', () => {
-    const manager = new StoryBranchManager(undefined, { mainBranchName: 'Canonical' });
+    const manager = new BranchExplorer(undefined, { mainBranchName: 'Canonical' });
     expect(manager.getActiveBranchId()).toBe('main');
 
     const canonBranch = manager.getBranch('main');
@@ -33,7 +33,7 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   });
 
   it('should accurately diff state ledgers between parallel branches', () => {
-    const manager = new StoryBranchManager();
+    const manager = new BranchExplorer();
 
     const canonLedger = {
       entities: [
@@ -77,7 +77,7 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   });
 
   it('should switch branches and synthesize branch comparison summary', async () => {
-    const manager = new StoryBranchManager(undefined, {
+    const manager = new BranchExplorer(undefined, {
       formatSwitchSummary: ({ currentBranch, targetBranch, diff }) =>
         `${currentBranch.branchName} -> ${targetBranch.branchName}: ${diff.changedEntityStatuses.map((change) => `${change.name}: ${change.from} -> ${change.to}`).join(', ')}`
     });

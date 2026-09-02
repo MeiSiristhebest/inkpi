@@ -1,5 +1,5 @@
 /**
- * InkPi JSON-RPC 2.0 协议标准定义 (1:1 对标 repos/pi packages/protocol RPC 机制)
+ * InkPi JSON-RPC 2.0 协议标准定义
  */
 
 export interface RpcRequest<T = unknown> {
