@@ -79,7 +79,7 @@ InkPi 是一个灵感源自 Pi 架构的**可扩展 AI Agent 架构基座与工�
     ┌──────────────────────────────────────────────────────────────────┐
     │                  @inkpi/server (Daemon Runtime)                  │
     │                                                                  │
-    │  InkPiDaemon · LiveSessionManager · InkRpcServer                 │
+    │  InkPiDaemon · SessionRegistry · InkRpcServer                    │
     └───────────────────────────┬──────────────────────────────────────┘
                                 │ In-process typed dispatch
                                 ▼
@@ -112,12 +112,12 @@ InkPi 拆分为 10 个完全解耦、零循环依赖的独立子包：
 | :--- | :--- | :--- |
 | **`@inkpi/protocol`** | 纯领域契约与 JSON-RPC 帧 | `SessionEntry`, `DocumentSnapshot`, `DocumentDelta`, `RpcRequest` |
 | **`@inkpi/session-backends`** | 可插拔会话持久化存储适配器 | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
-| **`@inkpi/server`** | 无头守护进程与会话调度器 | `InkPiDaemon`, `LiveSessionManager`, `InkRpcServer` |
+| **`@inkpi/server`** | 无头守护进程与会话调度器 | `InkPiDaemon`, `SessionRegistry`, `InkRpcServer` |
 | **`@inkpi/client`** | 类型安全客户端 SDK 与传输层 | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
 | **`@inkpi/agent-core`** | 推理状态机与会话分支树 | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
 | **`@inkpi/editor-core`** | 无头编辑器与排版引擎 | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
 | **`@inkpi/storage`** | SQLite、FTS5 BM25 检索与写租约 | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
-| **`@inkpi/tui`** | ANSI 差分渲染与 CJK 排版 | `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
+| **`@inkpi/tui`** | ANSI 差分渲染与 CJK 排版 | `TerminalStudio`, `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
 | **`@inkpi/ai`** | 多模型适配、Prompt Caching 与流恢复 | `PromptCacheOptimizer`, `streamWithResilience`, `ModelCatalog` |
 | **`@inkpi/evals`** | 叙事一致性打分与基准评测 | `NovelConsistencyBenchmark`, `InvariantChecker` |
 
@@ -234,12 +234,12 @@ pnpm run check:pinned-deps
 ### 4. SDK 代码调用示例
 
 ```typescript
-import { LiveSessionManager } from '@inkpi/server';
+import { SessionRegistry } from '@inkpi/server';
 import { MemorySessionBackend } from '@inkpi/session-backends';
-import { InkRpcClient, InMemoryTransport } from '@inkpi/client';
+import { InkRpcClient, MemoryTransport } from '@inkpi/client';
 
 // 1. 初始化搭载可插拔存储后端的会话调度管理器
-const sessionManager = new LiveSessionManager(() => new MemorySessionBackend());
+const sessionManager = new SessionRegistry(() => new MemorySessionBackend());
 const session = sessionManager.createSession('novel_session_1', {
   initialText: '# 第一章：觉醒\n\n'
 });

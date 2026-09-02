@@ -23,7 +23,7 @@
     "@inkpi/storage": "workspace:*",
     "ws": "8.21.3"
   },
-  "description": "Headless JSON-RPC 2.0 daemon and LiveSessionManager",
+  "description": "Headless JSON-RPC 2.0 daemon and SessionRegistry",
   "author": "InkPi Contributors",
   "license": "MIT",
   "repository": {

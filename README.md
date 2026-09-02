@@ -74,7 +74,7 @@ InkPi is an **extensible AI agent harness and workstation foundation** inspired 
     ┌──────────────────────────────────────────────────────────────────┐
     │                  @inkpi/server (Daemon Runtime)                  │
     │                                                                  │
-    │  InkPiDaemon · LiveSessionManager · InkRpcServer                 │
+    │  InkPiDaemon · SessionRegistry · InkRpcServer                    │
     └───────────────────────────┬──────────────────────────────────────┘
                                 │ In-process typed dispatch
                                 ▼
@@ -107,12 +107,12 @@ InkPi is divided into 10 decoupled packages with zero cyclic dependencies:
 | :--- | :--- | :--- |
 | **`@inkpi/protocol`** | Pure domain schemas & JSON-RPC frames | `SessionEntry`, `DocumentSnapshot`, `DocumentDelta`, `RpcRequest` |
 | **`@inkpi/session-backends`** | Pluggable session storage adapters | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
-| **`@inkpi/server`** | Headless daemon & session manager | `InkPiDaemon`, `LiveSessionManager`, `InkRpcServer` |
+| **`@inkpi/server`** | Headless daemon & session manager | `InkPiDaemon`, `SessionRegistry`, `InkRpcServer` |
 | **`@inkpi/client`** | Type-safe client SDK & transports | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
 | **`@inkpi/agent-core`** | Reasoning engine & session trees | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
 | **`@inkpi/editor-core`** | Headless editor & typography | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
 | **`@inkpi/storage`** | SQLite, FTS5 BM25 search, leases | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
-| **`@inkpi/tui`** | ANSI diff rendering & CJK layout | `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
+| **`@inkpi/tui`** | ANSI diff rendering & CJK layout | `TerminalStudio`, `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
 | **`@inkpi/ai`** | Providers, prompt caching, streams | `PromptCacheOptimizer`, `streamWithResilience`, `ModelCatalog` |
 | **`@inkpi/evals`** | Narrative consistency scoring | `NovelConsistencyBenchmark`, `InvariantChecker` |
 
@@ -229,12 +229,12 @@ pnpm run check:pinned-deps
 ### 4. Programmatic SDK Usage Example
 
 ```typescript
-import { LiveSessionManager } from '@inkpi/server';
+import { SessionRegistry } from '@inkpi/server';
 import { MemorySessionBackend } from '@inkpi/session-backends';
-import { InkRpcClient, InMemoryTransport } from '@inkpi/client';
+import { InkRpcClient, MemoryTransport } from '@inkpi/client';
 
 // 1. Initialize session manager with pluggable storage backend
-const sessionManager = new LiveSessionManager(() => new MemorySessionBackend());
+const sessionManager = new SessionRegistry(() => new MemorySessionBackend());
 const session = sessionManager.createSession('novel_session_1', {
   initialText: '# Chapter 1: The Great Awakening\n\n'
 });
