@@ -32,7 +32,7 @@
 >
 > **核心已治本，巨型类已沿职责边界拆分完毕**：`agent-core` 已不再是杂物抽屉——`src/tui/` 与 `src/rpc/` 已迁出（分别进入 `@inkpi/tui` 与 `@inkpi/server`），运行时依赖已收敛为 `@inkpi/protocol` / `@inkpi/ai` / `@inkpi/editor-core`，依赖方向棘轮 `BASELINE` 已清空。
 > `WorkflowCoordinator`（原约 660 行）现为约 215 行装配门面，协作对象位于 `pipeline/`：`WorkflowExecutor` / `WorkflowStrategy`（替代 `compatibilityMode` 分支）/ `StageRegistry` / `GateRuleRegistry` / `RoleInvoker` / `TelemetryTracer` / `EventBus`，门禁检测（纯 `detectGateIssues`）与账本合并（纯 `mergeLedgers`）已单测。`runAgentLoop` 拆为 `turn/` 四段管线（`ContextTransformer`→`StreamInvoker`→`ToolDispatcher`→`TurnFinalizer`），两套工具并发策略合并为 `concurrency.ts` 的 `runWithConcurrency`。`TerminalStudio`（原约 494 行）拆为 `StudioModel`/`StudioView`/`StudioController` 三层 + 门面，公开字段以 getter 保持兼容。
-> 之后的本轮收尾（见 ARCHITECTURE.md §5 Known Debt）：reducer 已写时复制；硬编码/fake 值（journal NULL token、`rank` 诚实省略、sqlite 默认桶可注入、telemetry 定价可注入 + 合法 OTel ID、`CHARS_PER_TOKEN_HEURISTIC` 单一来源、`DEFAULT_RPC_HOST` 集中常量）全部清理；`session-share`/TUI render 副作用清除；`ISessionBackend.search` 改为必需、`ExtensionAPI` 拆 7 能力面、8 处索引签名移除；表外后缀与 `TuiStudio` 别名收尾。剩余债务仅剩结构性的 `Novel*` 打包迁移与 `perFile` 覆盖率（环境受阻），见 §5 Known Debt。
+> 之后的本轮收尾（见 ARCHITECTURE.md §5 Known Debt）：reducer 已写时复制；硬编码/fake 值（journal NULL token、`rank` 诚实省略、sqlite 默认桶可注入、telemetry 定价可注入 + 合法 OTel ID、`CHARS_PER_TOKEN_HEURISTIC` 单一来源、`DEFAULT_RPC_HOST` 集中常量）全部清理；`session-share`/TUI render 副作用清除；`ISessionBackend.search` 改为必需、`ExtensionAPI` 拆 7 能力面、8 处索引签名移除；表外后缀与 `TuiStudio` 别名收尾。剩余债务仅剩结构性的 `Novel*` 打包迁移与 `perFile` 逐文件覆盖率（已实证量化：99 阈值错误 / ~55 文件，需独立补测工程，见 #20 行与 ARCHITECTURE.md Known Debt）。
 
 ---
 
@@ -903,7 +903,7 @@ expect(emptyScreen).toContain('no entities');
 
 ### 阶段 3 · 抛光（持续）
 
-**状态：6 项中 5 项完成（#16/#17/#18/#19/#21）、1 项受阻（#20，环境性）。**
+**状态：6 项中 5 项完成（#16/#17/#18/#19/#21）、1 项未启用（#20——已实证量化，需逐文件补测工程）。**
 
 | # | 动作 | 状态 |
 |---|---|---|
@@ -911,7 +911,7 @@ expect(emptyScreen).toContain('no entities');
 | 17 | 解析器（Markdown / Mermaid）从渲染器剥离 | ✅ 已完成（`parsers/markdown-parser.ts` / `parsers/mermaid-parser.ts` 纯函数化 + colocated 测试） |
 | 18 | 全包统一 `Clock` / `IdGenerator` 注入，删除默认值回落 | ✅ 已完成（`TelemetryCollector`/`LiveSessionManager`/`SessionCompactor`/`runAgentLoop` 注入 `Clock`；`tree`/`branch-what-if` 早先已注入） |
 | 19 | 重命名 19 个空泛后缀标识符；删除 12 组别名；修正 10 项名实不符 | ✅ 已完成（评审重命名表落地：`ExtensionPackageManager→ExtensionInstaller`、`LiveSessionManager→SessionRegistry`、`BranchManager→BranchExplorer`、`SlashCommandHandler→SlashCommandExecutor`、`TrustStoreData→TrustStoreFile`；名实不符修正：`tree.branch→addBranchMarker`（弃用别名保留）、`remove→trash`、`getLoadedDocuments` 删除（`getLoadedExtensions` 同步标弃用）；全部兼容别名集中于 `agent-core/src/deprecations.ts`，统一 `@deprecated` + 移除版本 v1.0，`tests/deprecations.test.ts` 守护；64 处出处式注释改写为契约描述；后续扫尾（见 §2.13 落地状态 4/5）：`SandboxManager→SandboxExecutor`（含 `ISandboxRunner→SandboxRunner`）、`ProjectTrustManager→ProjectTrustStore`、`SessionShareManager→SessionShareExporter`、`WhatIf*→Hypothesis*`、`sessionData→source`、`safeHelpers→sandboxSafeGlobals`、`compaction/utils.ts→summarize.ts`、`@inkpi/tui` 别名集中于 `tui/src/deprecations.ts`；`Runner`/`TerminalHarness` 因词确有所指而保留。唯一剩余：结构性的 `Novel*` 业务前缀（打包级，见 §2.13 落地状态 5 与 ARCHITECTURE.md Known Debt）） |
-| 20 | 启用 `perFile: true` 覆盖率；测试改为断言 ViewModel 而非 ANSI 字节 | ❌ 受阻（沙箱 safe-delete 守卫阻断 vitest 对 `coverage/` 的清理，覆盖率需在提权 shell 下运行，无法作为常规 CI 步骤实测；聚合覆盖 91.52% stmts/lines / 94.63% funcs / 81.11% branch，门禁 80% branch 通过但余量仅 ~1.1 点） |
+| 20 | 启用 `perFile: true` 覆盖率；测试改为断言 ViewModel 而非 ANSI 字节 | ❌ 未启用（已实证量化，2026-09-02 提权 shell 实测：临时开 `perFile:true` 后 99 条阈值错误、波及 ~55 文件——branch 维度 45 处为主，lines/functions/statements 各 16/16/19 处；失败分两类：① 纯桶/类型文件（`ports/index`、`turn/turn-context`、`pipeline/workflow-types`、tui `atoms/*`、两处 `deprecations.ts` 等，branch 0%-50%，逐文件 85%/80% 对其天然失配）；② 70%± 核心逻辑文件（`branch-what-if` 58.8% 起：`providers`/`telemetry`/`ledger-merge`/`session-report-export`/`slash-commands`/`print-mode` 等）。落地需独立补测工程：先为纯声明桶配置豁免，再为 70% 上下核心文件补分支断言至 ≥80%，全部达标后置 `perFile:true`。聚合门禁保持通过：91.55% stmts/lines / 94.63% funcs / 81.11% branch，余量 ~1.1 点） |
 | 21 | 重写 `ARCHITECTURE.md`，让它描述**代码实际的样子**，并把三条不变量写成可执行的架构测试 | ✅ 已完成（本文件 §5 与 `ARCHITECTURE.md` 持续同步为代码现状） |
 
 ---
