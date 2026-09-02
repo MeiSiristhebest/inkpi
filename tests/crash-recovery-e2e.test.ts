@@ -1,17 +1,10 @@
-import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {
-  AppendOnlySessionJournal,
-  InkRepository
-} from '@inkpi/storage';
-import {
-  Agent,
-  reduceSession,
-  detectAndMarkInterruptedOperations
-} from '@inkpi/agent-core';
-import type { AgentTool } from '@inkpi/protocol';
+import { Agent, detectAndMarkInterruptedOperations, reduceSession } from '@inkpi/agent-core';
 import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
+import type { AgentTool } from '@inkpi/protocol';
+import { AppendOnlySessionJournal, InkRepository } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('Crash Recovery & Durable Event Sourcing E2E', () => {
   const tmpDir = path.resolve('.tmp-inkpi-crash-recovery');

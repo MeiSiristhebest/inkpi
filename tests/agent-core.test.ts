@@ -1,14 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import {
-  Agent,
-  ToolRegistry,
-  MessageQueue,
-  SessionTree,
-  ExtensionHost,
-  ExtensionRunner
-} from '@inkpi/agent-core';
-import type { AgentTool, AgentEvent, AgentMessage, UserMessage } from '@inkpi/protocol';
+import { Agent, ExtensionHost, ExtensionRunner, MessageQueue, SessionTree, ToolRegistry } from '@inkpi/agent-core';
 import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
+import type { AgentEvent, AgentMessage, AgentTool, UserMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core', () => {
   it('should manage MessageQueues with different queue modes', () => {
@@ -79,12 +72,15 @@ describe('@inkpi/agent-core', () => {
     // Aborted signal tool test
     const ac = new AbortController();
     ac.abort();
-    const abortRes = await registry.executeTool({
-      type: 'toolCall',
-      id: 'c_abort',
-      name: 'test_tool',
-      arguments: { query: 'test' }
-    }, ac.signal);
+    const abortRes = await registry.executeTool(
+      {
+        type: 'toolCall',
+        id: 'c_abort',
+        name: 'test_tool',
+        arguments: { query: 'test' }
+      },
+      ac.signal
+    );
     expect(abortRes.isError).toBe(true);
 
     // Success test
@@ -98,10 +94,13 @@ describe('@inkpi/agent-core', () => {
     expect(successRes.content[0]).toEqual({ type: 'text', text: '查询结果: 太虚道宗' });
 
     // Batch sequential and parallel
-    const batch = await registry.executeBatch([
-      { type: 'toolCall', id: 'b1', name: 'test_tool', arguments: { query: '1' } },
-      { type: 'toolCall', id: 'b2', name: 'test_tool', arguments: { query: '2' } }
-    ], 'sequential');
+    const batch = await registry.executeBatch(
+      [
+        { type: 'toolCall', id: 'b1', name: 'test_tool', arguments: { query: '1' } },
+        { type: 'toolCall', id: 'b2', name: 'test_tool', arguments: { query: '2' } }
+      ],
+      'sequential'
+    );
     expect(batch.length).toBe(2);
 
     expect(registry.unregister('test_tool')).toBe(true);
@@ -291,9 +290,13 @@ describe('@inkpi/agent-core', () => {
       streamFn: () => ({
         on: () => () => undefined,
         waitForListeners: async () => undefined,
-        collect: async () => { throw streamFailure; },
+        collect: async () => {
+          throw streamFailure;
+        },
         abort: () => undefined,
-        [Symbol.asyncIterator]: async function* () { /* no events */ }
+        [Symbol.asyncIterator]: async function* () {
+          /* no events */
+        }
       })
     });
 
@@ -380,7 +383,10 @@ describe('@inkpi/agent-core', () => {
         const stream = new AssistantEventStream();
         calls += 1;
         if (calls === 1) {
-          for (const [id, name] of [['call-one', 'one'], ['call-two', 'two']] as const) {
+          for (const [id, name] of [
+            ['call-one', 'one'],
+            ['call-two', 'two']
+          ] as const) {
             stream.push({ type: 'tool_call_start', toolCallId: id, toolName: name });
             stream.push({ type: 'tool_call_delta', toolCallId: id, argsDelta: '{}' });
             stream.push({
@@ -406,8 +412,16 @@ describe('@inkpi/agent-core', () => {
       const agent = new Agent({
         initialState: { model: getModelPreset('mock-test') },
         ...(hook === 'before'
-          ? { beforeToolCall: async () => { throw new Error('before failed'); } }
-          : { afterToolCall: async () => { throw new Error('after failed'); } }),
+          ? {
+              beforeToolCall: async () => {
+                throw new Error('before failed');
+              }
+            }
+          : {
+              afterToolCall: async () => {
+                throw new Error('after failed');
+              }
+            }),
         streamFn: () => {
           const stream = new AssistantEventStream();
           stream.push({ type: 'tool_call_start', toolCallId: 'call', toolName: 'tool' });

@@ -1,8 +1,8 @@
 import type { AgentEvent } from '@inkpi/protocol';
-import type { AgentOptions, AgentState } from '../types.js';
-import type { ToolRegistry } from '../tools.js';
-import type { MessageQueue } from '../queues.js';
 import type { Clock } from '../ports/index.js';
+import type { MessageQueue } from '../queues.js';
+import type { ToolRegistry } from '../tools.js';
+import type { AgentOptions, AgentState } from '../types.js';
 
 /**
  * 一轮 agent 循环所需的共享依赖。

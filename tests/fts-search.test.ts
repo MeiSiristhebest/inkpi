@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { InkDb, InkRepository, FtsSearchEngine } from '@inkpi/storage';
+import { FtsSearchEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/pi)', () => {
   it('should perform sub-millisecond BM25 keyword, phrase, and prefix search across documents', () => {

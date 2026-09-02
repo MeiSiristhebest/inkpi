@@ -1,5 +1,5 @@
-import type { SelectListOptions, TypographyOptions } from '@inkpi/protocol';
 import type { Agent, SessionTree } from '@inkpi/agent-core';
+import type { SelectListOptions, TypographyOptions } from '@inkpi/protocol';
 
 export type StudioFocusMode = 'editor' | 'outline' | 'copilot' | 'ledger';
 

@@ -1,19 +1,19 @@
-import { describe, it, expect } from 'vitest';
 import {
-  Type,
-  Value,
-  validateSchema,
-  assertValid,
-  sanitizeStateLedger,
-  sanitizeNovelStateLedger,
-  ThinkingLevelSchema,
-  UsageSchema,
-  UserMessageSchema,
   AssistantMessageSchema,
   CharacterStateSchema,
+  RpcRequestSchema,
   StateLedgerSchema,
-  RpcRequestSchema
+  ThinkingLevelSchema,
+  Type,
+  UsageSchema,
+  UserMessageSchema,
+  Value,
+  assertValid,
+  sanitizeNovelStateLedger,
+  sanitizeStateLedger,
+  validateSchema
 } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
   it('should validate ThinkingLevelSchema', () => {
@@ -93,11 +93,7 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
 
   it('should sanitize malformed state ledgers gracefully', () => {
     const raw = {
-      entities: [
-        { name: '萧炎', status: 'active', inventory: ['玄重尺'] },
-        null,
-        { invalid: true }
-      ],
+      entities: [{ name: '萧炎', status: 'active', inventory: ['玄重尺'] }, null, { invalid: true }],
       assets: [{ name: '异火' }],
       tracks: [{ summary: '三年之约' }],
       locations: [{ name: '乌坦城' }]

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { SessionCompactor } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Context Compaction Engine (1:1 Ported from repos/pi)', () => {
   it('should estimate tokens, detect context overflow, and perform recursive summarization', async () => {

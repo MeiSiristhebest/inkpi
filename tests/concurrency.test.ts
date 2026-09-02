@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { runWithConcurrency } from '../packages/agent-core/src/concurrency.js';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -23,11 +23,7 @@ describe('runWithConcurrency', () => {
 
     expect(results).toEqual(['A', 'B', 'C']);
     // 顺序执行：每个 start 紧接自己的 end，不会交错
-    expect(order).toEqual([
-      'start:a', 'end:a',
-      'start:b', 'end:b',
-      'start:c', 'end:c'
-    ]);
+    expect(order).toEqual(['start:a', 'end:a', 'start:b', 'end:b', 'start:c', 'end:c']);
   });
 
   it('parallel 模式全部并发启动，结果顺序仍与输入一致', async () => {
@@ -85,11 +81,15 @@ describe('runWithConcurrency', () => {
   it('sequential 模式下前序任务抛错则后续不再执行', async () => {
     const seen: number[] = [];
     await expect(
-      runWithConcurrency([1, 2, 3], async (n) => {
-        seen.push(n);
-        if (n === 2) throw new Error('stop');
-        return n;
-      }, 'sequential')
+      runWithConcurrency(
+        [1, 2, 3],
+        async (n) => {
+          seen.push(n);
+          if (n === 2) throw new Error('stop');
+          return n;
+        },
+        'sequential'
+      )
     ).rejects.toThrow('stop');
     expect(seen).toEqual([1, 2]);
   });

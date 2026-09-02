@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ExtensionInstaller, runPackageManagerCli } from '@inkpi/agent-core';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('InkPi Extension Package Manager', () => {
   const testBaseDir = path.join(process.cwd(), '.tmp-inkpi-extensions-test');
@@ -37,19 +37,23 @@ describe('InkPi Extension Package Manager', () => {
     const list = pm.getInstalledPackages();
     expect(list.length).toBe(1);
     expect(list[0].name).toBe('@inkpi/xianxia-worldview');
-    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'), 'utf8'))
-      .toContain('元婴');
+    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'), 'utf8')).toContain(
+      '元婴'
+    );
 
     // Update
-    pm.update('@inkpi/xianxia-worldview', {
-      ...manifest,
-      version: '1.1.0'
-    }, { 'index.js': 'export const version = "1.1.0";' });
+    pm.update(
+      '@inkpi/xianxia-worldview',
+      {
+        ...manifest,
+        version: '1.1.0'
+      },
+      { 'index.js': 'export const version = "1.1.0";' }
+    );
     const updatedList = pm.getInstalledPackages();
     expect(updatedList[0].version).toBe('1.1.0');
     expect(fs.existsSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'realms.json'))).toBe(false);
-    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'index.js'), 'utf8'))
-      .toContain('1.1.0');
+    expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-xianxia-worldview', 'index.js'), 'utf8')).toContain('1.1.0');
 
     // Remove
     const removed = pm.trash('@inkpi/xianxia-worldview');
@@ -76,13 +80,22 @@ describe('InkPi Extension Package Manager', () => {
     const missingSourceRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], { baseDir: cliBaseDir });
     expect(missingSourceRes).toContain('No package source resolver');
 
-    const installRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    const installRes = await runPackageManagerCli(['install', '@inkpi/test-pkg'], {
+      baseDir: cliBaseDir,
+      resolvePackage
+    });
     expect(installRes).toContain("Installed '@inkpi/test-pkg'@2.3.4");
 
-    const updateRes = await runPackageManagerCli(['update', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    const updateRes = await runPackageManagerCli(['update', '@inkpi/test-pkg'], {
+      baseDir: cliBaseDir,
+      resolvePackage
+    });
     expect(updateRes).toContain("Updated '@inkpi/test-pkg' to v2.3.4");
 
-    const removeRes = await runPackageManagerCli(['remove', '@inkpi/test-pkg'], { baseDir: cliBaseDir, resolvePackage });
+    const removeRes = await runPackageManagerCli(['remove', '@inkpi/test-pkg'], {
+      baseDir: cliBaseDir,
+      resolvePackage
+    });
     expect(removeRes).toContain('Removed');
   });
 
@@ -96,16 +109,27 @@ describe('InkPi Extension Package Manager', () => {
     };
     pm.install(manifest, { 'state.json': '{"ok":true}' });
 
-    expect(() => pm.update('@inkpi/stable', {
-      ...manifest,
-      version: 'not-semver'
-    }, { 'state.json': '{"ok":false}' })).toThrow(/Invalid package version/);
+    expect(() =>
+      pm.update(
+        '@inkpi/stable',
+        {
+          ...manifest,
+          version: 'not-semver'
+        },
+        { 'state.json': '{"ok":false}' }
+      )
+    ).toThrow(/Invalid package version/);
     expect(fs.readFileSync(path.join(testBaseDir, '@inkpi-stable', 'state.json'), 'utf8')).toBe('{"ok":true}');
 
-    expect(() => pm.install({
-      ...manifest,
-      version: '1.0.1'
-    }, { '../escape.js': 'must not be written' })).toThrow(/escapes package directory/);
+    expect(() =>
+      pm.install(
+        {
+          ...manifest,
+          version: '1.0.1'
+        },
+        { '../escape.js': 'must not be written' }
+      )
+    ).toThrow(/escapes package directory/);
     expect(fs.existsSync(path.join(testBaseDir, 'escape.js'))).toBe(false);
   });
 
@@ -127,10 +151,18 @@ describe('InkPi Extension Package Manager', () => {
 
     expect(() => (pm as any).validateManifest(null, {})).toThrow('Package manifest must be an object');
     expect(() => (pm as any).validateManifest({ name: '' }, {})).toThrow('name must not be empty');
-    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: '' }, {})).toThrow('category must not be empty');
-    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: 'plugin', description: 123 as any }, {})).toThrow('description must be a string');
-    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: 'plugin', files: [123 as any] }, {})).toThrow('files must be an array of paths');
-    expect(() => pm.update('pkg1', { name: 'pkg2', version: '1.0.0', category: 'plugin' })).toThrow('Package name mismatch');
+    expect(() => (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: '' }, {})).toThrow(
+      'category must not be empty'
+    );
+    expect(() =>
+      (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: 'plugin', description: 123 as any }, {})
+    ).toThrow('description must be a string');
+    expect(() =>
+      (pm as any).validateManifest({ name: 'pkg', version: '1.0.0', category: 'plugin', files: [123 as any] }, {})
+    ).toThrow('files must be an array of paths');
+    expect(() => pm.update('pkg1', { name: 'pkg2', version: '1.0.0', category: 'plugin' })).toThrow(
+      'Package name mismatch'
+    );
 
     // CLI branch tests
     const helpRes = await runPackageManagerCli(['help'], { baseDir: testBaseDir });

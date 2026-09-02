@@ -2,7 +2,7 @@
  * InkPi TUI 弹性布局原语
  */
 
-import { visibleWidth, ANSI } from './render.js';
+import { ANSI, visibleWidth } from './render.js';
 
 export interface LayoutOptions {
   width?: number;
@@ -141,10 +141,12 @@ export class VStackComponent extends Component {
   public render(context: RenderContext): string[] {
     const { width, height } = context;
     const totalExplicitHeight = this.children.reduce((acc, c) => {
-      const h = c.height !== undefined ? c.height : (c.component instanceof SpacerComponent ? c.component.size : 0);
+      const h = c.height !== undefined ? c.height : c.component instanceof SpacerComponent ? c.component.size : 0;
       return acc + h;
     }, 0);
-    const flexibleChildren = this.children.filter((c) => c.height === undefined && !(c.component instanceof SpacerComponent));
+    const flexibleChildren = this.children.filter(
+      (c) => c.height === undefined && !(c.component instanceof SpacerComponent)
+    );
     const totalFlex = flexibleChildren.reduce((acc, c) => acc + (c.flex || 1), 0);
     const remainingHeight = Math.max(0, height - totalExplicitHeight);
 

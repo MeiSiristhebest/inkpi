@@ -10,8 +10,8 @@ import {
 } from 'node:fs';
 import { dirname } from 'node:path';
 import type { JournalEntry, JournalEntryType, StateLedger } from '@inkpi/protocol';
-import type { InkRepository } from './repository.js';
 import type { InkDb } from './db.js';
+import type { InkRepository } from './repository.js';
 
 export interface JournalOptions {
   sessionId: string;
@@ -43,12 +43,13 @@ export class AppendOnlySessionJournal {
 
   constructor(options: JournalOptions | string) {
     this.sessionId = typeof options === 'string' ? options : options.sessionId;
-    this.idGenerator = typeof options === 'string'
-      ? () => `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      : options.idGenerator || (() => `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    this.idGenerator =
+      typeof options === 'string'
+        ? () => `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        : options.idGenerator || (() => `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
     this.clock = typeof options === 'string' ? Date.now : options.clock || Date.now;
     this.filePath = typeof options === 'string' ? undefined : options.filePath;
-    this.autoFlush = typeof options === 'string' ? true : options.autoFlush ?? true;
+    this.autoFlush = typeof options === 'string' ? true : (options.autoFlush ?? true);
 
     if (this.filePath) {
       if (!this.filePath.trim()) throw new Error('Journal filePath must not be empty.');
@@ -171,7 +172,10 @@ export class AppendOnlySessionJournal {
         const isUnterminatedSyntaxTail =
           index === lines.length - 1 && !hasTrailingNewline && normalized instanceof SyntaxError;
         if (isUnterminatedSyntaxTail) {
-          const validPrefix = lines.slice(0, index).filter((item) => item.trim()).join('\n');
+          const validPrefix = lines
+            .slice(0, index)
+            .filter((item) => item.trim())
+            .join('\n');
           truncateSync(this.filePath!, Buffer.byteLength(validPrefix ? `${validPrefix}\n` : '', 'utf8'));
           return;
         }
@@ -185,7 +189,10 @@ export class AppendOnlySessionJournal {
   /**
    * 将 JSONL 事件日志全量投影重放到 SQLite 关系型存储 (Event Sourcing -> Materialized View)
    */
-  public replayToDb(repo: InkRepository, db: InkDb): {
+  public replayToDb(
+    repo: InkRepository,
+    db: InkDb
+  ): {
     replayedCount: number;
     documentsUpdated: number;
     snapshotsCreated: number;
@@ -210,7 +217,7 @@ export class AppendOnlySessionJournal {
 
             if (entry.payload?.folders && Array.isArray(entry.payload.folders)) {
               for (const v of entry.payload.folders) {
-                if (!repo.getFolders(v.workspaceId).some(x => x.id === v.id)) {
+                if (!repo.getFolders(v.workspaceId).some((x) => x.id === v.id)) {
                   repo.createFolder(v);
                 }
                 projected = true;
@@ -235,15 +242,15 @@ export class AppendOnlySessionJournal {
             if (!repo.getDocument(p.documentId)) {
               throw new Error(`draft_revision '${entry.id}' references unknown document '${p.documentId}'.`);
             }
-            const contentSize = typeof p.contentSize === 'number' && Number.isFinite(p.contentSize)
-              ? p.contentSize
-              : p.markdown.length;
+            const contentSize =
+              typeof p.contentSize === 'number' && Number.isFinite(p.contentSize) ? p.contentSize : p.markdown.length;
             repo.upsertSnapshot({
               documentId: p.documentId,
               version: typeof p.version === 'number' ? p.version : entry.timestamp,
-              contentJson: typeof p.contentJson === 'string'
-                ? p.contentJson
-                : JSON.stringify({ type: 'text', content: p.markdown }),
+              contentJson:
+                typeof p.contentJson === 'string'
+                  ? p.contentJson
+                  : JSON.stringify({ type: 'text', content: p.markdown }),
               contentMarkdown: p.markdown,
               contentSize,
               updatedAt: entry.timestamp
@@ -375,11 +382,7 @@ function parseJournalEntry(value: unknown, sessionId: string): JournalEntry {
   const entry = value as Record<string, unknown>;
   if (typeof entry.id !== 'string' || !entry.id.trim()) throw new Error('entry.id must be a non-empty string.');
   if (entry.sessionId !== sessionId) throw new Error(`entry.sessionId must equal '${sessionId}'.`);
-  if (
-    typeof entry.seq !== 'number' ||
-    !Number.isSafeInteger(entry.seq) ||
-    entry.seq < 1
-  ) {
+  if (typeof entry.seq !== 'number' || !Number.isSafeInteger(entry.seq) || entry.seq < 1) {
     throw new Error('entry.seq must be a positive safe integer.');
   }
   if (entry.parentId !== null && (typeof entry.parentId !== 'string' || !entry.parentId.trim())) {

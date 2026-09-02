@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseMermaid } from './mermaid-parser.js';
 
 describe('parseMermaid (pure, no ANSI)', () => {

@@ -1,13 +1,9 @@
-import type {
-  RpcRequest,
-  RpcResponse,
-  RpcNotification
-} from '@inkpi/protocol';
+import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
-import type { RpcTransport } from './types.js';
-import { DEFAULT_RPC_HOST } from './types.js';
 import { TcpSocketTransport } from './transports/tcp.js';
 import { WebSocketTransport } from './transports/ws.js';
+import type { RpcTransport } from './types.js';
+import { DEFAULT_RPC_HOST } from './types.js';
 
 export interface Transport {
   sendRequest(req: RpcRequest): Promise<RpcResponse>;
@@ -21,7 +17,14 @@ export class InMemoryTransport implements Transport {
   private handler: (req: RpcRequest) => Promise<RpcResponse>;
   private notifHandlers: Array<(notif: RpcNotification) => void> = [];
 
-  constructor(serverOrHandler: { handleRequest: (req: RpcRequest) => Promise<RpcResponse>; setNotificationSender?: (sender: (n: RpcNotification) => void) => void } | ((req: RpcRequest) => Promise<RpcResponse>)) {
+  constructor(
+    serverOrHandler:
+      | {
+          handleRequest: (req: RpcRequest) => Promise<RpcResponse>;
+          setNotificationSender?: (sender: (n: RpcNotification) => void) => void;
+        }
+      | ((req: RpcRequest) => Promise<RpcResponse>)
+  ) {
     if (typeof serverOrHandler === 'function') {
       this.handler = serverOrHandler;
     } else {
@@ -54,7 +57,10 @@ export class InMemoryTransport implements Transport {
  */
 export class RemoteStreamTransport implements Transport {
   private transport: RpcTransport;
-  private pendingRequests = new Map<string | number, { resolve: (res: RpcResponse) => void; reject: (err: any) => void }>();
+  private pendingRequests = new Map<
+    string | number,
+    { resolve: (res: RpcResponse) => void; reject: (err: any) => void }
+  >();
   private notifHandlers: Array<(notif: RpcNotification) => void> = [];
 
   constructor(transport: RpcTransport) {
@@ -267,7 +273,10 @@ export class InkRpcClient {
   }
 
   public searchFts(query: string, limit = 10) {
-    return this.request<Array<{ documentId: string; title: string; snippet: string }>>('storage.searchFts', { query, limit });
+    return this.request<Array<{ documentId: string; title: string; snippet: string }>>('storage.searchFts', {
+      query,
+      limit
+    });
   }
 
   public triggerWorkflow(userPrompt: string, title?: string) {

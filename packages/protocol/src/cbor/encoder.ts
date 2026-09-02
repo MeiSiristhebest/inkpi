@@ -3,10 +3,10 @@ import {
   type CborOptions,
   MAX_UINT32,
   type ResolvedCborOptions,
+  UINT32_BASE,
   resolveOptions,
   textDecoder,
-  textEncoder,
-  UINT32_BASE
+  textEncoder
 } from './options.js';
 
 class CborWriter {
@@ -128,7 +128,8 @@ function encodeItem(writer: CborWriter, value: unknown, depth: number, options: 
         return;
       }
       const magnitude = -1 - value;
-      if (magnitude < 0 || magnitude > Number.MAX_SAFE_INTEGER) throw new CborError('Negative integer exceeds safe range');
+      if (magnitude < 0 || magnitude > Number.MAX_SAFE_INTEGER)
+        throw new CborError('Negative integer exceeds safe range');
       writeArgument(writer, 1, magnitude);
       return;
     }

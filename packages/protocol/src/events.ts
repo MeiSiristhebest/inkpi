@@ -1,4 +1,4 @@
-import type { AgentMessage, AssistantMessage, ToolResultMessage, Usage, ToolCallContent } from './messages.js';
+import type { AgentMessage, AssistantMessage, ToolCallContent, ToolResultMessage, Usage } from './messages.js';
 
 export type AssistantMessageEvent =
   | { type: 'text_delta'; textDelta: string }

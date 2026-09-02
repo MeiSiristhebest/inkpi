@@ -1,6 +1,6 @@
 import type { StateLedger } from '@inkpi/protocol';
-import { SessionTree, type SessionTreeNode } from './tree.js';
 import type { Clock, IdGenerator } from './ports/index.js';
+import { SessionTree, type SessionTreeNode } from './tree.js';
 
 export interface HypothesisBranchInfo {
   branchId: string;
@@ -127,14 +127,14 @@ export class BranchExplorer {
     const ledger: StateLedger = initialLedger
       ? { ...initialLedger }
       : activeBranch
-      ? JSON.parse(JSON.stringify(activeBranch.stateLedger))
-      : { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
+        ? JSON.parse(JSON.stringify(activeBranch.stateLedger))
+        : { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
 
     const docs: Record<string, string> = initialDocuments
       ? { ...initialDocuments }
       : activeBranch?.documentSnapshots
-      ? { ...activeBranch.documentSnapshots }
-      : {};
+        ? { ...activeBranch.documentSnapshots }
+        : {};
 
     const branchInfo: HypothesisBranchInfo = {
       branchId,
@@ -241,16 +241,25 @@ export class BranchExplorer {
     }
 
     const baseAssetSet = new Set((baseLedger.assets || []).map((i) => i.id || i.name));
-    const addedAssets = (targetLedger.assets || []).filter((i) => !baseAssetSet.has(i.id || i.name)).map((i) => (i.name || i.id || '')).filter(Boolean);
+    const addedAssets = (targetLedger.assets || [])
+      .filter((i) => !baseAssetSet.has(i.id || i.name))
+      .map((i) => i.name || i.id || '')
+      .filter(Boolean);
 
     const baseTracks = new Set((baseLedger.tracks || []).map((f) => f.id || f.clue));
     const newTracks = (targetLedger.tracks || [])
       .filter((f) => !baseTracks.has(f.id || f.clue))
-      .map((f) => (f.clue || f.id || '')).filter(Boolean);
+      .map((f) => f.clue || f.id || '')
+      .filter(Boolean);
 
     const resolvedTracks = (targetLedger.tracks || [])
-      .filter((f) => f.status === 'resolved' && (baseLedger.tracks || []).some((bf) => (bf.id || bf.clue) === (f.id || f.clue) && bf.status === 'pending'))
-      .map((f) => (f.clue || f.id || '')).filter(Boolean);
+      .filter(
+        (f) =>
+          f.status === 'resolved' &&
+          (baseLedger.tracks || []).some((bf) => (bf.id || bf.clue) === (f.id || f.clue) && bf.status === 'pending')
+      )
+      .map((f) => f.clue || f.id || '')
+      .filter(Boolean);
 
     return {
       addedEntities,
@@ -319,4 +328,3 @@ export class BranchExplorer {
     };
   }
 }
-

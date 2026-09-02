@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
 import {
   createInitialSessionState,
-  reduceSessionEntry,
+  detectAndMarkInterruptedOperations,
   reduceSession,
-  detectAndMarkInterruptedOperations
+  reduceSessionEntry
 } from '@inkpi/agent-core';
 import type { SessionEntry } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine)', () => {
   it('should create empty initial session state', () => {

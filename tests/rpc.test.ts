@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { InkRpcServer, InkRpcClient, InMemoryTransport } from '@inkpi/server';
 import { Agent, SessionTree } from '@inkpi/agent-core';
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import { InkDb, FtsSearchEngine, InkRepository } from '@inkpi/storage';
 import { getModelPreset } from '@inkpi/ai';
+import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
+import { InMemoryTransport, InkRpcClient, InkRpcServer } from '@inkpi/server';
+import { FtsSearchEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', () => {
   it('should dispatch full writer pipeline via RPC client and receive streaming notifications', async () => {
@@ -67,7 +67,6 @@ describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', 
     expect(forkRes.leafId).toBe(rootNodeId);
     expect(forkRes.node.id).toBe(rootNodeId);
 
-
     const switchRes = await client.switchBranch(forkRes.leafId);
     expect(switchRes.currentLeafId).toBe(forkRes.leafId);
 
@@ -102,17 +101,20 @@ describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', 
     // Uninitialized components throwing friendly errors
     await expect(client.call('agent.prompt', { prompt: 'hi' })).rejects.toThrow('Agent not initialized');
     await expect(client.call('agent.abort')).rejects.toThrow('Agent not initialized');
-    await expect(client.call('tree.switchBranch', { targetLeafId: 'leaf_1' })).rejects.toThrow('SessionTree not initialized');
+    await expect(client.call('tree.switchBranch', { targetLeafId: 'leaf_1' })).rejects.toThrow(
+      'SessionTree not initialized'
+    );
     await expect(client.call('tree.fork', {})).rejects.toThrow('SessionTree not initialized');
     await expect(client.call('editor.insertText', { pos: 0, text: 'a' })).rejects.toThrow('Editor not initialized');
     await expect(client.call('ghost.set', { pos: 0, text: 'b' })).rejects.toThrow('Ghost text manager not initialized');
     await expect(client.call('ghost.accept')).rejects.toThrow('Ghost text manager not initialized');
-    
+
     // Unconfigured capabilities must be reported explicitly; an empty result
     // is reserved for an initialized capability with no matching data.
     await expect(client.call('tree.getBranches')).rejects.toThrow('SessionTree not initialized');
     await expect(client.call('editor.getText')).rejects.toThrow('Editor not initialized');
-    await expect(client.call('storage.searchFts', { query: 'test' }))
-      .rejects.toThrow('FTS search capability not initialized');
+    await expect(client.call('storage.searchFts', { query: 'test' })).rejects.toThrow(
+      'FTS search capability not initialized'
+    );
   });
 });

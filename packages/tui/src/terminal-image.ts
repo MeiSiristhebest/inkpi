@@ -1,7 +1,6 @@
 import { visibleWidth } from './width.js';
 
 export interface TerminalImageOptions {
-
   protocol?: 'kitty' | 'iterm2' | 'ascii' | 'auto';
   width?: number;
   height?: number;
@@ -24,14 +23,9 @@ export function detectTerminalProtocol(): 'kitty' | 'iterm2' | 'ascii' {
 /**
  * 将图片 Buffer 或 Base64 编码转换为终端内联控制码
  */
-export function renderTerminalImage(
-  imageBufferOrBase64: Buffer | string,
-  options: TerminalImageOptions = {}
-): string {
+export function renderTerminalImage(imageBufferOrBase64: Buffer | string, options: TerminalImageOptions = {}): string {
   const protocol = options.protocol && options.protocol !== 'auto' ? options.protocol : detectTerminalProtocol();
-  const base64 = typeof imageBufferOrBase64 === 'string'
-    ? imageBufferOrBase64
-    : imageBufferOrBase64.toString('base64');
+  const base64 = typeof imageBufferOrBase64 === 'string' ? imageBufferOrBase64 : imageBufferOrBase64.toString('base64');
 
   if (protocol === 'kitty') {
     // Kitty Graphics Protocol: \x1b_Gf=100,a=T,m=0;<base64>\x1b\
@@ -57,7 +51,6 @@ export function renderTerminalImage(
       const pad = Math.max(0, width - 2 - visibleWidth(label));
       lines.push(`│${label}${' '.repeat(pad)}│`);
     } else {
-
       lines.push(`│${' '.repeat(width - 2)}│`);
     }
   }

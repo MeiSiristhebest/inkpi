@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { SessionExporter, SessionTree } from '@inkpi/agent-core';
-import type { AgentMessage, UserMessage, AssistantMessage } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessage, UserMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Advanced SessionExporter (HTML & JSONL)', () => {
   it('should export and import session to/from JSONL losslessly', () => {
@@ -37,8 +37,9 @@ describe('@inkpi/agent-core -> Advanced SessionExporter (HTML & JSONL)', () => {
     const invalid = '{"role":"assistant","content":"not-an-array"}';
 
     expect(() => exporter.importFromJsonl(invalid)).toThrow(/line 1/);
-    expect(exporter.importFromJsonl(`${invalid}\n${JSON.stringify({ role: 'user', content: 'ok' })}`, { strict: false }))
-      .toHaveLength(1);
+    expect(
+      exporter.importFromJsonl(`${invalid}\n${JSON.stringify({ role: 'user', content: 'ok' })}`, { strict: false })
+    ).toHaveLength(1);
   });
 
   it('should render rich interactive HTML report with thinking blocks and branch information', () => {

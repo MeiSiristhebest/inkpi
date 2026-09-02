@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
 import {
+  NarrativeSemanticLedgerExtractor,
+  SessionCompactor,
   extractNovelStateLedger,
   extractStateLedger,
-  formatStateLedger,
-  NarrativeSemanticLedgerExtractor,
-  SessionCompactor
+  formatStateLedger
 } from '@inkpi/agent-core';
-import type { AgentMessage, UserMessage, AssistantMessage } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessage, UserMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
   it('should accurately extract state ledger from structured tags, tool calls, and text', () => {
@@ -46,7 +46,10 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
     expect(genericLedger.assets).toEqual([]);
     expect(genericLedger.tracks).toEqual([]);
 
-    const ledger = extractNovelStateLedger([...messages, { role: 'user', content: 'Received CustomSignal' } as any], [customExtractor]);
+    const ledger = extractNovelStateLedger(
+      [...messages, { role: 'user', content: 'Received CustomSignal' } as any],
+      [customExtractor]
+    );
 
     expect(ledger.entities.some((c) => c.name === 'Alice')).toBe(true);
     expect(ledger.entities.some((c) => c.name === 'Bob')).toBe(true);
@@ -116,8 +119,15 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
     });
 
     const messages: AgentMessage[] = [
-      { role: 'user', content: 'doc_1 <entity name="Alice" /> <asset name="HyperTerminal" /> <track clue="SystemInit" status="pending" />' } as UserMessage,
-      { role: 'assistant', content: [{ type: 'text', text: 'Alice successfully activated HyperTerminal.' }] } as AssistantMessage,
+      {
+        role: 'user',
+        content:
+          'doc_1 <entity name="Alice" /> <asset name="HyperTerminal" /> <track clue="SystemInit" status="pending" />'
+      } as UserMessage,
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Alice successfully activated HyperTerminal.' }]
+      } as AssistantMessage,
       { role: 'user', content: 'doc_2 Proceed to command center.' } as UserMessage,
       { role: 'assistant', content: [{ type: 'text', text: 'Alice enters the command center.' }] } as AssistantMessage
     ];

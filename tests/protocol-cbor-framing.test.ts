@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  encodeCbor,
-  decodeCbor,
-  encodeFrame,
+  CborError,
   FrameDecoder,
-  encodeProtocolPayload,
-  decodeProtocolPayload,
   StreamPayloadDecoder,
-  CborError
+  decodeCbor,
+  decodeProtocolPayload,
+  encodeCbor,
+  encodeFrame,
+  encodeProtocolPayload
 } from '../packages/protocol/src/index.js';
 
 describe('Protocol CBOR & Framing Suite (Aligned with Pi)', () => {

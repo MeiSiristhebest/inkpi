@@ -1,19 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
-  parseSkillMarkdown,
-  SkillDiscoveryEngine,
-  TelemetryCollector,
-  SessionExporter,
-  SessionCompactor,
+  KillRing,
   ModelRegistry,
   ScopedModelResolver,
-  KillRing,
-  fuzzySearch
+  SessionCompactor,
+  SessionExporter,
+  SkillDiscoveryEngine,
+  TelemetryCollector,
+  fuzzySearch,
+  parseSkillMarkdown
 } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () => {
   it('should test Skill discovery edge cases and parseSkillMarkdown invalid branches', () => {
@@ -22,7 +22,7 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
     expect(parseSkillMarkdown('---\nno closing delimiter', 'test.md')).toBeNull();
 
     // 2. Lines without colon in YAML
-    const withBadLine = `---\nname: skill-1\njust a random line\ndescription: desc-1\n---\nPrompt body`;
+    const withBadLine = '---\nname: skill-1\njust a random line\ndescription: desc-1\n---\nPrompt body';
     const parsed = parseSkillMarkdown(withBadLine, 'skill-1.md');
     expect(parsed?.name).toBe('skill-1');
     expect(parsed?.description).toBe('desc-1');
@@ -39,10 +39,7 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
     const subDir = join(baseDir, 'sub_category');
     mkdirSync(subDir, { recursive: true });
 
-    writeFileSync(
-      join(subDir, 'sub_skill.md'),
-      `---\nname: nested-skill\ndescription: Nested skill desc\n---\nBody`
-    );
+    writeFileSync(join(subDir, 'sub_skill.md'), '---\nname: nested-skill\ndescription: Nested skill desc\n---\nBody');
 
     try {
       engine.addSearchDir(baseDir);
@@ -109,14 +106,16 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
 
     expect(defaultCompactor.shouldCompact(shortMessages)).toBe(false);
 
-    await expect(defaultCompactor.compact([
-      ...shortMessages,
-      { role: 'user', content: 'more 1' },
-      { role: 'assistant', content: [{ type: 'text', text: 'more 2' }] },
-      { role: 'user', content: 'more 3' },
-      { role: 'assistant', content: [{ type: 'text', text: 'more 4' }] },
-      { role: 'user', content: 'more 5' }
-    ])).rejects.toThrow('explicit summarizer capability');
+    await expect(
+      defaultCompactor.compact([
+        ...shortMessages,
+        { role: 'user', content: 'more 1' },
+        { role: 'assistant', content: [{ type: 'text', text: 'more 2' }] },
+        { role: 'user', content: 'more 3' },
+        { role: 'assistant', content: [{ type: 'text', text: 'more 4' }] },
+        { role: 'user', content: 'more 5' }
+      ])
+    ).rejects.toThrow('explicit summarizer capability');
   });
 
   it('should test ModelRegistry & ScopedModelResolver unknown lookups and all scopes', () => {

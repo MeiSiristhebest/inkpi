@@ -1,5 +1,5 @@
-import type { ModelConfig } from '@inkpi/protocol';
 import { MODEL_PRESETS } from '@inkpi/ai';
+import type { ModelConfig } from '@inkpi/protocol';
 
 export interface ModelMetadata {
   model: ModelConfig;
@@ -74,4 +74,3 @@ export class ModelRegistry {
     return this.models.delete(resolvedId);
   }
 }
-

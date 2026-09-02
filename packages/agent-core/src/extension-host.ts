@@ -1,15 +1,15 @@
 import type {
   AgentMessage,
-  ExtensionAPI,
-  ExtensionModule,
-  ExtensionFactory,
   CommandHandler,
-  ShortcutHandler,
   ContextTransformer,
+  ExtensionAPI,
+  ExtensionFactory,
+  ExtensionModule,
+  FlashNotificationOptions,
+  InputDialogOptions,
   PipelineHooks,
   SelectListOptions,
-  InputDialogOptions,
-  FlashNotificationOptions,
+  ShortcutHandler,
   UIDelegate
 } from '@inkpi/protocol';
 
@@ -96,10 +96,7 @@ export class ExtensionHost implements ExtensionAPI {
   // -------------------------------------------------------------
   // 斜杠指令 (Slash Commands)
   // -------------------------------------------------------------
-  public registerCommand(
-    nameOrConfig: string | CommandDefinition | any,
-    handler?: CommandHandler
-  ): () => void {
+  public registerCommand(nameOrConfig: string | CommandDefinition | any, handler?: CommandHandler): () => void {
     let cleanName: string;
     if (typeof nameOrConfig === 'string') {
       cleanName = nameOrConfig.startsWith('/') ? nameOrConfig.slice(1) : nameOrConfig;
@@ -136,22 +133,27 @@ export class ExtensionHost implements ExtensionAPI {
   // 快捷键 (Shortcuts) & 上下文转换 (Transformers)
   // -------------------------------------------------------------
   public registerShortcut(
-    keyOrConfig: string | { key: string; execute?: () => boolean | Promise<boolean>; handler?: ShortcutHandler; description?: string },
+    keyOrConfig:
+      | string
+      | { key: string; execute?: () => boolean | Promise<boolean>; handler?: ShortcutHandler; description?: string },
     handler?: ShortcutHandler
   ): () => void {
     const key = typeof keyOrConfig === 'string' ? keyOrConfig : keyOrConfig.key;
-    const fn = typeof keyOrConfig === 'string' ? handler! : (keyOrConfig.handler || (() => {}));
+    const fn = typeof keyOrConfig === 'string' ? handler! : keyOrConfig.handler || (() => {});
     const shortcutObj = {
       key,
       handler: fn,
-      execute: typeof keyOrConfig === 'object' && keyOrConfig.execute ? keyOrConfig.execute : async () => {
-        if (typeof fn === 'function') {
-          await (fn as any)();
-        } else if (fn && typeof (fn as any).execute === 'function') {
-          await (fn as any).execute();
-        }
-        return true;
-      }
+      execute:
+        typeof keyOrConfig === 'object' && keyOrConfig.execute
+          ? keyOrConfig.execute
+          : async () => {
+              if (typeof fn === 'function') {
+                await (fn as any)();
+              } else if (fn && typeof (fn as any).execute === 'function') {
+                await (fn as any).execute();
+              }
+              return true;
+            }
     };
     this.shortcuts.set(key, shortcutObj);
     return () => {
@@ -273,7 +275,7 @@ export class ExtensionRunner {
       }
       return true;
     } catch (err) {
-      console.error(`[ExtensionRunner] Failed to load extension:`, err);
+      console.error('[ExtensionRunner] Failed to load extension:', err);
       return false;
     }
   }

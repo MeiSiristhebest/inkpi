@@ -43,11 +43,7 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
     const telem = new TelemetryCollector();
     const pipeline = new WorkflowCoordinator({ telemetry: telem, model });
 
-    const result = await pipeline.runPipeline(
-      'Test Workspace B',
-      'Document 1 Start',
-      '主角初入World'
-    );
+    const result = await pipeline.runPipeline('Test Workspace B', 'Document 1 Start', '主角初入World');
     expect(result.polishedText).toBeDefined();
 
     const spans = telem.getSpans();

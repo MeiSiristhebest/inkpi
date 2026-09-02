@@ -1,5 +1,5 @@
-import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import type { Usage } from '@inkpi/protocol';
+import type { TelemetryCollector } from '../telemetry/telemetry.js';
 
 /** 阶段 span 句柄。由 `startSpan` 返回类型推导，避免依赖未对外导出的内部类型。 */
 export type TelemetrySpanHandle = ReturnType<TelemetryCollector['startSpan']>;

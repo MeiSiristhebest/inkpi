@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { InkDb, LaneManager } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 import { StorageConformanceSuite } from './storage-conformance-suite.js';
 
 describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
@@ -42,7 +42,6 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
       updatedAt: 1000
     });
 
-
     const tip = lanes.getBranchTip('lane_main', 'ch_101');
     expect(tip).toBeDefined();
     expect(tip?.headSnapshotVersion).toBe(2);
@@ -67,13 +66,15 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
     const updatedIfLane = lanes.getLane('lane_if_1');
     expect(updatedIfLane?.isDefault).toBe(true);
     expect(() => lanes.setDefaultLane(workspaceId, 'missing_lane')).toThrow('not found');
-    expect(() => lanes.setBranchTip({
-      laneId: 'missing_lane',
-      documentId: 'ch_101',
-      headSnapshotVersion: 1,
-      lastDeltaId: 0,
-      updatedAt: 1000
-    })).toThrow('not found');
+    expect(() =>
+      lanes.setBranchTip({
+        laneId: 'missing_lane',
+        documentId: 'ch_101',
+        headSnapshotVersion: 1,
+        lastDeltaId: 0,
+        updatedAt: 1000
+      })
+    ).toThrow('not found');
     expect(() => lanes.forkLane('lane_main', 'lane_if_1', 'Duplicate')).toThrow('already exists');
     expect(() => lanes.mergeLane('lane_main', 'lane_main')).toThrow('must differ');
     expect(lanes.getLanes('empty_workspace')).toEqual([]);
@@ -205,15 +206,16 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
     db.close();
   });
 
-
-
   it('should run full storage conformance suite and pass 100% checks', async () => {
     const db = new InkDb(':memory:');
     const suite = new StorageConformanceSuite(db);
 
     const report = await suite.runAll();
     if (!report.passed) {
-      console.log('Failed checks:', report.checks.filter(c => !c.passed));
+      console.log(
+        'Failed checks:',
+        report.checks.filter((c) => !c.passed)
+      );
     }
     expect(report.passed).toBe(true);
     expect(report.failedChecks).toBe(0);
@@ -239,5 +241,3 @@ describe('Storage Layer - Lanes, Branch Tips & Conformance Suite', () => {
     expect(brokenSuite.verifyWalCheckpoint().passed).toBe(false);
   });
 });
-
-

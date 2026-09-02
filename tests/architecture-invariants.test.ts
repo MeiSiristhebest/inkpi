@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
 import type { ModelConfig } from '@inkpi/ai';
+import { describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Architectural guard tests

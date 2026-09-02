@@ -1,21 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import {
-  InkRpcServer,
-  InkRpcClient,
-  InMemoryTransport
-} from '@inkpi/server';
-import {
-  WorkflowCoordinator,
-  TelemetryCollector
-} from '@inkpi/agent-core';
+import { TelemetryCollector, WorkflowCoordinator } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
-import {
-  InkDb,
-  InkRepository,
-  FtsSearchEngine,
-  AppendOnlySessionJournal,
-  JitMemoryRetriever
-} from '@inkpi/storage';
+import { InMemoryTransport, InkRpcClient, InkRpcServer } from '@inkpi/server';
+import { AppendOnlySessionJournal, FtsSearchEngine, InkDb, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('Advanced JSON-RPC Server & Client Features', () => {
   it('should support journal, jit memory, pipeline run and telemetry via RPC', async () => {
@@ -41,9 +28,11 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
     const transport = new InMemoryTransport(server);
     const client = new InkRpcClient(transport);
 
-    await expect(client.call('pipeline.run', {
-      userPrompt: '缺少显式标题'
-    })).rejects.toThrow('requires bookTitle or title');
+    await expect(
+      client.call('pipeline.run', {
+        userPrompt: '缺少显式标题'
+      })
+    ).rejects.toThrow('requires bookTitle or title');
 
     // 1. Journal RPC
     const appRes = await client.appendJournal('user_message', { content: 'RPC用户输入' }, 'evt_rpc_1');

@@ -9,10 +9,10 @@
  * default fallbacks inside the core.
  */
 
-import type { AgentMessage, AssistantMessageEvent, ModelConfig } from '@inkpi/protocol';
-import type { EventStream, StreamOptions } from '@inkpi/ai';
-import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rpc/session-registry.js';
 import * as nodeFs from 'node:fs';
+import type { EventStream, StreamOptions } from '@inkpi/ai';
+import type { AgentMessage, AssistantMessageEvent, ModelConfig } from '@inkpi/protocol';
+import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rpc/session-registry.js';
 
 /** Wall-clock / monotonic time source. Inject a test clock; never call `Date.now()` directly. */
 export type Clock = () => number;
@@ -64,9 +64,11 @@ export const nodeFileSystem: FileSystem = {
  * concrete provider. A `ModelStreamer` implementation is supplied by the
  * composition root (never a default fallback inside the core).
  */
-export interface ModelStreamer {
-  (model: ModelConfig, messages: AgentMessage[], options?: StreamOptions): EventStream<AssistantMessageEvent>;
-}
+export type ModelStreamer = (
+  model: ModelConfig,
+  messages: AgentMessage[],
+  options?: StreamOptions
+) => EventStream<AssistantMessageEvent>;
 
 /**
  * Multi-session store port. The live in-memory `SessionRegistry` is one

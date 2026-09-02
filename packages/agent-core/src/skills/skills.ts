@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import type { SkillInfo } from '@inkpi/protocol';
 
 /**

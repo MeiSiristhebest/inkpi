@@ -1,4 +1,4 @@
-import type { GhostTextSuggestion, GhostTextState } from '@inkpi/protocol';
+import type { GhostTextState, GhostTextSuggestion } from '@inkpi/protocol';
 import type { HeadlessEditorState } from './state.js';
 
 export class GhostTextManager {
@@ -48,7 +48,7 @@ export class GhostTextManager {
   }
 
   public hasGhostText(): boolean {
-    return this.state.active && Boolean(this.state.current && this.state.current.text);
+    return this.state.active && Boolean(this.state.current?.text);
   }
 
   public acceptGhostText(): boolean {
@@ -110,7 +110,6 @@ export class GhostTextManager {
   public accept(): boolean {
     return this.acceptGhostText();
   }
-
 
   public dismissGhostText(): void {
     this.state = {

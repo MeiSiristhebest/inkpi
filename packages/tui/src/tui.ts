@@ -3,12 +3,12 @@
  * 支持差量渲染、硬件光标定位 (CURSOR_MARKER)、多层级 9 锚点 Overlay 浮层合成与键盘事件分发。
  */
 
-import { DifferentialRenderer, type ScreenDimensions, ANSI } from './render.js';
+import { type CursorPosition, extractCursorPosition } from './cursor.js';
+import { type KeyEvent, parseKey } from './keys.js';
+import type { Component } from './layout.js';
+import { type OverlayHandle, OverlayManager, type OverlayOptions } from './overlay.js';
+import { ANSI, DifferentialRenderer, type ScreenDimensions } from './render.js';
 import { ScreenManager } from './tui-screens.js';
-import { parseKey, type KeyEvent } from './keys.js';
-import { Component } from './layout.js';
-import { OverlayManager, type OverlayOptions, OverlayHandle } from './overlay.js';
-import { extractCursorPosition, type CursorPosition } from './cursor.js';
 
 export interface TuiOptions {
   altScreen?: boolean;
@@ -97,7 +97,7 @@ export class TUI {
     const key = parseKey(data);
     const activeOverlay = this.overlayManager.getActiveOverlay();
 
-    if (activeOverlay && activeOverlay.options.modal) {
+    if (activeOverlay?.options.modal) {
       // Route input to modal overlay first if supported
       if ('handleKey' in activeOverlay.component && typeof (activeOverlay.component as any).handleKey === 'function') {
         const handled = (activeOverlay.component as any).handleKey(key);
@@ -137,7 +137,7 @@ export class TUI {
       if (this.screenManager.getMode() === 'alt') {
         process.stdout.write(ANSI.CURSOR_HOME + output);
       } else {
-        process.stdout.write(output + '\n');
+        process.stdout.write(`${output}\n`);
       }
     }
 

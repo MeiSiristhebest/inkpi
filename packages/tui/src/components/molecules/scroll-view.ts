@@ -3,7 +3,7 @@
  */
 
 import { Component, type RenderContext } from '../../layout.js';
-import { visibleWidth, ANSI } from '../../render.js';
+import { ANSI, visibleWidth } from '../../render.js';
 
 export interface ScrollViewOptions {
   content?: string[];

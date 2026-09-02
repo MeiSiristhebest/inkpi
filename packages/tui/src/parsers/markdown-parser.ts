@@ -6,15 +6,7 @@
  * is unit-testable in isolation from any terminal output.
  */
 
-export type MarkdownBlockType =
-  | 'fence'
-  | 'code'
-  | 'h1'
-  | 'h2'
-  | 'h3'
-  | 'quote'
-  | 'list'
-  | 'text';
+export type MarkdownBlockType = 'fence' | 'code' | 'h1' | 'h2' | 'h3' | 'quote' | 'list' | 'text';
 
 export interface MarkdownBlock {
   type: MarkdownBlockType;

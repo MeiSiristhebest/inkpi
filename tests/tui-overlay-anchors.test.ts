@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  OverlayManager,
   Component,
+  type OverlayAnchor,
+  OverlayManager,
   type RenderContext,
   TUI,
-  isFocusable,
-  type OverlayAnchor
+  isFocusable
 } from '../packages/tui/src/index.js';
 
 class SimpleBox extends Component {

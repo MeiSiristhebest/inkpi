@@ -38,7 +38,6 @@ export interface CreativeDatasetPayload {
   messages: AgentMessage[];
 }
 
-
 const DEFAULT_API_KEY_REGEX = /\b(sk-[a-zA-Z0-9_-]{20,}|Bearer\s+[a-zA-Z0-9_\-\.]{20,}|key-[a-zA-Z0-9]{16,})\b/gi;
 const DEFAULT_PATH_REGEX = /([A-Za-z]:\\[\w\s\.\-\\]+|\/(?:home|Users|var|tmp|etc)\/[\w\s\.\-\/]+)/g;
 
@@ -46,11 +45,11 @@ const DEFAULT_PATH_REGEX = /([A-Za-z]:\\[\w\s\.\-\\]+|\/(?:home|Users|var|tmp|et
  * 会话脱敏与导出分享引擎
  * 支持将多轮 Agent 交互轨迹、会话树推演与状态流变安全导出为 Hugging Face / Gist 规范的数据集与独立 HTML
  */
-export class SessionShareExporter {
+export const SessionShareExporter = {
   /**
    * 脱敏文本内容（移除 API Key、敏感绝对路径与凭据）
    */
-  public static sanitize(text: string, options: CreativeSessionShareOptions = {}): string {
+  sanitize(text: string, options: CreativeSessionShareOptions = {}): string {
     if (!text || typeof text !== 'string') return text;
     let sanitized = text;
 
@@ -69,37 +68,37 @@ export class SessionShareExporter {
     }
 
     return sanitized;
-  }
+  },
 
   /**
    * 对单条消息进行脱敏
    */
-  public static sanitizeMessage(msg: AgentMessage, options: CreativeSessionShareOptions = {}): AgentMessage {
+  sanitizeMessage(msg: AgentMessage, options: CreativeSessionShareOptions = {}): AgentMessage {
     const cloned = JSON.parse(JSON.stringify(msg)) as AgentMessage;
     if (typeof cloned.content === 'string') {
-      cloned.content = this.sanitize(cloned.content, options);
+      cloned.content = SessionShareExporter.sanitize(cloned.content, options);
     } else if (Array.isArray(cloned.content)) {
       cloned.content = cloned.content.map((block) => {
         if (block.type === 'text') {
-          return { ...block, text: this.sanitize(block.text, options) };
+          return { ...block, text: SessionShareExporter.sanitize(block.text, options) };
         }
         if (block.type === 'thinking') {
-          return { ...block, thinking: this.sanitize(block.thinking, options) };
+          return { ...block, thinking: SessionShareExporter.sanitize(block.thinking, options) };
         }
         if (block.type === 'toolCall') {
-          const sanitizedArgs = JSON.parse(this.sanitize(JSON.stringify(block.arguments), options));
+          const sanitizedArgs = JSON.parse(SessionShareExporter.sanitize(JSON.stringify(block.arguments), options));
           return { ...block, arguments: sanitizedArgs };
         }
         return block;
       });
     }
     return cloned;
-  }
+  },
 
   /**
    * 导出为结构化规范数据集 Payload (可直接上传 Hugging Face Datasets 或生成 JSONL)
    */
-  public static exportDataset(
+  exportDataset(
     source: {
       messages: AgentMessage[];
       tree?: SessionTree;
@@ -113,7 +112,7 @@ export class SessionShareExporter {
     // 绝不修改输入消息。旧实现误用 filter(回调内改 m.content 且恒返 true)，
     // 是把"过滤内容块"写成了"副作用 + 恒真谓词"的坏味道。
     const filteredMessages = rawMessages.map((m) => {
-      const sanitized = this.sanitizeMessage(m, options);
+      const sanitized = SessionShareExporter.sanitizeMessage(m, options);
       if (sanitized.role !== 'assistant' || !Array.isArray(sanitized.content)) {
         return sanitized;
       }
@@ -146,17 +145,17 @@ export class SessionShareExporter {
         branchesCount: branches.length,
         entitiesCount
       },
-      systemPrompt: this.sanitize(source.systemPrompt || '', options),
+      systemPrompt: SessionShareExporter.sanitize(source.systemPrompt || '', options),
       stateLedger: options.includeStateLedger !== false ? source.stateLedger : undefined,
       branches: options.includeSessionTree !== false ? branches : undefined,
       messages: filteredMessages
     };
-  }
+  },
 
   /**
    * 生成可直接独立托管的富交互分享 HTML
    */
-  public static exportShareHtml(dataset: CreativeDatasetPayload): string {
+  exportShareHtml(dataset: CreativeDatasetPayload): string {
     const messagesHtml = dataset.messages
       .map((msg) => {
         const isUser = msg.role === 'user';
@@ -230,4 +229,4 @@ export class SessionShareExporter {
 </body>
 </html>`;
   }
-}
+};

@@ -22,11 +22,7 @@ export class EntityConsistencyScorer {
   /**
    * Score the consistency between the text and the state ledger based on generic rules
    */
-  public score(
-    text: string,
-    ledger: StateLedger,
-    expectedInvariants?: InvariantRule[]
-  ): ConsistencyScoreResult {
+  public score(text: string, ledger: StateLedger, expectedInvariants?: InvariantRule[]): ConsistencyScoreResult {
     const violations: string[] = [];
     let trackedCount = 0;
 

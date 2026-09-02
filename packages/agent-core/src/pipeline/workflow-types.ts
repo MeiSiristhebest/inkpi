@@ -1,17 +1,17 @@
+import type { ModelConfig } from '@inkpi/ai';
 import type {
-  StateLedger,
+  AgentRoleConfig,
   PipelineHooks,
-  QualityGateRule,
-  QualityGateIssue,
   QualityGateDecision,
   QualityGateHandler,
-  WorkflowStageConfig,
+  QualityGateIssue,
+  QualityGateRule,
+  StateLedger,
   WorkflowContext,
   WorkflowEvent,
   WorkflowEventListener,
-  AgentRoleConfig
+  WorkflowStageConfig
 } from '@inkpi/protocol';
-import type { ModelConfig } from '@inkpi/ai';
 import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import type { RoleRegistry } from './roles.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
@@ -24,9 +24,9 @@ export type PlotGateDecision = QualityGateDecision;
 export type PlotGateHandler = QualityGateHandler;
 
 export interface WorkflowStageHooks {
-  onBeforeStage?: (stageId: string, ctx: WorkflowContext, currentPrompt: string) => Promise<string | void>;
+  onBeforeStage?: (stageId: string, ctx: WorkflowContext, currentPrompt: string) => Promise<string | undefined>;
   onStageProgress?: (stageId: string, delta: string) => void;
-  onAfterStage?: (stageId: string, output: string, ctx: WorkflowContext) => Promise<string | void>;
+  onAfterStage?: (stageId: string, output: string, ctx: WorkflowContext) => Promise<string | undefined>;
 }
 
 /**

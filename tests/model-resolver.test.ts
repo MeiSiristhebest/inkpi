@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { ModelRegistry, ScopedModelResolver } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from repos/pi)', () => {
   it('should register models, resolve aliases, and route tasks to specialized model configurations', () => {
@@ -61,12 +61,16 @@ describe('@inkpi/agent-core -> Scoped Model Resolver & Registry (1:1 Ported from
     const fallbackResolver = new ScopedModelResolver(registry, { fallbackModel: 'creative-pro' });
     expect(fallbackResolver.resolveForTask('custom-unmapped-scope').id).toBe('deepseek-chat');
 
-    expect(() => new ScopedModelResolver(registry, {
-      scopeMappings: { unknown: 'does-not-exist' }
-    }).resolveForTask('unknown')).toThrow(/not registered/);
-    expect(() => new ScopedModelResolver(registry, {
-      fallbackModel: 'does-not-exist'
-    }).resolveForTask('unmapped')).toThrow(/not registered/);
+    expect(() =>
+      new ScopedModelResolver(registry, {
+        scopeMappings: { unknown: 'does-not-exist' }
+      }).resolveForTask('unknown')
+    ).toThrow(/not registered/);
+    expect(() =>
+      new ScopedModelResolver(registry, {
+        fallbackModel: 'does-not-exist'
+      }).resolveForTask('unmapped')
+    ).toThrow(/not registered/);
 
     // Unregister
     expect(registry.unregister('qwen-max-custom')).toBe(true);

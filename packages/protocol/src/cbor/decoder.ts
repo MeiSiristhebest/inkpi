@@ -2,9 +2,9 @@ import {
   CborError,
   type CborOptions,
   type ResolvedCborOptions,
+  UINT32_BASE,
   resolveOptions,
-  textDecoder,
-  UINT32_BASE
+  textDecoder
 } from './options.js';
 
 class CborReader {

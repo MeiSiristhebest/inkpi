@@ -19,9 +19,7 @@ export class ContextTransformer {
       workingMessages = await ctx.options.transformContext(workingMessages, ctx.signal);
     }
 
-    return ctx.options.convertToLlm
-      ? await ctx.options.convertToLlm(workingMessages)
-      : workingMessages;
+    return ctx.options.convertToLlm ? await ctx.options.convertToLlm(workingMessages) : workingMessages;
   }
 
   /**

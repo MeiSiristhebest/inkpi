@@ -38,10 +38,7 @@ export class StageRegistry {
  * `runPipeline` 用它把调用方注册的阶段叠加到遗留叙事阶段序列之上。
  * 纯函数：不修改任何入参数组。
  */
-export function mergeStageLists(
-  base: WorkflowStageConfig[],
-  overrides: WorkflowStageConfig[]
-): WorkflowStageConfig[] {
+export function mergeStageLists(base: WorkflowStageConfig[], overrides: WorkflowStageConfig[]): WorkflowStageConfig[] {
   const merged = [...base];
   for (const stage of overrides) {
     const index = merged.findIndex((candidate) => candidate.id === stage.id);
@@ -58,10 +55,7 @@ export function mergeStageLists(
  * （此时查注册表）；查不到时回落到由阶段自身字段构造的临时角色。
  * 纯函数：不修改任何入参。
  */
-export function resolveStageRole(
-  stage: WorkflowStageConfig,
-  registry: RoleRegistry
-): AgentRoleConfig {
+export function resolveStageRole(stage: WorkflowStageConfig, registry: RoleRegistry): AgentRoleConfig {
   if (typeof stage.role === 'object' && stage.role !== null) {
     return stage.role;
   }
@@ -77,5 +71,5 @@ export function resolveStageRole(
 
 /** 阶段声明的执行角色 id，用于 `customExecutor` 的 role 形参。 */
 export function resolveStageRoleId(stage: WorkflowStageConfig): string {
-  return typeof stage.role === 'string' ? stage.role : (stage.role?.role || stage.id);
+  return typeof stage.role === 'string' ? stage.role : stage.role?.role || stage.id;
 }

@@ -1,29 +1,29 @@
-import { describe, it, expect } from 'vitest';
 import {
-  visibleWidth,
-  stripAnsi,
-  truncateToWidth,
-  drawBox,
-  DifferentialRenderer,
-  parseKey,
-  Box,
-  HStack,
-  VStack,
-  Spacer,
-  ScrollView,
-  Editor,
-  SelectList,
-  Markdown,
-  renderTerminalImage,
-  detectTerminalProtocol,
-  TerminalMermaid,
-  ScreenManager,
-  TUI,
   ANSI,
+  Box,
+  DifferentialRenderer,
+  Editor,
+  HStack,
+  Markdown,
+  ScreenManager,
+  ScrollView,
+  SelectList,
+  Spacer,
+  TUI,
+  TerminalMermaid,
+  VStack,
+  detectTerminalProtocol,
+  drawBox,
   layoutHStack,
   layoutVStack,
-  renderScrollView
+  parseKey,
+  renderScrollView,
+  renderTerminalImage,
+  stripAnsi,
+  truncateToWidth,
+  visibleWidth
 } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/tui Independent Framework', () => {
   it('should calculate visible width correctly with CJK, Fullwidth, and Emoji characters', () => {
@@ -273,7 +273,7 @@ describe('@inkpi/tui Independent Framework', () => {
     editor.cursorCol = 0;
     editor.handleKey(parseKey('\x1b[3~'));
 
-    // Delete at end of line (merge with next) 
+    // Delete at end of line (merge with next)
     editor.cursorRow = 0;
     editor.cursorCol = editor.lines[0].length;
     if (editor.lines.length > 1) {
@@ -341,7 +341,9 @@ describe('@inkpi/tui Independent Framework', () => {
   });
 
   it('should render Markdown styles and blocks', () => {
-    const md = new Markdown('# 斗破苍穹\n## 第一章 陨落的天才\n### 萧家大殿\n> 这是引用内容\n- 列表项\n* 星号列表\n普通文本 **加粗** 和 `代码`\n```ts\nconst a = 1;\n```');
+    const md = new Markdown(
+      '# 斗破苍穹\n## 第一章 陨落的天才\n### 萧家大殿\n> 这是引用内容\n- 列表项\n* 星号列表\n普通文本 **加粗** 和 `代码`\n```ts\nconst a = 1;\n```'
+    );
     md.setText(md.rawText);
     const lines = md.render({ width: 50, height: 12 });
     expect(lines.some((l) => l.includes('斗破苍穹'))).toBe(true);
@@ -350,7 +352,8 @@ describe('@inkpi/tui Independent Framework', () => {
   });
 
   it('should generate Terminal Images for Kitty, iTerm2 and ASCII fallbacks', () => {
-    const mockBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const mockBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     const kittyCode = renderTerminalImage(mockBase64, { protocol: 'kitty' });
     expect(kittyCode.startsWith('\x1b_Ga=T')).toBe(true);
 

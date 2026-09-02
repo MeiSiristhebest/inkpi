@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { InkDb, WriterLeaseManager } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/storage -> WriterLeaseManager (Multi-process Concurrency Safety, 1:1 Ported from repos/pi)', () => {
   it('should acquire, renew, release, and detect lease collisions across processes', () => {

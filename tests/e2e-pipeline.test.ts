@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
 import { Agent } from '@inkpi/agent-core';
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import { InkDb, InkRepository, CompactionEngine } from '@inkpi/storage';
 import { getModelPreset } from '@inkpi/ai';
+import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import type { AgentEvent, ExtensionAPI } from '@inkpi/protocol';
+import { CompactionEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Loading)', () => {
   it('should execute end-to-end writer plot with Agent, Editor, Storage, and Dynamic Extension', async () => {
@@ -78,10 +78,7 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
 
       // Dynamic Context Transformer (injecting relevant metadata before LLM inference)
       pi.addContextTransformer(async (messages) => {
-        return [
-          { role: 'custom', customType: 'dynamic_lore', content: '<context>角色设定</context>' },
-          ...messages
-        ];
+        return [{ role: 'custom', customType: 'dynamic_lore', content: '<context>角色设定</context>' }, ...messages];
       });
     };
 
@@ -89,7 +86,9 @@ describe('InkPi E2E Headless Core Pipeline (Microkernel & Dynamic Extension Load
     expect(loaded).toBe(true);
 
     const emittedEvents: AgentEvent[] = [];
-    agent.subscribe((ev) => { emittedEvents.push(ev); });
+    agent.subscribe((ev) => {
+      emittedEvents.push(ev);
+    });
 
     // 7. Request Agent to continue with context awareness and tool execution
     await agent.prompt('lookup_codex 请续写下一句。');

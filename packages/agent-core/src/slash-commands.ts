@@ -1,7 +1,7 @@
-import type { SlashCommand, AgentMessage, ThinkingLevel } from '@inkpi/protocol';
+import { findModelInCatalog, modelCatalogEntryToConfig } from '@inkpi/ai';
+import type { AgentMessage, SlashCommand, ThinkingLevel } from '@inkpi/protocol';
 import type { Agent } from './agent.js';
 import type { SessionTree } from './tree.js';
-import { findModelInCatalog, modelCatalogEntryToConfig } from '@inkpi/ai';
 
 export interface SlashCommandCapabilities {
   compact?: (ctx: SlashCommandExecutionContext) => Promise<string> | string;
@@ -27,7 +27,7 @@ export interface BuiltinCommandDefinition {
   argumentHint?: string;
   usage?: string;
   handler: SlashCommandExecutor;
-  execute?: (args: string, context?: unknown) => Promise<string | void> | (string | void);
+  execute?: (args: string, context?: unknown) => Promise<string | undefined> | (string | undefined);
 }
 
 /**
@@ -167,7 +167,9 @@ export class SlashCommandRegistry {
         const branches = ctx.tree.getBranches();
         const curr = ctx.tree.getCurrentLeafId();
         const list = branches
-          .map((b, idx) => `${b.leafId === curr ? '👉 *' : '   '} [分支 ${idx + 1}] ID: ${b.leafId} (${b.length} 轮推演)`)
+          .map(
+            (b, idx) => `${b.leafId === curr ? '👉 *' : '   '} [分支 ${idx + 1}] ID: ${b.leafId} (${b.length} 轮推演)`
+          )
           .join('\n');
         return { success: true, output: `🌲 当前分支树:\n${list || '暂无分支'}` };
       }

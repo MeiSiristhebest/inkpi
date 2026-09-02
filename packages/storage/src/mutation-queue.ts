@@ -1,5 +1,5 @@
-import { WriterLeaseManager } from './leases.js';
 import type { InkDb } from './db.js';
+import { WriterLeaseManager } from './leases.js';
 
 export interface MutationTask<T = unknown> {
   id: string;

@@ -27,5 +27,3 @@ export * from './sandbox/index.js';
 export * from './reducer/session-reducer.js';
 export * from './deprecations.js';
 export type { QualityGateIssue, ExtensionFactory, ProviderType } from '@inkpi/protocol';
-
-

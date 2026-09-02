@@ -2,9 +2,9 @@
  * 键盘驱动的选择列表组件
  */
 
-import { Component, type RenderContext } from '../../layout.js';
-import { visibleWidth, truncateToWidth, ANSI } from '../../render.js';
 import type { KeyEvent } from '../../keys.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { ANSI, truncateToWidth, visibleWidth } from '../../render.js';
 
 export interface SelectListItem<T = any> {
   id: string;
@@ -42,7 +42,9 @@ export class SelectList<T = any> extends Component {
   public getFilteredItems(): SelectListItem<T>[] {
     if (!this.filterQuery.trim()) return this.items;
     const q = this.filterQuery.toLowerCase();
-    return this.items.filter((item) => item.label.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q)));
+    return this.items.filter(
+      (item) => item.label.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q)
+    );
   }
 
   public handleKey(key: KeyEvent): boolean {
@@ -110,7 +112,10 @@ export class SelectList<T = any> extends Component {
 
     const filtered = this.getFilteredItems();
     const listHeight = Math.max(1, height - 2);
-    const scrollOffset = Math.max(0, Math.min(this.selectedIndex - Math.floor(listHeight / 2), Math.max(0, filtered.length - listHeight)));
+    const scrollOffset = Math.max(
+      0,
+      Math.min(this.selectedIndex - Math.floor(listHeight / 2), Math.max(0, filtered.length - listHeight))
+    );
 
     for (let i = 0; i < listHeight; i++) {
       const itemIndex = scrollOffset + i;
@@ -123,13 +128,14 @@ export class SelectList<T = any> extends Component {
         const truncated = truncateToWidth(label, maxTextW);
         const itemW = visibleWidth(prefix + truncated);
         const pad = Math.max(0, innerWidth - itemW);
-        const styled = isSelected ? `${prefix}${ANSI.BOLD}${ANSI.FG_CYAN}${truncated}${ANSI.RESET}` : `${prefix}${truncated}`;
+        const styled = isSelected
+          ? `${prefix}${ANSI.BOLD}${ANSI.FG_CYAN}${truncated}${ANSI.RESET}`
+          : `${prefix}${truncated}`;
         lines.push(`│${styled}${' '.repeat(pad)}│`);
       } else {
         lines.push(`│${' '.repeat(innerWidth)}│`);
       }
     }
-
 
     lines.push(`└${'─'.repeat(innerWidth)}┘`);
     return lines;

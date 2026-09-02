@@ -1,14 +1,14 @@
-import { describe, it, expect } from 'vitest';
 import {
+  type QualityGateIssue,
   WorkflowCoordinator,
-  createStandardEntitySafetyRules,
+  createLegacyNarrativeStages,
   createScreenplayGateRules,
   createShortDramaGateRules,
-  createVisualNovelGateRules,
-  createLegacyNarrativeStages,
-  type QualityGateIssue
+  createStandardEntitySafetyRules,
+  createVisualNovelGateRules
 } from '@inkpi/agent-core';
 import type { StateLedger } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 const emptyLedger: StateLedger = { entities: [], assets: [], tracks: [], locations: [] };
 
@@ -84,18 +84,13 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
       events.push(ev.type);
     });
 
-    const result = await pipeline.runPipeline(
-      '星穹纪元',
-      '第40章 突围行动',
-      '基地遭遇围攻',
-      {
-        entities: [{ name: 'Bob', status: '关键导师' }],
-        assets: [],
-        tracks: [],
-        locations: [],
-        modifiedDocuments: []
-      }
-    );
+    const result = await pipeline.runPipeline('星穹纪元', '第40章 突围行动', '基地遭遇围攻', {
+      entities: [{ name: 'Bob', status: '关键导师' }],
+      assets: [],
+      tracks: [],
+      locations: [],
+      modifiedDocuments: []
+    });
 
     expect(gateTriggered).toBe(true);
     expect(events).toContain('plot_gate_triggered');
@@ -129,9 +124,7 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
       }
     });
 
-    await expect(
-      pipeline.runPipeline('测试作品', '第一章', '测试')
-    ).rejects.toThrow('门禁未通过');
+    await expect(pipeline.runPipeline('测试作品', '第一章', '测试')).rejects.toThrow('门禁未通过');
   });
 
   it('should evaluate screenplay, short-drama, visual-novel gates and legacy stages templates', () => {

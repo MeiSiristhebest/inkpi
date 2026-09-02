@@ -38,7 +38,7 @@ export class LaneManager {
     this.db.transaction(() => {
       if (lane.isDefault) {
         // Clear previous default
-        const clearStmt = this.db.prepare(`UPDATE lanes SET is_default = 0 WHERE workspace_id = ?`);
+        const clearStmt = this.db.prepare('UPDATE lanes SET is_default = 0 WHERE workspace_id = ?');
         clearStmt.run(lane.workspaceId);
       }
 
@@ -60,7 +60,7 @@ export class LaneManager {
   }
 
   public getLane(id: string): Lane | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM lanes WHERE id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM lanes WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     return {
@@ -76,7 +76,7 @@ export class LaneManager {
   }
 
   public getLanes(workspaceId: string): Lane[] {
-    const stmt = this.db.prepare(`SELECT * FROM lanes WHERE workspace_id = ? ORDER BY is_default DESC, created_at ASC`);
+    const stmt = this.db.prepare('SELECT * FROM lanes WHERE workspace_id = ? ORDER BY is_default DESC, created_at ASC');
     const rows = stmt.all(workspaceId) as any[];
     return rows.map((r) => ({
       id: r.id,
@@ -96,8 +96,8 @@ export class LaneManager {
       if (!lane || lane.workspaceId !== workspaceId) {
         throw new Error(`Lane '${laneId}' not found in workspace '${workspaceId}'`);
       }
-      this.db.prepare(`UPDATE lanes SET is_default = 0 WHERE workspace_id = ?`).run(workspaceId);
-      this.db.prepare(`UPDATE lanes SET is_default = 1 WHERE id = ?`).run(laneId);
+      this.db.prepare('UPDATE lanes SET is_default = 0 WHERE workspace_id = ?').run(workspaceId);
+      this.db.prepare('UPDATE lanes SET is_default = 1 WHERE id = ?').run(laneId);
     });
   }
 
@@ -105,16 +105,16 @@ export class LaneManager {
     const lane = this.getLane(tip.laneId);
     if (!lane) throw new Error(`Lane '${tip.laneId}' not found`);
 
-    const document = this.db.prepare(`
+    const document = this.db
+      .prepare(`
       SELECT id, workspace_id AS workspaceId
       FROM documents
       WHERE id = ?
-    `).get(tip.documentId) as { id: string; workspaceId: string } | undefined;
+    `)
+      .get(tip.documentId) as { id: string; workspaceId: string } | undefined;
     if (!document) throw new Error(`Document '${tip.documentId}' not found`);
     if (document.workspaceId !== lane.workspaceId) {
-      throw new Error(
-        `Document '${tip.documentId}' does not belong to lane workspace '${lane.workspaceId}'`
-      );
+      throw new Error(`Document '${tip.documentId}' does not belong to lane workspace '${lane.workspaceId}'`);
     }
 
     const stmt = this.db.prepare(`
@@ -140,7 +140,7 @@ export class LaneManager {
   }
 
   public getBranchTip(laneId: string, documentId: string): BranchTip | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM branch_tips WHERE lane_id = ? AND document_id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM branch_tips WHERE lane_id = ? AND document_id = ?');
     const row = stmt.get(laneId, documentId) as any;
     if (!row) return undefined;
     return {
@@ -155,7 +155,7 @@ export class LaneManager {
   }
 
   public getBranchTips(laneId: string): BranchTip[] {
-    const stmt = this.db.prepare(`SELECT * FROM branch_tips WHERE lane_id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM branch_tips WHERE lane_id = ?');
     const rows = stmt.all(laneId) as any[];
     return rows.map((r) => ({
       laneId: r.lane_id,
@@ -243,19 +243,12 @@ export class LaneManager {
       for (const tip of sourceTips) {
         const targetTip = this.getBranchTip(targetLaneId, tip.documentId);
         if (!targetTip) {
-          throw new Error(
-            `Lane merge conflict for document '${tip.documentId}': target has no fork baseline`
-          );
+          throw new Error(`Lane merge conflict for document '${tip.documentId}': target has no fork baseline`);
         }
         const expectedSnapshot = targetTip.baseSnapshotVersion ?? targetTip.headSnapshotVersion;
         const expectedDelta = targetTip.baseDeltaId ?? targetTip.lastDeltaId;
-        if (
-          targetTip.headSnapshotVersion !== expectedSnapshot ||
-          targetTip.lastDeltaId !== expectedDelta
-        ) {
-          throw new Error(
-            `Lane merge conflict for document '${tip.documentId}': target changed after fork`
-          );
+        if (targetTip.headSnapshotVersion !== expectedSnapshot || targetTip.lastDeltaId !== expectedDelta) {
+          throw new Error(`Lane merge conflict for document '${tip.documentId}': target changed after fork`);
         }
         this.setBranchTip({
           laneId: targetLaneId,

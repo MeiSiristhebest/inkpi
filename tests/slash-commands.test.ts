@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { SlashCommandRegistry, Agent, SessionTree } from '@inkpi/agent-core';
+import { Agent, SessionTree, SlashCommandRegistry } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
   it('should execute built-in commands like /model, /thinking, /tree, /stats, /help', async () => {
@@ -21,7 +21,6 @@ describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
     expect(modelRes.success).toBe(true);
     expect(modelRes.output).toContain('DeepSeek');
     expect(agent.state.model.id).toContain('deepseek');
-
 
     // 3. /thinking change
     const thinkingRes = await registry.execute('/thinking high', { agent });
@@ -57,9 +56,7 @@ describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
     expect(res.output).toContain('document_12,all');
   });
 
-
   it('should test all built-in command branch conditions', async () => {
-
     const registry = new SlashCommandRegistry();
     const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
     const tree = new SessionTree();
@@ -115,5 +112,4 @@ describe('@inkpi/agent-core -> SlashCommandRegistry', () => {
     const unk = await registry.execute('/unknown_cmd_abc', {});
     expect(unk.output).toContain('未知指令');
   });
-
 });

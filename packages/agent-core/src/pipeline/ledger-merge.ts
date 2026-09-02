@@ -24,9 +24,7 @@ export function mergeLedgers(
 ): StateLedger {
   const baseEntities = base.entities || base.characters || [];
   const addEntities = addition.entities || addition.characters || [];
-  const charMap = new Map<string, any>(
-    baseEntities.map((c: any, index) => [c.id || c.name || `entity-${index}`, c])
-  );
+  const charMap = new Map<string, any>(baseEntities.map((c: any, index) => [c.id || c.name || `entity-${index}`, c]));
   for (const c of addEntities) {
     const key = c.id || c.name || `entity-${charMap.size}`;
     const existing = charMap.get(key);
@@ -35,9 +33,7 @@ export function mergeLedgers(
 
   const baseAssets = base.assets || base.items || [];
   const addAssets = addition.assets || addition.items || [];
-  const itemMap = new Map<string, any>(
-    baseAssets.map((i: any, index) => [i.id || i.name || `asset-${index}`, i])
-  );
+  const itemMap = new Map<string, any>(baseAssets.map((i: any, index) => [i.id || i.name || `asset-${index}`, i]));
   for (const item of addAssets) {
     const key = item.id || item.name || `asset-${itemMap.size}`;
     const existing = itemMap.get(key);
@@ -46,16 +42,20 @@ export function mergeLedgers(
 
   const chapters = new Set([
     ...(base.modifiedResources || base.modifiedChapters || base.modifiedDocuments || []),
-    ...(addition.modifiedResources || addition.modifiedChapters || addition.modifiedDocuments || []),
+    ...(addition.modifiedResources || addition.modifiedChapters || addition.modifiedDocuments || [])
   ]);
 
   const characters = Array.from(charMap.values());
   const items = Array.from(itemMap.values());
-  const tracks = mergeRecords(base.tracks || [], addition.tracks || [], (track: any, index) =>
-    track.id || track.clue || track.summary || `track-${index}`
+  const tracks = mergeRecords(
+    base.tracks || [],
+    addition.tracks || [],
+    (track: any, index) => track.id || track.clue || track.summary || `track-${index}`
   );
-  const locations = mergeRecords(base.locations || [], addition.locations || [], (location: any, index) =>
-    location.id || location.name || `location-${index}`
+  const locations = mergeRecords(
+    base.locations || [],
+    addition.locations || [],
+    (location: any, index) => location.id || location.name || `location-${index}`
   );
 
   const result: StateLedger = {
@@ -69,10 +69,15 @@ export function mergeLedgers(
   } as StateLedger;
 
   if (!includeLegacyAliases) {
+    // biome-ignore lint/performance/noDelete: 需从合并结果移除旧结构带来的兼容键；=undefined 会保留键（测试断言 not.toHaveProperty）
     delete (result as any).characters;
+    // biome-ignore lint/performance/noDelete: 同上，剔除旧字段键
     delete (result as any).items;
+    // biome-ignore lint/performance/noDelete: 同上，剔除旧字段键
     delete (result as any).foreshadowings;
+    // biome-ignore lint/performance/noDelete: 同上，剔除旧字段键
     delete (result as any).modifiedChapters;
+    // biome-ignore lint/performance/noDelete: 同上，剔除旧字段键
     delete (result as any).modifiedDocuments;
     return result;
   }

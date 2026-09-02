@@ -1,11 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import {
-  InkDb,
-  InkRepository,
-  FtsSearchEngine,
-  JitMemoryRetriever,
-  formatJitContextAsPrompt
-} from '@inkpi/storage';
+import { FtsSearchEngine, InkDb, InkRepository, JitMemoryRetriever, formatJitContextAsPrompt } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
   it('should return structured retrieval data without imposing a content format', async () => {
@@ -15,19 +9,82 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
     const jit = new JitMemoryRetriever({ repository: repo, ftsEngine: fts });
 
     // Seed workspace, folders, documents
-    repo.createWorkspace({ id: 'workspace_jit', title: 'Cosmic Frontier', owner: 'Author Mei', category: 'general', targetSize: 2000000, createdAt: Date.now(), updatedAt: Date.now() });
-    repo.createFolder({ id: 'vol_1', workspaceId: 'workspace_jit', title: 'Folder 1 Space Odyssey', orderIndex: 1, createdAt: Date.now(), updatedAt: Date.now() });
+    repo.createWorkspace({
+      id: 'workspace_jit',
+      title: 'Cosmic Frontier',
+      owner: 'Author Mei',
+      category: 'general',
+      targetSize: 2000000,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createFolder({
+      id: 'vol_1',
+      workspaceId: 'workspace_jit',
+      title: 'Folder 1 Space Odyssey',
+      orderIndex: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
 
     // Document 1
-    repo.createDocument({ id: 'ch_1', folderId: 'vol_1', workspaceId: 'workspace_jit', title: 'Document 1 Genesis', orderIndex: 1, synopsis: 'Starship discovers ancient artifact.', contentSize: 3000, status: 'completed', createdAt: Date.now(), updatedAt: Date.now() });
-    repo.upsertSnapshot({ documentId: 'ch_1', version: 1, contentJson: '{}', contentMarkdown: 'Commander Alice discovers the Quantum Beacon. Secret encryption module holds vital navigation data.', contentSize: 30, updatedAt: Date.now() });
+    repo.createDocument({
+      id: 'ch_1',
+      folderId: 'vol_1',
+      workspaceId: 'workspace_jit',
+      title: 'Document 1 Genesis',
+      orderIndex: 1,
+      synopsis: 'Starship discovers ancient artifact.',
+      contentSize: 3000,
+      status: 'completed',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.upsertSnapshot({
+      documentId: 'ch_1',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown:
+        'Commander Alice discovers the Quantum Beacon. Secret encryption module holds vital navigation data.',
+      contentSize: 30,
+      updatedAt: Date.now()
+    });
 
     // Document 2
-    repo.createDocument({ id: 'ch_2', folderId: 'vol_1', workspaceId: 'workspace_jit', title: 'Document 2 Orbit Approach', orderIndex: 2, synopsis: 'Crew approaches alien planetary ring.', contentSize: 3000, status: 'completed', createdAt: Date.now(), updatedAt: Date.now() });
-    repo.upsertSnapshot({ documentId: 'ch_2', version: 1, contentJson: '{}', contentMarkdown: 'Beacon emits signal pulse, alien sentinels activate defensive protocols.', contentSize: 25, updatedAt: Date.now() });
+    repo.createDocument({
+      id: 'ch_2',
+      folderId: 'vol_1',
+      workspaceId: 'workspace_jit',
+      title: 'Document 2 Orbit Approach',
+      orderIndex: 2,
+      synopsis: 'Crew approaches alien planetary ring.',
+      contentSize: 3000,
+      status: 'completed',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.upsertSnapshot({
+      documentId: 'ch_2',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: 'Beacon emits signal pulse, alien sentinels activate defensive protocols.',
+      contentSize: 25,
+      updatedAt: Date.now()
+    });
 
     // Document 3 (Current)
-    repo.createDocument({ id: 'ch_3', folderId: 'vol_1', workspaceId: 'workspace_jit', title: 'Document 3 Planetfall', orderIndex: 3, synopsis: 'Landing on uncharted planet surface.', contentSize: 0, status: 'draft', createdAt: Date.now(), updatedAt: Date.now() });
+    repo.createDocument({
+      id: 'ch_3',
+      folderId: 'vol_1',
+      workspaceId: 'workspace_jit',
+      title: 'Document 3 Planetfall',
+      orderIndex: 3,
+      synopsis: 'Landing on uncharted planet surface.',
+      contentSize: 0,
+      status: 'draft',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
 
     // Rebuild FTS index
     fts.rebuildIndex();
@@ -41,7 +98,10 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
         activeReferences: ['Alice', 'Quantum Beacon']
       },
       {
-        entities: [{ name: 'Alice', status: 'Captain' }, { name: 'Bob', status: 'Engineer' }],
+        entities: [
+          { name: 'Alice', status: 'Captain' },
+          { name: 'Bob', status: 'Engineer' }
+        ],
         assets: [{ name: 'Quantum Beacon', holder: 'Alice' }],
         tracks: [{ clue: 'Signal points to coordinates Omega', status: 'pending' }],
         locations: [{ name: 'Planet Surface' }],
@@ -71,10 +131,40 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
     const db = new InkDb(':memory:');
     const repo = new InkRepository(db);
     const fts = new FtsSearchEngine(db);
-    repo.createWorkspace({ id: 'workspace_custom', title: 'Workspace', owner: 'Owner', createdAt: Date.now(), updatedAt: Date.now() });
-    repo.createFolder({ id: 'folder_custom', workspaceId: 'workspace_custom', title: 'Folder', orderIndex: 1, createdAt: Date.now(), updatedAt: Date.now() });
-    repo.createDocument({ id: 'doc_custom', folderId: 'folder_custom', workspaceId: 'workspace_custom', title: 'Document', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: Date.now(), updatedAt: Date.now() });
-    repo.upsertSnapshot({ documentId: 'doc_custom', version: 1, contentJson: '{}', contentMarkdown: 'Signal appears here.', contentSize: 19, updatedAt: Date.now() });
+    repo.createWorkspace({
+      id: 'workspace_custom',
+      title: 'Workspace',
+      owner: 'Owner',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createFolder({
+      id: 'folder_custom',
+      workspaceId: 'workspace_custom',
+      title: 'Folder',
+      orderIndex: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createDocument({
+      id: 'doc_custom',
+      folderId: 'folder_custom',
+      workspaceId: 'workspace_custom',
+      title: 'Document',
+      orderIndex: 1,
+      contentSize: 0,
+      status: 'draft',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.upsertSnapshot({
+      documentId: 'doc_custom',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: 'Signal appears here.',
+      contentSize: 19,
+      updatedAt: Date.now()
+    });
     fts.rebuildIndex();
 
     const result = await new JitMemoryRetriever({
@@ -100,11 +190,7 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
         activeLedger: {
           entities: [{ name: 'Alice', status: 'Active' }, { name: 'Bob' }],
           assets: [{ name: 'Sword', holder: 'Alice' }, { name: 'Shield' }],
-          tracks: [
-            { summary: 'Summary track', status: 'done' },
-            { id: 'track_id_only' },
-            { status: 'open' }
-          ],
+          tracks: [{ summary: 'Summary track', status: 'done' }, { id: 'track_id_only' }, { status: 'open' }],
           locations: [],
           modifiedResources: []
         }
@@ -124,13 +210,19 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
   it('should apply the configured FTS search error policy', async () => {
     const db = new InkDb(':memory:');
     const repo = new InkRepository(db);
-    const failingFts = { search: () => { throw new Error('index unavailable'); } } as unknown as FtsSearchEngine;
+    const failingFts = {
+      search: () => {
+        throw new Error('index unavailable');
+      }
+    } as unknown as FtsSearchEngine;
 
-    await expect(new JitMemoryRetriever({
-      repository: repo,
-      ftsEngine: failingFts,
-      keywordSelector: () => ['term']
-    }).retrieve({})).rejects.toThrow('index unavailable');
+    await expect(
+      new JitMemoryRetriever({
+        repository: repo,
+        ftsEngine: failingFts,
+        keywordSelector: () => ['term']
+      }).retrieve({})
+    ).rejects.toThrow('index unavailable');
 
     const ignored = await new JitMemoryRetriever({
       repository: repo,

@@ -193,7 +193,12 @@ export interface CreativeInteractionMetrics {
 }
 
 export type TelemetryEvent =
-  | { type: 'ghost_text_interaction'; action: 'accept_full' | 'accept_word' | 'accept_line' | 'dismiss'; charCount: number; timestamp: number }
+  | {
+      type: 'ghost_text_interaction';
+      action: 'accept_full' | 'accept_word' | 'accept_line' | 'dismiss';
+      charCount: number;
+      timestamp: number;
+    }
   | { type: 'branch_rollback'; branchId: string; depth: number; timestamp: number }
   | { type: 'invariant_conflict'; rule: string; details?: string; timestamp: number }
   | { type: 'turn_telemetry'; stats: TelemetryStats; timestamp: number };
@@ -209,7 +214,6 @@ export interface TelemetryStats {
   spans?: TelemetrySpan[];
   creativeMetrics?: CreativeInteractionMetrics;
 }
-
 
 /** 会话多格式导出选项 */
 export interface ExportOptions {

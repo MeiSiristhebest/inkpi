@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from './markdown-parser.js';
 
 describe('parseMarkdown (pure, no ANSI)', () => {

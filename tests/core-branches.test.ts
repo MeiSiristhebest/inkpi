@@ -1,22 +1,22 @@
-import { describe, it, expect, vi } from 'vitest';
-import { Agent, ToolRegistry, ExtensionHost, SessionTree } from '@inkpi/agent-core';
+import { Agent, ExtensionHost, SessionTree, ToolRegistry } from '@inkpi/agent-core';
 import {
-  HeadlessEditorState,
+  deepSeekProvider,
+  getModelPreset,
+  getProvider,
+  mockProvider,
+  ollamaProvider,
+  registerProvider,
+  streamAi
+} from '@inkpi/ai';
+import {
   GhostTextManager,
+  HeadlessEditorState,
   formatChineseTypography,
   formatWesternTypography
 } from '@inkpi/editor-core';
-import { InkDb, InkRepository, CompactionEngine } from '@inkpi/storage';
-import {
-  mockProvider,
-  deepSeekProvider,
-  ollamaProvider,
-  getModelPreset,
-  registerProvider,
-  getProvider,
-  streamAi
-} from '@inkpi/ai';
-import type { AgentMessage, AgentEvent } from '@inkpi/protocol';
+import type { AgentEvent, AgentMessage } from '@inkpi/protocol';
+import { CompactionEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('Headless Core In-Depth Branch Coverage Suite', () => {
   it('should test Agent loop hooks, termination, queue modes, onUpdate events and abort', async () => {
@@ -39,7 +39,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
       shouldStopAfterTurn: async () => true
     });
 
-    agent.subscribe((ev) => { events.push(ev); });
+    agent.subscribe((ev) => {
+      events.push(ev);
+    });
 
     agent.getToolRegistry().register({
       name: 'update_tool',
@@ -117,9 +119,27 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
 
     // Replay delete and replace deltas
     const now = Date.now();
-    repo.createWorkspace({ id: 'b_t', title: 't', owner: 'a', category: 'g', targetSize: 10, createdAt: now, updatedAt: now });
+    repo.createWorkspace({
+      id: 'b_t',
+      title: 't',
+      owner: 'a',
+      category: 'g',
+      targetSize: 10,
+      createdAt: now,
+      updatedAt: now
+    });
     repo.createFolder({ id: 'v_t', workspaceId: 'b_t', title: 'v', orderIndex: 1, createdAt: now, updatedAt: now });
-    repo.createDocument({ id: 'ch_t', folderId: 'v_t', workspaceId: 'b_t', title: 'c', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: now, updatedAt: now });
+    repo.createDocument({
+      id: 'ch_t',
+      folderId: 'v_t',
+      workspaceId: 'b_t',
+      title: 'c',
+      orderIndex: 1,
+      contentSize: 0,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now
+    });
 
     repo.appendDelta({
       documentId: 'ch_t',
@@ -156,8 +176,25 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     const now = Date.now();
 
     repo.createWorkspace({ id: 'b_bad_delta', title: 't', owner: 'a', createdAt: now, updatedAt: now });
-    repo.createFolder({ id: 'v_bad_delta', workspaceId: 'b_bad_delta', title: 'v', orderIndex: 1, createdAt: now, updatedAt: now });
-    repo.createDocument({ id: 'ch_bad_delta', folderId: 'v_bad_delta', workspaceId: 'b_bad_delta', title: 'c', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: now, updatedAt: now });
+    repo.createFolder({
+      id: 'v_bad_delta',
+      workspaceId: 'b_bad_delta',
+      title: 'v',
+      orderIndex: 1,
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.createDocument({
+      id: 'ch_bad_delta',
+      folderId: 'v_bad_delta',
+      workspaceId: 'b_bad_delta',
+      title: 'c',
+      orderIndex: 1,
+      contentSize: 0,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now
+    });
     repo.appendDelta({
       documentId: 'ch_bad_delta',
       stepJson: '{not-json}',
@@ -205,10 +242,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     }) as any;
 
     try {
-      const stream = ollamaProvider(
-        { id: 'qwen2.5', name: 'Ollama', provider: 'ollama' },
-        [{ role: 'user', content: 'hi' }]
-      );
+      const stream = ollamaProvider({ id: 'qwen2.5', name: 'Ollama', provider: 'ollama' }, [
+        { role: 'user', content: 'hi' }
+      ]);
       const res = await stream.collect();
       expect(res.stopReason).toBe('error');
     } finally {
@@ -219,17 +255,15 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) as any;
 
     try {
-      const stream = ollamaProvider(
-        { id: 'qwen2.5', name: 'Ollama', provider: 'ollama' },
-        [{ role: 'user', content: 'hi' }]
-      );
+      const stream = ollamaProvider({ id: 'qwen2.5', name: 'Ollama', provider: 'ollama' }, [
+        { role: 'user', content: 'hi' }
+      ]);
       const res = await stream.collect();
       expect(res.stopReason).toBe('error');
       expect(res.errorMessage).toContain('Ollama connection error');
     } finally {
       globalThis.fetch = originalFetch;
     }
-
 
     // 4. DeepSeek provider AbortError
     globalThis.fetch = vi.fn().mockRejectedValue({
@@ -238,10 +272,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     }) as any;
 
     try {
-      const stream = deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: 'sk-test' },
-        [{ role: 'user', content: 'hi' }]
-      );
+      const stream = deepSeekProvider({ id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: 'sk-test' }, [
+        { role: 'user', content: 'hi' }
+      ]);
       const res = await stream.collect();
       expect(res.stopReason).toBe('aborted');
     } finally {
@@ -252,10 +285,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Connection reset')) as any;
 
     try {
-      const stream = deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: 'sk-test' },
-        [{ role: 'user', content: 'hi' }]
-      );
+      const stream = deepSeekProvider({ id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: 'sk-test' }, [
+        { role: 'user', content: 'hi' }
+      ]);
       const res = await stream.collect();
       expect(res.stopReason).toBe('error');
       expect(res.errorMessage).toContain('Connection reset');
@@ -271,10 +303,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     }) as any;
 
     try {
-      const stream = ollamaProvider(
-        { id: 'qwen2.5', name: 'Ollama', provider: 'ollama' },
-        [{ role: 'user', content: 'hi' }]
-      );
+      const stream = ollamaProvider({ id: 'qwen2.5', name: 'Ollama', provider: 'ollama' }, [
+        { role: 'user', content: 'hi' }
+      ]);
       const res = await stream.collect();
       expect(res.stopReason).toBe('error');
       expect(res.errorMessage).toContain('500');
@@ -364,10 +395,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     expect(formatted).toContain('\u3000\u3000第一段');
 
     // A real provider without credentials must surface an error, never a fake success.
-    const noKeyStream = deepSeekProvider(
-      { id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: '' },
-      [{ role: 'user', content: 'test' }]
-    );
+    const noKeyStream = deepSeekProvider({ id: 'deepseek-chat', name: 'DS', provider: 'deepseek', apiKey: '' }, [
+      { role: 'user', content: 'test' }
+    ]);
     const noKeyMsg = await noKeyStream.collect();
     expect(noKeyMsg.role).toBe('assistant');
     expect(noKeyMsg.stopReason).toBe('error');
@@ -399,10 +429,9 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     expect(agent.state.messages.length).toBeGreaterThan(0);
 
     // MockProvider with image content
-    const imgStream = mockProvider(
-      getModelPreset('mock-test'),
-      [{ role: 'user', content: [{ type: 'image', image: 'test.png' }] }]
-    );
+    const imgStream = mockProvider(getModelPreset('mock-test'), [
+      { role: 'user', content: [{ type: 'image', image: 'test.png' }] }
+    ]);
     const imgMsg = await imgStream.collect();
     expect(imgMsg.role).toBe('assistant');
 
@@ -419,16 +448,34 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     // Transaction rollback on error
     expect(() => {
       db.transaction(() => {
-        db.exec("CREATE TABLE test_tbl (id TEXT PRIMARY KEY)");
+        db.exec('CREATE TABLE test_tbl (id TEXT PRIMARY KEY)');
         throw new Error('Rollback test');
       });
     }).toThrow('Rollback test');
 
     const repo = new InkRepository(db);
     const now = Date.now();
-    repo.createWorkspace({ id: 'b_del', title: 'd', owner: 'a', category: 'g', targetSize: 10, createdAt: now, updatedAt: now });
+    repo.createWorkspace({
+      id: 'b_del',
+      title: 'd',
+      owner: 'a',
+      category: 'g',
+      targetSize: 10,
+      createdAt: now,
+      updatedAt: now
+    });
     repo.createFolder({ id: 'v_del', workspaceId: 'b_del', title: 'v', orderIndex: 1, createdAt: now, updatedAt: now });
-    repo.createDocument({ id: 'ch_del', folderId: 'v_del', workspaceId: 'b_del', title: 'c', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: now, updatedAt: now });
+    repo.createDocument({
+      id: 'ch_del',
+      folderId: 'v_del',
+      workspaceId: 'b_del',
+      title: 'c',
+      orderIndex: 1,
+      contentSize: 0,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now
+    });
 
     expect(repo.getFolders('b_del').length).toBe(1);
     expect(repo.getDocuments('v_del').length).toBe(1);

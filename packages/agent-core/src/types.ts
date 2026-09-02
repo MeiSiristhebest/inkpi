@@ -1,21 +1,20 @@
+import type { ModelConfig } from '@inkpi/ai';
 import type {
   AgentMessage,
-  AssistantMessage,
-  ToolResultMessage,
   AgentTool,
-  ToolExecutionMode,
-  ToolCallContent,
-  Usage,
+  AssistantMessage,
+  ImageContent,
   TextContent,
-  ImageContent
+  ToolCallContent,
+  ToolExecutionMode,
+  ToolResultMessage,
+  Usage
 } from '@inkpi/protocol';
-import type { ModelConfig } from '@inkpi/ai';
 import type { ModelStreamer } from './ports/index.js';
 
 export type { ToolExecutionMode };
 export type QueueMode = 'all' | 'one-at-a-time';
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'none';
-
 
 export interface AgentState {
   systemPrompt: string;
@@ -78,7 +77,7 @@ export interface AgentOptions {
   streamFn?: ModelStreamer;
   sessionId?: string;
   journal?: any;
-  beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | void>;
-  afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | void>;
+  beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
+  afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
   shouldStopAfterTurn?: (ctx: ShouldStopAfterTurnContext, signal?: AbortSignal) => Promise<boolean>;
 }

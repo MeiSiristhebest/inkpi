@@ -1,34 +1,34 @@
-import { describe, expect, it } from 'vitest';
 import {
   // 权威名称
   Agent,
-  BranchExplorer,
-  ExtensionInstaller,
-  SessionRegistry,
-  WorkflowCoordinator,
-  SandboxExecutor,
-  ProjectTrustStore,
-  SessionShareExporter,
   // 弃用别名
   AgentEngine,
-  StoryBranchManager,
+  BranchExplorer,
+  CollaborativePipeline,
+  ExtensionInstaller,
   ExtensionPackageManager,
   LiveSessionManager,
   NovelCollaborativePipeline,
-  CollaborativePipeline,
   PipelineCoordinator,
-  SandboxManager,
   ProjectTrustManager,
-  SessionShareManager
+  ProjectTrustStore,
+  SandboxExecutor,
+  SandboxManager,
+  SessionRegistry,
+  SessionShareExporter,
+  SessionShareManager,
+  StoryBranchManager,
+  WorkflowCoordinator
 } from '@inkpi/agent-core';
 import type {
-  ISandboxRunner,
-  WhatIfBranchInfo,
-  WhatIfExecutiveReport,
   HypothesisBranchInfo,
   HypothesisExecutiveReport,
-  SandboxRunner
+  ISandboxRunner,
+  SandboxRunner,
+  WhatIfBranchInfo,
+  WhatIfExecutiveReport
 } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 /**
  * P3-#19：集中弃用别名（src/deprecations.ts）的兼容性守卫。

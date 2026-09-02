@@ -1,6 +1,6 @@
 import { formatTypography } from '@inkpi/editor-core';
 import type { StateLedger } from '@inkpi/protocol';
-import { ANSI, drawBox, DifferentialRenderer } from './render.js';
+import { ANSI, DifferentialRenderer, drawBox } from './render.js';
 import type { StudioModel } from './studio-model.js';
 
 /**
@@ -64,10 +64,10 @@ export class StudioView {
       (candidate: StateLedger['entities'][number]) => candidate.name === entityName
     );
     return [
-      `┌───────────┐`,
+      '┌───────────┐',
       `│  (•‿•)   │  Entity: ${entityName}`,
       `│  /| ★ |\\  │  Status: ${entity?.status || 'active'}`,
-      `└───────────┘`
+      '└───────────┘'
     ];
   }
 
@@ -126,9 +126,7 @@ export class StudioView {
   private renderStatePane(rightWidth: number, mainHeight: number): string[] {
     const labels = this.model.labels;
     const rightBorder =
-      this.model.focusMode === 'copilot' || this.model.focusMode === 'ledger'
-        ? ANSI.FG_MAGENTA
-        : ANSI.FG_BLUE;
+      this.model.focusMode === 'copilot' || this.model.focusMode === 'ledger' ? ANSI.FG_MAGENTA : ANSI.FG_BLUE;
     const rightContentLines: string[] = [];
 
     rightContentLines.push(`${ANSI.BOLD}${labels.entitiesHeader || '👤 活跃实体:'}${ANSI.RESET}`);
@@ -163,13 +161,21 @@ export class StudioView {
     rightContentLines.push(`${ANSI.BOLD}${labels.dialogueHeader || '🤖 对话流:'}${ANSI.RESET}`);
     if (this.model.dialogueHistory.length > 0) {
       for (const d of this.model.dialogueHistory.slice(-4)) {
-        rightContentLines.push(`[${d.role === 'user' ? labels.userRole : labels.assistantRole}] ${d.text.slice(0, 20)}`);
+        rightContentLines.push(
+          `[${d.role === 'user' ? labels.userRole : labels.assistantRole}] ${d.text.slice(0, 20)}`
+        );
       }
     } else {
       rightContentLines.push(labels.emptyDialogueText || ' (无活跃对话)');
     }
 
-    return drawBox(labels.rightBoxTitle || '📊 状态账本 & Copilot', rightContentLines, rightWidth, mainHeight, rightBorder);
+    return drawBox(
+      labels.rightBoxTitle || '📊 状态账本 & Copilot',
+      rightContentLines,
+      rightWidth,
+      mainHeight,
+      rightBorder
+    );
   }
 
   /** 在已组合的行上叠加 selectList 模态框（原地修改 combinedRows）。 */
@@ -185,13 +191,7 @@ export class StudioView {
         const prefix = isSelected ? `${ANSI.FG_GREEN}👉 [*] ` : '   [ ] ';
         modalLines.push(`${prefix}${item.label}${item.description ? ` (${item.description})` : ''}${ANSI.RESET}`);
       }
-      const modalBox = drawBox(
-        'Select',
-        modalLines,
-        50,
-        Math.min(12, modalLines.length + 3),
-        ANSI.FG_YELLOW
-      );
+      const modalBox = drawBox('Select', modalLines, 50, Math.min(12, modalLines.length + 3), ANSI.FG_YELLOW);
       const startRow = Math.max(2, Math.floor((this.model.getHeight() - modalBox.length) / 2));
       for (let m = 0; m < modalBox.length; m++) {
         if (combinedRows[startRow + m]) {
@@ -201,4 +201,3 @@ export class StudioView {
     }
   }
 }
-

@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import * as os from 'node:os';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { JsonlSessionBackend } from '@inkpi/session-backends';
+import * as path from 'node:path';
 import type { DocumentSnapshot, SessionEntry } from '@inkpi/protocol';
+import { JsonlSessionBackend } from '@inkpi/session-backends';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // JsonlSessionBackend 的容错契约。

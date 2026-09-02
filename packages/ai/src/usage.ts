@@ -33,7 +33,6 @@ export function calculateCost(
   return inputCost + outputCost + cacheReadCost + cacheWriteCost;
 }
 
-
 export class UsageTracker {
   private totals: UsageTotals = {
     inputTokens: 0,
@@ -65,8 +64,8 @@ export class UsageTracker {
       if (entry) {
         const inputCost = (input / 1_000_000) * entry.cost.inputPerMillionUsd;
         const outputCost = (output / 1_000_000) * entry.cost.outputPerMillionUsd;
-        const cacheReadCost = ((cacheRead / 1_000_000) * (entry.cost.cacheReadPerMillionUsd || 0));
-        const cacheWriteCost = ((cacheWrite / 1_000_000) * (entry.cost.cacheWritePerMillionUsd || 0));
+        const cacheReadCost = (cacheRead / 1_000_000) * (entry.cost.cacheReadPerMillionUsd || 0);
+        const cacheWriteCost = (cacheWrite / 1_000_000) * (entry.cost.cacheWritePerMillionUsd || 0);
         this.totals.costUsd += inputCost + outputCost + cacheReadCost + cacheWriteCost;
       }
     }
@@ -76,11 +75,17 @@ export class UsageTracker {
     const entry = findModelInCatalog(modelIdOrName);
     const inputCost = entry ? (this.totals.inputTokens / 1_000_000) * entry.cost.inputPerMillionUsd : 0;
     const outputCost = entry ? (this.totals.outputTokens / 1_000_000) * entry.cost.outputPerMillionUsd : 0;
-    const cacheReadCost = entry ? ((this.totals.cacheReadTokens / 1_000_000) * (entry.cost.cacheReadPerMillionUsd || 0)) : 0;
-    const cacheWriteCost = entry ? ((this.totals.cacheWriteTokens / 1_000_000) * (entry.cost.cacheWritePerMillionUsd || 0)) : 0;
-    
+    const cacheReadCost = entry
+      ? (this.totals.cacheReadTokens / 1_000_000) * (entry.cost.cacheReadPerMillionUsd || 0)
+      : 0;
+    const cacheWriteCost = entry
+      ? (this.totals.cacheWriteTokens / 1_000_000) * (entry.cost.cacheWritePerMillionUsd || 0)
+      : 0;
+
     // Normal cost without cache
-    const nonCachedInputCost = entry ? ((this.totals.inputTokens + this.totals.cacheReadTokens) / 1_000_000) * entry.cost.inputPerMillionUsd : 0;
+    const nonCachedInputCost = entry
+      ? ((this.totals.inputTokens + this.totals.cacheReadTokens) / 1_000_000) * entry.cost.inputPerMillionUsd
+      : 0;
     const savedCost = Math.max(0, nonCachedInputCost - (inputCost + cacheReadCost));
     const totalPromptTokens = this.totals.inputTokens + this.totals.cacheReadTokens;
     const cacheHitRatio = totalPromptTokens > 0 ? this.totals.cacheReadTokens / totalPromptTokens : 0;
@@ -111,4 +116,3 @@ export class UsageTracker {
     };
   }
 }
-

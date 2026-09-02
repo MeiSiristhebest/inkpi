@@ -3,9 +3,9 @@
  * 支持中心模态、边缘抽屉、光标锚定悬浮菜单与键盘焦点管理。
  */
 
-import { Component, type RenderContext } from './layout.js';
+import type { Component, RenderContext } from './layout.js';
 
-import { visibleWidth, sliceWithWidth, padOrTruncateLine } from './width.js';
+import { padOrTruncateLine, sliceWithWidth, visibleWidth } from './width.js';
 
 export type OverlayAnchor =
   | 'center'

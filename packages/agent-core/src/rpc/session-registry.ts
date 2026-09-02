@@ -1,11 +1,11 @@
+import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import { Agent } from '../agent.js';
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
 
-import { SessionTree } from '../tree.js';
-import type { ModelConfig } from '@inkpi/protocol';
 import { getModelPreset } from '@inkpi/ai';
+import type { ModelConfig } from '@inkpi/protocol';
 import { NoModelConfiguredError } from '../errors.js';
 import type { Clock, SessionStore } from '../ports/index.js';
+import { SessionTree } from '../tree.js';
 
 export interface ManagedSession {
   sessionId: string;
@@ -58,9 +58,7 @@ export class SessionRegistry implements SessionStore {
       return this.sessions.get(sessionId)!;
     }
 
-    const requestedModel = typeof options.model === 'string'
-      ? getModelPreset(options.model)
-      : options.model;
+    const requestedModel = typeof options.model === 'string' ? getModelPreset(options.model) : options.model;
 
     const resolvedModel = requestedModel || this.defaultModel;
     if (!resolvedModel) {

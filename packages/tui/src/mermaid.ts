@@ -5,8 +5,8 @@
  * applies ANSI styling to the parsed node/edge graph.
  */
 
-import { ANSI } from './render.js';
 import { parseMermaid } from './parsers/mermaid-parser.js';
+import { ANSI } from './render.js';
 
 export interface MermaidNode {
   id: string;
@@ -23,8 +23,8 @@ export interface MermaidRenderOptions {
   title?: string;
 }
 
-export class TerminalMermaid {
-  public static renderAsciiFlowchart(mermaidCode: string, options: MermaidRenderOptions = {}): string[] {
+export const TerminalMermaid = {
+  renderAsciiFlowchart(mermaidCode: string, options: MermaidRenderOptions = {}): string[] {
     const { nodes, edges } = parseMermaid(mermaidCode);
 
     if (edges.length === 0 && nodes.length === 0) {
@@ -49,4 +49,4 @@ export class TerminalMermaid {
 
     return output;
   }
-}
+};

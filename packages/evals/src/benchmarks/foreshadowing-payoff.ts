@@ -39,8 +39,8 @@ export class ForeshadowingPayoffScorer {
     for (const clue of clues) {
       const label = clue.clue || clue.summary || clue.id || 'track';
       const isResolvedInLedger = clue.status === 'resolved';
-      const isResolvedByCustom = Boolean(customResolver && customResolver(label, currentText));
-      
+      const isResolvedByCustom = Boolean(customResolver?.(label, currentText));
+
       // Removed hardcoded Chinese resolution checks
       if (isResolvedInLedger || isResolvedByCustom) {
         resolvedCount++;

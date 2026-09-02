@@ -1,41 +1,25 @@
-import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  InkRpcServer,
-  InkRpcClient,
-  InMemoryTransport
-} from '@inkpi/server';
-import {
-  Editor,
-  SelectList,
-  parseKey
-} from '@inkpi/tui';
-import {
-  ProjectTrustStore,
-  runPrintMode,
   Agent,
-  SessionTree,
-  SlashCommandRegistry,
-  TelemetryCollector,
+  BranchSummarizer,
   KillRing,
   MockClipboardDriver,
+  ProjectTrustStore,
+  SessionTree,
+  SlashCommandRegistry,
   SyncedClipboard,
+  TelemetryCollector,
   createStandardEntitySafetyRules,
-  BranchSummarizer
+  runPrintMode
 } from '@inkpi/agent-core';
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import { AppendOnlySessionJournal, InkDb, FtsSearchEngine } from '@inkpi/storage';
-import {
-  validateSchema,
-  sanitizeStateLedger,
-  StateLedgerSchema
-} from '@inkpi/protocol';
-import {
-  convertMessagesToStandard,
-  getModelPreset,
-  streamAi
-} from '@inkpi/ai';
+import { convertMessagesToStandard, getModelPreset, streamAi } from '@inkpi/ai';
+import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
+import { StateLedgerSchema, sanitizeStateLedger, validateSchema } from '@inkpi/protocol';
+import { InMemoryTransport, InkRpcClient, InkRpcServer } from '@inkpi/server';
+import { AppendOnlySessionJournal, FtsSearchEngine, InkDb } from '@inkpi/storage';
+import { Editor, SelectList, parseKey } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 describe('System Integration & Edge Cases Suite', () => {
   it('should test InkRpcServer uninitialized component branches', async () => {
@@ -86,7 +70,12 @@ describe('System Integration & Edge Cases Suite', () => {
     const journalEntries = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 4, method: 'journal.getEntries' });
     expect(journalEntries.error?.message).toBe('Journal not initialized');
 
-    const fts = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 5, method: 'storage.searchFts', params: { query: 'test' } });
+    const fts = await emptyServer.handleRequest({
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'storage.searchFts',
+      params: { query: 'test' }
+    });
     expect(fts.error?.message).toBe('FTS search capability not initialized');
 
     const stats = await emptyServer.handleRequest({ jsonrpc: '2.0', id: 6, method: 'telemetry.getStats' });
@@ -145,7 +134,7 @@ describe('System Integration & Edge Cases Suite', () => {
     await client.dismissGhost();
 
     // Tree methods
-    const branchResult = await client.branchTree('if_branch_1', '如果主角没有掉下悬崖') as { node: { id: string } };
+    const branchResult = (await client.branchTree('if_branch_1', '如果主角没有掉下悬崖')) as { node: { id: string } };
     await client.navigateTree('m1');
     await client.getBranchSummary(branchResult.node.id, 'm1');
 
@@ -191,10 +180,13 @@ describe('System Integration & Edge Cases Suite', () => {
   it('should test Editor and SelectList auxiliary branches', () => {
     const editor = new Editor({ text: 'Line 1\nLine 2', showLineNumbers: false });
     // Unhandled Ctrl key ignored for text entry
-    expect(editor.handleKey({ name: 'q', ctrl: true, meta: false, shift: false, raw: '\x11', sequence: '\x11' })).toBe(false);
+    expect(editor.handleKey({ name: 'q', ctrl: true, meta: false, shift: false, raw: '\x11', sequence: '\x11' })).toBe(
+      false
+    );
     // Unknown special key ignored
-    expect(editor.handleKey({ name: 'f10', ctrl: false, meta: false, shift: false, raw: '', sequence: '' })).toBe(false);
-
+    expect(editor.handleKey({ name: 'f10', ctrl: false, meta: false, shift: false, raw: '', sequence: '' })).toBe(
+      false
+    );
 
     // Insert character at position
     editor.cursorRow = 0;
@@ -245,11 +237,14 @@ describe('System Integration & Edge Cases Suite', () => {
   });
 
   it('should test convertMessagesToStandard and fauxProvider scripts in AI layer', async () => {
-    const stdMessages = convertMessagesToStandard([
-      { role: 'user', content: [{ type: 'text', text: '用户文本块' }] },
-      { role: 'assistant', content: [{ type: 'text', text: '助手回答' }] },
-      { role: 'toolResult', toolCallId: 'tc_1', toolName: 'testTool', content: [{ type: 'text', text: '工具输出' }] }
-    ], '系统提示词');
+    const stdMessages = convertMessagesToStandard(
+      [
+        { role: 'user', content: [{ type: 'text', text: '用户文本块' }] },
+        { role: 'assistant', content: [{ type: 'text', text: '助手回答' }] },
+        { role: 'toolResult', toolCallId: 'tc_1', toolName: 'testTool', content: [{ type: 'text', text: '工具输出' }] }
+      ],
+      '系统提示词'
+    );
 
     expect(stdMessages.length).toBe(4);
     expect(stdMessages[0].role).toBe('system');
@@ -273,15 +268,21 @@ describe('System Integration & Edge Cases Suite', () => {
     expect(msg.content.some((c) => c.type === 'toolCall')).toBe(true);
 
     // Missing API keys for real providers
-    const openaiStream = streamAi({ id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', maxTokens: 4096 }, [{ role: 'user', content: 'hi' }]);
+    const openaiStream = streamAi({ id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', maxTokens: 4096 }, [
+      { role: 'user', content: 'hi' }
+    ]);
     const openaiMsg = await openaiStream.collect();
     expect(openaiMsg.errorMessage).toContain('Missing API key');
 
-    const anthropicStream = streamAi({ id: 'claude-3-7-sonnet', name: 'Claude', provider: 'claude', maxTokens: 8192 }, [{ role: 'user', content: 'hi' }]);
+    const anthropicStream = streamAi({ id: 'claude-3-7-sonnet', name: 'Claude', provider: 'claude', maxTokens: 8192 }, [
+      { role: 'user', content: 'hi' }
+    ]);
     const anthropicMsg = await anthropicStream.collect();
     expect(anthropicMsg.errorMessage).toBeDefined();
 
-    const geminiStream = streamAi({ id: 'gemini-2.5-pro', name: 'Gemini', provider: 'gemini', maxTokens: 8192 }, [{ role: 'user', content: 'hi' }]);
+    const geminiStream = streamAi({ id: 'gemini-2.5-pro', name: 'Gemini', provider: 'gemini', maxTokens: 8192 }, [
+      { role: 'user', content: 'hi' }
+    ]);
     const geminiMsg = await geminiStream.collect();
     expect(geminiMsg.errorMessage).toBeDefined();
   });
@@ -290,7 +291,7 @@ describe('System Integration & Edge Cases Suite', () => {
     const { WorkflowCoordinator } = await import('@inkpi/agent-core');
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'provider stage output', inputTokens: 5, outputTokens: 7 };
-    
+
     let beforeOutlineHit = false;
     let draftGenHit = false;
     let auditPassHit = false;
@@ -298,12 +299,25 @@ describe('System Integration & Edge Cases Suite', () => {
 
     const coordinator = new WorkflowCoordinator({
       model,
-      hooks: [{
-        onBeforeOutline: async () => { beforeOutlineHit = true; return '大纲前置提示'; },
-        onDraftGenerated: async () => { draftGenHit = true; return '正文后置修饰'; },
-        onAuditPass: async () => { auditPassHit = true; },
-        onPolishDone: async () => { polishDoneHit = true; return '润色完成版'; }
-      }],
+      hooks: [
+        {
+          onBeforeOutline: async () => {
+            beforeOutlineHit = true;
+            return '大纲前置提示';
+          },
+          onDraftGenerated: async () => {
+            draftGenHit = true;
+            return '正文后置修饰';
+          },
+          onAuditPass: async () => {
+            auditPassHit = true;
+          },
+          onPolishDone: async () => {
+            polishDoneHit = true;
+            return '润色完成版';
+          }
+        }
+      ],
       enablePlotGate: true,
       plotGateHandler: async () => {
         return { approved: true, modifiedContent: '人工审查通过后的大纲' };
@@ -325,7 +339,7 @@ describe('System Integration & Edge Cases Suite', () => {
     expect(draftGenHit).toBe(true);
     expect(auditPassHit).toBe(true);
     expect(polishDoneHit).toBe(true);
-    expect(ctx.stageOutputs['custom_check']).toBe('【转换】质检文本');
+    expect(ctx.stageOutputs.custom_check).toBe('【转换】质检文本');
 
     // Test rejection in quality gate
     const rejectingCoordinator = new WorkflowCoordinator({
@@ -342,16 +356,18 @@ describe('System Integration & Edge Cases Suite', () => {
       executor: async () => '主角惨死于敌人手中'
     });
 
-    await expect(rejectingCoordinator.runWorkflow({
-      userPrompt: '测试冲突',
-      stateLedger: {
-        entities: [{ id: '1', name: '主角', status: 'alive' }],
-        assets: [],
-        tracks: [],
-        locations: [],
-        modifiedResources: []
-      }
-    })).rejects.toThrow(/门禁未通过/);
+    await expect(
+      rejectingCoordinator.runWorkflow({
+        userPrompt: '测试冲突',
+        stateLedger: {
+          entities: [{ id: '1', name: '主角', status: 'alive' }],
+          assets: [],
+          tracks: [],
+          locations: [],
+          modifiedResources: []
+        }
+      })
+    ).rejects.toThrow(/门禁未通过/);
   });
 
   it('should test RoleRegistry, Typography options, and Storage Lanes helper branches', async () => {
@@ -386,13 +402,22 @@ describe('System Integration & Edge Cases Suite', () => {
 
     // Lanes
     const db = new InkDb(':memory:');
-    db.prepare('INSERT INTO workspaces (id, title, owner, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('ws_1', 'test', 'user', 'novel', Date.now(), Date.now());
+    db.prepare(
+      'INSERT INTO workspaces (id, title, owner, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('ws_1', 'test', 'user', 'novel', Date.now(), Date.now());
     const lanesMgr = new LaneManager(db);
-    lanesMgr.createLane({ id: 'lane_1', workspaceId: 'ws_1', name: 'dev', description: '测试分支', isDefault: true, createdAt: Date.now(), updatedAt: Date.now() });
+    lanesMgr.createLane({
+      id: 'lane_1',
+      workspaceId: 'ws_1',
+      name: 'dev',
+      description: '测试分支',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
     expect(lanesMgr.getLanes('ws_1').length).toBe(1);
     lanesMgr.setDefaultLane('ws_1', 'lane_1');
   });
-
 
   it('should test StateLedger extraction: items/clue branches and XML tags', async () => {
     const { extractNovelStateLedger } = await import('@inkpi/agent-core');
@@ -402,9 +427,22 @@ describe('System Integration & Edge Cases Suite', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'toolCall', id: 'c1', name: 'update_entity', arguments: { name: 'Commander-Alpha', status: 'Active' } },
-          { type: 'toolCall', id: 'c2', name: 'update_asset', arguments: { name: 'Quantum-Key', holder: 'Commander-Alpha' } },
-          { type: 'text', text: '<entity name="Alice" status="Lead" /> <asset name="Keycard" holder="Alice" /> <track clue="Database-Access" status="pending" />' }
+          {
+            type: 'toolCall',
+            id: 'c1',
+            name: 'update_entity',
+            arguments: { name: 'Commander-Alpha', status: 'Active' }
+          },
+          {
+            type: 'toolCall',
+            id: 'c2',
+            name: 'update_asset',
+            arguments: { name: 'Quantum-Key', holder: 'Commander-Alpha' }
+          },
+          {
+            type: 'text',
+            text: '<entity name="Alice" status="Lead" /> <asset name="Keycard" holder="Alice" /> <track clue="Database-Access" status="pending" />'
+          }
         ]
       } as any
     ];
@@ -415,7 +453,12 @@ describe('System Integration & Edge Cases Suite', () => {
 
     // 触发 XML 标签 (location, track with content/status)
     const msgsXml = [
-      { role: 'assistant', content: [{ type: 'text', text: '<location name="CommandCenter" /> <track content="ServerRoom" status="resolved" />' }] } as any
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '<location name="CommandCenter" /> <track content="ServerRoom" status="resolved" />' }
+        ]
+      } as any
     ];
     const ledger2 = extractNovelStateLedger(msgsXml);
     expect(ledger2.locations.length).toBeGreaterThan(0);
@@ -423,7 +466,12 @@ describe('System Integration & Edge Cases Suite', () => {
 
     // 触发 toolResult branch
     const msgsToolResult = [
-      { role: 'toolResult', toolCallId: 't1', toolName: 'test', content: [{ type: 'text', text: '<track clue="AuditLog" status="pending" />' }] } as any
+      {
+        role: 'toolResult',
+        toolCallId: 't1',
+        toolName: 'test',
+        content: [{ type: 'text', text: '<track clue="AuditLog" status="pending" />' }]
+      } as any
     ];
     const ledger3 = extractNovelStateLedger(msgsToolResult);
     expect(ledger3).toBeDefined();

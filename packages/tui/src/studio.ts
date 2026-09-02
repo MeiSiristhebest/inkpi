@@ -1,9 +1,8 @@
-import { StudioModel } from './studio-model.js';
-import { StudioView } from './studio-view.js';
-import { StudioController } from './studio-controller.js';
-import type { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import type { StateLedger } from '@inkpi/protocol';
 import type { Agent, SessionTree } from '@inkpi/agent-core';
+import type { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
+import type { StateLedger } from '@inkpi/protocol';
+import { StudioController } from './studio-controller.js';
+import { StudioModel } from './studio-model.js';
 import type {
   StudioFlashMessage,
   StudioFocusMode,
@@ -13,6 +12,7 @@ import type {
   StudioSelectListOptions,
   TerminalStudioOptions
 } from './studio-types.js';
+import { StudioView } from './studio-view.js';
 
 export * from './studio-types.js';
 export * from './studio-model.js';
@@ -136,11 +136,7 @@ export class TerminalStudio {
     return this.model.prevResource();
   }
 
-  public flash(
-    text: string,
-    level: 'info' | 'success' | 'warning' | 'error' = 'info',
-    durationMs = 3000
-  ): void {
+  public flash(text: string, level: 'info' | 'success' | 'warning' | 'error' = 'info', durationMs = 3000): void {
     this.model.flash(text, level, durationMs);
   }
 

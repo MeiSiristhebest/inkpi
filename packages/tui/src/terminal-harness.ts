@@ -1,8 +1,8 @@
-import { HeadlessEditorState, GhostTextManager, formatTypography } from '@inkpi/editor-core';
-import type { TypographyOptions } from '@inkpi/protocol';
 import type { Agent } from '@inkpi/agent-core';
 import type { SessionTree } from '@inkpi/agent-core';
 import { SlashCommandRegistry } from '@inkpi/agent-core';
+import { GhostTextManager, HeadlessEditorState, formatTypography } from '@inkpi/editor-core';
+import type { TypographyOptions } from '@inkpi/protocol';
 import { ANSI, drawBox } from './render.js';
 
 export interface TerminalHarnessOptions {
@@ -71,15 +71,16 @@ export class TerminalHarness {
       resourceMetric: (wordCount) => `${wordCount}`,
       ...options.labels
     };
-    this.resourceList = (options.initialResources || [
-      { title: 'Untitled resource', wordCount: 0, active: true }
-    ]).map((resource, index) => ({
-      ...resource,
-      active: resource.active ?? index === 0
-    }));
-    this.currentResourceTitle = this.resourceList.find((resource) => resource.active)?.title
-      || this.resourceList[0]?.title
-      || 'Untitled resource';
+    this.resourceList = (options.initialResources || [{ title: 'Untitled resource', wordCount: 0, active: true }]).map(
+      (resource, index) => ({
+        ...resource,
+        active: resource.active ?? index === 0
+      })
+    );
+    this.currentResourceTitle =
+      this.resourceList.find((resource) => resource.active)?.title ||
+      this.resourceList[0]?.title ||
+      'Untitled resource';
     this.logs = [this.labels.ready];
   }
 
@@ -102,30 +103,42 @@ export class TerminalHarness {
 
     // 2. 右侧编辑与幽灵提示
     const rawText = this.editor.getText();
-    const formatted = this.typography
-      ? formatTypography(rawText, this.typography)
-      : rawText;
+    const formatted = this.typography ? formatTypography(rawText, this.typography) : rawText;
     const textLines = formatted.split('\n');
 
     if (this.ghost.hasGhostText()) {
       const ghost = this.ghost.getGhostText();
       if (ghost) {
-        textLines.push(`${ANSI.FG_GRAY}${this.labels.ghostSuggestion}: ${ghost.text} ${ANSI.FG_YELLOW}(${this.labels.acceptSuggestion})${ANSI.RESET}`);
+        textLines.push(
+          `${ANSI.FG_GRAY}${this.labels.ghostSuggestion}: ${ghost.text} ${ANSI.FG_YELLOW}(${this.labels.acceptSuggestion})${ANSI.RESET}`
+        );
       }
     }
 
-    const rightBox = drawBox(`${this.labels.editor} - ${this.currentResourceTitle}`, textLines, rightWidth, topHeight, ANSI.FG_GREEN);
+    const rightBox = drawBox(
+      `${this.labels.editor} - ${this.currentResourceTitle}`,
+      textLines,
+      rightWidth,
+      topHeight,
+      ANSI.FG_GREEN
+    );
 
     // Combine top left & right
     const combinedTop: string[] = [];
     for (let i = 0; i < topHeight; i++) {
-      combinedTop.push((leftBox[i] || '') + ' ' + (rightBox[i] || ''));
+      combinedTop.push(`${leftBox[i] || ''} ${rightBox[i] || ''}`);
     }
 
     // 3. 底部 AI 副驾驶与控制台
-    const bottomBox = drawBox(this.labels.console, this.logs.slice(-bottomHeight + 3), this.width, bottomHeight, ANSI.FG_YELLOW);
+    const bottomBox = drawBox(
+      this.labels.console,
+      this.logs.slice(-bottomHeight + 3),
+      this.width,
+      bottomHeight,
+      ANSI.FG_YELLOW
+    );
 
-    return combinedTop.join('\n') + '\n' + bottomBox.join('\n');
+    return `${combinedTop.join('\n')}\n${bottomBox.join('\n')}`;
   }
 
   /**
@@ -157,7 +170,7 @@ export class TerminalHarness {
 
     // Default input is an editor operation; the harness does not infer a
     // document type or invoke a domain-specific generation workflow.
-    this.editor.insertText(this.editor.getText().length, trimmed + '\n');
+    this.editor.insertText(this.editor.getText().length, `${trimmed}\n`);
     this.logs.push(`${this.labels.inserted}: ${trimmed.slice(0, 30)}...`);
     return 'Text inserted';
   }

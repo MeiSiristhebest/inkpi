@@ -6,7 +6,10 @@ export const DEFAULT_CHINESE_TYPOGRAPHY: TypographyOptions = {
   preventPunctuationAtLineStart: true
 };
 
-export function formatChineseTypography(text: string, options: Partial<TypographyOptions> = DEFAULT_CHINESE_TYPOGRAPHY): string {
+export function formatChineseTypography(
+  text: string,
+  options: Partial<TypographyOptions> = DEFAULT_CHINESE_TYPOGRAPHY
+): string {
   if (options.enabled === false) return text;
   const indent = options.indentString ?? DEFAULT_CHINESE_TYPOGRAPHY.indentString ?? '\u3000\u3000';
 
@@ -26,7 +29,6 @@ export function formatChineseTypography(text: string, options: Partial<Typograph
       return trimmed;
     }
 
-
     // If it already has indentation, normalize it
     const cleanContent = trimmed.replace(/^[\u3000\s]+/, '');
     return indent + cleanContent;
@@ -34,7 +36,6 @@ export function formatChineseTypography(text: string, options: Partial<Typograph
 
   return formattedLines.join('\n');
 }
-
 
 export function formatWesternTypography(text: string): string {
   return text

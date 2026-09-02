@@ -1,27 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import {
-  TUI,
-  Editor,
-  ThinkingAccordion,
-  parseKey
-} from '@inkpi/tui';
-import {
-  ModelCatalogManager,
-  findModelInCatalog
-} from '@inkpi/ai';
-import {
-  InkRpcServer,
-  InkRpcClient
-} from '@inkpi/server';
-import {
-  StoryboardExporter,
-  NodeVMSandbox,
-  SandboxExecutor,
-  SessionTree
-} from '@inkpi/agent-core';
 import { execSync } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NodeVMSandbox, SandboxExecutor, SessionTree, StoryboardExporter } from '@inkpi/agent-core';
+import { ModelCatalogManager, findModelInCatalog } from '@inkpi/ai';
+import { InkRpcClient, InkRpcServer } from '@inkpi/server';
+import { Editor, TUI, ThinkingAccordion, parseKey } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -209,7 +193,9 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
 
       // ReadOnly test
       editor.readOnly = true;
-      expect(editor.handleKey({ name: 'a', ctrl: false, meta: false, shift: false, sequence: 'a', raw: 'a' })).toBe(false);
+      expect(editor.handleKey({ name: 'a', ctrl: false, meta: false, shift: false, sequence: 'a', raw: 'a' })).toBe(
+        false
+      );
       editor.readOnly = false;
 
       // ScrollRow adjustment test (render 不再隐式改状态，先显式 ensureCursorVisible)
@@ -285,8 +271,9 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       accordion.handleKey({ name: 'o', ctrl: true, meta: false, shift: false, sequence: '\x0f', raw: '\x0f' });
       expect(accordion.isCollapsed).toBe(true);
 
-      expect(accordion.handleKey({ name: 'x', ctrl: false, meta: false, shift: false, sequence: 'x', raw: 'x' })).toBe(false);
-
+      expect(accordion.handleKey({ name: 'x', ctrl: false, meta: false, shift: false, sequence: 'x', raw: 'x' })).toBe(
+        false
+      );
 
       const renderedClosed = accordion.render({ width: 80, height: 10 });
       expect(renderedClosed.some((l) => l.includes('推演林动的动机'))).toBe(false);
@@ -347,9 +334,7 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
             tracks: [],
             modifiedResources: []
           },
-          gateIssues: [
-            { type: 'EntityDeathGate', severity: 'warning', description: '检测到重要配角受伤' }
-          ],
+          gateIssues: [{ type: 'EntityDeathGate', severity: 'warning', description: '检测到重要配角受伤' }],
           usageTotals: {
             inputTokens: 50000,
             outputTokens: 12000,
@@ -465,19 +450,24 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(studioOutput).toContain('Runtime State');
 
       // 2. Print mode execution
-      const printOutput = execSync('node scripts/inkpi-standalone.mjs --print --model mock-test --prompt "测试小说开篇" --json', {
-        cwd: rootDir,
-        encoding: 'utf8'
-      });
+      const printOutput = execSync(
+        'node scripts/inkpi-standalone.mjs --print --model mock-test --prompt "测试小说开篇" --json',
+        {
+          cwd: rootDir,
+          encoding: 'utf8'
+        }
+      );
       const parsed = JSON.parse(printOutput);
       expect(parsed.success).toBe(true);
       expect(parsed.role).toBe('assistant');
 
-      expect(() => execSync('node scripts/inkpi-standalone.mjs --print --prompt', {
-        cwd: rootDir,
-        encoding: 'utf8',
-        stdio: 'pipe'
-      })).toThrow();
+      expect(() =>
+        execSync('node scripts/inkpi-standalone.mjs --print --prompt', {
+          cwd: rootDir,
+          encoding: 'utf8',
+          stdio: 'pipe'
+        })
+      ).toThrow();
     });
   });
 });

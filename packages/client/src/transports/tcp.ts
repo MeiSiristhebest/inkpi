@@ -50,7 +50,7 @@ export class TcpSocketTransport implements RpcTransport {
 
   public send(message: string): void {
     if (!this.open) return;
-    this.socket.write(message + '\n');
+    this.socket.write(`${message}\n`);
   }
 
   public onMessage(handler: (message: string) => void): void {

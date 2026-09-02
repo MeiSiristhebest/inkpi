@@ -1,9 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import {
-  ExtensionHost,
-  ExtensionRunner,
-  type ExtensionFactory
-} from '@inkpi/agent-core';
+import { type ExtensionFactory, ExtensionHost, ExtensionRunner } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('Custom Third-Party Extension Capability', () => {
   it('should allow third-party developers to define and register custom capabilities', async () => {

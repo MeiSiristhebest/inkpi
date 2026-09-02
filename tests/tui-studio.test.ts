@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { TerminalStudio } from '@inkpi/tui';
 import { Agent } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
+import { TerminalStudio } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 describe('TerminalStudio (Terminal Workstation)', () => {
   it('should initialize with default 3-pane layout and render full screen', () => {
@@ -15,7 +15,7 @@ describe('TerminalStudio (Terminal Workstation)', () => {
 
   it('should support differential screen rendering', () => {
     const studio = new TerminalStudio({ width: 100, height: 26 });
-    
+
     // First render -> full content
     const firstDiff = studio.renderDifferential();
     expect(firstDiff.content.length).toBeGreaterThan(0);
@@ -81,7 +81,6 @@ describe('TerminalStudio (Terminal Workstation)', () => {
     const helpRes = await studio.handleInput('/help');
     expect(helpRes).toContain('指令清单');
   });
-
 
   it('should handle dimensions, document navigation boundaries, and agent event streaming', async () => {
     const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
@@ -181,4 +180,3 @@ describe('TerminalStudio (Terminal Workstation)', () => {
     expect(studio.activeModal).toBeNull();
   });
 });
-

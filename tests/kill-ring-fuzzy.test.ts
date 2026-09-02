@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { KillRing, fuzzySearch } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Kill-Ring & Fuzzy Search (1:1 Ported from repos/pi/tui)', () => {
   it('should push, yank, and cycle through deleted text snippets in KillRing', () => {

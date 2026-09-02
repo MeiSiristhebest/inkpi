@@ -72,7 +72,9 @@ export function sliceWithWidth(text: string, startCol: number, maxColumns: numbe
   while (i < text.length) {
     if (text.charCodeAt(i) === 0x1b) {
       // Extract full ANSI escape sequence
-      const match = text.slice(i).match(/^(\x1b\[[0-9;]*[a-zA-Z]|\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))/);
+      const match = text
+        .slice(i)
+        .match(/^(\x1b\[[0-9;]*[a-zA-Z]|\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))/);
       if (match) {
         const ansiCode = match[0];
         activeAnsi += ansiCode;
@@ -89,9 +91,9 @@ export function sliceWithWidth(text: string, startCol: number, maxColumns: numbe
     const char = text.slice(i, i + charLen);
     const charWidth = isWideChar(codePoint) ? 2 : 1;
 
-    if (currentCol >= startCol && (currentCol - startCol) + charWidth <= maxColumns) {
+    if (currentCol >= startCol && currentCol - startCol + charWidth <= maxColumns) {
       result += char;
-    } else if ((currentCol - startCol) + charWidth > maxColumns && currentCol >= startCol) {
+    } else if (currentCol - startCol + charWidth > maxColumns && currentCol >= startCol) {
       // Cannot fit next wide char without overflowing
       break;
     }

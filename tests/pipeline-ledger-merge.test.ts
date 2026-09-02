@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { mergeLedgers, mergeRecords } from '../packages/agent-core/src/pipeline/ledger-merge.js';
 import type { StateLedger } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
+import { mergeLedgers, mergeRecords } from '../packages/agent-core/src/pipeline/ledger-merge.js';
 
 function emptyLedger(): StateLedger {
   return { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
@@ -8,8 +8,14 @@ function emptyLedger(): StateLedger {
 
 describe('mergeRecords (pure)', () => {
   it('归并两条记录数组，相同 key 后项浅覆盖前项', () => {
-    const base = [{ id: 'a', v: 1 }, { id: 'b', v: 2 }];
-    const addition = [{ id: 'a', v: 10 }, { id: 'c', v: 3 }];
+    const base = [
+      { id: 'a', v: 1 },
+      { id: 'b', v: 2 }
+    ];
+    const addition = [
+      { id: 'a', v: 10 },
+      { id: 'c', v: 3 }
+    ];
     const merged = mergeRecords(base, addition, (r) => r.id);
     expect(merged).toEqual([
       { id: 'a', v: 10 },
@@ -30,7 +36,10 @@ describe('mergeLedgers (pure)', () => {
     const base = emptyLedger();
     base.entities = [{ id: 'e1', name: 'Alice', status: 'active' }];
     const addition: Partial<StateLedger> = {
-      entities: [{ id: 'e1', name: 'Alice', status: 'edited' }, { id: 'e2', name: 'Bob' }]
+      entities: [
+        { id: 'e1', name: 'Alice', status: 'edited' },
+        { id: 'e2', name: 'Bob' }
+      ]
     };
     const result = mergeLedgers(base, addition);
     expect(result.entities).toHaveLength(2);
@@ -68,7 +77,13 @@ describe('mergeLedgers (pure)', () => {
   });
 
   it('legacy 模式保留别名并填充 foreshadowings/modifiedChapters/modifiedDocuments', () => {
-    const base: any = { entities: [], assets: [], tracks: [{ id: 't1', clue: 'x' }], locations: [], modifiedResources: [] };
+    const base: any = {
+      entities: [],
+      assets: [],
+      tracks: [{ id: 't1', clue: 'x' }],
+      locations: [],
+      modifiedResources: []
+    };
     const result: any = mergeLedgers(base, {}, true);
     expect(result.foreshadowings).toHaveLength(1);
     expect(result.modifiedChapters).toEqual([]);
@@ -80,7 +95,14 @@ describe('mergeLedgers (pure)', () => {
     // 原始实现用 `base.modifiedResources || base.modifiedChapters || base.modifiedDocuments`，
     // 即三者互斥、只取首个真值数组。此处 base 有 modifiedResources，addition 也有 modifiedResources，
     // 因此 addition.modifiedDocuments 被忽略（与抽取前行为一致，不应在抽取时改变）。
-    const base: any = { entities: [], assets: [], tracks: [], locations: [], modifiedResources: ['r1'], modifiedChapters: ['c1'] };
+    const base: any = {
+      entities: [],
+      assets: [],
+      tracks: [],
+      locations: [],
+      modifiedResources: ['r1'],
+      modifiedChapters: ['c1']
+    };
     const addition: any = { modifiedResources: ['r2'], modifiedDocuments: ['d1'] };
     const result: any = mergeLedgers(base, addition);
     expect(result.modifiedResources.sort()).toEqual(['r1', 'r2']);

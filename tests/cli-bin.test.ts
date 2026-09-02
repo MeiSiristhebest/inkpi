@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 describe('InkPi CLI Executable Binary (bin/inkpi.js)', () => {
   const binPath = resolve(__dirname, '../bin/inkpi.js');

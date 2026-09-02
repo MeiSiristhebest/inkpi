@@ -1,10 +1,10 @@
-import type { AgentMessage, ExportOptions, QualityGateIssue, StateLedger, UsageTotals } from '@inkpi/protocol';
 import type { UsageCostBreakdown } from '@inkpi/ai';
+import type { AgentMessage, ExportOptions, QualityGateIssue, StateLedger, UsageTotals } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import {
-  SessionReportExporter,
   type SessionReportBranchSummary,
-  type SessionReportExportOptions
+  type SessionReportExportOptions,
+  SessionReportExporter
 } from './session-report-export.js';
 
 export interface StoryboardExportOptions extends Partial<ExportOptions> {
@@ -23,12 +23,8 @@ export interface StoryboardExportOptions extends Partial<ExportOptions> {
  * The generic report renderer lives in SessionReportExporter. This adapter
  * keeps the old public API without making narrative labels part of the core.
  */
-export class StoryboardExporter {
-  public static exportToStoryboardHtml(
-    messages: AgentMessage[],
-    options: StoryboardExportOptions = {},
-    tree?: SessionTree
-  ): string {
+export const StoryboardExporter = {
+  exportToStoryboardHtml(messages: AgentMessage[], options: StoryboardExportOptions = {}, tree?: SessionTree): string {
     const branchSummaries: SessionReportBranchSummary[] = (options.whatIfSummaries || []).map((item) => ({
       branchName: item.branchName,
       summaryText: item.summaryText,
@@ -67,4 +63,4 @@ export class StoryboardExporter {
     };
     return new SessionReportExporter().exportToHtml(messages, reportOptions, tree);
   }
-}
+};

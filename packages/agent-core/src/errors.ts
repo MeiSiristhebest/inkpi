@@ -4,7 +4,9 @@
 
 /** 创建会话时既未提供显式模型、也无默认模型配置时抛出，取代原先静默回落到假模型的行为。 */
 export class NoModelConfiguredError extends Error {
-  constructor(message = 'No model configured. Pass an explicit model to the session, set a default model on the session manager, or configure a provider.') {
+  constructor(
+    message = 'No model configured. Pass an explicit model to the session, set a default model on the session manager, or configure a provider.'
+  ) {
     super(message);
     this.name = 'NoModelConfiguredError';
   }

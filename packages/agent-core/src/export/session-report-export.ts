@@ -1,11 +1,5 @@
-import type {
-  AgentMessage,
-  ExportOptions,
-  QualityGateIssue,
-  StateLedger,
-  UsageTotals
-} from '@inkpi/protocol';
 import type { UsageCostBreakdown } from '@inkpi/ai';
+import type { AgentMessage, ExportOptions, QualityGateIssue, StateLedger, UsageTotals } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
 
@@ -95,11 +89,7 @@ const DEFAULT_LABELS: SessionReportLabels = {
  * domain-specific projections belong to an adapter such as StoryboardExporter.
  */
 export class SessionReportExporter {
-  public exportToHtml(
-    messages: AgentMessage[],
-    options: SessionReportExportOptions = {},
-    tree?: SessionTree
-  ): string {
+  public exportToHtml(messages: AgentMessage[], options: SessionReportExportOptions = {}, tree?: SessionTree): string {
     const labels = { ...DEFAULT_LABELS, ...options.labels };
     const title = options.title || 'Session Report';
     const author = options.author;
@@ -206,16 +196,19 @@ export class SessionReportExporter {
       return `<div class="msg-card user"><div class="msg-header">${escapeHtml(labels.user)} #${index + 1}</div><div class="text-content">${escapeHtml(text)}</div></div>`;
     }
     if (message.role === 'assistant') {
-      const parts = message.content.map((block) => {
-        if (block.type === 'thinking' && options.includeThinking !== false) {
-          return `<div class="thinking-box"><strong>${escapeHtml(labels.thinking)}</strong>\n${escapeHtml(block.thinking)}</div>`;
-        }
-        if (block.type === 'text') return `<div class="text-content">${escapeHtml(block.text)}</div>`;
-        if (block.type === 'toolCall' && options.includeToolCalls !== false) {
-          return `<div class="tool-call"><strong>${escapeHtml(labels.toolCall)}</strong>: <code>${escapeHtml(block.name)}</code>\n${escapeHtml(JSON.stringify(block.arguments, null, 2))}</div>`;
-        }
-        return '';
-      }).filter(Boolean).join('\n');
+      const parts = message.content
+        .map((block) => {
+          if (block.type === 'thinking' && options.includeThinking !== false) {
+            return `<div class="thinking-box"><strong>${escapeHtml(labels.thinking)}</strong>\n${escapeHtml(block.thinking)}</div>`;
+          }
+          if (block.type === 'text') return `<div class="text-content">${escapeHtml(block.text)}</div>`;
+          if (block.type === 'toolCall' && options.includeToolCalls !== false) {
+            return `<div class="tool-call"><strong>${escapeHtml(labels.toolCall)}</strong>: <code>${escapeHtml(block.name)}</code>\n${escapeHtml(JSON.stringify(block.arguments, null, 2))}</div>`;
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n');
       return `<div class="msg-card assistant"><div class="msg-header">${escapeHtml(labels.assistant)} #${index + 1}</div>${parts}</div>`;
     }
     if (message.role === 'toolResult') {
@@ -235,15 +228,24 @@ export class SessionReportExporter {
     if (entities.length === 0 && assets.length === 0 && tracks.length === 0) {
       return `<p class="empty-hint">${escapeHtml(labels.emptyLedger)}</p>`;
     }
-    const entityRows = entities.map((entity) =>
-      `<tr><td>${escapeHtml(entity.name)}</td><td>${escapeHtml(entity.status || labels.active)}</td><td>${escapeHtml(JSON.stringify(entity.attributes || {}))}</td></tr>`
-    ).join('');
-    const assetRows = assets.map((asset) =>
-      `<tr><td>${escapeHtml(asset.name)}</td><td>${escapeHtml(asset.holder || asset.owner || labels.unknown)}</td><td>${escapeHtml(asset.state || labels.active)}</td></tr>`
-    ).join('');
-    const trackRows = tracks.map((track) =>
-      `<tr><td>${escapeHtml(track.clue || track.summary || track.id || labels.unknown)}</td><td>${escapeHtml(track.status || labels.active)}</td></tr>`
-    ).join('');
+    const entityRows = entities
+      .map(
+        (entity) =>
+          `<tr><td>${escapeHtml(entity.name)}</td><td>${escapeHtml(entity.status || labels.active)}</td><td>${escapeHtml(JSON.stringify(entity.attributes || {}))}</td></tr>`
+      )
+      .join('');
+    const assetRows = assets
+      .map(
+        (asset) =>
+          `<tr><td>${escapeHtml(asset.name)}</td><td>${escapeHtml(asset.holder || asset.owner || labels.unknown)}</td><td>${escapeHtml(asset.state || labels.active)}</td></tr>`
+      )
+      .join('');
+    const trackRows = tracks
+      .map(
+        (track) =>
+          `<tr><td>${escapeHtml(track.clue || track.summary || track.id || labels.unknown)}</td><td>${escapeHtml(track.status || labels.active)}</td></tr>`
+      )
+      .join('');
     return `<div class="ledger-grid">
       <section><h2>${escapeHtml(labels.entities)} (${entities.length})</h2><table class="data-table"><thead><tr><th>Name</th><th>Status</th><th>Attributes</th></tr></thead><tbody>${entityRows}</tbody></table></section>
       <section><h2>${escapeHtml(labels.assets)} (${assets.length})</h2><table class="data-table"><thead><tr><th>Name</th><th>Owner</th><th>State</th></tr></thead><tbody>${assetRows}</tbody></table></section>
@@ -259,16 +261,22 @@ export class SessionReportExporter {
     if (summaries.length === 0) {
       return `<p class="empty-hint">${escapeHtml(branchCount ? `${branchCount} ${labels.branches}` : labels.emptyBranches)}</p>`;
     }
-    return summaries.map((summary) =>
-      `<article class="branch-card"><h3>${escapeHtml(labels.branch)}: ${escapeHtml(summary.branchName)}</h3><p>${escapeHtml(summary.summaryText)}</p>${summary.differenceCount === undefined ? '' : `<div>${escapeHtml(labels.differenceCount)}: ${summary.differenceCount}</div>`}</article>`
-    ).join('');
+    return summaries
+      .map(
+        (summary) =>
+          `<article class="branch-card"><h3>${escapeHtml(labels.branch)}: ${escapeHtml(summary.branchName)}</h3><p>${escapeHtml(summary.summaryText)}</p>${summary.differenceCount === undefined ? '' : `<div>${escapeHtml(labels.differenceCount)}: ${summary.differenceCount}</div>`}</article>`
+      )
+      .join('');
   }
 
   private renderGates(issues: QualityGateIssue[], labels: SessionReportLabels): string {
     if (issues.length === 0) return `<p class="empty-hint">${escapeHtml(labels.gatesPassed)}</p>`;
-    return issues.map((issue) =>
-      `<article class="gate-card ${escapeHtml(issue.severity)}"><strong>${escapeHtml(issue.type)}</strong><div>${escapeHtml(issue.description)}</div></article>`
-    ).join('');
+    return issues
+      .map(
+        (issue) =>
+          `<article class="gate-card ${escapeHtml(issue.severity)}"><strong>${escapeHtml(issue.type)}</strong><div>${escapeHtml(issue.description)}</div></article>`
+      )
+      .join('');
   }
 
   private renderUsage(usage: UsageTotals | undefined, labels: SessionReportLabels): string {

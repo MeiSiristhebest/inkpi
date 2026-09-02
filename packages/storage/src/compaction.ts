@@ -87,7 +87,7 @@ export class CompactionEngine {
     const pendingDeltas = this.repo.getDeltasSince(documentId, snapshotTime);
 
     let currentMarkdown = snapshot ? snapshot.contentMarkdown : '';
-    let currentJson = snapshot ? snapshot.contentJson : '{"type":"doc","content":[]}';
+    const currentJson = snapshot ? snapshot.contentJson : '{"type":"doc","content":[]}';
     let version = snapshot ? snapshot.version : 1;
     let replayedDeltasCount = 0;
     const recoveryErrors: RecoveryError[] = [];
@@ -102,11 +102,7 @@ export class CompactionEngine {
           if (!isValidPosition(pos, currentMarkdown.length)) throw new Error('insert.from is out of bounds.');
           currentMarkdown = currentMarkdown.slice(0, pos) + step.text + currentMarkdown.slice(pos);
           applied = true;
-        } else if (
-          step?.type === 'delete' &&
-          Number.isInteger(step.from) &&
-          Number.isInteger(step.to)
-        ) {
+        } else if (step?.type === 'delete' && Number.isInteger(step.from) && Number.isInteger(step.to)) {
           if (!isValidRange(step.from, step.to, currentMarkdown.length)) {
             throw new Error('delete range is invalid or out of bounds.');
           }
@@ -127,16 +123,17 @@ export class CompactionEngine {
         recoveryErrors.push(recoveryError);
         options.onError?.(recoveryError);
         if (options.strict !== false) {
-          throw new Error(`Failed to replay delta${delta.id === undefined ? '' : ` ${delta.id}`}: ${recoveryError.message}`, {
-            cause: err
-          });
+          throw new Error(
+            `Failed to replay delta${delta.id === undefined ? '' : ` ${delta.id}`}: ${recoveryError.message}`,
+            {
+              cause: err
+            }
+          );
         }
       }
     }
 
-    const contentSize = options.measureContent
-      ? options.measureContent(currentMarkdown)
-      : currentMarkdown.length;
+    const contentSize = options.measureContent ? options.measureContent(currentMarkdown) : currentMarkdown.length;
 
     return {
       documentId,

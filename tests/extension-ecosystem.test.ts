@@ -1,9 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import {
-  ExtensionHost,
-  ExtensionRunner,
-  type ExtensionFactory
-} from '@inkpi/agent-core';
+import { type ExtensionFactory, ExtensionHost, ExtensionRunner } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('Novel Extensions Infrastructure & Interface Contracts', () => {
   it('should allow loading and registering tools/commands via ExtensionRunner', async () => {
@@ -107,11 +103,19 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
     const hooks = host.getNovelHooks();
     expect(hooks.length).toBe(1);
 
-    const outPrompt = await hooks[0].onBeforeOutline!({ workspaceTitle: 'workspace', documentTitle: 'document', userPrompt: '大纲提示' });
+    const outPrompt = await hooks[0].onBeforeOutline!({
+      workspaceTitle: 'workspace',
+      documentTitle: 'document',
+      userPrompt: '大纲提示'
+    });
     expect(outlineHookCalled).toBe(true);
     expect(outPrompt).toContain('(hooked)');
 
-    const draftOut = await hooks[0].onDraftGenerated!({ workspaceTitle: 'workspace', documentTitle: 'document', draftText: '草稿' });
+    const draftOut = await hooks[0].onDraftGenerated!({
+      workspaceTitle: 'workspace',
+      documentTitle: 'document',
+      draftText: '草稿'
+    });
     expect(draftHookCalled).toBe(true);
     expect(draftOut).toContain('[Draft hook]');
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
 import { InkPiDaemon } from '@inkpi/server';
+import { afterEach, describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // @inkpi/server 的遗留 InkPiDaemon 契约。
@@ -29,7 +29,9 @@ describe('@inkpi/server InkPiDaemon contract', () => {
     const d = makeDaemon();
     // 完整版守护进程在**创建会话时**即显式报错（无模型无法创建会话），
     // 而非先创建再在 prompt 时静默回显假响应。这正是架构评审要锁定的行为。
-    const res = await d.getRpcServer().handleRequest({ jsonrpc: '2.0', id: 1, method: 'session.create', params: { sessionId: 's1' } });
+    const res = await d
+      .getRpcServer()
+      .handleRequest({ jsonrpc: '2.0', id: 1, method: 'session.create', params: { sessionId: 's1' } });
 
     expect(res.error).toBeDefined();
     expect(res.error!.message).toMatch(/No model configured/i);

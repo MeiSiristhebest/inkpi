@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
 import {
-  HeadlessEditorState,
   GhostTextManager,
+  HeadlessEditorState,
   ImeProtectionManager,
   formatChineseTypography,
-  formatWesternTypography,
-  formatTypography
+  formatTypography,
+  formatWesternTypography
 } from '@inkpi/editor-core';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/editor-core', () => {
   it('should maintain Document AST and support undo/redo transactions', () => {
@@ -94,7 +94,7 @@ describe('@inkpi/editor-core', () => {
     const ghost = new GhostTextManager(editor);
 
     ghost.setGhostText(3, '第一词 第二词\n第二行内容');
-    
+
     // Accept first word
     const wordAccepted = ghost.acceptWord();
     expect(wordAccepted).toBe(true);
@@ -140,7 +140,6 @@ describe('@inkpi/editor-core', () => {
     expect(ghost.hasGhostText()).toBe(false);
   });
 
-
   it('should preserve Markdown headings and screenplay headings during typography formatting', () => {
     const screenplayText = '# 第一幕\nINT. 警局审讯室 - NIGHT\n【张三】我没有杀人。\n普通动作叙述行。';
     const formatted = formatChineseTypography(screenplayText);
@@ -149,7 +148,6 @@ describe('@inkpi/editor-core', () => {
     expect(formatted).toContain('\u3000\u3000【张三】我没有杀人。');
     expect(formatted).toContain('\u3000\u3000普通动作叙述行。');
   });
-
 
   it('should apply Chinese and Western typography formatting', () => {
     const rawCn = '第一段text\n第二段text';

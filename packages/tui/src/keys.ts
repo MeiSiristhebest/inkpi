@@ -30,9 +30,9 @@ export function parseKey(input: Buffer | string): KeyEvent {
   // 1. Mouse SGR extended sequences (\x1b[<button;x;yM or m)
   const mouseMatch = str.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
   if (mouseMatch) {
-    const btn = parseInt(mouseMatch[1], 10);
-    const x = parseInt(mouseMatch[2], 10);
-    const y = parseInt(mouseMatch[3], 10);
+    const btn = Number.parseInt(mouseMatch[1], 10);
+    const x = Number.parseInt(mouseMatch[2], 10);
+    const y = Number.parseInt(mouseMatch[3], 10);
     event.isMouse = true;
     event.mouseX = x;
     event.mouseY = y;

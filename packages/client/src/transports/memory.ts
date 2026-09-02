@@ -20,7 +20,7 @@ export class MemoryTransport implements RpcTransport {
   public send(message: string): void {
     if (!this.open || !this.peer) return;
     queueMicrotask(() => {
-      if (this.peer && this.peer.open) {
+      if (this.peer?.open) {
         for (const handler of this.peer.handlers) {
           handler(message);
         }

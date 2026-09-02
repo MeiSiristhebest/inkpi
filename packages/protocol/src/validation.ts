@@ -2,9 +2,9 @@
  * 运行时校验与数据清洗工具
  */
 
-import { Value, type TSchema, type ValidationError } from './typebox.js';
-import { StateLedgerSchema, ToolCallContentSchema, RpcRequestSchema } from './schemas.js';
+import { RpcRequestSchema, StateLedgerSchema, ToolCallContentSchema } from './schemas.js';
 import type { StateLedger } from './storage.js';
+import { type TSchema, type ValidationError, Value } from './typebox.js';
 
 export class SchemaValidationError extends Error {
   public errors: ValidationError[];
@@ -15,7 +15,10 @@ export class SchemaValidationError extends Error {
   }
 }
 
-export function validateSchema<T extends TSchema>(schema: T, value: unknown): { valid: boolean; errors: ValidationError[] } {
+export function validateSchema<T extends TSchema>(
+  schema: T,
+  value: unknown
+): { valid: boolean; errors: ValidationError[] } {
   const errors = Value.Errors(schema, value);
   return {
     valid: errors.length === 0,
@@ -43,68 +46,72 @@ export function sanitizeStateLedger(raw: any): StateLedger {
 
   const entities = Array.isArray(raw.entities)
     ? raw.entities.filter(isRecordWithStringName).map((e: Record<string, any>) => {
-      const { id, name, type, status, affiliation, relationship, attributes, aliases, location, ...extensions } = e;
-      return {
-        ...extensions,
-        ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
-        name,
-        ...(typeof type === 'string' ? { type } : {}),
-        ...(typeof status === 'string' ? { status } : {}),
-        ...(typeof affiliation === 'string' ? { affiliation } : {}),
-        ...(typeof relationship === 'string' ? { relationship } : {}),
-        ...(isRecord(attributes) ? { attributes } : {}),
-        ...(Array.isArray(aliases) ? { aliases: aliases.filter((v: unknown): v is string => typeof v === 'string') } : {}),
-        ...(typeof location === 'string' ? { location } : {})
-      };
-    })
-    : [];
-
-  const assets = Array.isArray(raw.assets)
-    ? raw.assets.filter(isRecordWithStringName).map((a: Record<string, any>) => {
-      const { id, name, holder, owner, type, state, attributes, ...extensions } = a;
-      return {
-        ...extensions,
-        ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
-        name,
-        ...(typeof holder === 'string' ? { holder } : {}),
-        ...(typeof owner === 'string' ? { owner } : {}),
-        ...(typeof type === 'string' ? { type } : {}),
-        ...(typeof state === 'string' ? { state } : {}),
-        ...(isRecord(attributes) ? { attributes } : {})
-      };
-    })
-    : [];
-
-  const tracks = Array.isArray(raw.tracks)
-    ? raw.tracks
-      .filter((t: any) => isRecord(t) && (typeof t.clue === 'string' || typeof t.summary === 'string' || typeof t.id === 'string'))
-      .map((t: Record<string, any>) => {
-        const { id, clue, summary, sourceId, status, notes, metadata, ...extensions } = t;
+        const { id, name, type, status, affiliation, relationship, attributes, aliases, location, ...extensions } = e;
         return {
           ...extensions,
           ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
-          ...(typeof clue === 'string' ? { clue } : {}),
-          ...(typeof summary === 'string' ? { summary } : {}),
-          ...(typeof sourceId === 'string' ? { sourceId } : {}),
+          name,
+          ...(typeof type === 'string' ? { type } : {}),
           ...(typeof status === 'string' ? { status } : {}),
-          ...(typeof notes === 'string' ? { notes } : {}),
-          ...(isRecord(metadata) ? { metadata } : {})
+          ...(typeof affiliation === 'string' ? { affiliation } : {}),
+          ...(typeof relationship === 'string' ? { relationship } : {}),
+          ...(isRecord(attributes) ? { attributes } : {}),
+          ...(Array.isArray(aliases)
+            ? { aliases: aliases.filter((v: unknown): v is string => typeof v === 'string') }
+            : {}),
+          ...(typeof location === 'string' ? { location } : {})
         };
       })
     : [];
 
+  const assets = Array.isArray(raw.assets)
+    ? raw.assets.filter(isRecordWithStringName).map((a: Record<string, any>) => {
+        const { id, name, holder, owner, type, state, attributes, ...extensions } = a;
+        return {
+          ...extensions,
+          ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
+          name,
+          ...(typeof holder === 'string' ? { holder } : {}),
+          ...(typeof owner === 'string' ? { owner } : {}),
+          ...(typeof type === 'string' ? { type } : {}),
+          ...(typeof state === 'string' ? { state } : {}),
+          ...(isRecord(attributes) ? { attributes } : {})
+        };
+      })
+    : [];
+
+  const tracks = Array.isArray(raw.tracks)
+    ? raw.tracks
+        .filter(
+          (t: any) =>
+            isRecord(t) && (typeof t.clue === 'string' || typeof t.summary === 'string' || typeof t.id === 'string')
+        )
+        .map((t: Record<string, any>) => {
+          const { id, clue, summary, sourceId, status, notes, metadata, ...extensions } = t;
+          return {
+            ...extensions,
+            ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
+            ...(typeof clue === 'string' ? { clue } : {}),
+            ...(typeof summary === 'string' ? { summary } : {}),
+            ...(typeof sourceId === 'string' ? { sourceId } : {}),
+            ...(typeof status === 'string' ? { status } : {}),
+            ...(typeof notes === 'string' ? { notes } : {}),
+            ...(isRecord(metadata) ? { metadata } : {})
+          };
+        })
+    : [];
 
   const locations = Array.isArray(raw.locations)
     ? raw.locations.filter(isRecordWithStringName).map((l: Record<string, any>) => {
-      const { id, name, description, attributes, ...extensions } = l;
-      return {
-        ...extensions,
-        ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
-        name,
-        ...(typeof description === 'string' ? { description } : {}),
-        ...(isRecord(attributes) ? { attributes } : {})
-      };
-    })
+        const { id, name, description, attributes, ...extensions } = l;
+        return {
+          ...extensions,
+          ...(typeof id === 'string' && id.length > 0 ? { id } : {}),
+          name,
+          ...(typeof description === 'string' ? { description } : {}),
+          ...(isRecord(attributes) ? { attributes } : {})
+        };
+      })
     : [];
 
   return {

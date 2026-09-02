@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest';
-import {
-  GENERATED_MODELS,
-  findGeneratedModel,
-  listGeneratedModelsByProvider,
-  calculateCost
-} from '../packages/ai/src/index.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import {
+  GENERATED_MODELS,
+  calculateCost,
+  findGeneratedModel,
+  listGeneratedModelsByProvider
+} from '../packages/ai/src/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,7 +62,7 @@ describe('AI Model Catalog Generation & Hydration Suite (1:1 Aligned with Pi)', 
 
     const usage = {
       inputTokens: 100000, // 0.1M * $3.0 = $0.30
-      outputTokens: 20000,  // 0.02M * $15.0 = $0.30
+      outputTokens: 20000, // 0.02M * $15.0 = $0.30
       cacheReadTokens: 50000, // 0.05M * $0.3 = $0.015
       cacheWriteTokens: 10000, // 0.01M * $3.75 = $0.0375
       totalTokens: 180000
@@ -137,4 +137,3 @@ describe('AI Model Catalog Generation & Hydration Suite (1:1 Aligned with Pi)', 
     expect(findModelInCatalog('deepseek/deepseek-reasoner')).toBeDefined();
   });
 });
-

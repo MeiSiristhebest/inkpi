@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { extractToolCalls } from '../packages/agent-core/src/loop.js';
 import type { AssistantMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
+import { extractToolCalls } from '../packages/agent-core/src/loop.js';
 
 function msg(content: AssistantMessage['content']): AssistantMessage {
   return { role: 'assistant', content };

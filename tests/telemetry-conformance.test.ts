@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { TelemetryCollector } from '@inkpi/agent-core';
 import type { TelemetryEvent } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('Creative Telemetry & Conformance Suite (1:1 Ported from pi-telemetry)', () => {
   it('should collect turn metrics, spans, and creative interaction metrics accurately', () => {

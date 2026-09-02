@@ -9,13 +9,13 @@
  */
 
 import type {
-  Workspace,
-  Folder,
   Document,
-  DocumentSnapshot,
   DocumentDelta,
+  DocumentSnapshot,
+  Folder,
   OperationRecord,
   SessionEntry,
+  Workspace
 } from '@inkpi/protocol';
 
 /**

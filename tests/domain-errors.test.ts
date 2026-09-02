@@ -1,10 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import {
-  NoModelConfiguredError,
-  InvalidDiceNotationError,
-  SessionRegistry,
-  SandboxExecutor
-} from '@inkpi/agent-core';
+import { InvalidDiceNotationError, NoModelConfiguredError, SandboxExecutor, SessionRegistry } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // 领域错误类型是公开契约的一部分：消费方必须能按类型捕获，而不是靠字符串匹配

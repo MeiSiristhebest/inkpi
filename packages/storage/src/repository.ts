@@ -1,5 +1,13 @@
-import type { Workspace, Folder, Document, DocumentSnapshot, DocumentDelta, OperationRecord, SessionEntry } from '@inkpi/protocol';
-import type { IRepository, IDb } from './ports.js';
+import type {
+  Document,
+  DocumentDelta,
+  DocumentSnapshot,
+  Folder,
+  OperationRecord,
+  SessionEntry,
+  Workspace
+} from '@inkpi/protocol';
+import type { IDb, IRepository } from './ports.js';
 
 export class InkRepository implements IRepository {
   private db: IDb;
@@ -29,7 +37,7 @@ export class InkRepository implements IRepository {
   }
 
   public getWorkspace(id: string): Workspace | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM workspaces WHERE id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM workspaces WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     let meta: Record<string, unknown> | undefined;
@@ -71,7 +79,7 @@ export class InkRepository implements IRepository {
   }
 
   public getFolders(workspaceId: string): Folder[] {
-    const stmt = this.db.prepare(`SELECT * FROM folders WHERE workspace_id = ? ORDER BY order_index ASC`);
+    const stmt = this.db.prepare('SELECT * FROM folders WHERE workspace_id = ? ORDER BY order_index ASC');
     const rows = stmt.all(workspaceId) as any[];
     return rows.map((r) => ({
       id: r.id,
@@ -104,7 +112,7 @@ export class InkRepository implements IRepository {
   }
 
   public getDocument(id: string): Document | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM documents WHERE id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM documents WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     return {
@@ -122,7 +130,7 @@ export class InkRepository implements IRepository {
   }
 
   public getDocuments(folderId: string): Document[] {
-    const stmt = this.db.prepare(`SELECT * FROM documents WHERE folder_id = ? ORDER BY order_index ASC`);
+    const stmt = this.db.prepare('SELECT * FROM documents WHERE folder_id = ? ORDER BY order_index ASC');
     const rows = stmt.all(folderId) as any[];
     return rows.map((r) => ({
       id: r.id,
@@ -227,7 +235,7 @@ export class InkRepository implements IRepository {
   }
 
   public getSnapshot(documentId: string): DocumentSnapshot | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM document_snapshots WHERE document_id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM document_snapshots WHERE document_id = ?');
     const row = stmt.get(documentId) as any;
     if (!row) return undefined;
     return {
@@ -265,7 +273,7 @@ export class InkRepository implements IRepository {
   }
 
   public getOperation(id: string): OperationRecord | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM operations WHERE id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM operations WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     return {
@@ -282,7 +290,7 @@ export class InkRepository implements IRepository {
   }
 
   public getOperations(sessionId: string): OperationRecord[] {
-    const stmt = this.db.prepare(`SELECT * FROM operations WHERE session_id = ? ORDER BY created_at ASC`);
+    const stmt = this.db.prepare('SELECT * FROM operations WHERE session_id = ? ORDER BY created_at ASC');
     const rows = stmt.all(sessionId) as any[];
     return rows.map((row) => ({
       id: row.id,
@@ -326,7 +334,7 @@ export class InkRepository implements IRepository {
   }
 
   public getSessionEntries(sessionId: string): SessionEntry[] {
-    const stmt = this.db.prepare(`SELECT * FROM session_entries WHERE session_id = ? ORDER BY seq ASC`);
+    const stmt = this.db.prepare('SELECT * FROM session_entries WHERE session_id = ? ORDER BY seq ASC');
     const rows = stmt.all(sessionId) as any[];
     return rows.map((row) => ({
       id: row.id,

@@ -3,9 +3,9 @@
  * 具备 Kill-Ring（剪切环栈）、Undo/Redo 多级撤销、硬件光标定位与 @/#/ 智能触发补全
  */
 
-import { Component, type RenderContext } from '../../layout.js';
-import { visibleWidth, ANSI } from '../../render.js';
 import type { KeyEvent } from '../../keys.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { ANSI, visibleWidth } from '../../render.js';
 
 export interface AutocompleteItem {
   label: string;
@@ -410,7 +410,7 @@ export class Editor extends Component {
         let availableWidth = width;
 
         if (this.showLineNumbers) {
-          const numStr = String(actualLineIdx + 1).padStart(maxLineNumW - 1, ' ') + ' ';
+          const numStr = `${String(actualLineIdx + 1).padStart(maxLineNumW - 1, ' ')} `;
           prefix = `${ANSI.FG_GRAY}${numStr}${ANSI.RESET}`;
           availableWidth = Math.max(1, width - maxLineNumW);
         }
@@ -427,9 +427,10 @@ export class Editor extends Component {
         const lineW = visibleWidth(lineContent);
         const pad = Math.max(0, availableWidth - lineW);
         rendered.push(prefix + formattedLine + ' '.repeat(pad));
-
       } else {
-        const emptyPrefix = this.showLineNumbers ? `${ANSI.FG_GRAY}${'~'.padStart(maxLineNumW - 1, ' ')} ${ANSI.RESET}` : '';
+        const emptyPrefix = this.showLineNumbers
+          ? `${ANSI.FG_GRAY}${'~'.padStart(maxLineNumW - 1, ' ')} ${ANSI.RESET}`
+          : '';
         const padW = Math.max(0, width - (this.showLineNumbers ? maxLineNumW : 0));
         rendered.push(emptyPrefix + ' '.repeat(padW));
       }

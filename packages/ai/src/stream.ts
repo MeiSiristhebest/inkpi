@@ -223,13 +223,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     }
 
     const hasTools = toolCallsMap.size > 0;
-    const stopReason = this.aborted
-      ? 'aborted'
-      : hasError
-      ? 'error'
-      : hasTools
-      ? 'tool_use'
-      : 'stop';
+    const stopReason = this.aborted ? 'aborted' : hasError ? 'error' : hasTools ? 'tool_use' : 'stop';
 
     return {
       role: 'assistant',
@@ -253,10 +247,7 @@ export interface RetryOptions {
 /**
  * 带指数退避与抖动的可靠 Stream 执行器
  */
-export async function retryAssistantStream<T>(
-  fn: () => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> {
+export async function retryAssistantStream<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const maxRetries = options.maxRetries ?? 3;
   let delay = options.initialDelayMs ?? 1000;
   const maxDelay = options.maxDelayMs ?? 10000;
@@ -316,7 +307,7 @@ export function createResilientStream(
       }
 
       if (shouldRetry) {
-        const delay = (options.initialDelayMs ?? 50) * Math.pow(options.backoffFactor ?? 2, attempt - 1);
+        const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
         options.onRetry?.(attempt, retryError, delay);
         setTimeout(() => {
           runStream();
@@ -327,7 +318,7 @@ export function createResilientStream(
       outerStream.end();
     } catch (err: any) {
       if (attempt < maxRetries) {
-        const delay = (options.initialDelayMs ?? 50) * Math.pow(options.backoffFactor ?? 2, attempt - 1);
+        const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
         options.onRetry?.(attempt, err, delay);
         setTimeout(() => {
           runStream();
@@ -341,5 +332,3 @@ export function createResilientStream(
   runStream();
   return outerStream;
 }
-
-

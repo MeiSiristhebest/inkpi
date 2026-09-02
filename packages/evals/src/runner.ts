@@ -73,16 +73,17 @@ export class EvalRunner {
     }
 
     const overallScore = totalWeight === 0 ? 0 : Math.round(weightedScore / totalWeight);
-    const grade = overallScore >= 95 ? 'S' : overallScore >= 85 ? 'A' : overallScore >= 75 ? 'B' : overallScore >= 60 ? 'C' : 'F';
+    const grade =
+      overallScore >= 95 ? 'S' : overallScore >= 85 ? 'A' : overallScore >= 75 ? 'B' : overallScore >= 60 ? 'C' : 'F';
     return {
       title: input.title || '',
       sectionTitle: input.sectionTitle,
       overallScore,
       grade,
-      passed: totalWeight > 0 && overallScore >= 75 && Object.values(metrics).every((metric) => metric.passed !== false),
+      passed:
+        totalWeight > 0 && overallScore >= 75 && Object.values(metrics).every((metric) => metric.passed !== false),
       timestamp: Date.now(),
       metrics
     };
   }
-
 }

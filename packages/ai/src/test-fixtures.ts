@@ -1,3 +1,6 @@
+import { registerModelPreset } from './presets.js';
+import { fauxProvider } from './providers.js';
+import { registerProvider } from './providers.js';
 /**
  * 测试夹具安装器（仅用于测试环境，禁止在生产路径中调用）。
  *
@@ -7,9 +10,6 @@
  * 把「是否启用假模型」这个决定权交还给测试，而非隐式生效。
  */
 import type { ModelConfig } from './types.js';
-import { fauxProvider } from './providers.js';
-import { registerProvider } from './providers.js';
-import { registerModelPreset } from './presets.js';
 
 const MOCK_TEST_PRESET: ModelConfig = {
   id: 'mock-model-v1',

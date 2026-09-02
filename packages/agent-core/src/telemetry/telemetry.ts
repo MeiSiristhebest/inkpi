@@ -1,10 +1,10 @@
 import type {
-  TelemetryStats,
   AssistantMessage,
-  TelemetrySpan,
-  Usage,
   CreativeInteractionMetrics,
-  TelemetryEvent
+  TelemetryEvent,
+  TelemetrySpan,
+  TelemetryStats,
+  Usage
 } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
 
@@ -79,7 +79,10 @@ export class TelemetryCollector {
   private modelCacheReadCostPerM = 0.5;
 
   /** 成本单价（USD / 1M tokens），可部分覆盖。 */
-  constructor(clock: Clock = Date.now, pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number }) {
+  constructor(
+    clock: Clock = Date.now,
+    pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number }
+  ) {
     this.clock = clock;
     if (pricing?.inputUsdPerMTokens !== undefined) this.modelInputCostPerM = pricing.inputUsdPerMTokens;
     if (pricing?.outputUsdPerMTokens !== undefined) this.modelOutputCostPerM = pricing.outputUsdPerMTokens;
@@ -189,9 +192,7 @@ export class TelemetryCollector {
 
   public getCreativeMetrics(): CreativeInteractionMetrics {
     const totalAccepted =
-      this.ghostMetrics.acceptedFull +
-      this.ghostMetrics.acceptedWord +
-      this.ghostMetrics.acceptedLine;
+      this.ghostMetrics.acceptedFull + this.ghostMetrics.acceptedWord + this.ghostMetrics.acceptedLine;
     const totalDecisions = totalAccepted + this.ghostMetrics.dismissed;
     const acceptanceRate = totalDecisions > 0 ? totalAccepted / totalDecisions : 0;
 
@@ -349,37 +350,41 @@ export class TelemetryCollector {
    */
   public exportOpenTelemetryJson(): string {
     const stats = this.computeStats();
-    return JSON.stringify({
-      resourceSpans: [
-        {
-          resource: {
-            attributes: [
-              { key: 'service.name', value: { stringValue: 'inkpi-agent-engine' } },
-              { key: 'service.version', value: { stringValue: '1.0.0' } }
+    return JSON.stringify(
+      {
+        resourceSpans: [
+          {
+            resource: {
+              attributes: [
+                { key: 'service.name', value: { stringValue: 'inkpi-agent-engine' } },
+                { key: 'service.version', value: { stringValue: '1.0.0' } }
+              ]
+            },
+            scopeSpans: [
+              {
+                scope: { name: 'inkpi-agent-coordinator' },
+                spans: stats.spans?.map((s) => ({
+                  traceId: toOtelHexId(s.id, 32),
+                  spanId: toOtelHexId(`${s.id}:span`, 16),
+                  name: s.name,
+                  startTimeUnixNano: s.startTime * 1_000_000,
+                  endTimeUnixNano: (s.endTime || this.clock()) * 1_000_000,
+                  attributes: [
+                    { key: 'agent.stage', value: { stringValue: s.stage || 'unknown' } },
+                    { key: 'agent.role', value: { stringValue: s.role || 'unknown' } },
+                    { key: 'tokens.input', value: { intValue: s.inputTokens || 0 } },
+                    { key: 'tokens.output', value: { intValue: s.outputTokens || 0 } },
+                    { key: 'tokens.cached', value: { intValue: s.cachedTokens || 0 } },
+                    { key: 'cost.usd', value: { doubleValue: s.costUsd || 0 } }
+                  ]
+                }))
+              }
             ]
-          },
-          scopeSpans: [
-            {
-              scope: { name: 'inkpi-agent-coordinator' },
-              spans: stats.spans?.map((s) => ({
-                traceId: toOtelHexId(s.id, 32),
-                spanId: toOtelHexId(s.id + ':span', 16),
-                name: s.name,
-                startTimeUnixNano: s.startTime * 1_000_000,
-                endTimeUnixNano: (s.endTime || this.clock()) * 1_000_000,
-                attributes: [
-                  { key: 'agent.stage', value: { stringValue: s.stage || 'unknown' } },
-                  { key: 'agent.role', value: { stringValue: s.role || 'unknown' } },
-                  { key: 'tokens.input', value: { intValue: s.inputTokens || 0 } },
-                  { key: 'tokens.output', value: { intValue: s.outputTokens || 0 } },
-                  { key: 'tokens.cached', value: { intValue: s.cachedTokens || 0 } },
-                  { key: 'cost.usd', value: { doubleValue: s.costUsd || 0 } }
-                ]
-              }))
-            }
-          ]
-        }
-      ]
-    }, null, 2);
+          }
+        ]
+      },
+      null,
+      2
+    );
   }
 }

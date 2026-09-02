@@ -1,4 +1,4 @@
-import type { DocumentNode, SelectionRange, EditorStep, EditorTransaction } from './types.js';
+import type { DocumentNode, EditorStep, EditorTransaction, SelectionRange } from './types.js';
 
 export class HeadlessEditorState {
   private doc: DocumentNode;

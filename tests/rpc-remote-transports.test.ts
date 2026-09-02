@@ -1,14 +1,14 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import * as net from 'node:net';
+import type * as net from 'node:net';
+import { HeadlessEditorState } from '@inkpi/editor-core';
 import {
-  InkRpcServer,
   InkRpcClient,
+  InkRpcServer,
   MemoryTransport,
   RemoteStreamTransport,
   TcpSocketTransport,
   WebSocketRpcTransport
 } from '@inkpi/server';
-import { HeadlessEditorState } from '@inkpi/editor-core';
+import { afterEach, describe, expect, it } from 'vitest';
 
 describe('InkPi RPC Remote Transports & Server/Client', () => {
   let server: InkRpcServer | null = null;
@@ -45,22 +45,28 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     const nodeListeners: Record<string, any> = {};
     let sentData = '';
     const mockWs = {
-      send: (data: string) => { sentData = data; },
-      on: (event: string, cb: any) => { nodeListeners[event] = cb; },
+      send: (data: string) => {
+        sentData = data;
+      },
+      on: (event: string, cb: any) => {
+        nodeListeners[event] = cb;
+      },
       close: () => {}
     };
     const wsTransport = new WebSocketRpcTransport(mockWs);
     let receivedMsg = '';
-    wsTransport.onMessage((msg) => { receivedMsg = msg; });
+    wsTransport.onMessage((msg) => {
+      receivedMsg = msg;
+    });
     expect(wsTransport.isOpen()).toBe(true);
     wsTransport.send('{"test":true}');
     expect(sentData).toBe('{"test":true}');
 
-    nodeListeners['message']?.(Buffer.from('{"jsonrpc":"2.0"}'));
+    nodeListeners.message?.(Buffer.from('{"jsonrpc":"2.0"}'));
     expect(receivedMsg).toBe('{"jsonrpc":"2.0"}');
 
-    nodeListeners['error']?.(new Error('err'));
-    nodeListeners['close']?.();
+    nodeListeners.error?.(new Error('err'));
+    nodeListeners.close?.();
     expect(wsTransport.isOpen()).toBe(false);
 
     // Send when closed
@@ -70,13 +76,17 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     const domListeners: Record<string, any> = {};
     const mockDomWs = {
       send: () => {},
-      addEventListener: (evt: string, cb: any) => { domListeners[evt] = cb; },
+      addEventListener: (evt: string, cb: any) => {
+        domListeners[evt] = cb;
+      },
       close: () => {}
     };
     const domTransport = new WebSocketRpcTransport(mockDomWs);
     let domReceived = '';
-    domTransport.onMessage((msg) => { domReceived = msg; });
-    domListeners['message']?.({ data: '{"jsonrpc":"2.0"}' });
+    domTransport.onMessage((msg) => {
+      domReceived = msg;
+    });
+    domListeners.message?.({ data: '{"jsonrpc":"2.0"}' });
     expect(domReceived).toBe('{"jsonrpc":"2.0"}');
     domTransport.close();
     expect(domTransport.isOpen()).toBe(false);

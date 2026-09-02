@@ -67,13 +67,11 @@ export class StudioController {
       const userEntry: StudioDialogueEntry = { role: 'user', text: trimmed, timestamp: Date.now() };
       const assistantEntry: StudioDialogueEntry = { role: 'assistant', text: res.output, timestamp: Date.now() };
       this.model.dialogueHistory.push(userEntry, assistantEntry);
-      this.model.setStatusMessage(
-        this.model.labels.commandExecutedStatus?.(trimmed) || `Command executed: ${trimmed}`
-      );
+      this.model.setStatusMessage(this.model.labels.commandExecutedStatus?.(trimmed) || `Command executed: ${trimmed}`);
       return res.output;
     }
 
-    this.model.editor.insertText(this.model.editor.getText().length, trimmed + '\n');
+    this.model.editor.insertText(this.model.editor.getText().length, `${trimmed}\n`);
     this.model.setStatusMessage(
       this.model.labels.insertedStatus?.(trimmed.length) || `Inserted ${trimmed.length} characters`
     );

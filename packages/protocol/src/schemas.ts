@@ -2,7 +2,7 @@
  * InkPi 核心 TypeBox 协议与数据结构 Schema
  */
 
-import { Type, type Static } from './typebox.js';
+import { type Static, Type } from './typebox.js';
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -68,10 +68,7 @@ export const ContentBlockSchema = Type.Union([
 export const UserMessageSchema = Type.Object({
   id: Type.Optional(IdSchema),
   role: Type.Literal('user'),
-  content: Type.Union([
-    Type.String(),
-    Type.Array(Type.Union([TextContentSchema, ImageContentSchema]))
-  ]),
+  content: Type.Union([Type.String(), Type.Array(Type.Union([TextContentSchema, ImageContentSchema]))]),
   timestamp: Type.Optional(TimestampSchema)
 });
 
@@ -79,13 +76,15 @@ export const AssistantMessageSchema = Type.Object({
   id: Type.Optional(IdSchema),
   role: Type.Literal('assistant'),
   content: Type.Array(ContentBlockSchema),
-  stopReason: Type.Optional(Type.Union([
-    Type.Literal('stop'),
-    Type.Literal('tool_use'),
-    Type.Literal('length'),
-    Type.Literal('error'),
-    Type.Literal('aborted')
-  ])),
+  stopReason: Type.Optional(
+    Type.Union([
+      Type.Literal('stop'),
+      Type.Literal('tool_use'),
+      Type.Literal('length'),
+      Type.Literal('error'),
+      Type.Literal('aborted')
+    ])
+  ),
   errorMessage: Type.Optional(Type.String()),
   usage: Type.Optional(UsageSchema),
   timestamp: Type.Optional(TimestampSchema)
@@ -189,11 +188,13 @@ export const RpcResponseSchema = Type.Object({
   jsonrpc: Type.Literal('2.0'),
   id: Type.Union([Type.String(), Type.Number(), Type.Null()]),
   result: Type.Optional(Type.Any()),
-  error: Type.Optional(Type.Object({
-    code: Type.Integer(),
-    message: Type.String(),
-    data: Type.Optional(Type.Any())
-  }))
+  error: Type.Optional(
+    Type.Object({
+      code: Type.Integer(),
+      message: Type.String(),
+      data: Type.Optional(Type.Any())
+    })
+  )
 });
 
 export const RpcNotificationSchema = Type.Object({

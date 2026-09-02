@@ -1,15 +1,9 @@
-import type {
-  AgentEvent,
-  AgentEventListener,
-  AgentMessage,
-  ImageContent,
-  UserMessage
-} from '@inkpi/protocol';
-import type { AgentOptions, AgentState, QueueMode } from './types.js';
-import { ToolRegistry } from './tools.js';
-import { MessageQueue } from './queues.js';
+import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMessage } from '@inkpi/protocol';
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
 import { runAgentLoop } from './loop.js';
+import { MessageQueue } from './queues.js';
+import { ToolRegistry } from './tools.js';
+import type { AgentOptions, AgentState, QueueMode } from './types.js';
 
 /**
  * 纯粹 Agent 执行引擎核心（兼容别名 AgentEngine 见 src/deprecations.ts）
@@ -22,7 +16,6 @@ export class Agent {
   public steeringMode: QueueMode;
   public followUpMode: QueueMode;
   public toolExecution: 'parallel' | 'sequential';
-
 
   private options: AgentOptions;
   private toolRegistry = new ToolRegistry();
@@ -92,9 +85,7 @@ export class Agent {
 
     try {
       if (typeof prompt === 'string') {
-        const content = images && images.length > 0
-          ? [{ type: 'text' as const, text: prompt }, ...images]
-          : prompt;
+        const content = images && images.length > 0 ? [{ type: 'text' as const, text: prompt }, ...images] : prompt;
 
         msg = {
           role: 'user',
@@ -203,7 +194,10 @@ export class Agent {
       signal: abortController.signal
     });
 
-    const settledRunPromise = runPromise.then(() => undefined, () => undefined);
+    const settledRunPromise = runPromise.then(
+      () => undefined,
+      () => undefined
+    );
     this.currentRunPromise = settledRunPromise;
     try {
       await runPromise;
@@ -218,11 +212,11 @@ export class Agent {
 
   private claimRun(): void {
     if (this.runActive) {
-      throw new Error('Agent already has a run in progress. Wait for it to finish or abort it before starting another run.');
+      throw new Error(
+        'Agent already has a run in progress. Wait for it to finish or abort it before starting another run.'
+      );
     }
     this.runActive = true;
     this.abortController = new AbortController();
   }
 }
-
-

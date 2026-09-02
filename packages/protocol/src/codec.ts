@@ -1,10 +1,10 @@
 import { decodeCbor, encodeCbor } from './cbor/index.js';
 import {
-  assertCompleteFrame,
   DEFAULT_MAX_FRAME_LENGTH,
-  encodeFrame,
   FrameDecoder,
-  type FrameDecoderOptions
+  type FrameDecoderOptions,
+  assertCompleteFrame,
+  encodeFrame
 } from './framing.js';
 
 export class ProtocolValidationError extends Error {

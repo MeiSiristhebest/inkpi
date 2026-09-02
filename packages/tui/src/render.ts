@@ -58,8 +58,6 @@ export const ANSI = {
 import { stripAnsi, visibleWidth } from './width.js';
 export { stripAnsi, visibleWidth };
 
-
-
 /**
  * 按终端可视列宽截断字符串
  */

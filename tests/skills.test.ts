@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { parseSkillMarkdown, SkillDiscoveryEngine } from '@inkpi/agent-core';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { SkillDiscoveryEngine, parseSkillMarkdown } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Skills System (YAML Frontmatter & Discovery, 1:1 Ported from repos/pi)', () => {
   it('should parse YAML Frontmatter and extract prompt body', () => {
@@ -63,7 +63,10 @@ description: 悬疑探案Task布设指南
     expect(parseSkillMarkdown('---\nno closing delimiter', '/path/to/skill.md')).toBeNull();
 
     // No name provided -> derived from filename
-    const fallbackSkill = parseSkillMarkdown('---\ndescription: test\ninvalid line\n---\nPrompt body', '/path/to/custom-skill.md');
+    const fallbackSkill = parseSkillMarkdown(
+      '---\ndescription: test\ninvalid line\n---\nPrompt body',
+      '/path/to/custom-skill.md'
+    );
     expect(fallbackSkill).not.toBeNull();
     expect(fallbackSkill?.name).toBe('custom-skill');
     expect(fallbackSkill?.description).toBe('test');

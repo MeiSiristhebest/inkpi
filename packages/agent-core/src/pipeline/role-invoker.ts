@@ -1,6 +1,6 @@
-import type { AgentRoleConfig, StateLedger, Usage } from '@inkpi/protocol';
 import type { ModelConfig } from '@inkpi/ai';
 import { streamAi } from '@inkpi/ai';
+import type { AgentRoleConfig, StateLedger, Usage } from '@inkpi/protocol';
 import { emptyLedger } from './ledger-merge.js';
 
 export interface RoleInvocation {
@@ -22,9 +22,7 @@ export class RoleInvocationError extends Error {
  * 账本块为空时原样返回系统提示词，不追加空标题。
  */
 export function assembleSystemPrompt(systemPrompt: string, ledgerBlock: string): string {
-  return ledgerBlock
-    ? `${systemPrompt}\n\n【核心状态账本快照】\n${ledgerBlock}`
-    : systemPrompt;
+  return ledgerBlock ? `${systemPrompt}\n\n【核心状态账本快照】\n${ledgerBlock}` : systemPrompt;
 }
 
 /** 由角色默认思考档位推导 token 预算。纯函数。 */
@@ -61,15 +59,11 @@ export class RoleInvoker {
     const ledgerBlock = ledgerFormatter?.(ledger || emptyLedger()) || '';
     const systemPrompt = assembleSystemPrompt(config.systemPrompt, ledgerBlock);
 
-    const stream = streamAi(
-      model,
-      [{ role: 'user', content: prompt, timestamp: Date.now() }],
-      {
-        systemPrompt,
-        thinkingBudget: thinkingBudgetFor(config.defaultThinkingLevel),
-        signal
-      }
-    );
+    const stream = streamAi(model, [{ role: 'user', content: prompt, timestamp: Date.now() }], {
+      systemPrompt,
+      thinkingBudget: thinkingBudgetFor(config.defaultThinkingLevel),
+      signal
+    });
 
     const assistantMsg = await stream.collect();
     if (assistantMsg.stopReason === 'error') {
@@ -84,9 +78,7 @@ export class RoleInvoker {
       .join('\n');
 
     if (!text) {
-      throw new RoleInvocationError(
-        `Model returned empty output for workflow role '${config.role}'.`
-      );
+      throw new RoleInvocationError(`Model returned empty output for workflow role '${config.role}'.`);
     }
 
     return { text, usage: assistantMsg.usage };

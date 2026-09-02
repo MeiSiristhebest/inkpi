@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { escapeHtml } from '../packages/agent-core/src/export/html.js';
 import { installTestDoubles } from '../packages/ai/src/test-fixtures.js';
 
@@ -26,7 +26,7 @@ describe('escapeHtml (shared single implementation)', () => {
   });
 
   it('阻断含斜杠的闭合标签与协议向量', () => {
-    const payload = `</script><img src=x onerror=alert(1)>`;
+    const payload = '</script><img src=x onerror=alert(1)>';
     const out = escapeHtml(payload);
     expect(out).toContain('&#047;');
     expect(out).not.toContain('<');

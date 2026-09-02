@@ -1,9 +1,4 @@
-import type {
-  DocumentSnapshot,
-  DocumentDelta,
-  FtsSearchResult,
-  SessionEntry
-} from '@inkpi/protocol';
+import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
 
 export interface SessionBackendCapabilities {
   readonly fts: boolean;

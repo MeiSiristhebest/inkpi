@@ -1,14 +1,17 @@
 import type {
-  StateLedger,
   QualityGateIssue,
   QualityGateRule,
+  StateLedger,
   WorkflowContext,
   WorkflowEventListener,
   WorkflowStageConfig
 } from '@inkpi/protocol';
 import type { TelemetryCollector } from '../telemetry/telemetry.js';
 
-import { RoleRegistry } from './roles.js';
+import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
+import { WorkflowEventBus } from './event-bus.js';
+import { detectGateIssues } from './gate-detection.js';
+import { GateRuleRegistry } from './gate-rule-registry.js';
 import {
   createLegacyNarrativeStages,
   createNarrativeEntitySafetyRules,
@@ -17,16 +20,13 @@ import {
   createStandardEntitySafetyRules,
   createVisualNovelGateRules
 } from './legacy-narrative.js';
-import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
-import { detectGateIssues } from './gate-detection.js';
+import { RoleInvoker } from './role-invoker.js';
+import { RoleRegistry } from './roles.js';
+import { StageRegistry, mergeStageLists } from './stage-registry.js';
+import { TelemetryTracer } from './telemetry-tracer.js';
+import { WorkflowExecutor } from './workflow-executor.js';
 import { legacyPipelineWorkflowStrategy, resolveWorkflowStrategy } from './workflow-strategy.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
-import { StageRegistry, mergeStageLists } from './stage-registry.js';
-import { GateRuleRegistry } from './gate-rule-registry.js';
-import { WorkflowEventBus } from './event-bus.js';
-import { TelemetryTracer } from './telemetry-tracer.js';
-import { RoleInvoker } from './role-invoker.js';
-import { WorkflowExecutor } from './workflow-executor.js';
 import type { PipelineExecutionOptions } from './workflow-types.js';
 
 export type {
@@ -82,8 +82,7 @@ export class WorkflowCoordinator {
     this.telemetry = options.telemetry;
     this.strategy = options.strategy ?? resolveWorkflowStrategy(options.compatibilityMode);
     this.roles =
-      options.roleRegistry ??
-      new RoleRegistry(options.initialRoles ? { initialRoles: options.initialRoles } : {});
+      options.roleRegistry ?? new RoleRegistry(options.initialRoles ? { initialRoles: options.initialRoles } : {});
     this.stages = new StageRegistry(options.stages || []);
     this.gates = new GateRuleRegistry(options.customGateRules || []);
     this.events = new WorkflowEventBus();
@@ -167,13 +166,9 @@ export class WorkflowCoordinator {
       ...this.options,
       compatibilityMode: 'legacy-pipeline',
       enableQualityGate: this.options.enableQualityGate,
-      customGateRules: [
-        ...createStandardEntitySafetyRules(),
-        ...(this.options.customGateRules || [])
-      ],
-      ledgerExtractor: (output) => extractNovelStateLedger([
-        { role: 'assistant', content: [{ type: 'text', text: output }] } as any
-      ]),
+      customGateRules: [...createStandardEntitySafetyRules(), ...(this.options.customGateRules || [])],
+      ledgerExtractor: (output) =>
+        extractNovelStateLedger([{ role: 'assistant', content: [{ type: 'text', text: output }] } as any]),
       ledgerFormatter: formatNovelStateLedger
     };
 
@@ -188,9 +183,7 @@ export class WorkflowCoordinator {
       gates: new GateRuleRegistry(legacyOptions.customGateRules || []),
       roles:
         legacyOptions.roleRegistry ??
-        new RoleRegistry(
-          legacyOptions.initialRoles ? { initialRoles: legacyOptions.initialRoles } : {}
-        ),
+        new RoleRegistry(legacyOptions.initialRoles ? { initialRoles: legacyOptions.initialRoles } : {}),
       telemetry: this.tracer,
       strategy: legacyPipelineWorkflowStrategy,
       options: legacyOptions,

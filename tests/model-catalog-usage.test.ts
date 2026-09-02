@@ -1,16 +1,15 @@
-import { describe, it, expect } from 'vitest';
 import {
   KNOWN_MODELS,
-  findModelInCatalog,
-  getThinkingBudgetForLevel,
-  getModelPreset,
-  modelCatalogEntryToConfig,
   PromptCacheOptimizer,
   UsageTracker,
   calculateCost,
+  findModelInCatalog,
+  getModelPreset,
+  getThinkingBudgetForLevel,
+  modelCatalogEntryToConfig,
   retryAssistantStream
 } from '@inkpi/ai';
-
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
   it('should find models and map thinking budgets correctly', () => {
@@ -101,7 +100,13 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
 
     const calculatedCost = calculateCost(
       { inputPerMillionUsd: 1, outputPerMillionUsd: 2, cacheReadPerMillionUsd: 0.5, cacheWritePerMillionUsd: 0.8 },
-      { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000, totalTokens: 4_000_000 }
+      {
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        cacheReadTokens: 1_000_000,
+        cacheWriteTokens: 1_000_000,
+        totalTokens: 4_000_000
+      }
     );
     expect(calculatedCost).toBe(4.3);
   });
@@ -145,7 +150,10 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
   });
 
   it('should test calculateCost helper function directly', () => {
-    const cost1 = calculateCost({ inputPerMillionUsd: 1, outputPerMillionUsd: 2 }, { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 });
+    const cost1 = calculateCost(
+      { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
+      { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 }
+    );
     expect(cost1).toBeGreaterThan(0);
 
     const cost2 = calculateCost(
@@ -154,11 +162,12 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     );
     expect(cost2).toBeGreaterThan(0);
 
-    const costEmpty = calculateCost({ inputPerMillionUsd: 1, outputPerMillionUsd: 2 }, { inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+    const costEmpty = calculateCost(
+      { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
+      { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+    );
     expect(costEmpty).toBe(0);
   });
-
-
 
   it('should execute retry with exponential backoff on transient errors', async () => {
     let callCount = 0;

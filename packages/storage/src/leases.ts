@@ -19,7 +19,7 @@ export class WriterLeaseManager {
 
     return this.db.transaction(() => {
       // 1. Clean expired lease
-      const checkStmt = this.db.prepare(`SELECT * FROM writer_leases WHERE id = ?`);
+      const checkStmt = this.db.prepare('SELECT * FROM writer_leases WHERE id = ?');
       const existing = checkStmt.get(leaseId) as any;
 
       if (!existing || Number(existing.expires_at) < now || existing.holder_id === holderId) {
@@ -61,7 +61,7 @@ export class WriterLeaseManager {
    * 释放排他写锁租约
    */
   public release(leaseId: string, holderId: string): boolean {
-    const stmt = this.db.prepare(`DELETE FROM writer_leases WHERE id = ? AND holder_id = ?`);
+    const stmt = this.db.prepare('DELETE FROM writer_leases WHERE id = ? AND holder_id = ?');
     const res = stmt.run(leaseId, holderId);
     return Number(res.changes) > 0;
   }
@@ -70,7 +70,7 @@ export class WriterLeaseManager {
    * 获取当前租约信息
    */
   public getLease(leaseId: string): WriterLeaseInfo | undefined {
-    const stmt = this.db.prepare(`SELECT * FROM writer_leases WHERE id = ?`);
+    const stmt = this.db.prepare('SELECT * FROM writer_leases WHERE id = ?');
     const row = stmt.get(leaseId) as any;
     if (!row) return undefined;
 
@@ -92,4 +92,3 @@ export class WriterLeaseManager {
     return lease.expiresAt >= now && lease.holderId !== currentHolderId;
   }
 }
-

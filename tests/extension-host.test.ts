@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { ExtensionHost, ExtensionRunner } from '@inkpi/agent-core';
-import type { AgentTool, SlashCommand, ShortcutHandler, AgentMessage, ExtensionAPI } from '@inkpi/protocol';
+import type { AgentMessage, AgentTool, ExtensionAPI, ShortcutHandler, SlashCommand } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> ExtensionHost & ExtensionRunner (Generic Extension Ecosystem)', () => {
   it('should register, list, and unregister tools dynamically', () => {

@@ -1,10 +1,6 @@
-import type {
-  AgentMessage,
-  AssistantMessage,
-  AssistantMessageEvent
-} from '@inkpi/protocol';
 import type { EventStream } from '@inkpi/ai';
 import { streamAi } from '@inkpi/ai';
+import type { AgentMessage, AssistantMessage, AssistantMessageEvent } from '@inkpi/protocol';
 import type { TurnContext } from './turn-context.js';
 
 type AssistantEventStream = EventStream<AssistantMessageEvent>;
@@ -89,8 +85,7 @@ export class StreamInvoker {
         id: streamOpId,
         type: 'provider_stream',
         settlement: { usage: assistantMessage.usage, stopReason: assistantMessage.stopReason },
-        error:
-          assistantMessage.stopReason === 'error' ? assistantMessage.errorMessage : undefined
+        error: assistantMessage.stopReason === 'error' ? assistantMessage.errorMessage : undefined
       });
       options.journal.append('agent_turn', assistantMessage);
     }
@@ -114,18 +109,14 @@ export class StreamInvoker {
       await messageStartSettled;
       if (ctx.state.streamingMessage) {
         if (msgEvent.type === 'text_delta') {
-          let textBlock = ctx.state.streamingMessage.content.find(
-            (b: any) => b.type === 'text'
-          ) as any;
+          let textBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'text') as any;
           if (!textBlock) {
             textBlock = { type: 'text', text: '' };
             ctx.state.streamingMessage.content.push(textBlock);
           }
           textBlock.text += msgEvent.textDelta;
         } else if (msgEvent.type === 'thinking_delta') {
-          let thinkBlock = ctx.state.streamingMessage.content.find(
-            (b: any) => b.type === 'thinking'
-          ) as any;
+          let thinkBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'thinking') as any;
           if (!thinkBlock) {
             thinkBlock = { type: 'thinking', thinking: '' };
             ctx.state.streamingMessage.content.push(thinkBlock);

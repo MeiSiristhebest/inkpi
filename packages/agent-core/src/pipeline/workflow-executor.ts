@@ -1,20 +1,15 @@
-import type {
-  Usage,
-  WorkflowContext,
-  WorkflowStageConfig,
-  QualityGateHandler
-} from '@inkpi/protocol';
-import type { TelemetrySpanHandle } from './telemetry-tracer.js';
-import { emptyLedger, mergeLedgers } from './ledger-merge.js';
+import type { QualityGateHandler, Usage, WorkflowContext, WorkflowStageConfig } from '@inkpi/protocol';
+import type { WorkflowEventBus } from './event-bus.js';
 import { detectGateIssues } from './gate-detection.js';
-import { GateRuleRegistry } from './gate-rule-registry.js';
-import { StageRegistry, resolveStageRole, resolveStageRoleId } from './stage-registry.js';
-import { WorkflowEventBus } from './event-bus.js';
-import { TelemetryTracer } from './telemetry-tracer.js';
-import { RoleInvoker } from './role-invoker.js';
+import type { GateRuleRegistry } from './gate-rule-registry.js';
+import { emptyLedger, mergeLedgers } from './ledger-merge.js';
+import type { RoleInvoker } from './role-invoker.js';
+import type { RoleRegistry } from './roles.js';
+import { type StageRegistry, resolveStageRole, resolveStageRoleId } from './stage-registry.js';
+import type { TelemetrySpanHandle } from './telemetry-tracer.js';
+import type { TelemetryTracer } from './telemetry-tracer.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
 import type { PipelineExecutionOptions } from './workflow-types.js';
-import type { RoleRegistry } from './roles.js';
 
 export interface WorkflowExecutorDeps {
   events: WorkflowEventBus;
@@ -92,11 +87,7 @@ export class WorkflowExecutor {
     };
   }
 
-  private async runStage(
-    stage: WorkflowStageConfig,
-    ctx: WorkflowContext,
-    isGateActive: boolean
-  ): Promise<void> {
+  private async runStage(stage: WorkflowStageConfig, ctx: WorkflowContext, isGateActive: boolean): Promise<void> {
     this.throwIfAborted(this.options.signal, stage.id);
 
     const roleConfig = resolveStageRole(stage, this.roles);
@@ -111,13 +102,7 @@ export class WorkflowExecutor {
     });
 
     const prompt = await this.buildStagePrompt(stage, ctx);
-    const { outputText: rawOutput, usage } = await this.invokeStage(
-      stage,
-      roleId,
-      roleConfig,
-      prompt,
-      ctx
-    );
+    const { outputText: rawOutput, usage } = await this.invokeStage(stage, roleId, roleConfig, prompt, ctx);
 
     if (!rawOutput) {
       throw new Error(`Workflow stage '${stage.id}' returned empty output.`);
@@ -167,11 +152,7 @@ export class WorkflowExecutor {
 
     if (this.options.ledgerExtractor) {
       const extracted = this.options.ledgerExtractor(outputText, ctx);
-      ctx.stateLedger = mergeLedgers(
-        ctx.stateLedger,
-        extracted,
-        this.strategy.includeLedgerAliases
-      );
+      ctx.stateLedger = mergeLedgers(ctx.stateLedger, extracted, this.strategy.includeLedgerAliases);
     }
 
     this.telemetry.endStage(span, usage);
@@ -186,10 +167,7 @@ export class WorkflowExecutor {
   }
 
   /** 依次应用 stageHooks、通用 onBeforeStage 与策略专属的提示词改写。 */
-  private async buildStagePrompt(
-    stage: WorkflowStageConfig,
-    ctx: WorkflowContext
-  ): Promise<string> {
+  private async buildStagePrompt(stage: WorkflowStageConfig, ctx: WorkflowContext): Promise<string> {
     let prompt = stage.promptTemplate ? stage.promptTemplate(ctx) : ctx.userPrompt;
 
     if (this.options.stageHooks?.onBeforeStage) {
@@ -232,11 +210,7 @@ export class WorkflowExecutor {
       if (typeof res === 'object') {
         usage = res.usage;
         if (res.modifiedLedger) {
-          ctx.stateLedger = mergeLedgers(
-            ctx.stateLedger,
-            res.modifiedLedger,
-            this.strategy.includeLedgerAliases
-          );
+          ctx.stateLedger = mergeLedgers(ctx.stateLedger, res.modifiedLedger, this.strategy.includeLedgerAliases);
         }
       }
       return { outputText: typeof res === 'string' ? res : res.text, usage };
@@ -244,12 +218,7 @@ export class WorkflowExecutor {
 
     if (this.options.customExecutor) {
       return {
-        outputText: await this.options.customExecutor(
-          roleId,
-          roleConfig.systemPrompt,
-          prompt,
-          this.options.signal
-        )
+        outputText: await this.options.customExecutor(roleId, roleConfig.systemPrompt, prompt, this.options.signal)
       };
     }
 
@@ -286,12 +255,9 @@ export class WorkflowExecutor {
     }
 
     this.strategy.applyGateIssues(ctx, issues);
-    await this.events.emit(
-      this.strategy.buildGateTriggeredEvent({ stageId: stage.id, output: outputText, issues })
-    );
+    await this.events.emit(this.strategy.buildGateTriggeredEvent({ stageId: stage.id, output: outputText, issues }));
 
-    const gateHandler =
-      stage.gateHandler || this.options.qualityGateHandler || this.options.plotGateHandler;
+    const gateHandler = stage.gateHandler || this.options.qualityGateHandler || this.options.plotGateHandler;
     if (!gateHandler) {
       return outputText;
     }

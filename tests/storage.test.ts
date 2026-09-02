@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { InkDb, InkRepository, CompactionEngine } from '@inkpi/storage';
-import type { Workspace, Folder, Document } from '@inkpi/protocol';
+import type { Document, Folder, Workspace } from '@inkpi/protocol';
+import { CompactionEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('@inkpi/storage', () => {
   let db: InkDb;
@@ -41,14 +41,9 @@ describe('@inkpi/storage', () => {
     expect(repo.getWorkspace('non_existent')).toBeUndefined();
 
     // Raw insert with malformed metadata to test JSON catch block
-    db.prepare('INSERT INTO workspaces (id, title, owner, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(
-      'ws_malformed',
-      'Malformed WS',
-      'user',
-      'invalid-json{',
-      Date.now(),
-      Date.now()
-    );
+    db.prepare(
+      'INSERT INTO workspaces (id, title, owner, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('ws_malformed', 'Malformed WS', 'user', 'invalid-json{', Date.now(), Date.now());
     const malformedWs = repo.getWorkspace('ws_malformed');
     expect(malformedWs?.metadata).toBeUndefined();
 

@@ -1,14 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import type { StateLedger } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 import {
+  NarrativeSemanticLedgerExtractor,
   WorkflowCoordinator,
   createScreenplayGateRules,
   createShortDramaGateRules,
   createVisualNovelGateRules,
-  extractStateLedger,
-  NarrativeSemanticLedgerExtractor
+  extractStateLedger
 } from '../packages/agent-core/src/index.js';
 import { streamAi } from '../packages/ai/src/index.js';
-import type { StateLedger } from '@inkpi/protocol';
 
 describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite', () => {
   // --------------------------------------------------------------------------
@@ -52,10 +52,10 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         stateLedger: screenplayLedger
       });
 
-      expect(result.stageOutputs['outline']).toContain('INT. 警局审讯室');
-      expect(result.stageOutputs['draft']).toContain('INT. 警局审讯室 - NIGHT');
-      expect(result.stageOutputs['draft']).toContain('陆警官');
-      expect(result.stageOutputs['draft']).toContain('陈默');
+      expect(result.stageOutputs.outline).toContain('INT. 警局审讯室');
+      expect(result.stageOutputs.draft).toContain('INT. 警局审讯室 - NIGHT');
+      expect(result.stageOutputs.draft).toContain('陆警官');
+      expect(result.stageOutputs.draft).toContain('陈默');
     });
   });
 
@@ -97,9 +97,11 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
           { id: 'draft', name: '视觉小说场景', role: 'writer' }
         ],
         customGateRules: createVisualNovelGateRules(),
-        ledgerExtractor: (output) => extractStateLedger([
-          { role: 'assistant', content: [{ type: 'text', text: output }] } as any
-        ], [NarrativeSemanticLedgerExtractor]),
+        ledgerExtractor: (output) =>
+          extractStateLedger(
+            [{ role: 'assistant', content: [{ type: 'text', text: output }] } as any],
+            [NarrativeSemanticLedgerExtractor]
+          ),
         customExecutor: async (role) => {
           if (role === 'writer') {
             return `【背景: 星空下的天台】\n<asset name="红线风铃" holder="女主" />\n少女转过身，微风吹起她的长发。\n\n<choice id="opt_1" target="scene_confession">握住她的手，说出心声</choice>\n<choice id="opt_2" target="scene_silence">默默站在她身边，一同看星空</choice>`;
@@ -123,7 +125,7 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         stateLedger: vnLedger
       });
 
-      expect(res.stageOutputs['draft']).toContain('<choice id="opt_1"');
+      expect(res.stageOutputs.draft).toContain('<choice id="opt_1"');
       // StateLedger should capture the new asset from XML tags
       expect(res.stateLedger.assets.some((a) => a.name === '红线风铃')).toBe(true);
     });
@@ -165,7 +167,7 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
       const assistantMsg = await stream.collect();
 
       expect(assistantMsg.stopReason).toBe('error');
-      expect(assistantMsg.errorMessage).toContain("Missing API key for Anthropic provider");
+      expect(assistantMsg.errorMessage).toContain('Missing API key for Anthropic provider');
     });
 
     it('should support extended creative roles (screenwriter, storyboarder, script_doctor, worldbuilder, character_designer) with stageHooks', async () => {
@@ -181,11 +183,11 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         stageHooks: {
           onBeforeStage: async (stageId, ctx, currentPrompt) => {
             beforeCalled = true;
-            return currentPrompt + ` [Stage: ${stageId}]`;
+            return `${currentPrompt} [Stage: ${stageId}]`;
           },
           onAfterStage: async (stageId, output, ctx) => {
             afterCalled = true;
-            return output + `\n<!-- End of ${stageId} -->`;
+            return `${output}\n<!-- End of ${stageId} -->`;
           }
         },
         customExecutor: async (role, systemPrompt, prompt) => {
@@ -200,10 +202,10 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
 
       expect(beforeCalled).toBe(true);
       expect(afterCalled).toBe(true);
-      expect(res.stageOutputs['screenplay']).toContain('【screenwriter输出】');
-      expect(res.stageOutputs['storyboard']).toContain('【storyboarder输出】');
-      expect(res.stageOutputs['review']).toContain('【script_doctor输出】');
-      expect(res.stageOutputs['review']).toContain('<!-- End of review -->');
+      expect(res.stageOutputs.screenplay).toContain('【screenwriter输出】');
+      expect(res.stageOutputs.storyboard).toContain('【storyboarder输出】');
+      expect(res.stageOutputs.review).toContain('【script_doctor输出】');
+      expect(res.stageOutputs.review).toContain('<!-- End of review -->');
     });
   });
 });

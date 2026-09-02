@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { InkDb, DocumentMutationQueue } from '@inkpi/storage';
+import { DocumentMutationQueue, InkDb } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
   it('should serialize concurrent mutations to the same document and execute atomically', async () => {
@@ -37,7 +37,6 @@ describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
     db.close();
   });
 
-
   it('should handle mutation errors gracefully without deadlocking subsequent tasks', async () => {
     const db = new InkDb(':memory:');
     const queue = new DocumentMutationQueue(db);
@@ -56,9 +55,9 @@ describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
 
     // Reject task when locked by external writer
     queue.getLeaseManager().acquire('lease_ch_locked', 'external_holder', 30000);
-    await expect(
-      queue.enqueue('ch_locked', 'internal_agent', async () => 'should not run')
-    ).rejects.toThrow('currently locked by another active writer');
+    await expect(queue.enqueue('ch_locked', 'internal_agent', async () => 'should not run')).rejects.toThrow(
+      'currently locked by another active writer'
+    );
 
     db.close();
   });

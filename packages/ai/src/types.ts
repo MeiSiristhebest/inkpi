@@ -1,4 +1,4 @@
-import type { AgentMessage, AssistantMessage, AssistantMessageEvent, Usage, ProviderType } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessage, AssistantMessageEvent, ProviderType, Usage } from '@inkpi/protocol';
 
 export type { ProviderType };
 

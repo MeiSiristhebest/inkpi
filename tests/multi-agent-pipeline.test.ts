@@ -1,4 +1,4 @@
-import { WorkflowCoordinator, RoleRegistry } from '@inkpi/agent-core';
+import { RoleRegistry, WorkflowCoordinator } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
 
 describe('Multi-Agent Collaborative Pipeline', () => {
@@ -16,7 +16,6 @@ describe('Multi-Agent Collaborative Pipeline', () => {
     expect(registry.get('screenwriter')?.name).toBe('影视编剧');
     expect(registry.get('screenwriter')?.systemPrompt).toContain('三幕剧');
   });
-
 
   it('should execute full 4-stage pipeline with event streaming and state ledger merging', async () => {
     const events: string[] = [];
@@ -40,14 +39,16 @@ describe('Multi-Agent Collaborative Pipeline', () => {
       '第一document 灵脉复苏',
       '主角发现古修遗迹并战胜窥探的杂役弟子',
       {
-        entities: [{ name: 'UserE', status: '练气三层' }, { name: '老者', status: '神秘' }],
+        entities: [
+          { name: 'UserE', status: '练气三层' },
+          { name: '老者', status: '神秘' }
+        ],
         assets: [{ name: '残破铜镜', owner: 'UserE' }],
         tracks: [],
         locations: [{ name: '青石镇' }],
         modifiedDocuments: ['序document']
       }
     );
-
 
     expect(events).toContain('stage_start');
     expect(events).toContain('stage_end');
@@ -128,9 +129,7 @@ describe('Multi-Agent Collaborative Pipeline', () => {
       collect: 'collected',
       finish: 'seen:updated'
     });
-    expect(result.stateLedger.entities).toEqual([
-      { id: 'entity-1', name: 'Renamed Again', status: 'updated' }
-    ]);
+    expect(result.stateLedger.entities).toEqual([{ id: 'entity-1', name: 'Renamed Again', status: 'updated' }]);
     expect(result.stateLedger.assets).toEqual([
       { id: 'asset-1', name: 'Original Asset' },
       { id: 'asset-2', name: 'Added Asset' }
@@ -176,9 +175,7 @@ describe('Multi-Agent Collaborative Pipeline', () => {
           }
         }
       ],
-      stages: [
-        { id: 'outline', name: 'A generic outline-named stage', executor: async () => 'raw' }
-      ]
+      stages: [{ id: 'outline', name: 'A generic outline-named stage', executor: async () => 'raw' }]
     });
 
     const result = await coordinator.runWorkflow({ userPrompt: 'request' });
@@ -248,18 +245,18 @@ describe('Multi-Agent Collaborative Pipeline', () => {
         {
           onBeforeOutline: async ({ userPrompt }) => {
             executedHooks.push('outline');
-            return userPrompt + ' (补充设定)';
+            return `${userPrompt} (补充设定)`;
           },
           onDraftGenerated: async ({ draftText }) => {
             executedHooks.push('draft');
-            return draftText + '\n【伏笔埋设完毕】';
+            return `${draftText}\n【伏笔埋设完毕】`;
           },
           onAuditPass: async () => {
             executedHooks.push('audit');
           },
           onPolishDone: async ({ polishedText }) => {
             executedHooks.push('polish');
-            return polishedText + '\n（终稿排版已校）';
+            return `${polishedText}\n（终稿排版已校）`;
           }
         }
       ]

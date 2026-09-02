@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
 import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { InkDb, InkRepository, AppendOnlySessionJournal } from '@inkpi/storage';
+import { join } from 'node:path';
+import { AppendOnlySessionJournal, InkDb, InkRepository } from '@inkpi/storage';
+import { describe, expect, it } from 'vitest';
 
 describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
   it('should append immutable journal events and query by type', () => {
@@ -32,10 +32,10 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     expect(jsonl.split('\n').length).toBe(2);
 
     const journal2 = new AppendOnlySessionJournal('session_export_test');
-    expect(() => journal2.importFromJsonl(jsonl + '\n{invalid json}\n\n')).toThrow(/line 3/);
+    expect(() => journal2.importFromJsonl(`${jsonl}\n{invalid json}\n\n`)).toThrow(/line 3/);
     expect(journal2.count()).toBe(2);
     const journal3 = new AppendOnlySessionJournal('session_export_test');
-    const importedCount = journal3.importFromJsonl(jsonl + '\n{invalid json}\n\n', { strict: false });
+    const importedCount = journal3.importFromJsonl(`${jsonl}\n{invalid json}\n\n`, { strict: false });
     expect(importedCount).toBe(2);
     expect(journal3.count()).toBe(2);
     expect(journal3.getEntries()).toEqual(journal1.getEntries());
@@ -85,10 +85,27 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
         updatedAt: Date.now()
       },
       folders: [
-        { id: 'vol_1', workspaceId: 'workspace_replay', title: '第一folder', orderIndex: 1, createdAt: Date.now(), updatedAt: Date.now() }
+        {
+          id: 'vol_1',
+          workspaceId: 'workspace_replay',
+          title: '第一folder',
+          orderIndex: 1,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }
       ],
       documents: [
-        { id: 'ch_1', folderId: 'vol_1', workspaceId: 'workspace_replay', title: '第一document 觉醒', orderIndex: 1, contentSize: 0, status: 'draft', createdAt: Date.now(), updatedAt: Date.now() }
+        {
+          id: 'ch_1',
+          folderId: 'vol_1',
+          workspaceId: 'workspace_replay',
+          title: '第一document 觉醒',
+          orderIndex: 1,
+          contentSize: 0,
+          status: 'draft',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }
       ]
     });
 

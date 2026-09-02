@@ -1,12 +1,12 @@
-import { describe, expect, it } from 'vitest';
 import {
+  TerminalHarness,
   // 权威名称
   TerminalStudio,
-  TerminalHarness,
+  TerminalWriterHarness,
   // 弃用别名
-  TuiStudio,
-  TerminalWriterHarness
+  TuiStudio
 } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 /**
  * @inkpi/tui 集中弃用别名（src/deprecations.ts）的兼容性守卫。

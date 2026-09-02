@@ -6,7 +6,10 @@ import { ExtensionInstaller, type InkPackageBundle } from './package-manager/pac
 
 export interface PackageManagerCliOptions {
   baseDir?: string;
-  resolvePackage?: (pkgName: string, operation: 'install' | 'update') => Promise<InkPackageBundle | undefined> | InkPackageBundle | undefined;
+  resolvePackage?: (
+    pkgName: string,
+    operation: 'install' | 'update'
+  ) => Promise<InkPackageBundle | undefined> | InkPackageBundle | undefined;
 }
 
 export async function runPackageManagerCli(args: string[], options: PackageManagerCliOptions = {}): Promise<string> {
@@ -30,7 +33,8 @@ export async function runPackageManagerCli(args: string[], options: PackageManag
       if (!options.resolvePackage) return `No package source resolver is configured for '${pkgName}'.`;
       const bundle = await options.resolvePackage(pkgName, 'install');
       if (!bundle) return `No package manifest/source was resolved for '${pkgName}'.`;
-      if (bundle.manifest.name !== pkgName) return `Resolved manifest '${bundle.manifest.name}' does not match '${pkgName}'.`;
+      if (bundle.manifest.name !== pkgName)
+        return `Resolved manifest '${bundle.manifest.name}' does not match '${pkgName}'.`;
       pm.install(bundle.manifest, bundle.files);
       return `Installed '${pkgName}'@${bundle.manifest.version}.`;
     }
@@ -46,7 +50,8 @@ export async function runPackageManagerCli(args: string[], options: PackageManag
       if (!options.resolvePackage) return `No package source resolver is configured for '${pkgName}'.`;
       const bundle = await options.resolvePackage(pkgName, 'update');
       if (!bundle) return `No package manifest/source was resolved for '${pkgName}'.`;
-      if (bundle.manifest.name !== pkgName) return `Resolved manifest '${bundle.manifest.name}' does not match '${pkgName}'.`;
+      if (bundle.manifest.name !== pkgName)
+        return `Resolved manifest '${bundle.manifest.name}' does not match '${pkgName}'.`;
       pm.update(pkgName, bundle.manifest, bundle.files);
       return `Updated '${pkgName}' to v${bundle.manifest.version}.`;
     }

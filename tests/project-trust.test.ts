@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ProjectTrustStore } from '@inkpi/agent-core';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('InkPi Project Trust & Sandbox Security Gate', () => {
   const testTrustFile = path.join(process.cwd(), '.tmp-inkpi-trust.json');

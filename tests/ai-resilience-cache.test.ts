@@ -1,10 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import {
-  PromptCacheOptimizer,
-  AssistantEventStream,
-  createResilientStream,
-  retryAssistantStream
-} from '@inkpi/ai';
+import { AssistantEventStream, PromptCacheOptimizer, createResilientStream, retryAssistantStream } from '@inkpi/ai';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai)', () => {
   it('should build 4-slot precise cache breakpoints for long-form creative contexts', () => {
@@ -18,9 +13,7 @@ describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai
         locations: [],
         modifiedResources: []
       },
-      recentMessages: [
-        { id: 'm1', role: 'user', content: 'Describe the awakening ritual.' }
-      ]
+      recentMessages: [{ id: 'm1', role: 'user', content: 'Describe the awakening ritual.' }]
     });
 
     expect(result.slots.length).toBe(3);
@@ -87,7 +80,6 @@ describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai
     expect(msg.stopReason).toBe('error');
     expect(msg.errorMessage).toContain('401 Unauthorized permanently');
     expect(callCount).toBe(1);
-
 
     // retryAssistantStream test
     let retryAttempt = 0;

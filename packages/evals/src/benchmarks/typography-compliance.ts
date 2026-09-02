@@ -74,7 +74,8 @@ export class TypographyComplianceScorer {
     }
 
     // Calculate score
-    const totalPenalty = (asciiQuotesCount * 5) + (halfWidthPunctuationCount * 5) + (invalidEllipsisCount * 10) + (unindentedParagraphsCount * 2);
+    const totalPenalty =
+      asciiQuotesCount * 5 + halfWidthPunctuationCount * 5 + invalidEllipsisCount * 10 + unindentedParagraphsCount * 2;
     const score = Math.max(0, 100 - totalPenalty);
 
     return {

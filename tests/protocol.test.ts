@@ -1,18 +1,18 @@
-import { describe, it, expect } from 'vitest';
 import type {
   AgentMessage,
-  UserMessage,
-  AssistantMessage,
-  ToolResultMessage,
-  Workspace,
-  Document,
-  Folder,
-  DocumentSnapshot,
-  DocumentDelta,
   AgentTool,
+  AssistantMessage,
+  Document,
+  DocumentDelta,
+  DocumentSnapshot,
+  Folder,
+  ShortcutHandler,
   SlashCommand,
-  ShortcutHandler
+  ToolResultMessage,
+  UserMessage,
+  Workspace
 } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/protocol (Pure Zero-Bias Protocol Contracts)', () => {
   it('should instantiate and validate standard message types', () => {

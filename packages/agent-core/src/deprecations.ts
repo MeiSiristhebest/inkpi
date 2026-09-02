@@ -7,13 +7,13 @@
  */
 import { Agent } from './agent.js';
 import { BranchExplorer, type HypothesisBranchInfo, type HypothesisExecutiveReport } from './branch-what-if.js';
-import { ExtensionInstaller } from './package-manager/package-manager.js';
-import { SessionRegistry } from './rpc/session-registry.js';
-import { WorkflowCoordinator } from './pipeline/coordinator.js';
-import { SandboxExecutor, type SandboxRunner } from './sandbox/sandbox.js';
 import { SessionShareExporter } from './export/session-share.js';
-import { ProjectTrustStore } from './trust/project-trust.js';
+import { ExtensionInstaller } from './package-manager/package-manager.js';
+import { WorkflowCoordinator } from './pipeline/coordinator.js';
+import { SessionRegistry } from './rpc/session-registry.js';
+import { SandboxExecutor, type SandboxRunner } from './sandbox/sandbox.js';
 import type { SlashCommandExecutor } from './slash-commands.js';
+import { ProjectTrustStore } from './trust/project-trust.js';
 import type { TrustStoreFile } from './trust/project-trust.js';
 
 /** @deprecated 已由 `Agent` 取代（同一实现）。计划移除版本：v1.0 */
@@ -63,7 +63,7 @@ export type ProjectTrustManager = ProjectTrustStore;
 
 /** @deprecated 已由 `SessionShareExporter` 取代（Manager 后缀空泛；此类是会话脱敏导出引擎）。计划移除版本：v1.0 */
 export const SessionShareManager = SessionShareExporter;
-export type SessionShareManager = SessionShareExporter;
+export type SessionShareManager = typeof SessionShareExporter;
 
 /** @deprecated 已由 `HypothesisBranchInfo` 取代（what-if 口语并入会话树的 hypothesis 词汇）。计划移除版本：v1.0 */
 export type WhatIfBranchInfo = HypothesisBranchInfo;

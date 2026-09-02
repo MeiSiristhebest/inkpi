@@ -1,5 +1,5 @@
 import type { InkDb } from '@inkpi/storage';
-import { InkRepository, LaneManager, FtsSearchEngine, CompactionEngine, WriterLeaseManager } from '@inkpi/storage';
+import { CompactionEngine, FtsSearchEngine, InkRepository, LaneManager, WriterLeaseManager } from '@inkpi/storage';
 
 export interface ConformanceCheckResult {
   suiteName: string;
@@ -46,7 +46,6 @@ export class StorageConformanceSuite {
     this.leases = new WriterLeaseManager(db);
     this.compactor = new CompactionEngine(db, this.repo);
   }
-
 
   public async runAll(): Promise<StorageConformanceReport> {
     const checks: ConformanceCheckResult[] = [];
@@ -170,7 +169,6 @@ export class StorageConformanceSuite {
         contentSize: 7,
         updatedAt: Date.now()
       });
-
 
       // Append deltas
       this.repo.appendDelta({
@@ -369,7 +367,6 @@ export class StorageConformanceSuite {
         updatedAt: Date.now()
       });
 
-
       // Fork IF lane
       this.lanes.forkLane(mainLaneId, ifLaneId, 'Branch - Alternate Scenario');
 
@@ -479,7 +476,6 @@ export class StorageConformanceSuite {
       };
     }
   }
-
 
   /**
    * 6. 验证 WAL Checkpoint 执行无异常

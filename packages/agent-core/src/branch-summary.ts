@@ -1,6 +1,6 @@
 import type { AgentMessage, AssistantMessage, BranchSummaryDetails } from '@inkpi/protocol';
-import type { SessionTree, SessionTreeNode } from './tree.js';
 import { serializeConversationForSummary } from './compaction/summarize.js';
+import type { SessionTree, SessionTreeNode } from './tree.js';
 
 export class BranchSummarizer {
   private customSummarizer?: (serializedBranchText: string) => Promise<string>;
@@ -19,7 +19,11 @@ export class BranchSummarizer {
   /**
    * 收集从 fromLeafId 到 LCA 祖先之间的已分叉/被废弃消息节点
    */
-  public collectDivergingNodes(tree: SessionTree, fromLeafId: string, toLeafId: string): {
+  public collectDivergingNodes(
+    tree: SessionTree,
+    fromLeafId: string,
+    toLeafId: string
+  ): {
     divergedNodes: SessionTreeNode[];
     commonAncestorId: string | null;
   } {

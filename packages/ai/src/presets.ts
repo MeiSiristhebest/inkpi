@@ -58,9 +58,6 @@ export const MODEL_PRESETS: Record<string, ModelConfig> = {
 // 它现在由 `installTestDoubles()`（test-fixtures.ts）在测试环境中显式注册，
 // 避免在缺少真实模型配置时静默回落到一个返回固定字符串的假模型。
 
-
-
-
 export function getModelPreset(name: string): ModelConfig {
   const preset = MODEL_PRESETS[name];
   if (!preset) {

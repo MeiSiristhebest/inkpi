@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
 import {
   EntityConsistencyScorer,
-  ForeshadowingPayoffScorer,
-  TypographyComplianceScorer,
   EvalRunner,
-  NovelEvalRunner
+  ForeshadowingPayoffScorer,
+  NovelEvalRunner,
+  TypographyComplianceScorer
 } from '@inkpi/evals';
+import { describe, expect, it } from 'vitest';
 
 describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
   it('should keep the generic runner empty until callers register metrics', () => {
@@ -47,11 +47,15 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     expect(bad.passed).toBe(false);
 
     runner.registerMetric({ id: 'invalid', evaluate: () => ({ score: 101 }) });
-    expect(() => runner.evaluate({ content: 'abc' })).toThrow("Evaluation metric 'invalid' returned a score outside 0-100.");
+    expect(() => runner.evaluate({ content: 'abc' })).toThrow(
+      "Evaluation metric 'invalid' returned a score outside 0-100."
+    );
 
     // Validation error branches
     expect(() => runner.registerMetric({ id: '', evaluate: () => ({ score: 50 }) })).toThrow('id must not be empty');
-    expect(() => runner.registerMetric({ id: 'neg', weight: -1, evaluate: () => ({ score: 50 }) })).toThrow('invalid weight');
+    expect(() => runner.registerMetric({ id: 'neg', weight: -1, evaluate: () => ({ score: 50 }) })).toThrow(
+      'invalid weight'
+    );
 
     // Unregister metric
     expect(runner.unregisterMetric('invalid')).toBe(true);
@@ -73,7 +77,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
 
   it('should score entity consistency and detect status contradictions', () => {
     const scorer = new EntityConsistencyScorer();
-    
+
     // Normal text without contradictions
     const res1 = scorer.score('UserB 完成了系统初始化。', {
       entities: [{ name: 'UserB', status: 'Injured' }],
@@ -185,15 +189,17 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     });
     expect(emptyRes.score).toBe(100);
 
-    const invRes = consistencyScorer.score('UserCbetrays guild and joins faction Z。', {
-      entities: [{ name: 'UserC' }],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedDocuments: []
-    }, [
-      { character: 'UserC', forbiddenTransitions: ['joins faction Z'] }
-    ]);
+    const invRes = consistencyScorer.score(
+      'UserCbetrays guild and joins faction Z。',
+      {
+        entities: [{ name: 'UserC' }],
+        assets: [],
+        tracks: [],
+        locations: [],
+        modifiedDocuments: []
+      },
+      [{ character: 'UserC', forbiddenTransitions: ['joins faction Z'] }]
+    );
     expect(invRes.violations.length).toBe(1);
 
     // 2. Track empty & penalty branches
@@ -206,20 +212,23 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     });
     expect(emptyClues.score).toBe(100);
 
-    const heavyPending = foreshadowingScorer.score({
-      entities: [],
-      assets: [],
-      tracks: [
-        { clue: 'Task1', status: 'pending' },
-        { clue: 'Task2', status: 'pending' },
-        { clue: 'Task3', status: 'pending' },
-        { clue: 'Task4', status: 'pending' },
-        { clue: 'Task5', status: 'pending' },
-        { clue: 'Task6', status: 'pending' }
-      ],
-      locations: [],
-      modifiedDocuments: []
-    }, '正文并无解开Task，但提到真相大白');
+    const heavyPending = foreshadowingScorer.score(
+      {
+        entities: [],
+        assets: [],
+        tracks: [
+          { clue: 'Task1', status: 'pending' },
+          { clue: 'Task2', status: 'pending' },
+          { clue: 'Task3', status: 'pending' },
+          { clue: 'Task4', status: 'pending' },
+          { clue: 'Task5', status: 'pending' },
+          { clue: 'Task6', status: 'pending' }
+        ],
+        locations: [],
+        modifiedDocuments: []
+      },
+      '正文并无解开Task，但提到真相大白'
+    );
     expect(heavyPending.score).toBeLessThanOrEqual(60);
 
     // 3. Typography half-width checks
@@ -280,8 +289,6 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       targetSize: 10
     });
     expect(reportB.overallScore).toBeDefined();
-
-
 
     // 8. Grade C (60 - 74)
     const reportC = runner.evaluateDocument({
@@ -390,19 +397,23 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     expect(reportSection.chapterTitle).toBe('Section A');
 
     // Invariant condition and requiredKeywords testing
-    const invConditionRes = consistencyScorer.score('UserD is waiting quietly.', {
-      entities: [{ name: 'UserD', status: 'Idle' }],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedDocuments: []
-    }, [
+    const invConditionRes = consistencyScorer.score(
+      'UserD is waiting quietly.',
       {
-        character: 'UserD',
-        condition: (_text, status) => status === 'Active',
-        requiredKeywords: ['ActiveSignal']
-      }
-    ]);
+        entities: [{ name: 'UserD', status: 'Idle' }],
+        assets: [],
+        tracks: [],
+        locations: [],
+        modifiedDocuments: []
+      },
+      [
+        {
+          character: 'UserD',
+          condition: (_text, status) => status === 'Active',
+          requiredKeywords: ['ActiveSignal']
+        }
+      ]
+    );
     expect(invConditionRes.violations.length).toBe(2);
     expect(invConditionRes.passed).toBe(false);
 

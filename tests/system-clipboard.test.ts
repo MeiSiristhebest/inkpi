@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { KillRing, MockClipboardDriver, SyncedClipboard, NativeSystemClipboardDriver } from '@inkpi/agent-core';
+import { KillRing, MockClipboardDriver, NativeSystemClipboardDriver, SyncedClipboard } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('InkPi System Clipboard Integration & KillRing Sync', () => {
   it('should sync copied text from KillRing to Clipboard driver', () => {
@@ -38,7 +38,7 @@ describe('InkPi System Clipboard Integration & KillRing Sync', () => {
       return '';
     }, 'win32');
 
-    expect(native.writeText("quotes ' and $variables" )).toBe(true);
+    expect(native.writeText("quotes ' and $variables")).toBe(true);
     expect(native.readText()).toBe("quotes ' and $variables");
     expect(calls.map((call) => call.executable)).toEqual(['powershell.exe', 'powershell.exe']);
   });

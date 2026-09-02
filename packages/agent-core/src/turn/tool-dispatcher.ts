@@ -1,8 +1,4 @@
-import type {
-  AssistantMessage,
-  ToolCallContent,
-  ToolResultMessage
-} from '@inkpi/protocol';
+import type { AssistantMessage, ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
 import { runWithConcurrency } from '../concurrency.js';
 import { extractToolCalls } from './extract-tool-calls.js';
 import type { TurnContext } from './turn-context.js';
@@ -29,10 +25,7 @@ interface TerminationFlag {
  */
 export class ToolDispatcher {
   /** 执行工具调用，并把结果消息并入会话历史。 */
-  public async dispatch(
-    ctx: TurnContext,
-    assistantMessage: AssistantMessage
-  ): Promise<ToolDispatchResult> {
+  public async dispatch(ctx: TurnContext, assistantMessage: AssistantMessage): Promise<ToolDispatchResult> {
     const toolCalls = extractToolCalls(assistantMessage);
     const toolResults: ToolResultMessage[] = [];
     const termination: TerminationFlag = { value: false };
@@ -181,9 +174,7 @@ export class ToolDispatcher {
         id: toolOpId,
         type: 'tool_call',
         settlement: { content: toolRes.content, details: toolRes.details },
-        error: toolRes.isError
-          ? (toolRes.content?.[0] as any)?.text || 'Tool execution error'
-          : undefined
+        error: toolRes.isError ? (toolRes.content?.[0] as any)?.text || 'Tool execution error' : undefined
       });
       options.journal.append('tool_execution', toolRes);
     }

@@ -1,4 +1,4 @@
-import { assertValid, AgentMessageSchema, type AgentMessage, type ExportOptions } from '@inkpi/protocol';
+import { type AgentMessage, AgentMessageSchema, type ExportOptions, assertValid } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
 
@@ -23,7 +23,11 @@ export class SessionExporter {
   /**
    * 导出为单文件富交互 HTML 报告 (1:1 移植自 repos/pi packages/coding-agent/src/core/session-export.ts)
    */
-  public exportToHtml(messages: AgentMessage[], options: ExportOptions = { format: 'html' }, tree?: SessionTree): string {
+  public exportToHtml(
+    messages: AgentMessage[],
+    options: ExportOptions = { format: 'html' },
+    tree?: SessionTree
+  ): string {
     const title = options.title || 'Session Export';
     const labels = { ...DEFAULT_LABELS, ...options.labels };
     const branches = tree ? tree.getBranches() : [];
@@ -38,11 +42,15 @@ export class SessionExporter {
           const parts: string[] = [];
           for (const block of msg.content) {
             if (block.type === 'thinking' && options.includeThinking !== false) {
-              parts.push(`<div class="thinking-box">💡 <strong>${this.escapeHtml(labels.thinking)}</strong>:\n${this.escapeHtml(block.thinking)}</div>`);
+              parts.push(
+                `<div class="thinking-box">💡 <strong>${this.escapeHtml(labels.thinking)}</strong>:\n${this.escapeHtml(block.thinking)}</div>`
+              );
             } else if (block.type === 'text') {
               parts.push(`<div class="text-box">${this.escapeHtml(block.text)}</div>`);
             } else if (block.type === 'toolCall' && options.includeToolCalls !== false) {
-              parts.push(`<div class="tool-box">🔧 ${this.escapeHtml(labels.toolCall)}: <code>${this.escapeHtml(block.name)}</code> (${this.escapeHtml(JSON.stringify(block.arguments))})</div>`);
+              parts.push(
+                `<div class="tool-box">🔧 ${this.escapeHtml(labels.toolCall)}: <code>${this.escapeHtml(block.name)}</code> (${this.escapeHtml(JSON.stringify(block.arguments))})</div>`
+              );
             }
           }
           contentHtml = `<div class="msg-box assistant"><div class="role-badge">${this.escapeHtml(labels.assistant)}</div><div class="content">${parts.join('\n')}</div></div>`;

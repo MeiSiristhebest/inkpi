@@ -1,5 +1,5 @@
-import { describe, it, expect, afterAll } from 'vitest';
 import { InkPiDaemon, InkRpcClient } from '@inkpi/server';
+import { afterAll, describe, expect, it } from 'vitest';
 
 describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () => {
   const daemon = new InkPiDaemon({ host: '127.0.0.1' });
@@ -144,41 +144,29 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     expect(listAfterClose.length).toBe(0);
 
     // 10. Error handling for missing session
-    await expect(
-      client.request('session.get_state', { sessionId: 'non_existent' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.get_state', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
-    await expect(
-      client.request('session.prompt', { sessionId: 'non_existent', prompt: 'hi' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.prompt', { sessionId: 'non_existent', prompt: 'hi' })).rejects.toThrow(
+      /not found/
+    );
 
-    await expect(
-      client.request('session.abort', { sessionId: 'non_existent' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.abort', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
     await expect(
       client.request('session.editor.insert', { sessionId: 'non_existent', pos: 0, text: 'a' })
     ).rejects.toThrow(/not found/);
 
-    await expect(
-      client.request('session.editor.undo', { sessionId: 'non_existent' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.editor.undo', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
-    await expect(
-      client.request('session.editor.redo', { sessionId: 'non_existent' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.editor.redo', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
-    await expect(
-      client.request('session.ghost.suggest', { sessionId: 'non_existent', text: 'a' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.ghost.suggest', { sessionId: 'non_existent', text: 'a' })).rejects.toThrow(
+      /not found/
+    );
 
-    await expect(
-      client.request('session.ghost.accept', { sessionId: 'non_existent' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.ghost.accept', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
-    await expect(
-      client.request('session.ghost.dismiss', { sessionId: 'non_existent' })
-    ).rejects.toThrow(/not found/);
+    await expect(client.request('session.ghost.dismiss', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
     // Direct SessionRegistry helper coverage
     const sm = daemon.getSessionManager();

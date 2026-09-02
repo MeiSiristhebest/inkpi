@@ -72,7 +72,7 @@ export class FtsSearchEngine {
    */
   public rebuildIndex(): void {
     this.db.transaction(() => {
-      this.db.exec(`DELETE FROM documents_fts;`);
+      this.db.exec('DELETE FROM documents_fts;');
       this.db.exec(`
         INSERT INTO documents_fts(document_id, title, content)
         SELECT s.document_id, c.title, s.content_markdown

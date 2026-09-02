@@ -196,10 +196,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function formatStateLedger(
-  ledger?: StateLedger,
-  customFormatter?: (ledger: StateLedger) => string
-): string {
+export function formatStateLedger(ledger?: StateLedger, customFormatter?: (ledger: StateLedger) => string): string {
   if (!ledger) return '';
   if (customFormatter) return customFormatter(ledger);
 
@@ -210,10 +207,14 @@ export function formatStateLedger(
   const resources = ledger.modifiedResources || ledger.modifiedChapters || ledger.modifiedDocuments || [];
 
   if (entities.length > 0) {
-    sections.push(`Entities: ${entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ''}`).join(', ')}`);
+    sections.push(
+      `Entities: ${entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ''}`).join(', ')}`
+    );
   }
   if (assets.length > 0) {
-    sections.push(`Assets: ${assets.map((asset) => `${asset.name}${asset.holder ? `[holder:${asset.holder}]` : ''}`).join(', ')}`);
+    sections.push(
+      `Assets: ${assets.map((asset) => `${asset.name}${asset.holder ? `[holder:${asset.holder}]` : ''}`).join(', ')}`
+    );
   }
   if (tracks.length > 0) {
     sections.push(`Tracks:\n${tracks.map((track) => `- [${track.status}] ${track.clue}`).join('\n')}`);

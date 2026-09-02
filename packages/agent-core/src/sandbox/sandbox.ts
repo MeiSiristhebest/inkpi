@@ -42,7 +42,10 @@ export class NodeVMSandbox implements SandboxRunner {
     this.maxOutputChars = options.maxOutputChars || 65536;
   }
 
-  public async execute<T = any>(code: string, options: SandboxExecutionOptions = {}): Promise<SandboxExecutionResult<T>> {
+  public async execute<T = any>(
+    code: string,
+    options: SandboxExecutionOptions = {}
+  ): Promise<SandboxExecutionResult<T>> {
     const startTime = Date.now();
     const timeoutMs = options.timeoutMs || this.defaultTimeoutMs;
     const maxChars = options.maxOutputChars || this.maxOutputChars;
@@ -74,9 +77,9 @@ export class NodeVMSandbox implements SandboxRunner {
         if (!match) {
           throw new InvalidDiceNotationError(diceNotation);
         }
-        const count = parseInt(match[1], 10);
-        const sides = parseInt(match[2], 10);
-        const mod = match[3] ? parseInt(match[3], 10) : 0;
+        const count = Number.parseInt(match[1], 10);
+        const sides = Number.parseInt(match[2], 10);
+        const mod = match[3] ? Number.parseInt(match[3], 10) : 0;
         let sum = 0;
         for (let i = 0; i < count; i++) {
           sum += Math.floor(Math.random() * sides) + 1;

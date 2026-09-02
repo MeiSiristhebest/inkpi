@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // 依赖方向守卫（architecture ratchet）
@@ -66,8 +66,7 @@ function extractSpecifiers(source: string): string[] {
     /(?:^|[\s;}])(?:import|export)\s*['"]([^'"]+)['"]/g
   ];
   for (const re of patterns) {
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(code)) !== null) specs.push(m[1]);
+    for (let m = re.exec(code); m !== null; m = re.exec(code)) specs.push(m[1]);
   }
   return specs;
 }
@@ -114,9 +113,7 @@ describe('依赖方向守卫：agent-core 不得依赖表现层 / 基础设施 /
       const specs = actual.get(file) ?? [];
       const removed = BASELINE[file].filter((s) => !specs.includes(s));
       if (removed.length > 0) {
-        stale.push(
-          `${file} —— 已从代码中清除 ${removed.join(', ')}，请同步从 BASELINE 删除该条目，使债务只减不增`
-        );
+        stale.push(`${file} —— 已从代码中清除 ${removed.join(', ')}，请同步从 BASELINE 删除该条目，使债务只减不增`);
       }
     }
     expect(stale, `依赖基线已过期：\n${stale.join('\n')}`).toEqual([]);

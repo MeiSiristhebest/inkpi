@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { BranchExplorer } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
   it('should initialize with main canon branch and allow creating parallel what-if branches', () => {
@@ -12,21 +12,16 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
     expect(canonBranch?.premise).toBe('');
 
     // Create a What-If branch
-    const whatIf = manager.createWhatIfBranch(
-      'demon_sect_branch',
-      'Alternate Path A',
-      'If hero joins Faction Z',
-      {
-        entities: [
-          { name: 'UserE', status: 'Dark Disciple (Level 30)' },
-          { name: 'Boss Z', status: 'Master (Level 90)' }
-        ],
-        assets: [{ name: 'Token A' }],
-        tracks: [{ clue: '正道各宗密谋围剿Faction Z', status: 'pending' }],
-        locations: [{ name: 'Dark Pit' }],
-        modifiedDocuments: ['Document 10 Choice']
-      }
-    );
+    const whatIf = manager.createWhatIfBranch('demon_sect_branch', 'Alternate Path A', 'If hero joins Faction Z', {
+      entities: [
+        { name: 'UserE', status: 'Dark Disciple (Level 30)' },
+        { name: 'Boss Z', status: 'Master (Level 90)' }
+      ],
+      assets: [{ name: 'Token A' }],
+      tracks: [{ clue: '正道各宗密谋围剿Faction Z', status: 'pending' }],
+      locations: [{ name: 'Dark Pit' }],
+      modifiedDocuments: ['Document 10 Choice']
+    });
 
     expect(whatIf.branchId).toBe('demon_sect_branch');
     expect(manager.getAllBranches().length).toBe(2);
@@ -90,21 +85,16 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
       modifiedDocuments: []
     });
 
-    manager.createWhatIfBranch(
-      'branch_rebellion',
-      'Exile Branch',
-      '主角怒杀恶霸管事，连夜反出Guild A',
-      {
-        entities: [
-          { name: 'UserB', status: 'Exile (Level 5)' },
-          { name: 'Hunter', status: '敌对 (Level 20)' }
-        ],
-        assets: [{ name: 'Stolen Weapon' }],
-        tracks: [{ clue: 'Bounty', status: 'pending' }],
-        locations: [{ name: 'Old Forest' }],
-        modifiedDocuments: ['Document 5 Escape']
-      }
-    );
+    manager.createWhatIfBranch('branch_rebellion', 'Exile Branch', '主角怒杀恶霸管事，连夜反出Guild A', {
+      entities: [
+        { name: 'UserB', status: 'Exile (Level 5)' },
+        { name: 'Hunter', status: '敌对 (Level 20)' }
+      ],
+      assets: [{ name: 'Stolen Weapon' }],
+      tracks: [{ clue: 'Bounty', status: 'pending' }],
+      locations: [{ name: 'Old Forest' }],
+      modifiedDocuments: ['Document 5 Escape']
+    });
 
     const switchResult = await manager.switchBranch('branch_rebellion');
     expect(switchResult.switched).toBe(true);

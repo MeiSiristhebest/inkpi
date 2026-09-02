@@ -1,7 +1,7 @@
-import { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import type { StateLedger } from '@inkpi/protocol';
 import type { Agent, SessionTree } from '@inkpi/agent-core';
 import { SlashCommandRegistry } from '@inkpi/agent-core';
+import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
+import type { StateLedger } from '@inkpi/protocol';
 import type {
   StudioDialogueEntry,
   StudioFlashMessage,

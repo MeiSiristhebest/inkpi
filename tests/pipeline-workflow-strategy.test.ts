@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import type { PipelineHooks } from '@inkpi/protocol';
+import type { WorkflowContext } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 import {
   genericWorkflowStrategy,
   legacyPipelineWorkflowStrategy,
   resolveWorkflowStrategy
 } from '../packages/agent-core/src/pipeline/workflow-strategy.js';
-import type { PipelineHooks } from '@inkpi/protocol';
-import type { WorkflowContext } from '@inkpi/protocol';
 
 function makeCtx(): WorkflowContext {
   return {
@@ -23,9 +23,7 @@ function makeCtx(): WorkflowContext {
   };
 }
 
-const ISSUES = [
-  { type: 't', description: 'd', severity: 'critical' as const }
-];
+const ISSUES = [{ type: 't', description: 'd', severity: 'critical' as const }];
 
 describe('workflow strategy: 模式选择', () => {
   it("'legacy-pipeline' 解析为兼容策略", () => {

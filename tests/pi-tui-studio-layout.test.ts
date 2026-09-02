@@ -1,11 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import {
-  TerminalStudio,
-  DifferentialRenderer,
-  layoutHStack,
-  layoutVStack,
-  renderScrollView
-} from '@inkpi/tui';
+import { DifferentialRenderer, TerminalStudio, layoutHStack, layoutVStack, renderScrollView } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 describe('Pi TUI Engine Integration & Studio Layout', () => {
   it('should compute differential rendering updates correctly', () => {
@@ -33,10 +27,13 @@ describe('Pi TUI Engine Integration & Studio Layout', () => {
     expect(vstack[3]).toBe('Footer');
 
     // HStack
-    const hstack = layoutHStack([
-      { lines: ['Left 1', 'Left 2'], width: 10 },
-      { lines: ['Right 1', 'Right 2'], width: 10 }
-    ], 2);
+    const hstack = layoutHStack(
+      [
+        { lines: ['Left 1', 'Left 2'], width: 10 },
+        { lines: ['Right 1', 'Right 2'], width: 10 }
+      ],
+      2
+    );
     expect(hstack.length).toBe(2);
     expect(hstack[0]).toContain('Left 1');
     expect(hstack[0]).toContain('Right 1');

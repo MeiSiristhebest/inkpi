@@ -97,7 +97,9 @@ export class ProjectTrustStore {
 
   public assertTrusted(projectOrExtensionPath: string, context = 'Extension'): void {
     if (!this.isTrusted(projectOrExtensionPath)) {
-      throw new Error(`🛡️ [Security Gate] ${context} at '${projectOrExtensionPath}' is NOT trusted. User confirmation required before execution.`);
+      throw new Error(
+        `🛡️ [Security Gate] ${context} at '${projectOrExtensionPath}' is NOT trusted. User confirmation required before execution.`
+      );
     }
   }
 

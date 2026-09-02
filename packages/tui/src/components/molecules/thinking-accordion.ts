@@ -4,9 +4,9 @@
  * 支持实时流式追加、耗时统计、Token 计数与一键折叠/展开呈现
  */
 
-import { Component, type RenderContext } from '../../layout.js';
-import { visibleWidth, ANSI } from '../../render.js';
 import type { KeyEvent } from '../../keys.js';
+import { Component, type RenderContext } from '../../layout.js';
+import { ANSI, visibleWidth } from '../../render.js';
 
 export interface ThinkingAccordionOptions {
   thinkingText?: string;
@@ -69,7 +69,9 @@ export class ThinkingAccordion extends Component {
 
     // Header bar
     const arrow = this.isCollapsed ? '▶' : '▼';
-    const statusText = this.isStreaming ? ' (Thinking in progress...)' : ` (Done in ${(this.elapsedMs / 1000).toFixed(1)}s)`;
+    const statusText = this.isStreaming
+      ? ' (Thinking in progress...)'
+      : ` (Done in ${(this.elapsedMs / 1000).toFixed(1)}s)`;
     const countText = ` | ~${this.thinkingText.length} chars`;
     const headerTitle = `${arrow} 💡 深度推演思考链 [${this.modelName}]${statusText}${countText} [Ctrl+O 展开/收起]`;
     const fullHeader = ` ${headerTitle}`;
@@ -82,14 +84,13 @@ export class ThinkingAccordion extends Component {
       const textLines = this.thinkingText.split('\n');
       for (const rawLine of textLines) {
         const maxContentW = Math.max(10, width - 6);
-        const displayLine = visibleWidth(rawLine) > maxContentW ? rawLine.slice(0, maxContentW - 3) + '...' : rawLine;
+        const displayLine = visibleWidth(rawLine) > maxContentW ? `${rawLine.slice(0, maxContentW - 3)}...` : rawLine;
         const lineW = visibleWidth(displayLine);
         const linePad = Math.max(0, width - lineW - 4);
         lines.push(`${ANSI.FG_GRAY}  │ ${ANSI.FG_CYAN}${displayLine}${' '.repeat(linePad)}${ANSI.RESET}`);
       }
       lines.push(`${ANSI.FG_GRAY}  └── ${'─'.repeat(Math.max(0, width - 8))}${ANSI.RESET}`);
     }
-
 
     return lines;
   }

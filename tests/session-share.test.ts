@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
 import { SessionShareExporter, SessionTree } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-hf)', () => {
   it('should sanitize sensitive API keys and local paths from texts and messages', () => {
-    const rawText = 'My secret key is sk-abcdef1234567890123456 and files are located in C:\\Users\\Author\\Documents\\novel.txt';
+    const rawText =
+      'My secret key is sk-abcdef1234567890123456 and files are located in C:\\Users\\Author\\Documents\\novel.txt';
     const sanitized = SessionShareExporter.sanitize(rawText);
 
     expect(sanitized).not.toContain('sk-abcdef1234567890123456');
@@ -37,7 +38,6 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
     const tree = new SessionTree();
     tree.addMessage({ id: 'root_1', role: 'user', content: '根节点' });
     tree.addBranchMarker('Alternative Climax Branch');
-
 
     const messages: AgentMessage[] = [
       { id: 'm1', role: 'user', content: '第一幕：主角在破晓时分启程。' },

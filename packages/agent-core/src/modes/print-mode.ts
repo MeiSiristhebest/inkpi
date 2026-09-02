@@ -3,11 +3,12 @@
  */
 
 import * as fs from 'node:fs';
+import { getModelPreset } from '@inkpi/ai';
 import { Agent } from '../agent.js';
 import { WorkflowCoordinator } from '../pipeline/coordinator.js';
 import { TelemetryCollector } from '../telemetry/telemetry.js';
-import { getModelPreset } from '@inkpi/ai';
 
+import type { ModelConfig } from '@inkpi/ai';
 import type {
   AgentRoleConfig,
   QualityGateHandler,
@@ -18,7 +19,6 @@ import type {
   WorkflowContext,
   WorkflowStageConfig
 } from '@inkpi/protocol';
-import type { ModelConfig } from '@inkpi/ai';
 
 export interface PrintWorkflowOptions {
   stages: WorkflowStageConfig[];
@@ -61,41 +61,39 @@ export interface PrintModeResult {
 }
 
 function resolveEnvironmentModel(provider?: string): ModelConfig {
-  const configuredProviders = provider
-    ? [provider]
-    : ['deepseek', 'openrouter', 'openai', 'claude', 'gemini'];
+  const configuredProviders = provider ? [provider] : ['deepseek', 'openrouter', 'openai', 'claude', 'gemini'];
 
   for (const configuredProvider of configuredProviders) {
     if (configuredProvider === 'deepseek' && process.env.DEEPSEEK_API_KEY) {
-    const id = process.env.INKPI_DEEPSEEK_MODEL;
-    if (!id) throw new Error('DEEPSEEK_API_KEY requires INKPI_DEEPSEEK_MODEL.');
-    return { id, name: id, provider: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY };
-  }
+      const id = process.env.INKPI_DEEPSEEK_MODEL;
+      if (!id) throw new Error('DEEPSEEK_API_KEY requires INKPI_DEEPSEEK_MODEL.');
+      return { id, name: id, provider: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY };
+    }
     if (configuredProvider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
-    const id = process.env.INKPI_OPENROUTER_MODEL;
-    if (!id) throw new Error('OPENROUTER_API_KEY requires INKPI_OPENROUTER_MODEL.');
-    return {
-      id,
-      name: id,
-      provider: 'openrouter',
-      apiKey: process.env.OPENROUTER_API_KEY
-    };
-  }
+      const id = process.env.INKPI_OPENROUTER_MODEL;
+      if (!id) throw new Error('OPENROUTER_API_KEY requires INKPI_OPENROUTER_MODEL.');
+      return {
+        id,
+        name: id,
+        provider: 'openrouter',
+        apiKey: process.env.OPENROUTER_API_KEY
+      };
+    }
     if (configuredProvider === 'openai' && process.env.OPENAI_API_KEY) {
-    const id = process.env.INKPI_OPENAI_MODEL;
-    if (!id) throw new Error('OPENAI_API_KEY requires INKPI_OPENAI_MODEL.');
-    return { id, name: id, provider: 'openai', apiKey: process.env.OPENAI_API_KEY };
-  }
+      const id = process.env.INKPI_OPENAI_MODEL;
+      if (!id) throw new Error('OPENAI_API_KEY requires INKPI_OPENAI_MODEL.');
+      return { id, name: id, provider: 'openai', apiKey: process.env.OPENAI_API_KEY };
+    }
     if ((configuredProvider === 'claude' || configuredProvider === 'anthropic') && process.env.ANTHROPIC_API_KEY) {
-    const id = process.env.INKPI_ANTHROPIC_MODEL;
-    if (!id) throw new Error('ANTHROPIC_API_KEY requires INKPI_ANTHROPIC_MODEL.');
-    return { id, name: id, provider: 'claude', apiKey: process.env.ANTHROPIC_API_KEY };
-  }
+      const id = process.env.INKPI_ANTHROPIC_MODEL;
+      if (!id) throw new Error('ANTHROPIC_API_KEY requires INKPI_ANTHROPIC_MODEL.');
+      return { id, name: id, provider: 'claude', apiKey: process.env.ANTHROPIC_API_KEY };
+    }
     if (configuredProvider === 'gemini' && process.env.GEMINI_API_KEY) {
-    const id = process.env.INKPI_GEMINI_MODEL;
-    if (!id) throw new Error('GEMINI_API_KEY requires INKPI_GEMINI_MODEL.');
-    return { id, name: id, provider: 'gemini', apiKey: process.env.GEMINI_API_KEY };
-  }
+      const id = process.env.INKPI_GEMINI_MODEL;
+      if (!id) throw new Error('GEMINI_API_KEY requires INKPI_GEMINI_MODEL.');
+      return { id, name: id, provider: 'gemini', apiKey: process.env.GEMINI_API_KEY };
+    }
   }
   throw new Error(
     provider
@@ -113,7 +111,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       if (!options.workflow) {
         throw new Error(
           'Print workflow mode requires an explicit workflow configuration. ' +
-          'Use a custom workflow or call WorkflowCoordinator.runPipeline() for the legacy narrative pipeline.'
+            'Use a custom workflow or call WorkflowCoordinator.runPipeline() for the legacy narrative pipeline.'
         );
       }
       const telemetry = new TelemetryCollector();
@@ -126,8 +124,8 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         ...options.workflow.initialContext,
         userPrompt: options.prompt
       });
-      const finalStageId = options.workflow.finalStageId
-        || options.workflow.stages[options.workflow.stages.length - 1]?.id;
+      const finalStageId =
+        options.workflow.finalStageId || options.workflow.stages[options.workflow.stages.length - 1]?.id;
       const finalContent = finalStageId ? workflowResult.stageOutputs[finalStageId] || '' : '';
       if (!finalContent) {
         throw new Error('Print workflow completed without output from its final stage.');
@@ -146,7 +144,6 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         if (s.outputTokens) totalOutputTokens += s.outputTokens;
       }
 
-
       const result: PrintModeResult = {
         success: true,
         content: finalContent,
@@ -159,11 +156,10 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         durationMs
       };
 
-
       if (options.json) {
-        process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       } else {
-        process.stdout.write(finalContent + '\n');
+        process.stdout.write(`${finalContent}\n`);
       }
 
       return result;
@@ -178,7 +174,6 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       modelObj = resolveEnvironmentModel(options.provider);
     }
 
-
     const agent = new Agent({
       initialState: {
         model: modelObj,
@@ -186,7 +181,6 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         systemPrompt: options.systemPrompt || ''
       }
     });
-
 
     let generatedText = '';
     let hasStreamedToStdout = false;
@@ -216,7 +210,10 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       throw new Error(agent.state.errorMessage);
     }
 
-    const assistantMsg = agent.state.messages.slice().reverse().find(m => m.role === 'assistant');
+    const assistantMsg = agent.state.messages
+      .slice()
+      .reverse()
+      .find((m) => m.role === 'assistant');
     let realUsage: Usage | undefined;
     if (assistantMsg) {
       if ((assistantMsg as any).stopReason === 'error') {
@@ -245,22 +242,19 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       durationMs
     };
 
-
-
     if (options.output) {
       fs.writeFileSync(options.output, result.content, 'utf8');
     }
 
     if (options.json) {
-      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else if (hasStreamedToStdout) {
       process.stdout.write('\n');
     } else {
-      process.stdout.write(result.content + '\n');
+      process.stdout.write(`${result.content}\n`);
     }
 
     return result;
-
   } catch (err: any) {
     const durationMs = Date.now() - startTime;
     const errorResult: PrintModeResult = {
@@ -272,7 +266,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
     };
 
     if (options.json) {
-      process.stdout.write(JSON.stringify(errorResult, null, 2) + '\n');
+      process.stdout.write(`${JSON.stringify(errorResult, null, 2)}\n`);
     } else {
       process.stderr.write(`❌ [InkPi Print Error] ${errorResult.error}\n`);
     }

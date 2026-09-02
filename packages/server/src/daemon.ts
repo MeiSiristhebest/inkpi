@@ -1,10 +1,10 @@
-import * as net from 'node:net';
+import type * as net from 'node:net';
+import { type ManagedSession, type SessionCreateOptions, SessionRegistry } from '@inkpi/agent-core';
+import type { ModelConfig } from '@inkpi/protocol';
 import { InkRpcServer, type ServerContext } from './server.js';
-import { SessionRegistry, type ManagedSession, type SessionCreateOptions } from '@inkpi/agent-core';
+import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST } from './transport.js';
-import { TcpSocketTransport } from './tcp-transport.js';
-import type { ModelConfig } from '@inkpi/protocol';
 
 export interface DaemonOptions {
   port?: number;
@@ -124,11 +124,14 @@ export class InkPiDaemon {
     this.rpcServer.registerMethod('session.getState', getStateHandler);
 
     // 2. Editor Multi-session RPCs
-    this.rpcServer.registerMethod('session.editor.insert', (params: { sessionId: string; pos: number; text: string }) => {
-      const session = this.withSession(params?.sessionId);
-      session.editor.insertText(params.pos, params.text);
-      return { text: session.editor.getText(), version: session.editor.getVersion() };
-    });
+    this.rpcServer.registerMethod(
+      'session.editor.insert',
+      (params: { sessionId: string; pos: number; text: string }) => {
+        const session = this.withSession(params?.sessionId);
+        session.editor.insertText(params.pos, params.text);
+        return { text: session.editor.getText(), version: session.editor.getVersion() };
+      }
+    );
 
     this.rpcServer.registerMethod('session.editor.undo', (params: { sessionId: string }) => {
       const session = this.withSession(params?.sessionId);
@@ -142,24 +145,30 @@ export class InkPiDaemon {
       return { success, text: session.editor.getText() };
     });
 
-    this.rpcServer.registerMethod('session.ghost.suggest', (params: { sessionId: string; text: string; pos?: number }) => {
-      const session = this.withSession(params?.sessionId);
-      const suggestion = session.ghost.suggest(params.text, params.pos);
-      return suggestion;
-    });
-
-    this.rpcServer.registerMethod('session.ghost.accept', (params: { sessionId: string; mode?: 'all' | 'word' | 'line' }) => {
-      const session = this.withSession(params?.sessionId);
-      let accepted = false;
-      if (params.mode === 'word') {
-        accepted = session.ghost.acceptWord();
-      } else if (params.mode === 'line') {
-        accepted = session.ghost.acceptLine();
-      } else {
-        accepted = session.ghost.acceptGhostText();
+    this.rpcServer.registerMethod(
+      'session.ghost.suggest',
+      (params: { sessionId: string; text: string; pos?: number }) => {
+        const session = this.withSession(params?.sessionId);
+        const suggestion = session.ghost.suggest(params.text, params.pos);
+        return suggestion;
       }
-      return { accepted, text: session.editor.getText() };
-    });
+    );
+
+    this.rpcServer.registerMethod(
+      'session.ghost.accept',
+      (params: { sessionId: string; mode?: 'all' | 'word' | 'line' }) => {
+        const session = this.withSession(params?.sessionId);
+        let accepted = false;
+        if (params.mode === 'word') {
+          accepted = session.ghost.acceptWord();
+        } else if (params.mode === 'line') {
+          accepted = session.ghost.acceptLine();
+        } else {
+          accepted = session.ghost.acceptGhostText();
+        }
+        return { accepted, text: session.editor.getText() };
+      }
+    );
 
     this.rpcServer.registerMethod('session.ghost.dismiss', (params: { sessionId: string }) => {
       const session = this.withSession(params?.sessionId);

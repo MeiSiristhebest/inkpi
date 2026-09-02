@@ -1,19 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
 import {
   AssistantEventStream,
-  convertMessagesToStandard,
-  streamAi,
-  getModelPreset,
-  registerProvider,
-  getProvider,
-  deepSeekProvider,
-  ollamaProvider,
   anthropicProvider,
-  geminiProvider
-  , createFauxProvider,
-  fauxProvider
+  convertMessagesToStandard,
+  createFauxProvider,
+  deepSeekProvider,
+  fauxProvider,
+  geminiProvider,
+  getModelPreset,
+  getProvider,
+  ollamaProvider,
+  registerProvider,
+  streamAi
 } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessageEvent } from '@inkpi/protocol';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('@inkpi/ai', () => {
   function responseFrom(chunks: string[]) {
@@ -177,11 +177,13 @@ describe('@inkpi/ai', () => {
       {
         role: 'assistant',
         content: '先查一下。',
-        toolCalls: [{
-          id: 'call-1',
-          type: 'function',
-          function: { name: 'lookup', arguments: '{"query":"x"}' }
-        }]
+        toolCalls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'lookup', arguments: '{"query":"x"}' }
+          }
+        ]
       },
       { role: 'tool', toolCallId: 'call-1', content: 'found' }
     ]);
@@ -228,19 +230,29 @@ describe('@inkpi/ai', () => {
 
   it('should preserve OpenAI-compatible events split across chunks and inspect the request contract', async () => {
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"choices":[{"delta":{"reasoning_content":"think"}}]}\n\n',
-      'data: {"choices":[{"delta":{"content":"hel',
-      'lo"}}]}\n\n',
-      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
-      'data: {"usage":{"prompt_tokens":11,"completion_tokens":13,"total_tokens":24}}\n\n',
-      'data: [DONE]\n\n'
-    ]));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"choices":[{"delta":{"reasoning_content":"think"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"hel',
+          'lo"}}]}\n\n',
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+          'data: {"usage":{"prompt_tokens":11,"completion_tokens":13,"total_tokens":24}}\n\n',
+          'data: [DONE]\n\n'
+        ])
+      );
     globalThis.fetch = fetchMock as any;
 
     try {
       const stream = deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://provider.test/v1', apiKey: 'sk-contract' },
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek',
+          provider: 'deepseek',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'sk-contract'
+        },
         [{ role: 'user', content: 'request text', timestamp: 1 }],
         { systemPrompt: 'system text', temperature: 0.2, maxTokens: 99 }
       );
@@ -277,15 +289,25 @@ describe('@inkpi/ai', () => {
 
   it('should map assistant tool calls and tool results to OpenAI wire fields', async () => {
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n',
-      'data: [DONE]\n\n'
-    ]));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n',
+          'data: [DONE]\n\n'
+        ])
+      );
     globalThis.fetch = fetchMock as any;
 
     try {
       await deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://provider.test/v1', apiKey: 'sk-test' },
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek',
+          provider: 'deepseek',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'sk-test'
+        },
         [
           { role: 'system', content: 'system rule' },
           {
@@ -313,11 +335,13 @@ describe('@inkpi/ai', () => {
         {
           role: 'assistant',
           content: 'I will look it up.',
-          tool_calls: [{
-            id: 'call-1',
-            type: 'function',
-            function: { name: 'lookup', arguments: '{"query":"x"}' }
-          }]
+          tool_calls: [
+            {
+              id: 'call-1',
+              type: 'function',
+              function: { name: 'lookup', arguments: '{"query":"x"}' }
+            }
+          ]
         },
         { role: 'tool', content: 'found', tool_call_id: 'call-1' }
       ]);
@@ -333,7 +357,13 @@ describe('@inkpi/ai', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(responseFrom(['data: {"choices":[oops]}\n\n'])) as any;
     try {
       const msg = await deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://provider.test/v1', apiKey: 'sk-test' },
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek',
+          provider: 'deepseek',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'sk-test'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(msg.stopReason).toBe('error');
@@ -346,16 +376,28 @@ describe('@inkpi/ai', () => {
   it('should process tool-call deltas in the final OpenAI-compatible SSE line', async () => {
     const originalFetch = globalThis.fetch;
     const observedEvents: string[] = [];
-    globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-final","function":{"name":"lookup","arguments":"{\\"q\\":\\"x\\"}"}}]}}]}'
-    ])) as any;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-final","function":{"name":"lookup","arguments":"{\\"q\\":\\"x\\"}"}}]}}]}'
+        ])
+      ) as any;
 
     try {
       const stream = deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://provider.test/v1', apiKey: 'sk-test' },
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek',
+          provider: 'deepseek',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'sk-test'
+        },
         [{ role: 'user', content: 'prompt' }]
       );
-      stream.on((event) => { observedEvents.push(event.type); });
+      stream.on((event) => {
+        observedEvents.push(event.type);
+      });
       const message = await stream.collect();
       expect(observedEvents).toContain('tool_call_start');
       expect(observedEvents).toContain('tool_call_delta');
@@ -368,18 +410,29 @@ describe('@inkpi/ai', () => {
 
   it('should combine Anthropic message_start/message_delta usage and parse a final event without newline', async () => {
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"type":"message_start","message":{"usage":{"input_tokens":17}}}\n\n',
-      'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"plan"}}\n\n',
-      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"result"}}\n\n',
-      'data: {"type":"message_delta","usage":{"output_tokens":19}}\n\n',
-      'data: {"type":"message_stop"}'
-    ]));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":17}}}\n\n',
+          'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"plan"}}\n\n',
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"result"}}\n\n',
+          'data: {"type":"message_delta","usage":{"output_tokens":19}}\n\n',
+          'data: {"type":"message_stop"}'
+        ])
+      );
     globalThis.fetch = fetchMock as any;
 
     try {
       const msg = await anthropicProvider(
-        { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1', apiKey: 'anthropic-key', supportsThinking: true },
+        {
+          id: 'claude-test',
+          name: 'Claude',
+          provider: 'claude',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'anthropic-key',
+          supportsThinking: true
+        },
         [{ role: 'user', content: 'prompt' }],
         { systemPrompt: 'system', thinkingBudget: 2048 }
       ).collect();
@@ -396,7 +449,11 @@ describe('@inkpi/ai', () => {
         'x-api-key': 'anthropic-key',
         'anthropic-version': '2023-06-01'
       });
-      expect(JSON.parse(request.body as string)).toMatchObject({ model: 'claude-test', stream: true, system: [{ type: 'text', text: 'system' }] });
+      expect(JSON.parse(request.body as string)).toMatchObject({
+        model: 'claude-test',
+        stream: true,
+        system: [{ type: 'text', text: 'system' }]
+      });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -404,9 +461,7 @@ describe('@inkpi/ai', () => {
 
   it('should map Anthropic tool_use history and tool_result history to content blocks', async () => {
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"type":"message_stop"}\n\n'
-    ]));
+    const fetchMock = vi.fn().mockResolvedValue(responseFrom(['data: {"type":"message_stop"}\n\n']));
     globalThis.fetch = fetchMock as any;
 
     try {
@@ -454,14 +509,18 @@ describe('@inkpi/ai', () => {
 
   it('should parse Anthropic streamed tool_use blocks into a tool call message', async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}\n\n',
-      'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-2","name":"lookup","input":{}}}\n\n',
-      'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"query\\":\\"x\\"}"}}\n\n',
-      'data: {"type":"content_block_stop","index":0}\n\n',
-      'data: {"type":"message_delta","usage":{"output_tokens":2}}\n\n',
-      'data: {"type":"message_stop"}\n\n'
-    ])) as any;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}\n\n',
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-2","name":"lookup","input":{}}}\n\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"query\\":\\"x\\"}"}}\n\n',
+          'data: {"type":"content_block_stop","index":0}\n\n',
+          'data: {"type":"message_delta","usage":{"output_tokens":2}}\n\n',
+          'data: {"type":"message_stop"}\n\n'
+        ])
+      ) as any;
 
     try {
       const message = await anthropicProvider(
@@ -469,9 +528,7 @@ describe('@inkpi/ai', () => {
         [{ role: 'user', content: 'look it up' }]
       ).collect();
       expect(message.stopReason).toBe('tool_use');
-      expect(message.content).toEqual([
-        { type: 'toolCall', id: 'call-2', name: 'lookup', arguments: { query: 'x' } }
-      ]);
+      expect(message.content).toEqual([{ type: 'toolCall', id: 'call-2', name: 'lookup', arguments: { query: 'x' } }]);
       expect(message.usage).toMatchObject({ inputTokens: 4, outputTokens: 2, totalTokens: 6 });
     } finally {
       globalThis.fetch = originalFetch;
@@ -480,13 +537,23 @@ describe('@inkpi/ai', () => {
 
   it('should parse Gemini thought/text and usage through a configured endpoint', async () => {
     const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"reason"},{"text":"answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":4,"totalTokenCount":7}}'
-    ]));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"reason"},{"text":"answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":4,"totalTokenCount":7}}'
+        ])
+      );
     globalThis.fetch = fetchMock as any;
     try {
       const msg = await geminiProvider(
-        { id: 'gemini-test', name: 'Gemini', provider: 'gemini', baseUrl: 'https://provider.test/v1beta', apiKey: 'key with spaces' },
+        {
+          id: 'gemini-test',
+          name: 'Gemini',
+          provider: 'gemini',
+          baseUrl: 'https://provider.test/v1beta',
+          apiKey: 'key with spaces'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(msg.stopReason).toBe('stop');
@@ -495,7 +562,9 @@ describe('@inkpi/ai', () => {
         { type: 'text', text: 'answer' }
       ]);
       expect(msg.usage?.totalTokens).toBe(7);
-      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://provider.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse&key=key%20with%20spaces');
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
+        'https://provider.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse&key=key%20with%20spaces'
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -523,10 +592,9 @@ describe('@inkpi/ai', () => {
     }) as any;
 
     try {
-      const stream = ollamaProvider(
-        { id: 'qwen2.5', name: 'Ollama', provider: 'ollama' },
-        [{ role: 'user', content: '写一段' }]
-      );
+      const stream = ollamaProvider({ id: 'qwen2.5', name: 'Ollama', provider: 'ollama' }, [
+        { role: 'user', content: '写一段' }
+      ]);
 
       const msg = await stream.collect();
       expect(msg.role).toBe('assistant');
@@ -539,9 +607,11 @@ describe('@inkpi/ai', () => {
 
   it('should parse Ollama EOF JSON without a newline and report malformed JSONL', async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-      '{"message":{"content":"final"},"done":true,"prompt_eval_count":2,"eval_count":3}'
-    ])) as any;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom(['{"message":{"content":"final"},"done":true,"prompt_eval_count":2,"eval_count":3}'])
+      ) as any;
     try {
       const msg = await ollamaProvider(
         { id: 'local', name: 'Local', provider: 'ollama', baseUrl: 'http://ollama.test' },
@@ -569,19 +639,27 @@ describe('@inkpi/ai', () => {
   it('should reject provider streams that end without their protocol terminal event', async () => {
     const originalFetch = globalThis.fetch;
     try {
-      globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-        'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'
-      ])) as any;
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(responseFrom(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'])) as any;
       const openAiMessage = await deepSeekProvider(
-        { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://provider.test/v1', apiKey: 'sk-test' },
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek',
+          provider: 'deepseek',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'sk-test'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(openAiMessage.stopReason).toBe('error');
       expect(openAiMessage.errorMessage).toContain('[DONE]');
 
-      globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-        'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n'
-      ])) as any;
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          responseFrom(['data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n'])
+        ) as any;
       const anthropicMessage = await anthropicProvider(
         { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1', apiKey: 'key' },
         [{ role: 'user', content: 'prompt' }]
@@ -589,19 +667,25 @@ describe('@inkpi/ai', () => {
       expect(anthropicMessage.stopReason).toBe('error');
       expect(anthropicMessage.errorMessage).toContain('message_stop');
 
-      globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-        'data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}'
-      ])) as any;
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(responseFrom(['data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}'])) as any;
       const geminiMessage = await geminiProvider(
-        { id: 'gemini-test', name: 'Gemini', provider: 'gemini', baseUrl: 'https://provider.test/v1beta', apiKey: 'key' },
+        {
+          id: 'gemini-test',
+          name: 'Gemini',
+          provider: 'gemini',
+          baseUrl: 'https://provider.test/v1beta',
+          apiKey: 'key'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(geminiMessage.stopReason).toBe('error');
       expect(geminiMessage.errorMessage).toContain('finishReason');
 
-      globalThis.fetch = vi.fn().mockResolvedValue(responseFrom([
-        '{"message":{"content":"partial"},"done":false}\n'
-      ])) as any;
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(responseFrom(['{"message":{"content":"partial"},"done":false}\n'])) as any;
       const ollamaMessage = await ollamaProvider(
         { id: 'local', name: 'Local', provider: 'ollama', baseUrl: 'http://ollama.test' },
         [{ role: 'user', content: 'prompt' }]
@@ -630,14 +714,12 @@ describe('@inkpi/ai', () => {
       usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 }
     });
 
-    const messageA = await providerA(
-      { id: 'a', name: 'A', provider: 'faux' },
-      [{ role: 'user', content: 'prompt-a' }]
-    ).collect();
-    const messageB = await providerB(
-      { id: 'b', name: 'B', provider: 'faux' },
-      [{ role: 'user', content: 'prompt-b' }]
-    ).collect();
+    const messageA = await providerA({ id: 'a', name: 'A', provider: 'faux' }, [
+      { role: 'user', content: 'prompt-a' }
+    ]).collect();
+    const messageB = await providerB({ id: 'b', name: 'B', provider: 'faux' }, [
+      { role: 'user', content: 'prompt-b' }
+    ]).collect();
 
     expect(messageA.content).toEqual([{ type: 'text', text: 'A' }]);
     expect(messageA.usage).toBeUndefined();
@@ -646,10 +728,9 @@ describe('@inkpi/ai', () => {
   });
 
   it('should reject faux calls without an explicit script', async () => {
-    const message = await fauxProvider(
-      { id: 'no-script', name: 'No Script', provider: 'faux' },
-      [{ role: 'user', content: 'prompt' }]
-    ).collect();
+    const message = await fauxProvider({ id: 'no-script', name: 'No Script', provider: 'faux' }, [
+      { role: 'user', content: 'prompt' }
+    ]).collect();
 
     expect(message.stopReason).toBe('error');
     expect(message.errorMessage).toContain('explicit scripted response');
@@ -659,14 +740,19 @@ describe('@inkpi/ai', () => {
     const originalFetch = globalThis.fetch;
     const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
     const originalClaudeKey = process.env.CLAUDE_API_KEY;
-    const fetchMock = vi.fn().mockResolvedValue(responseFrom([
-      'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n',
-      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n',
-      'data: {"type":"message_delta","usage":{"output_tokens":1}}\n\n',
-      'data: {"type":"message_stop"}\n\n'
-    ]));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n',
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n',
+          'data: {"type":"message_delta","usage":{"output_tokens":1}}\n\n',
+          'data: {"type":"message_stop"}\n\n'
+        ])
+      );
     globalThis.fetch = fetchMock as any;
     process.env.ANTHROPIC_API_KEY = 'canonical-anthropic-key';
+    // biome-ignore lint/performance/noDelete: 清空别名 key 使解析只走 ANTHROPIC_API_KEY；=undefined 会写入字符串 'undefined'
     delete process.env.CLAUDE_API_KEY;
 
     try {
@@ -681,9 +767,13 @@ describe('@inkpi/ai', () => {
       });
     } finally {
       globalThis.fetch = originalFetch;
-      if (originalAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      if (originalAnthropicKey === undefined)
+        // biome-ignore lint/performance/noDelete: 原先不存在则移除（=undefined 会写入字符串 'undefined'）
+        delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
-      if (originalClaudeKey === undefined) delete process.env.CLAUDE_API_KEY;
+      if (originalClaudeKey === undefined)
+        // biome-ignore lint/performance/noDelete: 原先不存在则移除
+        delete process.env.CLAUDE_API_KEY;
       else process.env.CLAUDE_API_KEY = originalClaudeKey;
     }
   });

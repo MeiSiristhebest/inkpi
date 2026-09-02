@@ -5,7 +5,6 @@ export type RoleType = string;
 /** @deprecated 请使用 RoleType。NovelRoleType 保留仅为向后兼容，无固定取值约束。 */
 export type NovelRoleType = string;
 
-
 export interface RoleRegistryOptions {
   initialRoles?: Record<string, AgentRoleConfig>;
 }
@@ -44,4 +43,3 @@ export class RoleRegistry {
     return this.roles.has(roleId);
   }
 }
-

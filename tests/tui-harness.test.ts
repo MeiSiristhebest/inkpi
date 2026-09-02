@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { TerminalHarness } from '@inkpi/tui';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> TerminalHarness (TUI)', () => {
   it('should render split-screen ANSI interface and handle typing / Ghost Text Tab acceptance', async () => {

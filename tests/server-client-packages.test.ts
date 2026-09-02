@@ -1,17 +1,13 @@
-import { describe, it, expect, afterAll } from 'vitest';
 import {
-  InkPiDaemon,
-  SessionRegistry,
-  InkRpcServer
-} from '@inkpi/server';
-import {
+  InMemoryTransport,
   InkRpcClient,
   MemoryTransport,
-  WebSocketTransport,
-  InMemoryTransport,
-  RemoteStreamTransport
+  RemoteStreamTransport,
+  WebSocketTransport
 } from '@inkpi/client';
+import { InkPiDaemon, InkRpcServer, SessionRegistry } from '@inkpi/server';
 import { MemorySessionBackend } from '@inkpi/session-backends';
+import { afterAll, describe, expect, it } from 'vitest';
 
 describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
   const testPort = 0;
@@ -41,7 +37,7 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
     expect(t2.isOpen()).toBe(false);
 
     // 2. WebSocketTransport mock
-    const mockWsListeners = new Map<string, Array<Function>>();
+    const mockWsListeners = new Map<string, Array<(...args: unknown[]) => void>>();
     const mockWs = {
       readyState: 1,
       send: (data: string) => {
@@ -53,7 +49,7 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
         const listeners = mockWsListeners.get('close') || [];
         for (const l of listeners) l();
       },
-      addEventListener: (type: string, listener: Function) => {
+      addEventListener: (type: string, listener: (...args: unknown[]) => void) => {
         if (!mockWsListeners.has(type)) mockWsListeners.set(type, []);
         mockWsListeners.get(type)!.push(listener);
       }

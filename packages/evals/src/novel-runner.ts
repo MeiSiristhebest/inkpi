@@ -1,7 +1,7 @@
 import type { StateLedger } from '@inkpi/protocol';
-import { EntityConsistencyScorer, type ConsistencyScoreResult } from './benchmarks/entity-consistency.js';
+import { type ConsistencyScoreResult, EntityConsistencyScorer } from './benchmarks/entity-consistency.js';
 import { ForeshadowingPayoffScorer, type ForeshadowingScoreResult } from './benchmarks/foreshadowing-payoff.js';
-import { TypographyComplianceScorer, type TypographyComplianceResult } from './benchmarks/typography-compliance.js';
+import { type TypographyComplianceResult, TypographyComplianceScorer } from './benchmarks/typography-compliance.js';
 
 export interface NovelEvaluationInput {
   title?: string;
@@ -75,13 +75,11 @@ export class NovelEvalRunner {
     const contentSizeScore = Math.max(0, Math.round(100 - wordRatio * 100));
 
     const overallScore = Math.round(
-      consistencyRes.score * 0.35 +
-      foreshadowingRes.score * 0.25 +
-      typographyRes.score * 0.25 +
-      contentSizeScore * 0.15
+      consistencyRes.score * 0.35 + foreshadowingRes.score * 0.25 + typographyRes.score * 0.25 + contentSizeScore * 0.15
     );
 
-    const grade = overallScore >= 95 ? 'S' : overallScore >= 85 ? 'A' : overallScore >= 75 ? 'B' : overallScore >= 60 ? 'C' : 'F';
+    const grade =
+      overallScore >= 95 ? 'S' : overallScore >= 85 ? 'A' : overallScore >= 75 ? 'B' : overallScore >= 60 ? 'C' : 'F';
     const passed = overallScore >= 75 && consistencyRes.passed;
     const sectionTitle = input.documentTitle || input.chapterTitle || input.sectionTitle || 'Content';
 

@@ -6,8 +6,8 @@
  */
 
 import { Component, type RenderContext } from '../../layout.js';
+import { type MarkdownBlock, parseMarkdown } from '../../parsers/markdown-parser.js';
 import { ANSI } from '../../render.js';
-import { parseMarkdown, type MarkdownBlock } from '../../parsers/markdown-parser.js';
 
 export class Markdown extends Component {
   public rawText: string;

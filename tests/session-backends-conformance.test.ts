@@ -1,14 +1,10 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import * as os from 'node:os';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as path from 'node:path';
+import type { DocumentDelta, DocumentSnapshot, SessionEntry } from '@inkpi/protocol';
 import type { ISessionBackend } from '@inkpi/session-backends';
-import {
-  MemorySessionBackend,
-  JsonlSessionBackend,
-  SqliteSessionBackend
-} from '@inkpi/session-backends';
-import type { SessionEntry, DocumentSnapshot, DocumentDelta } from '@inkpi/protocol';
+import { JsonlSessionBackend, MemorySessionBackend, SqliteSessionBackend } from '@inkpi/session-backends';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('Pluggable Session Backends Conformance Suite (LSP Verification)', () => {
   let tmpDir: string;
@@ -147,5 +143,4 @@ describe('Pluggable Session Backends Conformance Suite (LSP Verification)', () =
       });
     });
   }
-
 });

@@ -1,18 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  visibleWidth,
-  sliceWithWidth,
   CURSOR_MARKER,
-  extractCursorPosition,
-  OverlayManager,
   Component,
+  Editor,
+  OverlayManager,
   type RenderContext,
+  extractCursorPosition,
   padOrTruncateLine,
-  Editor
+  sliceWithWidth,
+  visibleWidth
 } from '../packages/tui/src/index.js';
 
 class MockModalBox extends Component {
-  constructor(private title: string, private text: string) {
+  constructor(
+    private title: string,
+    private text: string
+  ) {
     super();
   }
 
@@ -45,11 +48,7 @@ describe('TUI Hardware Cursor, Wide Characters & Overlay System (Aligned with Pi
   });
 
   it('should extract CURSOR_MARKER and accurately calculate physical hardware cursor coordinates', () => {
-    const lines = [
-      '第一行 标题栏',
-      `第二行 输入正文: 林玄手持\x1b_pi:c\x07青锋剑`,
-      '第三行 状态栏'
-    ];
+    const lines = ['第一行 标题栏', '第二行 输入正文: 林玄手持\x1b_pi:c\x07青锋剑', '第三行 状态栏'];
 
     const { cleanedLines, cursor } = extractCursorPosition(lines);
 

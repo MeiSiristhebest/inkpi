@@ -17,16 +17,8 @@ export class InkDb implements IDb {
     // Keep databases created by older versions readable while adding the
     // metadata required for guarded lane fast-forward merges.
     this.ensureColumn('lanes', 'parent_lane_id', 'TEXT');
-    const addedBaseSnapshot = this.ensureColumn(
-      'branch_tips',
-      'base_snapshot_version',
-      'INTEGER NOT NULL DEFAULT 0'
-    );
-    const addedBaseDelta = this.ensureColumn(
-      'branch_tips',
-      'base_delta_id',
-      'INTEGER NOT NULL DEFAULT 0'
-    );
+    const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
+    const addedBaseDelta = this.ensureColumn('branch_tips', 'base_delta_id', 'INTEGER NOT NULL DEFAULT 0');
     if (addedBaseSnapshot || addedBaseDelta) {
       // Older databases had no fork baseline. Treat their current tips as the
       // only recoverable baseline instead of inventing a zero-valued one.
@@ -74,7 +66,6 @@ export class InkDb implements IDb {
       throw err;
     }
   }
-
 
   public checkpoint(): void {
     // Best-effort WAL truncation. In-memory databases accept the pragma as a

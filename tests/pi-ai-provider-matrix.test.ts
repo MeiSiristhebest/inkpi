@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest';
 import {
-  ModelCatalogManager,
   KNOWN_MODELS,
+  ModelCatalogManager,
+  createFauxProvider,
   findModelInCatalog,
   getThinkingBudgetForLevel,
-  streamAi,
   registerProvider,
-  createFauxProvider
+  streamAi
 } from '@inkpi/ai';
+import { describe, expect, it } from 'vitest';
 
 describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
   it('should discover and filter models through ModelCatalogManager', async () => {
@@ -51,12 +51,15 @@ describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
   });
 
   it('should stream AI responses with thinking extraction and usage stats', async () => {
-    registerProvider('custom', createFauxProvider({
-      thinking: 'thinking fixture',
-      text: 'text fixture',
-      inputTokens: 5,
-      outputTokens: 7
-    }));
+    registerProvider(
+      'custom',
+      createFauxProvider({
+        thinking: 'thinking fixture',
+        text: 'text fixture',
+        inputTokens: 5,
+        outputTokens: 7
+      })
+    );
     const model = findModelInCatalog('deepseek-reasoner') || KNOWN_MODELS[0];
     const stream = streamAi(
       {
@@ -85,13 +88,16 @@ describe('Pi AI Multi-Provider Matrix & Catalog Discovery', () => {
     const { UsageTracker } = await import('@inkpi/ai');
     const foreshadowinger = new UsageTracker();
 
-    foreshadowinger.recordUsage({
-      inputTokens: 10000,
-      outputTokens: 2000,
-      totalTokens: 12000,
-      cacheReadTokens: 5000,
-      cacheWriteTokens: 1000
-    }, 'claude-3-7-sonnet');
+    foreshadowinger.recordUsage(
+      {
+        inputTokens: 10000,
+        outputTokens: 2000,
+        totalTokens: 12000,
+        cacheReadTokens: 5000,
+        cacheWriteTokens: 1000
+      },
+      'claude-3-7-sonnet'
+    );
 
     const breakdown = foreshadowinger.getCostBreakdown('claude-3-7-sonnet');
     expect(breakdown.totalCost).toBeGreaterThan(0);

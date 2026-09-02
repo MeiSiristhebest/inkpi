@@ -1,17 +1,17 @@
-import type {
-  StateLedger,
-  FtsSearchResult,
-  JitContextQuery,
-  JitContextResult
-} from '@inkpi/protocol';
-import type { InkRepository } from './repository.js';
+import type { FtsSearchResult, JitContextQuery, JitContextResult, StateLedger } from '@inkpi/protocol';
 import type { FtsSearchEngine } from './fts.js';
+import type { InkRepository } from './repository.js';
 
 export interface JitMemoryRetrieverOptions {
   repository: InkRepository;
   ftsEngine: FtsSearchEngine;
   /** Select domain-specific retrieval terms from the query and active ledger. */
-  keywordSelector?: (query: JitContextQuery, activeLedger: StateLedger, activeEntities: string[], activeAssets: string[]) => string[];
+  keywordSelector?: (
+    query: JitContextQuery,
+    activeLedger: StateLedger,
+    activeEntities: string[],
+    activeAssets: string[]
+  ) => string[];
   /** Format the structured retrieval result for a downstream consumer. */
   formatContext?: (result: Omit<JitContextResult, 'assembledPromptBlock'>) => string;
   /** Decide what to do when a real FTS search fails. Defaults to throwing. */
@@ -40,10 +40,7 @@ export class JitMemoryRetriever {
   /**
    * 执行 JIT 3 级分层记忆装配
    */
-  public async retrieve(
-    query: JitContextQuery,
-    currentLedger?: StateLedger
-  ): Promise<JitContextResult> {
+  public async retrieve(query: JitContextQuery, currentLedger?: StateLedger): Promise<JitContextResult> {
     // -------------------------------------------------------------
     // L1: 工作记忆 (Working Memory)
     // -------------------------------------------------------------
@@ -154,27 +151,27 @@ function defaultKeywordSelector(
   activeEntities: string[],
   activeAssets: string[]
 ): string[] {
-  return [
-    ...(query.activeReferences || query.activeEntities || []),
-    ...activeEntities,
-    ...activeAssets
-  ];
+  return [...(query.activeReferences || query.activeEntities || []), ...activeEntities, ...activeAssets];
 }
 
 /** Optional neutral text formatter for consumers that need a prompt block. */
-export function formatJitContextAsPrompt(
-  result: Omit<JitContextResult, 'assembledPromptBlock'>
-): string {
+export function formatJitContextAsPrompt(result: Omit<JitContextResult, 'assembledPromptBlock'>): string {
   const sections: string[] = ['=== Retrieved Context: Working State ==='];
   const { activeLedger } = result.l1WorkingMemory;
   if (activeLedger.entities?.length) {
-    sections.push(`Entities: ${activeLedger.entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ''}`).join(', ')}`);
+    sections.push(
+      `Entities: ${activeLedger.entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ''}`).join(', ')}`
+    );
   }
   if (activeLedger.assets?.length) {
-    sections.push(`Assets: ${activeLedger.assets.map((asset) => `${asset.name}${asset.holder ? `[Holder:${asset.holder}]` : ''}`).join(', ')}`);
+    sections.push(
+      `Assets: ${activeLedger.assets.map((asset) => `${asset.name}${asset.holder ? `[Holder:${asset.holder}]` : ''}`).join(', ')}`
+    );
   }
   if (activeLedger.tracks?.length) {
-    sections.push(`Tracks: ${activeLedger.tracks.map((track) => `${track.clue || track.summary || track.id || 'track'}${track.status ? `(${track.status})` : ''}`).join('; ')}`);
+    sections.push(
+      `Tracks: ${activeLedger.tracks.map((track) => `${track.clue || track.summary || track.id || 'track'}${track.status ? `(${track.status})` : ''}`).join('; ')}`
+    );
   }
   if (result.l2RecentSummaries.length) {
     sections.push('=== Recent Document Summaries ===');

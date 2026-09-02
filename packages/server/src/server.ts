@@ -1,23 +1,19 @@
 import * as net from 'node:net';
-import type {
-  RpcRequest,
-  RpcResponse,
-  RpcNotification
-} from '@inkpi/protocol';
-import type { AgentMessage } from '@inkpi/protocol';
-import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { Agent } from '@inkpi/agent-core';
 import type { SessionTree } from '@inkpi/agent-core';
-import type { HeadlessEditorState, GhostTextManager } from '@inkpi/editor-core';
-import type { FtsSearchEngine, InkRepository, AppendOnlySessionJournal, JitMemoryRetriever } from '@inkpi/storage';
 import { SlashCommandRegistry } from '@inkpi/agent-core';
-import { BranchSummarizer } from '@inkpi/agent-core';
+import type { BranchSummarizer } from '@inkpi/agent-core';
 import type { WorkflowCoordinator } from '@inkpi/agent-core';
 import type { TelemetryCollector } from '@inkpi/agent-core';
 import type { ExtensionHost } from '@inkpi/agent-core';
+import type { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
+import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
+import type { AgentMessage } from '@inkpi/protocol';
+import { RPC_ERROR_CODES } from '@inkpi/protocol';
+import type { AppendOnlySessionJournal, FtsSearchEngine, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
+import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST } from './transport.js';
-import { TcpSocketTransport } from './tcp-transport.js';
 import { WebSocketRpcTransport } from './ws-transport.js';
 
 export interface ServerContext {
@@ -85,7 +81,6 @@ export class InkRpcServer {
     this.customHandlers.set(name, handler);
   }
 
-
   public bindTransport(transport: RpcTransport): void {
     this.boundTransports.add(transport);
     transport.onMessage(async (msgStr) => {
@@ -94,11 +89,13 @@ export class InkRpcServer {
         const res = await this.handleRequest(req);
         transport.send(JSON.stringify(res));
       } catch (err) {
-        transport.send(JSON.stringify({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: RPC_ERROR_CODES.PARSE_ERROR, message: 'Invalid JSON message' }
-        }));
+        transport.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: RPC_ERROR_CODES.PARSE_ERROR, message: 'Invalid JSON message' }
+          })
+        );
       }
     });
   }

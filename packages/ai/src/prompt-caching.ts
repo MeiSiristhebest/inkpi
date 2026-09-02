@@ -12,10 +12,7 @@ import type { CacheControl } from './types.js';
 export const CHARS_PER_TOKEN_HEURISTIC = 0.7;
 
 /** 按启发式系数把字符数换算为估算 token 数（向上取整）。 */
-export function estimateTokensFromChars(
-  chars: number,
-  factor: number = CHARS_PER_TOKEN_HEURISTIC
-): number {
+export function estimateTokensFromChars(chars: number, factor: number = CHARS_PER_TOKEN_HEURISTIC): number {
   return Math.ceil(chars * factor);
 }
 
@@ -46,11 +43,11 @@ export interface MultiSlotCachedPromptResult {
  * 将高频、不可变的系统提示词、核心规则、全量状态上下文锁定为固定 Cache Prefix 断点，
  * 实现后续多轮交互、复杂推演与状态更新时 90%+ 的 Token 缓存命中率与首字极速响应。
  */
-export class PromptCacheOptimizer {
+export const PromptCacheOptimizer = {
   /**
    * 构造带有缓存断点切分的系统提示词与上下文
    */
-  public static buildCachedPrompt(params: {
+  buildCachedPrompt(params: {
     baseSystemPrompt: string;
     backgroundContext?: string;
     domainRules?: string;
@@ -72,10 +69,14 @@ export class PromptCacheOptimizer {
     if (params.stateLedger) {
       const ledgerParts: string[] = [];
       if (params.stateLedger.entities && params.stateLedger.entities.length > 0) {
-        ledgerParts.push(`核心实体: ${params.stateLedger.entities.map((c: StateLedger['entities'][number]) => `${c.name}${c.status ? `[${c.status}]` : ''}`).join('、')}`);
+        ledgerParts.push(
+          `核心实体: ${params.stateLedger.entities.map((c: StateLedger['entities'][number]) => `${c.name}${c.status ? `[${c.status}]` : ''}`).join('、')}`
+        );
       }
       if (params.stateLedger.assets && params.stateLedger.assets.length > 0) {
-        ledgerParts.push(`关键资产: ${params.stateLedger.assets.map((i: StateLedger['assets'][number]) => `${i.name}${i.holder ? `(持有人:${i.holder})` : ''}`).join('、')}`);
+        ledgerParts.push(
+          `关键资产: ${params.stateLedger.assets.map((i: StateLedger['assets'][number]) => `${i.name}${i.holder ? `(持有人:${i.holder})` : ''}`).join('、')}`
+        );
       }
       if (ledgerParts.length > 0) {
         prefixSections.push(`\n=== 📜 [核心状态账本快照 (Cache Slot)] ===\n${ledgerParts.join('\n')}`);
@@ -91,12 +92,12 @@ export class PromptCacheOptimizer {
       estimatedPrefixTokens,
       messages: params.currentTurnMessages
     };
-  }
+  },
 
   /**
    * 构建四级精确 Cache Slot 断点
    */
-  public static buildMultiSlotCacheBreakpoints(params: {
+  buildMultiSlotCacheBreakpoints(params: {
     baseSystemPrompt: string;
     worldLore?: string;
     stateLedger?: StateLedger;
@@ -132,7 +133,9 @@ export class PromptCacheOptimizer {
     if (params.stateLedger && slots.length < maxSlots) {
       const parts: string[] = [];
       if (params.stateLedger.entities?.length) {
-        parts.push(`Entities: ${params.stateLedger.entities.map((e) => `${e.name}(${e.status || 'Active'})`).join(', ')}`);
+        parts.push(
+          `Entities: ${params.stateLedger.entities.map((e) => `${e.name}(${e.status || 'Active'})`).join(', ')}`
+        );
       }
       if (params.stateLedger.assets?.length) {
         parts.push(`Assets: ${params.stateLedger.assets.map((a) => `${a.name}[${a.holder || 'None'}]`).join(', ')}`);
@@ -158,12 +161,12 @@ export class PromptCacheOptimizer {
       cachedSystemPrompt: combinedSystemPrompt,
       messages: params.recentMessages
     };
-  }
+  },
 
   /**
    * 计算 Prompt Caching 带来的费用节省预估
    */
-  public static calculateSavings(
+  calculateSavings(
     cachedTokens: number,
     pricing: {
       inputPricePerMillion: number;
@@ -187,4 +190,4 @@ export class PromptCacheOptimizer {
       savingsPercentage
     };
   }
-}
+};

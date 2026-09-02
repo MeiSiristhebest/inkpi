@@ -1,7 +1,7 @@
 import { validateSchema } from '@inkpi/protocol';
-import type { AgentTool, ToolCallContent, ToolResultMessage, ToolResult, TSchema } from '@inkpi/protocol';
-import type { ToolExecutionMode } from './types.js';
+import type { AgentTool, TSchema, ToolCallContent, ToolResult, ToolResultMessage } from '@inkpi/protocol';
 import { runWithConcurrency } from './concurrency.js';
+import type { ToolExecutionMode } from './types.js';
 
 export class ToolRegistry {
   private tools = new Map<string, AgentTool>();
@@ -72,13 +72,7 @@ export class ToolRegistry {
         };
       }
 
-      const result: ToolResult = await tool.execute(
-        toolCall.id,
-        toolCall.arguments,
-        signal,
-        onUpdate,
-        context
-      );
+      const result: ToolResult = await tool.execute(toolCall.id, toolCall.arguments, signal, onUpdate, context);
 
       return {
         role: 'toolResult',
@@ -113,13 +107,7 @@ export class ToolRegistry {
 
     return runWithConcurrency(
       toolCalls,
-      (call) =>
-        this.executeTool(
-          call,
-          signal,
-          (update) => onProgress?.(call.id, update),
-          context
-        ),
+      (call) => this.executeTool(call, signal, (update) => onProgress?.(call.id, update), context),
       mode
     );
   }

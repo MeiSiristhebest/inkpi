@@ -1,9 +1,4 @@
-import type {
-  DocumentSnapshot,
-  DocumentDelta,
-  FtsSearchResult,
-  SessionEntry
-} from '@inkpi/protocol';
+import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 /**
@@ -64,7 +59,7 @@ export class MemorySessionBackend implements ISessionBackend {
       this.deltas.set(delta.documentId, []);
     }
     const list = this.deltas.get(delta.documentId)!;
-    const nextId = (delta.id !== undefined ? delta.id : list.length + 1);
+    const nextId = delta.id !== undefined ? delta.id : list.length + 1;
     list.push({ ...delta, id: nextId });
   }
 
@@ -83,9 +78,12 @@ export class MemorySessionBackend implements ISessionBackend {
     const entries = Array.from(this.snapshots.entries());
     let idxOrder = 1;
     for (const [docId, snap] of entries) {
-      if (snap.contentMarkdown && snap.contentMarkdown.toLowerCase().includes(lowerQuery)) {
+      if (snap.contentMarkdown?.toLowerCase().includes(lowerQuery)) {
         const idx = snap.contentMarkdown.toLowerCase().indexOf(lowerQuery);
-        const snippet = snap.contentMarkdown.slice(Math.max(0, idx - 20), Math.min(snap.contentMarkdown.length, idx + 80));
+        const snippet = snap.contentMarkdown.slice(
+          Math.max(0, idx - 20),
+          Math.min(snap.contentMarkdown.length, idx + 80)
+        );
         results.push({
           documentId: docId,
           title: `Document ${docId}`,

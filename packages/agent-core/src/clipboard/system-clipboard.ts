@@ -36,17 +36,33 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
   public readText(): string {
     try {
       if (this.platform === 'win32') {
-        return String(this.commandRunner('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 })).trimEnd();
+        return String(
+          this.commandRunner('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard'], {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: 1000
+          })
+        ).trimEnd();
       }
       if (this.platform === 'darwin') {
-        return String(this.commandRunner('pbpaste', [], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 }));
+        return String(
+          this.commandRunner('pbpaste', [], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 })
+        );
       }
       if (this.platform === 'linux') {
         try {
-          return String(this.commandRunner('wl-paste', [], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 }));
+          return String(
+            this.commandRunner('wl-paste', [], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 })
+          );
         } catch (waylandError) {
           try {
-            return String(this.commandRunner('xclip', ['-selection', 'clipboard', '-o'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 }));
+            return String(
+              this.commandRunner('xclip', ['-selection', 'clipboard', '-o'], {
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe'],
+                timeout: 1000
+              })
+            );
           } catch (xclipError) {
             throw new Error('No supported Linux clipboard command is available.', { cause: xclipError });
           }
@@ -61,7 +77,11 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
   public writeText(text: string): boolean {
     try {
       if (this.platform === 'win32') {
-        this.commandRunner('powershell.exe', ['-NoProfile', '-Command', '$value = [Console]::In.ReadToEnd(); Set-Clipboard -Value $value'], { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 });
+        this.commandRunner(
+          'powershell.exe',
+          ['-NoProfile', '-Command', '$value = [Console]::In.ReadToEnd(); Set-Clipboard -Value $value'],
+          { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 }
+        );
         return true;
       }
       if (this.platform === 'darwin') {
@@ -73,7 +93,11 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
           this.commandRunner('wl-copy', [], { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 });
         } catch (waylandError) {
           try {
-            this.commandRunner('xclip', ['-selection', 'clipboard'], { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 });
+            this.commandRunner('xclip', ['-selection', 'clipboard'], {
+              input: text,
+              stdio: ['pipe', 'pipe', 'pipe'],
+              timeout: 1000
+            });
           } catch (xclipError) {
             throw new Error('No supported Linux clipboard command is available.', { cause: xclipError });
           }

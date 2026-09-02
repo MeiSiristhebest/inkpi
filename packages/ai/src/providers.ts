@@ -1,7 +1,7 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage } from '@inkpi/protocol';
-import { AssistantEventStream } from './stream.js';
-import type { FauxScriptedResponse, ModelConfig, StreamOptions, EventStream, ProviderType } from './types.js';
 import { ProviderNotImplementedError } from './errors.js';
+import { AssistantEventStream } from './stream.js';
+import type { EventStream, FauxScriptedResponse, ModelConfig, ProviderType, StreamOptions } from './types.js';
 
 export function convertMessagesToStandard(messages: AgentMessage[], systemPrompt?: string): StandardLlmMessage[] {
   const result: StandardLlmMessage[] = [];
@@ -13,9 +13,10 @@ export function convertMessagesToStandard(messages: AgentMessage[], systemPrompt
     if (msg.role === 'system') {
       result.push({ role: 'system', content: msg.content });
     } else if (msg.role === 'user') {
-      const text = typeof msg.content === 'string'
-        ? msg.content
-        : msg.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
+      const text =
+        typeof msg.content === 'string'
+          ? msg.content
+          : msg.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
       result.push({ role: 'user', content: text });
     } else if (msg.role === 'assistant') {
       const texts: string[] = [];
@@ -246,8 +247,7 @@ export function resolveProviderApiKeyEnv(provider: string): string | undefined {
 // 1. Faux / Test Provider（仅作为显式测试夹具，不在生产注册表注册）
 // ----------------------------------------------------------------------
 export function createFauxProvider(script?: FauxScriptedResponse): ProviderHandler {
-  return (model, messages, options) =>
-    fauxProviderWithScript(script ?? model.fauxScript, model, messages, options);
+  return (model, messages, options) => fauxProviderWithScript(script ?? model.fauxScript, model, messages, options);
 }
 
 function fauxProviderWithScript(
@@ -351,11 +351,7 @@ function parseJsonStreamEvent(payload: string, provider: string): any {
   }
 }
 
-function consumeCompleteLines(
-  buffer: string,
-  chunk: string,
-  onLine: (line: string) => void
-): string {
+function consumeCompleteLines(buffer: string, chunk: string, onLine: (line: string) => void): string {
   const lines = (buffer + chunk).split('\n');
   const remainder = lines.pop() || '';
   for (const line of lines) {
@@ -420,12 +416,11 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          Authorization: `Bearer ${apiKey}`
         },
         body: JSON.stringify(payload),
         signal: options?.signal
       });
-
 
       if (!response.ok) {
         stream.error(`${model.provider} API Error: ${response.status} ${response.statusText}`);
@@ -497,9 +492,10 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
                   if (!toolCallsById.has(tc.id)) toolCallsById.set(tc.id, { name: '', args: '' });
                   stream.push({ type: 'tool_call_start', toolCallId: tc.id, toolName: tc.function?.name || '' });
                 }
-                const toolCallId = tc.id ||
-                    (typeof tc.index === 'number' ? toolCallIdsByIndex.get(tc.index) : undefined) ||
-                    lastToolCallId;
+                const toolCallId =
+                  tc.id ||
+                  (typeof tc.index === 'number' ? toolCallIdsByIndex.get(tc.index) : undefined) ||
+                  lastToolCallId;
                 if (toolCallId && !toolCallsById.has(toolCallId)) {
                   toolCallsById.set(toolCallId, { name: '', args: '' });
                 }
@@ -518,7 +514,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
                 }
               }
             }
-        }
+          }
         });
       }
       buffer += decoder.decode();
@@ -563,7 +559,8 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
               stream.push({ type: 'tool_call_start', toolCallId: tc.id, toolName: tc.function?.name || '' });
             }
             if (tc.function?.arguments) {
-              const toolCallId = tc.id ||
+              const toolCallId =
+                tc.id ||
                 (typeof tc.index === 'number' ? toolCallIdsByIndex.get(tc.index) : undefined) ||
                 lastToolCallId;
               if (!toolCallId) {
@@ -634,7 +631,7 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
 
   if (!apiKey) {
     queueMicrotask(() => {
-      stream.error(`Missing API key for Anthropic provider. Please set ANTHROPIC_API_KEY.`);
+      stream.error('Missing API key for Anthropic provider. Please set ANTHROPIC_API_KEY.');
     });
     return stream;
   }
@@ -697,7 +694,6 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
         signal: options?.signal
       });
 
-
       if (!response.ok) {
         stream.error(`Anthropic API Error: ${response.status} ${response.statusText}`);
         return;
@@ -716,11 +712,14 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
       let cacheReadTokens = 0;
       let cacheWriteTokens = 0;
       let sawMessageStop = false;
-      const openToolCalls = new Map<number, {
-        id: string;
-        name: string;
-        args: string;
-      }>();
+      const openToolCalls = new Map<
+        number,
+        {
+          id: string;
+          name: string;
+          args: string;
+        }
+      >();
 
       const emitUsage = () => {
         if (inputTokens === 0 && outputTokens === 0 && cacheReadTokens === 0 && cacheWriteTokens === 0) return;
@@ -770,10 +769,12 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
           if (openToolCalls.has(data.index)) {
             throw new Error(`Duplicate Anthropic tool_use block at index ${data.index}.`);
           }
-          const initialInput = block.input && typeof block.input === 'object'
-            ? JSON.stringify(block.input)
-            : '';
-          openToolCalls.set(data.index, { id: block.id, name: block.name, args: initialInput === '{}' ? '' : initialInput });
+          const initialInput = block.input && typeof block.input === 'object' ? JSON.stringify(block.input) : '';
+          openToolCalls.set(data.index, {
+            id: block.id,
+            name: block.name,
+            args: initialInput === '{}' ? '' : initialInput
+          });
           stream.push({ type: 'tool_call_start', toolCallId: block.id, toolName: block.name });
           if (initialInput && initialInput !== '{}') {
             stream.push({ type: 'tool_call_delta', toolCallId: block.id, argsDelta: initialInput });
@@ -881,13 +882,15 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
       }
 
       if (options?.tools && options.tools.length > 0) {
-        geminiBody.tools = [{
-          functionDeclarations: options.tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            parameters: t.parameters
-          }))
-        }];
+        geminiBody.tools = [
+          {
+            functionDeclarations: options.tools.map((t) => ({
+              name: t.name,
+              description: t.description,
+              parameters: t.parameters
+            }))
+          }
+        ];
       }
 
       const response = await fetch(endpoint, {
@@ -896,7 +899,6 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
         body: JSON.stringify(geminiBody),
         signal: options?.signal
       });
-
 
       if (!response.ok) {
         stream.error(`Gemini API Error: ${response.status} ${response.statusText}`);
@@ -1054,7 +1056,7 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
                 }
               });
             }
-        }
+          }
         });
       }
       buffer += decoder.decode();
@@ -1082,9 +1084,8 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
       if (err.name === 'AbortError') {
         stream.abort();
       } else {
-        stream.error(`Ollama connection error: ${err.message || 'Ensure Ollama is running at ' + baseUrl}`);
+        stream.error(`Ollama connection error: ${err.message || `Ensure Ollama is running at ${baseUrl}`}`);
       }
-
     }
   })();
 
@@ -1115,7 +1116,6 @@ function unsupportedProvider(name: string): ProviderHandler {
 
 providerRegistry.set('azure', unsupportedProvider('azure'));
 providerRegistry.set('bedrock', unsupportedProvider('bedrock'));
-
 
 export function deepSeekProvider(
   model: ModelConfig,

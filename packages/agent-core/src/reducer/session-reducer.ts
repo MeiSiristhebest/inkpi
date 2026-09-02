@@ -33,7 +33,7 @@ export interface MaterializedSessionState {
   revisions: Map<string, number>;
 }
 
-export function createInitialSessionState(sessionId: string = 'default'): MaterializedSessionState {
+export function createInitialSessionState(sessionId = 'default'): MaterializedSessionState {
   return {
     sessionId,
     currentLeafId: null,
@@ -127,7 +127,12 @@ export function reduceSessionEntry(
         toolName: payload?.toolName || payload?.name || 'unknown_tool',
         content: Array.isArray(payload?.content)
           ? payload.content
-          : [{ type: 'text', text: typeof payload?.result === 'string' ? payload.result : JSON.stringify(payload?.result || '') }],
+          : [
+              {
+                type: 'text',
+                text: typeof payload?.result === 'string' ? payload.result : JSON.stringify(payload?.result || '')
+              }
+            ],
         details: payload?.details,
         isError: Boolean(payload?.isError || payload?.error),
         timestamp: entry.timestamp

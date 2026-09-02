@@ -21,4 +21,3 @@ export * from './studio.js';
 export * from './terminal-harness.js';
 // 兼容别名集中地（与 agent-core/src/deprecations.ts 同规则）。
 export * from './deprecations.js';
-

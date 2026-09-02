@@ -1,5 +1,5 @@
-import type { QualityGateRule, StateLedger, WorkflowContext, WorkflowStageConfig } from '@inkpi/protocol';
 import { formatChineseTypography } from '@inkpi/editor-core';
+import type { QualityGateRule, StateLedger, WorkflowContext, WorkflowStageConfig } from '@inkpi/protocol';
 import { formatNovelStateLedger } from '../compaction/state-ledger.js';
 
 /**
@@ -16,7 +16,10 @@ export function createNarrativeEntitySafetyRules(): QualityGateRule[] {
         const entities = ledger.entities || ledger.characters || [];
         for (const entity of entities) {
           const entityName = entity.name;
-          const deathRegex = new RegExp(`${entityName}[^。！？\n]*?(?:自爆|惨死|陨落|阵亡|身死道消|被杀|身亡|摧毁|销毁|死亡)`, 'g');
+          const deathRegex = new RegExp(
+            `${entityName}[^。！？\n]*?(?:自爆|惨死|陨落|阵亡|身死道消|被杀|身亡|摧毁|销毁|死亡)`,
+            'g'
+          );
           if (deathRegex.test(content)) {
             return {
               type: 'entity_death',
@@ -44,36 +47,43 @@ export function createNarrativeEntitySafetyRules(): QualityGateRule[] {
 export const createStandardEntitySafetyRules = createNarrativeEntitySafetyRules;
 
 export function createScreenplayGateRules(): QualityGateRule[] {
-  return [{
-    type: 'scene_header_check',
-    severity: 'warning',
-    pattern: /^(?!(?:INT\.|EXT\.|内景|外景)).*$/m,
-    description: '剧本场景未按标准场景标题 (INT./EXT. 或 内景/外景) 规范格式开头。'
-  }];
+  return [
+    {
+      type: 'scene_header_check',
+      severity: 'warning',
+      pattern: /^(?!(?:INT\.|EXT\.|内景|外景)).*$/m,
+      description: '剧本场景未按标准场景标题 (INT./EXT. 或 内景/外景) 规范格式开头。'
+    }
+  ];
 }
 
 export function createShortDramaGateRules(): QualityGateRule[] {
-  return [{
-    type: 'hook_check',
-    severity: 'warning',
-    description: '短剧前 3 秒黄金吸睛钩子检测',
-    detector: (content) => /(?:耳光|退婚|离婚|反击|惊呆|打脸|绝症|重生|神豪|首富|战神|震惊|质问)/.test(content.slice(0, 100))
-      ? null
-      : {
-          type: 'weak_hook',
-          severity: 'warning',
-          description: '短剧前 3 秒黄金钩子较弱，建议增强开场冲突与吸睛情绪点。'
-        }
-  }];
+  return [
+    {
+      type: 'hook_check',
+      severity: 'warning',
+      description: '短剧前 3 秒黄金吸睛钩子检测',
+      detector: (content) =>
+        /(?:耳光|退婚|离婚|反击|惊呆|打脸|绝症|重生|神豪|首富|战神|震惊|质问)/.test(content.slice(0, 100))
+          ? null
+          : {
+              type: 'weak_hook',
+              severity: 'warning',
+              description: '短剧前 3 秒黄金钩子较弱，建议增强开场冲突与吸睛情绪点。'
+            }
+    }
+  ];
 }
 
 export function createVisualNovelGateRules(): QualityGateRule[] {
-  return [{
-    type: 'choice_integrity',
-    severity: 'warning',
-    pattern: /<choice[^>]*>.*?<\/choice>/,
-    description: '视觉小说分支选项节点已就绪。'
-  }];
+  return [
+    {
+      type: 'choice_integrity',
+      severity: 'warning',
+      pattern: /<choice[^>]*>.*?<\/choice>/,
+      description: '视觉小说分支选项节点已就绪。'
+    }
+  ];
 }
 
 /**

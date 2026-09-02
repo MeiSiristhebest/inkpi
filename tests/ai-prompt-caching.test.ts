@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { streamAi, getModelPreset, UsageTracker, PromptCacheOptimizer } from '@inkpi/ai';
+import { PromptCacheOptimizer, UsageTracker, getModelPreset, streamAi } from '@inkpi/ai';
+import { describe, expect, it } from 'vitest';
 
 describe('AI Layer - Prompt Caching & Cost Calculation', () => {
   it('should stream with prompt caching enabled and capture cache token usage', async () => {
@@ -18,11 +18,10 @@ describe('AI Layer - Prompt Caching & Cost Calculation', () => {
     };
     model.supportsPromptCache = true;
 
-    const stream = streamAi(
-      model,
-      [{ role: 'user', content: '写一段长篇开头', timestamp: Date.now() }],
-      { cacheControl: { type: 'ephemeral' }, thinkingBudget: 2000 }
-    );
+    const stream = streamAi(model, [{ role: 'user', content: '写一段长篇开头', timestamp: Date.now() }], {
+      cacheControl: { type: 'ephemeral' },
+      thinkingBudget: 2000
+    });
 
     const message = await stream.collect();
     expect(message.content.length).toBeGreaterThan(0);
@@ -34,7 +33,7 @@ describe('AI Layer - Prompt Caching & Cost Calculation', () => {
 
   it('should calculate cost breakdown and cache savings accurately in UsageTracker', () => {
     const foreshadowinger = new UsageTracker();
-    
+
     // Record usage for claude-3-7-sonnet
     foreshadowinger.recordUsage(
       {

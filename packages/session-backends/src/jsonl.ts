@@ -1,11 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type {
-  DocumentSnapshot,
-  DocumentDelta,
-  FtsSearchResult,
-  SessionEntry
-} from '@inkpi/protocol';
+import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 /**
@@ -51,7 +46,7 @@ export class JsonlSessionBackend implements ISessionBackend {
 
   public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
     const filePath = this.getSessionJournalPath(sessionId);
-    const line = JSON.stringify(entry) + '\n';
+    const line = `${JSON.stringify(entry)}\n`;
     fs.appendFileSync(filePath, line, 'utf8');
   }
 
@@ -107,7 +102,7 @@ export class JsonlSessionBackend implements ISessionBackend {
     const existing = await this.getDeltas(delta.documentId);
     const nextId = delta.id !== undefined ? delta.id : existing.length + 1;
     const entry = { ...delta, id: nextId };
-    fs.appendFileSync(filePath, JSON.stringify(entry) + '\n', 'utf8');
+    fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, 'utf8');
   }
 
   public async getDeltas(documentId: string, fromId?: number): Promise<DocumentDelta[]> {
@@ -143,9 +138,12 @@ export class JsonlSessionBackend implements ISessionBackend {
       let idxOrder = 1;
 
       for (const [docId, snap] of Object.entries(map)) {
-        if (snap.contentMarkdown && snap.contentMarkdown.toLowerCase().includes(lower)) {
+        if (snap.contentMarkdown?.toLowerCase().includes(lower)) {
           const idx = snap.contentMarkdown.toLowerCase().indexOf(lower);
-          const snippet = snap.contentMarkdown.slice(Math.max(0, idx - 20), Math.min(snap.contentMarkdown.length, idx + 80));
+          const snippet = snap.contentMarkdown.slice(
+            Math.max(0, idx - 20),
+            Math.min(snap.contentMarkdown.length, idx + 80)
+          );
           results.push({
             documentId: docId,
             title: `Document ${docId}`,

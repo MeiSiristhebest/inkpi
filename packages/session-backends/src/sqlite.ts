@@ -1,15 +1,5 @@
-import type {
-  DocumentSnapshot,
-  DocumentDelta,
-  FtsSearchResult,
-  SessionEntry
-} from '@inkpi/protocol';
-import {
-  InkDb,
-  InkRepository,
-  AppendOnlySessionJournal,
-  FtsSearchEngine
-} from '@inkpi/storage';
+import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
+import { AppendOnlySessionJournal, FtsSearchEngine, InkDb, InkRepository } from '@inkpi/storage';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 export interface SqliteSessionBackendOptions {

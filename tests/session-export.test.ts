@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { SessionExporter, SessionTree } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Session Exporter', () => {
   it('should export session messages and thinking traces into interactive HTML and Markdown', () => {
@@ -47,26 +47,27 @@ describe('@inkpi/agent-core -> Session Exporter', () => {
 
   it('should use injected presentation labels and escape structured content', () => {
     const exporter = new SessionExporter();
-    const html = exporter.exportToHtml([
-      { id: 'sys', role: 'system', content: 'system <instruction>' },
-      { id: 'custom', role: 'custom', customType: 'event', content: { value: '<raw>' } },
+    const html = exporter.exportToHtml(
+      [
+        { id: 'sys', role: 'system', content: 'system <instruction>' },
+        { id: 'custom', role: 'custom', customType: 'event', content: { value: '<raw>' } },
+        {
+          id: 'assistant',
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'call', name: 'inspect', arguments: { value: '<raw>' } }]
+        }
+      ],
       {
-        id: 'assistant',
-        role: 'assistant',
-        content: [
-          { type: 'toolCall', id: 'call', name: 'inspect', arguments: { value: '<raw>' } }
-        ]
+        format: 'html',
+        labels: {
+          user: 'Input',
+          assistant: 'Output',
+          toolCall: 'Invoke',
+          system: 'Protocol',
+          custom: 'Extension Event'
+        }
       }
-    ], {
-      format: 'html',
-      labels: {
-        user: 'Input',
-        assistant: 'Output',
-        toolCall: 'Invoke',
-        system: 'Protocol',
-        custom: 'Extension Event'
-      }
-    });
+    );
 
     expect(html).toContain('Protocol');
     expect(html).toContain('Extension Event');

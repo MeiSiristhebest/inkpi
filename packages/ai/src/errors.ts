@@ -12,7 +12,10 @@ export class ProviderNotImplementedError extends Error {
   public readonly provider: string;
 
   constructor(provider: string, message?: string) {
-    super(message ?? `Provider '${provider}' is not implemented in this build. Configure a supported provider or implement a transport.`);
+    super(
+      message ??
+        `Provider '${provider}' is not implemented in this build. Configure a supported provider or implement a transport.`
+    );
     this.name = 'ProviderNotImplementedError';
     this.provider = provider;
   }

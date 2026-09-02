@@ -1,16 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { BranchExplorer } from '../packages/agent-core/src/branch-what-if.js';
 
 describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi)', () => {
   it('should create What-If branch with document snapshots and compare diffs', () => {
     const manager = new BranchExplorer(undefined, {
       mainBranchName: 'Base',
-      formatExecutiveReport: ({ baseBranch, targetBranch, ledgerDiff }) => [
-        `平行推演决策报告: ${baseBranch.branchName} -> ${targetBranch.branchName}`,
-        `${targetBranch.premise}`,
-        ...ledgerDiff.changedEntityStatuses.map((change) => `${change.name}(${change.from} -> ${change.to})`),
-        ...ledgerDiff.resolvedTracks.map((track) => `闭环线索与状态: ${track}`)
-      ].join('\n')
+      formatExecutiveReport: ({ baseBranch, targetBranch, ledgerDiff }) =>
+        [
+          `平行推演决策报告: ${baseBranch.branchName} -> ${targetBranch.branchName}`,
+          `${targetBranch.premise}`,
+          ...ledgerDiff.changedEntityStatuses.map((change) => `${change.name}(${change.from} -> ${change.to})`),
+          ...ledgerDiff.resolvedTracks.map((track) => `闭环线索与状态: ${track}`)
+        ].join('\n')
     });
 
     // 1. Set baseline in mainline
@@ -40,7 +41,7 @@ describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi
     whatIf.stateLedger.entities[0]!.status = '魔道巨擘';
     whatIf.stateLedger.tracks[0]!.status = 'resolved';
     if (!whatIf.documentSnapshots) whatIf.documentSnapshots = {};
-    whatIf.documentSnapshots['ch1'] = '林玄冷笑一声，折断青锋剑，毅然踏入无尽魔域！';
+    whatIf.documentSnapshots.ch1 = '林玄冷笑一声，折断青锋剑，毅然踏入无尽魔域！';
 
     // 3. Generate Executive Report
     const report = manager.generateExecutiveReport('main', 'timeline-demon-path');
@@ -50,9 +51,7 @@ describe('What-If Parallel Branching & Document AST Diff Engine (Aligned with Pi
     expect(report.premise).toContain('假设林玄在第一章拒绝交出玉佩');
 
     // Verify entity status change diff
-    expect(report.ledgerDiff.changedEntityStatuses).toEqual([
-      { name: '林玄', from: '宗门弟子', to: '魔道巨擘' }
-    ]);
+    expect(report.ledgerDiff.changedEntityStatuses).toEqual([{ name: '林玄', from: '宗门弟子', to: '魔道巨擘' }]);
 
     // Verify resolved foreshadowing track
     expect(report.ledgerDiff.resolvedTracks).toContain('身世玉佩之谜');

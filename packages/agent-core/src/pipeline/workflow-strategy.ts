@@ -1,10 +1,10 @@
 import type {
   PipelineHooks,
   QualityGateDecision,
+  QualityGateHandler,
   QualityGateIssue,
   WorkflowContext,
-  WorkflowEvent,
-  QualityGateHandler
+  WorkflowEvent
 } from '@inkpi/protocol';
 
 /**
@@ -16,14 +16,8 @@ import type {
  */
 export type WorkflowMode = 'generic' | 'legacy-pipeline';
 
-export type GateTriggeredEvent = Extract<
-  WorkflowEvent,
-  { type: 'quality_gate_triggered' | 'plot_gate_triggered' }
->;
-export type GateResolvedEvent = Extract<
-  WorkflowEvent,
-  { type: 'quality_gate_resolved' | 'plot_gate_resolved' }
->;
+export type GateTriggeredEvent = Extract<WorkflowEvent, { type: 'quality_gate_triggered' | 'plot_gate_triggered' }>;
+export type GateResolvedEvent = Extract<WorkflowEvent, { type: 'quality_gate_resolved' | 'plot_gate_resolved' }>;
 
 export type GateHandlerEvent = Parameters<QualityGateHandler>[0];
 
@@ -67,7 +61,12 @@ export interface WorkflowStrategy {
   readonly includeLedgerAliases: boolean;
 
   /** 阶段执行之前改写提示词。 */
-  transformStagePrompt(args: { stageId: string; ctx: WorkflowContext; prompt: string; hooks: PipelineHooks[] }): Promise<string>;
+  transformStagePrompt(args: {
+    stageId: string;
+    ctx: WorkflowContext;
+    prompt: string;
+    hooks: PipelineHooks[];
+  }): Promise<string>;
 
   /** 阶段产出之后、门禁检查之前改写产出。 */
   transformExecutedOutput(args: ExecutedOutputArgs): Promise<string>;
@@ -91,17 +90,9 @@ export interface WorkflowStrategy {
   applyStageOutputAliases(ctx: WorkflowContext, stageId: string, output: string): void;
 }
 
-type StagePromptHook = (
-  ctx: WorkflowContext,
-  prompt: string,
-  hooks: PipelineHooks[]
-) => Promise<string>;
+type StagePromptHook = (ctx: WorkflowContext, prompt: string, hooks: PipelineHooks[]) => Promise<string>;
 
-type StageOutputHook = (
-  ctx: WorkflowContext,
-  output: string,
-  hooks: PipelineHooks[]
-) => Promise<string>;
+type StageOutputHook = (ctx: WorkflowContext, output: string, hooks: PipelineHooks[]) => Promise<string>;
 
 /**
  * 兼容模式在阶段执行前调用的旧钩子，按阶段名索引。

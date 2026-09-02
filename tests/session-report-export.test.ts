@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
 import { SessionReportExporter, SessionTree } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 describe('SessionReportExporter', () => {
   it('renders protocol data without narrative defaults', () => {
@@ -18,25 +18,29 @@ describe('SessionReportExporter', () => {
     tree.addMessage(user);
     tree.addMessage(assistant);
 
-    const html = new SessionReportExporter().exportToHtml([user, assistant], {
-      title: 'Protocol Report',
-      exportedAt: '2026-01-02T03:04:05.000Z',
-      ledger: {
-        entities: [{ name: 'runtime', status: 'ready', attributes: { value: '<escaped>' } }],
-        assets: [{ name: 'resource', owner: 'system', state: 'available' }],
-        tracks: [{ id: 't', summary: 'checkpoint', status: 'pending' }],
-        locations: [],
-        modifiedResources: []
+    const html = new SessionReportExporter().exportToHtml(
+      [user, assistant],
+      {
+        title: 'Protocol Report',
+        exportedAt: '2026-01-02T03:04:05.000Z',
+        ledger: {
+          entities: [{ name: 'runtime', status: 'ready', attributes: { value: '<escaped>' } }],
+          assets: [{ name: 'resource', owner: 'system', state: 'available' }],
+          tracks: [{ id: 't', summary: 'checkpoint', status: 'pending' }],
+          locations: [],
+          modifiedResources: []
+        },
+        branchSummaries: [{ branchName: 'alternate', summaryText: 'different execution path', differenceCount: 2 }],
+        gateIssues: [{ type: 'validation', severity: 'warning', description: 'needs review' }],
+        labels: {
+          user: 'Input',
+          assistant: 'Output',
+          toolCall: 'Invoke',
+          timeline: 'Events'
+        }
       },
-      branchSummaries: [{ branchName: 'alternate', summaryText: 'different execution path', differenceCount: 2 }],
-      gateIssues: [{ type: 'validation', severity: 'warning', description: 'needs review' }],
-      labels: {
-        user: 'Input',
-        assistant: 'Output',
-        toolCall: 'Invoke',
-        timeline: 'Events'
-      }
-    }, tree);
+      tree
+    );
 
     expect(html).toContain('Protocol Report');
     expect(html).toContain('Input #1');

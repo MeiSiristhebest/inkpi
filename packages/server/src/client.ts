@@ -1,13 +1,9 @@
-import type {
-  RpcRequest,
-  RpcResponse,
-  RpcNotification
-} from '@inkpi/protocol';
+import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
+import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST } from './transport.js';
-import { TcpSocketTransport } from './tcp-transport.js';
 
 export interface Transport {
   sendRequest(req: RpcRequest): Promise<RpcResponse>;
@@ -48,7 +44,10 @@ export class InMemoryTransport implements Transport {
  */
 export class RemoteStreamTransport implements Transport {
   private transport: RpcTransport;
-  private pendingRequests = new Map<string | number, { resolve: (res: RpcResponse) => void; reject: (err: any) => void }>();
+  private pendingRequests = new Map<
+    string | number,
+    { resolve: (res: RpcResponse) => void; reject: (err: any) => void }
+  >();
   private notifHandlers: Array<(notif: RpcNotification) => void> = [];
 
   constructor(transport: RpcTransport) {

@@ -1,4 +1,4 @@
-import type { AgentMessage, TextContent, ImageContent } from './messages.js';
+import type { AgentMessage, ImageContent, TextContent } from './messages.js';
 
 export type ToolExecutionMode = 'parallel' | 'sequential';
 
@@ -35,13 +35,13 @@ export interface SlashCommand {
   readonly description?: string;
   readonly argumentHint?: string;
   readonly usage?: string;
-  execute(args: string, context?: unknown): Promise<string | void> | (string | void);
+  execute(args: string, context?: unknown): Promise<string | undefined> | (string | undefined);
 }
 
 export interface ShortcutHandler {
   readonly key: string; // e.g. "Tab", "Escape", "Ctrl+Shift+L"
   readonly description?: string;
-  execute(context?: unknown): Promise<boolean | void> | boolean | void;
+  execute(context?: unknown): Promise<boolean | undefined> | boolean | undefined;
 }
 
 export interface ExtensionContext {
@@ -93,13 +93,13 @@ export interface PipelineHooks {
     stageId: string;
     context: unknown;
     prompt: string;
-  }) => Promise<string | void> | string | void;
+  }) => Promise<string | undefined> | string | undefined;
   /** Generic lifecycle hook. Prefer this over stage-name-specific hooks. */
   onAfterStage?: (ctx: {
     stageId: string;
     context: unknown;
     output: string;
-  }) => Promise<string | void> | string | void;
+  }) => Promise<string | undefined> | string | undefined;
   /** Generic output notification after a stage has settled. */
   onStageOutput?: (ctx: {
     stageId: string;
@@ -107,15 +107,36 @@ export interface PipelineHooks {
     output: string;
   }) => Promise<void> | void;
   /** @deprecated Use generic lifecycle hooks above. */
-  onBeforeOutline?: (ctx: { workspaceTitle?: string; documentTitle?: string; bookTitle?: string; chapterTitle?: string; sectionTitle?: string; userPrompt: string }) => Promise<string | void> | string | void;
+  onBeforeOutline?: (ctx: {
+    workspaceTitle?: string;
+    documentTitle?: string;
+    bookTitle?: string;
+    chapterTitle?: string;
+    sectionTitle?: string;
+    userPrompt: string;
+  }) => Promise<string | undefined> | string | undefined;
   /** @deprecated Use generic lifecycle hooks above. */
-  onBeforeDraft?: (ctx: { workspaceTitle?: string; documentTitle?: string; bookTitle?: string; chapterTitle?: string; sectionTitle?: string; userPrompt: string }) => Promise<string | void> | string | void;
+  onBeforeDraft?: (ctx: {
+    workspaceTitle?: string;
+    documentTitle?: string;
+    bookTitle?: string;
+    chapterTitle?: string;
+    sectionTitle?: string;
+    userPrompt: string;
+  }) => Promise<string | undefined> | string | undefined;
   /** @deprecated Use generic lifecycle hooks above. */
-  onDraftGenerated?: (ctx: { workspaceTitle?: string; documentTitle?: string; bookTitle?: string; chapterTitle?: string; sectionTitle?: string; draftText: string }) => Promise<string | void> | string | void;
+  onDraftGenerated?: (ctx: {
+    workspaceTitle?: string;
+    documentTitle?: string;
+    bookTitle?: string;
+    chapterTitle?: string;
+    sectionTitle?: string;
+    draftText: string;
+  }) => Promise<string | undefined> | string | undefined;
   /** @deprecated Use generic lifecycle hooks above. */
   onAuditPass?: (ctx: { auditNotes: string[]; passed: boolean }) => Promise<void> | void;
   /** @deprecated Use generic lifecycle hooks above. */
-  onPolishDone?: (ctx: { polishedText: string }) => Promise<string | void> | string | void;
+  onPolishDone?: (ctx: { polishedText: string }) => Promise<string | undefined> | string | undefined;
 }
 
 export type NovelHooks = PipelineHooks;
@@ -188,7 +209,6 @@ export interface ExtensionAPI
     ExtensionContextTransformers,
     ExtensionUi,
     ExtensionPipelineHooks {}
-
 
 export type ExtensionFactory = (api: ExtensionAPI) => Promise<void> | void;
 

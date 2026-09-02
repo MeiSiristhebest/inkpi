@@ -1,12 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
 import type { AgentEvent, AgentMessage, AssistantMessage, ToolResultMessage } from '@inkpi/protocol';
-import { ContextTransformer } from '../packages/agent-core/src/turn/context-transformer.js';
-import { TurnFinalizer } from '../packages/agent-core/src/turn/turn-finalizer.js';
-import { ToolDispatcher } from '../packages/agent-core/src/turn/tool-dispatcher.js';
-import { extractToolCalls } from '../packages/agent-core/src/turn/extract-tool-calls.js';
-import { ToolRegistry } from '../packages/agent-core/src/tools.js';
+import { describe, expect, it, vi } from 'vitest';
 import { MessageQueue } from '../packages/agent-core/src/queues.js';
-import type { AgentState, AgentOptions } from '../packages/agent-core/src/types.js';
+import { ToolRegistry } from '../packages/agent-core/src/tools.js';
+import { ContextTransformer } from '../packages/agent-core/src/turn/context-transformer.js';
+import { extractToolCalls } from '../packages/agent-core/src/turn/extract-tool-calls.js';
+import { ToolDispatcher } from '../packages/agent-core/src/turn/tool-dispatcher.js';
+import { TurnFinalizer } from '../packages/agent-core/src/turn/turn-finalizer.js';
+import type { AgentOptions, AgentState } from '../packages/agent-core/src/types.js';
 
 type Queues = {
   steering: MessageQueue;
@@ -31,12 +31,14 @@ function makeState(messages: AgentMessage[] = []): AgentState {
   };
 }
 
-function makeCtx(overrides: {
-  state?: AgentState;
-  options?: AgentOptions;
-  toolRegistry?: ToolRegistry;
-  queues?: Partial<Queues>;
-} = {}) {
+function makeCtx(
+  overrides: {
+    state?: AgentState;
+    options?: AgentOptions;
+    toolRegistry?: ToolRegistry;
+    queues?: Partial<Queues>;
+  } = {}
+) {
   const events: AgentEvent[] = [];
   const emitEvent = async (event: AgentEvent) => {
     events.push(event);
@@ -222,9 +224,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     });
 
     const { ctx, events, state } = makeCtx({ toolRegistry: registry });
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
 
     const out = await new ToolDispatcher().dispatch(ctx, msg);
 
@@ -250,9 +250,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       toolRegistry: registry,
       options: { beforeToolCall: async () => ({ block: true, reason: 'nope', terminate: true }) }
     });
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'boom', arguments: {} } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'boom', arguments: {} } as any]);
 
     const out = await new ToolDispatcher().dispatch(ctx, msg);
 
@@ -281,9 +279,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
         })
       }
     });
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
 
     const out = await new ToolDispatcher().dispatch(ctx, msg);
     expect(out.toolResults[0].content).toEqual([{ type: 'text', text: 'rewritten' }]);
@@ -303,9 +299,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     });
 
     const { ctx, state } = makeCtx({ toolRegistry: registry });
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'bad', arguments: {} } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'bad', arguments: {} } as any]);
 
     const out = await new ToolDispatcher().dispatch(ctx, msg);
     expect(out.shouldTerminate).toBe(false);
@@ -331,9 +325,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
         }
       }
     });
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
 
     const out = await new ToolDispatcher().dispatch(ctx, msg);
     expect(out.shouldTerminate).toBe(true);
@@ -350,15 +342,11 @@ describe('ToolDispatcher (管线第 3 段)', () => {
 
     const { ctx } = makeCtx({ toolRegistry: registry });
     ctx.signal = { aborted: true } as AbortSignal;
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
 
     const out = await new ToolDispatcher().dispatch(ctx, msg);
     expect(execute).not.toHaveBeenCalled();
-    expect(out.toolResults[0].content).toEqual([
-      { type: 'text', text: 'Tool execution aborted by signal' }
-    ]);
+    expect(out.toolResults[0].content).toEqual([{ type: 'text', text: 'Tool execution aborted by signal' }]);
     expect(out.shouldTerminate).toBe(false);
   });
 
@@ -429,17 +417,11 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     });
 
     const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
-    const msg = assistantMsg([
-      { type: 'toolCall', id: 'c1', name: 'echo', arguments: { a: 1 } } as any
-    ]);
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: { a: 1 } } as any]);
 
     await new ToolDispatcher().dispatch(ctx, msg);
 
-    expect(appended.map((a) => a.kind)).toEqual([
-      'operation_intent',
-      'operation_settlement',
-      'tool_execution'
-    ]);
+    expect(appended.map((a) => a.kind)).toEqual(['operation_intent', 'operation_settlement', 'tool_execution']);
     expect(appended[0].payload).toMatchObject({ id: 'op_tool_c1', type: 'tool_call' });
   });
 });

@@ -1,8 +1,8 @@
-import type { AgentMessage, CompactionEntry, AssistantMessage } from '@inkpi/protocol';
-import { serializeConversationForSummary, GENERIC_SUMMARIZATION_SYSTEM_PROMPT } from './summarize.js';
-import { extractStateLedger, type LedgerExtractor } from './state-ledger.js';
-import type { Clock } from '../ports/index.js';
 import { CHARS_PER_TOKEN_HEURISTIC } from '@inkpi/ai';
+import type { AgentMessage, AssistantMessage, CompactionEntry } from '@inkpi/protocol';
+import type { Clock } from '../ports/index.js';
+import { type LedgerExtractor, extractStateLedger } from './state-ledger.js';
+import { GENERIC_SUMMARIZATION_SYSTEM_PROMPT, serializeConversationForSummary } from './summarize.js';
 
 export interface CompactionConfig {
   /** Trigger threshold in tokens (e.g. 100,000) */
@@ -96,9 +96,7 @@ export class SessionCompactor {
     const stateLedger = this.config.ledgerExtractors
       ? extractStateLedger(oldMessages, this.config.ledgerExtractors)
       : undefined;
-    const formattedLedger = stateLedger && this.config.ledgerFormatter
-      ? this.config.ledgerFormatter(stateLedger)
-      : '';
+    const formattedLedger = stateLedger && this.config.ledgerFormatter ? this.config.ledgerFormatter(stateLedger) : '';
 
     // Generate conversation summary
     const serialized = serializeConversationForSummary(oldMessages);
@@ -114,7 +112,8 @@ export class SessionCompactor {
       summary: summaryText,
       firstKeptEntryId: keptMessages[0]?.id || 'kept_first',
       tokensBefore,
-      estimatedTokensAfter: this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * this.config.charsPerToken),
+      estimatedTokensAfter:
+        this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * this.config.charsPerToken),
       createdAt: this.clock(),
       details: stateLedger ? { stateLedger } : undefined
     };
@@ -123,9 +122,7 @@ export class SessionCompactor {
     const summaryAssistantMessage: AssistantMessage = {
       id: entry.id,
       role: 'assistant',
-      content: [
-        { type: 'text', text: fullSummaryContent }
-      ],
+      content: [{ type: 'text', text: fullSummaryContent }],
       stopReason: 'stop',
       timestamp: this.clock()
     };
