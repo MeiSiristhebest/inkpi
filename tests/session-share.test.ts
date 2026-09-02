@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { SessionShareManager, SessionTree } from '@inkpi/agent-core';
+import { SessionShareExporter, SessionTree } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
 
 describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-hf)', () => {
   it('should sanitize sensitive API keys and local paths from texts and messages', () => {
     const rawText = 'My secret key is sk-abcdef1234567890123456 and files are located in C:\\Users\\Author\\Documents\\novel.txt';
-    const sanitized = SessionShareManager.sanitize(rawText);
+    const sanitized = SessionShareExporter.sanitize(rawText);
 
     expect(sanitized).not.toContain('sk-abcdef1234567890123456');
     expect(sanitized).not.toContain('C:\\Users\\Author\\Documents\\novel.txt');
@@ -27,7 +27,7 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
       ]
     };
 
-    const sanitizedMsg = SessionShareManager.sanitizeMessage(rawMsg);
+    const sanitizedMsg = SessionShareExporter.sanitizeMessage(rawMsg);
     expect(JSON.stringify(sanitizedMsg)).not.toContain('/home/ubuntu/secrets/key.pem');
     expect(JSON.stringify(sanitizedMsg)).not.toContain('C:\\Users\\Mei\\secret.json');
     expect(JSON.stringify(sanitizedMsg)).toContain('[REDACTED_LOCAL_PATH]');
@@ -51,7 +51,7 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
       }
     ];
 
-    const dataset = SessionShareManager.exportDataset(
+    const dataset = SessionShareExporter.exportDataset(
       {
         messages,
         tree,
@@ -81,14 +81,14 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
     expect(dataset.stateLedger?.entities?.[0].name).toBe('叶孤城');
 
     // Export HTML test
-    const html = SessionShareManager.exportShareHtml(dataset);
+    const html = SessionShareExporter.exportShareHtml(dataset);
     expect(html).toContain('剑试九天第一卷演化分支');
     expect(html).toContain('云中客');
     expect(html).toContain('规划三条伏笔与因果收束');
     expect(html).toContain('东方泛起鱼肚白');
 
     // Test with excluded thinking, excluded tool calls, and custom patterns
-    const datasetFiltered = SessionShareManager.exportDataset(
+    const datasetFiltered = SessionShareExporter.exportDataset(
       { messages, systemPrompt: 'secret password is 12345' },
       {
         includeThinking: false,
@@ -105,7 +105,7 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
     expect((asstMsg.content as any[]).some((b) => b.type === 'thinking')).toBe(false);
 
     // Empty and non-string sanitize
-    expect(SessionShareManager.sanitize('')).toBe('');
-    expect(SessionShareManager.sanitize(null as any)).toBeNull();
+    expect(SessionShareExporter.sanitize('')).toBe('');
+    expect(SessionShareExporter.sanitize(null as any)).toBeNull();
   });
 });

@@ -6,6 +6,9 @@ import {
   ExtensionInstaller,
   SessionRegistry,
   WorkflowCoordinator,
+  SandboxExecutor,
+  ProjectTrustStore,
+  SessionShareExporter,
   // 弃用别名
   AgentEngine,
   StoryBranchManager,
@@ -13,7 +16,18 @@ import {
   LiveSessionManager,
   NovelCollaborativePipeline,
   CollaborativePipeline,
-  PipelineCoordinator
+  PipelineCoordinator,
+  SandboxManager,
+  ProjectTrustManager,
+  SessionShareManager
+} from '@inkpi/agent-core';
+import type {
+  ISandboxRunner,
+  WhatIfBranchInfo,
+  WhatIfExecutiveReport,
+  HypothesisBranchInfo,
+  HypothesisExecutiveReport,
+  SandboxRunner
 } from '@inkpi/agent-core';
 
 /**
@@ -53,5 +67,30 @@ describe('deprecations: 集中别名与权威名称同址', () => {
     expect(viaNew.id).toBe(viaOld.id);
     expect(viaNew.message).toEqual(viaOld.message);
     expect(t1.getCurrentLeafId()).toBe(t2.getCurrentLeafId());
+  });
+
+  it('SandboxManager === SandboxExecutor（Manager 后缀空泛改名）', () => {
+    expect(SandboxManager).toBe(SandboxExecutor);
+    expect(new SandboxManager()).toBeInstanceOf(SandboxExecutor);
+  });
+
+  it('ProjectTrustManager === ProjectTrustStore', () => {
+    expect(ProjectTrustManager).toBe(ProjectTrustStore);
+  });
+
+  it('SessionShareManager === SessionShareExporter', () => {
+    expect(SessionShareManager).toBe(SessionShareExporter);
+  });
+
+  it('类型别名与权威名同构（WhatIf*/ISandboxRunner）', () => {
+    const b1: HypothesisBranchInfo = null as unknown as HypothesisBranchInfo;
+    const b2: WhatIfBranchInfo = b1;
+    const r1: HypothesisExecutiveReport = null as unknown as HypothesisExecutiveReport;
+    const r2: WhatIfExecutiveReport = r1;
+    const s1: SandboxRunner = null as unknown as SandboxRunner;
+    const s2: ISandboxRunner = s1;
+    expect(b2).toBeNull();
+    expect(r2).toBeNull();
+    expect(s2).toBeNull();
   });
 });

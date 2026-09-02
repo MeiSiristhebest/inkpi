@@ -18,6 +18,23 @@ import type { Clock } from '../ports/index.js';
  * - 支持 4 阶段多 Agent 流水线 Span 分段、TTFT 首字延迟、Prompt Caching 命中率、
  *   以及 Ghost Text 采纳漏斗、分支回滚与状态不变量冲突拦截等遥测度量。
  */
+/**
+ * 把任意 span id 确定性地映射为 OTel 合法长度的十六进制 id。
+ * OTel 要求 traceId 为 32 个 hex 字符、spanId 为 16 个 hex 字符；
+ * `inkpi_trace_` 前缀串会被任何标准后端拒绝。同一来源 id 恒定映射（可复现）。
+ */
+function toOtelHexId(source: string, length: number): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < source.length; i++) {
+    const c = source.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (c + i), 0x01000193) >>> 0;
+  }
+  const hex = h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+  return hex.padEnd(length, '0').slice(0, length);
+}
+
 export class TelemetryCollector {
   private clock: Clock;
   private startTime = 0;
@@ -52,13 +69,22 @@ export class TelemetryCollector {
     conflictRules: new Set<string>()
   };
 
-  constructor(clock: Clock = Date.now) {
-    this.clock = clock;
-  }
+  /**
+   * 成本估算单价（USD / 1M tokens）。
+   * 默认值只是**占位示例价**，不是任何真实厂商的报价——
+   * 生产环境必须经构造函数注入真实价目，否则 costUsd 仅有相对比较意义。
+   */
+  private modelInputCostPerM = 2.0;
+  private modelOutputCostPerM = 8.0;
+  private modelCacheReadCostPerM = 0.5;
 
-  private modelInputCostPerM = 2.0; // Default $2 / 1M tokens
-  private modelOutputCostPerM = 8.0; // Default $8 / 1M tokens
-  private modelCacheReadCostPerM = 0.5; // Default $0.5 / 1M tokens
+  /** 成本单价（USD / 1M tokens），可部分覆盖。 */
+  constructor(clock: Clock = Date.now, pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number }) {
+    this.clock = clock;
+    if (pricing?.inputUsdPerMTokens !== undefined) this.modelInputCostPerM = pricing.inputUsdPerMTokens;
+    if (pricing?.outputUsdPerMTokens !== undefined) this.modelOutputCostPerM = pricing.outputUsdPerMTokens;
+    if (pricing?.cacheReadUsdPerMTokens !== undefined) this.modelCacheReadCostPerM = pricing.cacheReadUsdPerMTokens;
+  }
 
   public onEvent(listener: (event: TelemetryEvent) => void): () => void {
     this.eventListeners.push(listener);
@@ -336,8 +362,8 @@ export class TelemetryCollector {
             {
               scope: { name: 'inkpi-agent-coordinator' },
               spans: stats.spans?.map((s) => ({
-                traceId: 'inkpi_trace_' + s.id,
-                spanId: s.id,
+                traceId: toOtelHexId(s.id, 32),
+                spanId: toOtelHexId(s.id + ':span', 16),
                 name: s.name,
                 startTimeUnixNano: s.startTime * 1_000_000,
                 endTimeUnixNano: (s.endTime || this.clock()) * 1_000_000,

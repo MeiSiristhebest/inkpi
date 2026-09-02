@@ -2,6 +2,7 @@ import * as net from 'node:net';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { SessionRegistry, type ManagedSession, type SessionCreateOptions } from '@inkpi/agent-core';
 import type { RpcTransport } from './transport.js';
+import { DEFAULT_RPC_HOST } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { ModelConfig } from '@inkpi/protocol';
 
@@ -41,7 +42,7 @@ export class InkPiDaemon {
   constructor(options: DaemonOptions = {}) {
     this.options = {
       port: 41829,
-      host: '127.0.0.1',
+      host: DEFAULT_RPC_HOST,
       ...options
     };
     this.sessionManager = new SessionRegistry(options.defaultModel);
@@ -197,10 +198,13 @@ export class InkPiDaemon {
   }
 
   /**
-   * 额外开启 WebSocket 监听 (浏览器 / Tauri WebView GUI 客户端入口)
-   * 默认端口为 TCP 端口 + 1
+   * 额外开启 WebSocket 监听 (浏览器 / Tauri WebView GUI 客户端入口)。
+   * 默认端口：`options.wsPort`（可注入）→ 否则退回约定 `TCP 端口 + 1`。
    */
-  public async startWebSocket(wsPort = (this.options.port ?? 41829) + 1, host = this.options.host): Promise<this> {
+  public async startWebSocket(
+    wsPort = this.options.wsPort ?? (this.options.port ?? 41829) + 1,
+    host = this.options.host
+  ): Promise<this> {
     this.wsPort = wsPort;
     this.options.wsPort = wsPort;
     await this.rpcServer.listenWebSocket(wsPort!, host!);

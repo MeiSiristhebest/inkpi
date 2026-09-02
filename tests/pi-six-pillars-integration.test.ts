@@ -16,7 +16,7 @@ import {
 import {
   StoryboardExporter,
   NodeVMSandbox,
-  SandboxManager,
+  SandboxExecutor,
   SessionTree
 } from '@inkpi/agent-core';
 import { execSync } from 'node:child_process';
@@ -212,10 +212,11 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(editor.handleKey({ name: 'a', ctrl: false, meta: false, shift: false, sequence: 'a', raw: 'a' })).toBe(false);
       editor.readOnly = false;
 
-      // ScrollRow adjustment test
+      // ScrollRow adjustment test (render 不再隐式改状态，先显式 ensureCursorVisible)
       editor.cursorRow = 15;
-      editor.render({ width: 80, height: 5 });
+      editor.ensureCursorVisible(5);
       expect(editor.scrollRow).toBeGreaterThan(0);
+      editor.render({ width: 80, height: 5 });
 
       // Render check without line numbers
       editor.showLineNumbers = false;
@@ -385,7 +386,7 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
   describe('Pillar 5: Sandbox Isolation & Safe World Simulation', () => {
     it('should safely execute rule scripts and math simulation with NodeVMSandbox', async () => {
       const sandbox = new NodeVMSandbox({ defaultTimeoutMs: 1500 });
-      const manager = new SandboxManager(sandbox);
+      const manager = new SandboxExecutor(sandbox);
 
       // Safe calculation, logging and dice roll
       const res = await manager.runRuleScript(`

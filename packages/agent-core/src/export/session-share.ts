@@ -46,7 +46,7 @@ const DEFAULT_PATH_REGEX = /([A-Za-z]:\\[\w\s\.\-\\]+|\/(?:home|Users|var|tmp|et
  * 会话脱敏与导出分享引擎
  * 支持将多轮 Agent 交互轨迹、会话树推演与状态流变安全导出为 Hugging Face / Gist 规范的数据集与独立 HTML
  */
-export class SessionShareManager {
+export class SessionShareExporter {
   /**
    * 脱敏文本内容（移除 API Key、敏感绝对路径与凭据）
    */
@@ -100,7 +100,7 @@ export class SessionShareManager {
    * 导出为结构化规范数据集 Payload (可直接上传 Hugging Face Datasets 或生成 JSONL)
    */
   public static exportDataset(
-    sessionData: {
+    source: {
       messages: AgentMessage[];
       tree?: SessionTree;
       stateLedger?: StateLedger;
@@ -108,23 +108,28 @@ export class SessionShareManager {
     },
     options: CreativeSessionShareOptions = {}
   ): CreativeDatasetPayload {
-    const rawMessages = sessionData.messages || [];
-    const filteredMessages = rawMessages
-      .map((m) => this.sanitizeMessage(m, options))
-      .filter((m) => {
-        if (m.role === 'assistant' && Array.isArray(m.content)) {
-          if (options.includeThinking === false) {
-            m.content = m.content.filter((b) => b.type !== 'thinking');
-          }
-          if (options.includeToolCalls === false) {
-            m.content = m.content.filter((b) => b.type !== 'toolCall');
-          }
-        }
-        return true;
-      });
+    const rawMessages = source.messages || [];
+    // 纯函数管道：sanitizeMessage 已深拷贝；此处仅用 map 产出新数组，
+    // 绝不修改输入消息。旧实现误用 filter(回调内改 m.content 且恒返 true)，
+    // 是把"过滤内容块"写成了"副作用 + 恒真谓词"的坏味道。
+    const filteredMessages = rawMessages.map((m) => {
+      const sanitized = this.sanitizeMessage(m, options);
+      if (sanitized.role !== 'assistant' || !Array.isArray(sanitized.content)) {
+        return sanitized;
+      }
+      let content = sanitized.content;
+      if (options.includeThinking === false) {
+        content = content.filter((b) => b.type !== 'thinking');
+      }
+      if (options.includeToolCalls === false) {
+        content = content.filter((b) => b.type !== 'toolCall');
+      }
+      // sanitizeMessage 返回全新对象，改 content 不影响原始消息
+      return { ...sanitized, content };
+    });
 
-    const branches = sessionData.tree ? sessionData.tree.getBranches() : [];
-    const entitiesCount = sessionData.stateLedger?.entities?.length || 0;
+    const branches = source.tree ? source.tree.getBranches() : [];
+    const entitiesCount = source.stateLedger?.entities?.length || 0;
 
     return {
       version: '1.0',
@@ -141,8 +146,8 @@ export class SessionShareManager {
         branchesCount: branches.length,
         entitiesCount
       },
-      systemPrompt: this.sanitize(sessionData.systemPrompt || '', options),
-      stateLedger: options.includeStateLedger !== false ? sessionData.stateLedger : undefined,
+      systemPrompt: this.sanitize(source.systemPrompt || '', options),
+      stateLedger: options.includeStateLedger !== false ? source.stateLedger : undefined,
       branches: options.includeSessionTree !== false ? branches : undefined,
       messages: filteredMessages
     };

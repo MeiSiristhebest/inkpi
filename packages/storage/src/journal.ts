@@ -259,6 +259,8 @@ export class AppendOnlySessionJournal {
               throw new Error(`ledger_mutation '${entry.id}' has an invalid payload.`);
             }
             const ledger = entry.payload.ledger as StateLedger;
+            // 账本快照不是压缩事件：tokens_before/after 写 NULL（无数据），
+            // 绝不伪造 0 —— 0 会被成本分析误读为"零消耗"，NULL 才表示"未度量"。
             const stmt = db.prepare(`
               INSERT OR IGNORE INTO session_compaction_records (id, session_id, summary_text, ledger_json, tokens_before, tokens_after, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -268,8 +270,8 @@ export class AppendOnlySessionJournal {
               this.sessionId,
               'State ledger update',
               JSON.stringify(ledger),
-              0,
-              0,
+              null,
+              null,
               entry.timestamp
             );
             projected = true;

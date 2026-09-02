@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  TuiStudio,
+  TerminalStudio,
   DifferentialRenderer,
   layoutHStack,
   layoutVStack,
@@ -49,8 +49,8 @@ describe('Pi TUI Engine Integration & Studio Layout', () => {
     expect(scrolled[2]).toBe('Line 5');
   });
 
-  it('should render TuiStudio with dual screen layout and handle select list modal', async () => {
-    const studio = new TuiStudio({ width: 120, height: 30 });
+  it('should render TerminalStudio with dual screen layout and handle select list modal', async () => {
+    const studio = new TerminalStudio({ width: 120, height: 30 });
     const screen = studio.renderScreen();
     expect(screen).toContain('Resources');
     expect(screen).toContain('Editor');
@@ -85,7 +85,7 @@ describe('Pi TUI Engine Integration & Studio Layout', () => {
   });
 
   it('should render entity ASCII avatar and manage scroll offsets', () => {
-    const studio = new TuiStudio({ width: 120, height: 30 });
+    const studio = new TerminalStudio({ width: 120, height: 30 });
     studio.updateStateLedger({
       entities: [{ name: 'Alice', status: '指挥官' }],
       assets: [],

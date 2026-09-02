@@ -130,11 +130,12 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
     const op = materializedState.operations.get('op_interrupted_stream');
     expect(op?.state).toBe('running');
 
-    // Run crash recovery detection
+    // Run crash recovery detection (pure: input state must stay untouched)
     const recoveryResult = detectAndMarkInterruptedOperations(materializedState);
     expect(recoveryResult.recoveredCount).toBe(1);
     expect(recoveryResult.interruptedIds).toContain('op_interrupted_stream');
-    expect(materializedState.operations.get('op_interrupted_stream')?.state).toBe('interrupted');
+    expect(recoveryResult.state.operations.get('op_interrupted_stream')?.state).toBe('interrupted');
+    expect(materializedState.operations.get('op_interrupted_stream')?.state).toBe('running');
 
     // Phase 3: Resume Agent from materialized state
     const resumeStreamFn = () => {

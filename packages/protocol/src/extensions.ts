@@ -9,6 +9,10 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/**
+ * Agent 工具契约（协议层声明，宿主以 any 存取注册项以便扩展附加私有元数据）。
+ * 只声明本包保证的字段；扩展若携带额外元数据，以运行时属性存在而不入协议类型。
+ */
 export interface AgentTool<TParams = any> {
   readonly name: string;
   readonly label?: string;
@@ -22,7 +26,6 @@ export interface AgentTool<TParams = any> {
     onUpdate?: (update: { content: TextContent[]; details?: unknown }) => void,
     context?: unknown
   ): Promise<ToolResult>;
-  [key: string]: unknown;
 }
 
 export type CommandHandler = (args: string, context?: unknown) => Promise<any> | any;
@@ -33,14 +36,12 @@ export interface SlashCommand {
   readonly argumentHint?: string;
   readonly usage?: string;
   execute(args: string, context?: unknown): Promise<string | void> | (string | void);
-  [key: string]: unknown;
 }
 
 export interface ShortcutHandler {
   readonly key: string; // e.g. "Tab", "Escape", "Ctrl+Shift+L"
   readonly description?: string;
   execute(context?: unknown): Promise<boolean | void> | boolean | void;
-  [key: string]: unknown;
 }
 
 export interface ExtensionContext {
@@ -58,7 +59,6 @@ export interface SelectListItem<T = any> {
   label: string;
   value: T;
   description?: string;
-  [key: string]: unknown;
 }
 
 export interface SelectListOptions<T = any> {
@@ -66,7 +66,6 @@ export interface SelectListOptions<T = any> {
   items?: SelectListItem<T>[];
   assets?: SelectListItem<T>[];
   initialIndex?: number;
-  [key: string]: unknown;
 }
 
 export interface InputDialogOptions {
@@ -74,14 +73,12 @@ export interface InputDialogOptions {
   placeholder?: string;
   defaultValue?: string;
   password?: boolean;
-  [key: string]: unknown;
 }
 
 export interface FlashNotificationOptions {
   message: string;
   level?: 'info' | 'success' | 'warning' | 'error';
   durationMs?: number;
-  [key: string]: unknown;
 }
 
 export interface UIDelegate {
@@ -119,39 +116,79 @@ export interface PipelineHooks {
   onAuditPass?: (ctx: { auditNotes: string[]; passed: boolean }) => Promise<void> | void;
   /** @deprecated Use generic lifecycle hooks above. */
   onPolishDone?: (ctx: { polishedText: string }) => Promise<string | void> | string | void;
-  [key: string]: unknown;
 }
 
 export type NovelHooks = PipelineHooks;
 
 /**
- * 纯净通用 ExtensionAPI 总线契约 (对标 repos/pi 官方 ExtensionAPI)
- * 具备 0 业务偏见，支持外部任意扩展注册工具、命令、快捷键、UI 交互与生命周期钩子
+ * 扩展能力面（capability facets）——按职责拆分的窄接口。
+ *
+ * 背景：`ExtensionAPI` 曾是 17 个方法挤在一起的胖接口，宿主与扩展只能整体实现 /
+ * 整体依赖，无法表达"某扩展只需要工具注册"这类最小权限诉求。
+ * 现将每一组内聚方法声明为独立能力面，`ExtensionAPI` 聚合它们（extends），
+ * 保持既有的聚合类型名与所有实现/消费点不变；新增的窄面供按需依赖注入。
  */
-export interface ExtensionAPI {
+
+/** 事件总线：发布 / 订阅领域事件 */
+export interface ExtensionEventBus {
   on(eventName: string, handler: ExtensionEventHandler): () => void;
   emit(eventName: string, ...args: unknown[]): Promise<void>;
+}
+
+/** 工具注册表：增删查 Agent Tool */
+export interface ExtensionToolRegistry {
   registerTool(tool: AgentTool | any): void;
   unregisterTool(name: string): boolean;
   getTools(): AgentTool[] | any[];
+}
+
+/** 斜杠命令注册表：增删查 Slash Command */
+export interface ExtensionCommandRegistry {
   registerCommand(cmd: SlashCommand | any, handler?: any): void;
   unregisterCommand(name: string): boolean;
   getCommands(): SlashCommand[] | any[];
+}
+
+/** 快捷键注册表：增删查 Shortcut */
+export interface ExtensionShortcutRegistry {
   registerShortcut(shortcut: ShortcutHandler | any, handler?: any): void;
   unregisterShortcut(key: string): boolean;
   getShortcuts(): ShortcutHandler[] | any[];
+}
+
+/** 上下文转换链：改写送入模型的消息序列 */
+export interface ExtensionContextTransformers {
   transformContext(messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]>;
   addContextTransformer(transformer: ContextTransformer): () => void;
+}
 
-  // Pi 风格 UI 交互与弹窗接口
+/** 宿主 UI 交互面：选择列表 / 输入框 / 闪屏通知 */
+export interface ExtensionUi {
   showSelectList<T>(options: SelectListOptions<T>): Promise<T | undefined>;
   showInput(options: InputDialogOptions): Promise<string | undefined>;
   flashNotification(options: FlashNotificationOptions | string): void;
+}
 
-  // 扩展生命周期钩子
+/** 写作流水线生命周期钩子注册面 */
+export interface ExtensionPipelineHooks {
   registerPipelineHooks(hooks: PipelineHooks): () => void;
   getPipelineHooks(): PipelineHooks[];
 }
+
+/**
+ * 纯净通用 ExtensionAPI 总线契约（对外聚合面，等价于各能力面的并集）。
+ * 具备 0 业务偏见，支持外部任意扩展注册工具、命令、快捷键、UI 交互与生命周期钩子。
+ * 需要最小权限注入时，请引用具体能力面而非本聚合接口。
+ */
+export interface ExtensionAPI
+  extends ExtensionEventBus,
+    ExtensionToolRegistry,
+    ExtensionCommandRegistry,
+    ExtensionShortcutRegistry,
+    ExtensionContextTransformers,
+    ExtensionUi,
+    ExtensionPipelineHooks {}
+
 
 export type ExtensionFactory = (api: ExtensionAPI) => Promise<void> | void;
 

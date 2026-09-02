@@ -48,10 +48,16 @@ export class ScrollView extends Component {
 
   public render(context: RenderContext): string[] {
     const { width, height } = context;
-    this.clampScroll(height);
 
+    // 只读视口计算：scrollOffset 可能因内容缩水 / 视图变高而越界，
+    // 本次绘制用局部 clamp 后的 offset，不写回 this.scrollOffset——
+    // render 不得静默修改组件状态（旧实现直接在渲染期调用 clampScroll 写回）。
+    // 显式状态推进走 scrollBy / scrollTo / setContent（后者内部已 clamp）。
     const totalLines = this.content.length;
-    const visibleSlice = this.content.slice(this.scrollOffset, this.scrollOffset + height);
+    const maxOffset = Math.max(0, totalLines - height);
+    const offset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
+
+    const visibleSlice = this.content.slice(offset, offset + height);
 
     while (visibleSlice.length < height) {
       visibleSlice.push('');
@@ -68,7 +74,7 @@ export class ScrollView extends Component {
     const contentWidth = Math.max(1, width - 1);
     const scrollbarThumbHeight = Math.max(1, Math.floor((height / totalLines) * height));
     const maxScroll = Math.max(1, totalLines - height);
-    const thumbTop = Math.floor((this.scrollOffset / maxScroll) * (height - scrollbarThumbHeight));
+    const thumbTop = Math.floor((offset / maxScroll) * (height - scrollbarThumbHeight));
 
     return visibleSlice.map((line, idx) => {
       const w = visibleWidth(line);

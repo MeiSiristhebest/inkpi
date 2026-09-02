@@ -196,5 +196,3 @@ export class TerminalStudio {
     return this.controller.handleInput(input);
   }
 }
-
-export const TuiStudio = TerminalStudio;

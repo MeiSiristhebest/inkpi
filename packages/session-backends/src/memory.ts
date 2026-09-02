@@ -90,7 +90,6 @@ export class MemorySessionBackend implements ISessionBackend {
           documentId: docId,
           title: `Document ${docId}`,
           snippet: snippet.trim(),
-          rank: -1,
           orderIndex: idxOrder++
         });
         if (results.length >= limit) break;

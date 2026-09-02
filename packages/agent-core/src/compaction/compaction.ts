@@ -1,7 +1,8 @@
 import type { AgentMessage, CompactionEntry, AssistantMessage } from '@inkpi/protocol';
-import { serializeConversationForSummary, GENERIC_SUMMARIZATION_SYSTEM_PROMPT } from './utils.js';
+import { serializeConversationForSummary, GENERIC_SUMMARIZATION_SYSTEM_PROMPT } from './summarize.js';
 import { extractStateLedger, type LedgerExtractor } from './state-ledger.js';
 import type { Clock } from '../ports/index.js';
+import { CHARS_PER_TOKEN_HEURISTIC } from '@inkpi/ai';
 
 export interface CompactionConfig {
   /** Trigger threshold in tokens (e.g. 100,000) */
@@ -16,9 +17,15 @@ export interface CompactionConfig {
   ledgerFormatter?: (ledger: ReturnType<typeof extractStateLedger>) => string;
   /** Injectable clock for timestamps / ids. Defaults to `Date.now`. */
   clock?: Clock;
+  /**
+   * 字符→Token 估算系数（与 `@inkpi/ai` 的 `CHARS_PER_TOKEN_HEURISTIC` 同源，默认取其值）。
+   * 触发判断与压缩后结算共用本系数；注入与线上 tokenizer 一致的值可获得真实计量。
+   */
+  charsPerToken?: number;
 }
 
 interface ResolvedCompactionConfig {
+  charsPerToken: number;
   triggerTokensThreshold: number;
   preserveRecentCount: number;
   summarizer?: CompactionConfig['summarizer'];
@@ -37,7 +44,8 @@ export class SessionCompactor {
       preserveRecentCount: config.preserveRecentCount ?? 4,
       summarizer: config.summarizer,
       ledgerExtractors: config.ledgerExtractors,
-      ledgerFormatter: config.ledgerFormatter
+      ledgerFormatter: config.ledgerFormatter,
+      charsPerToken: config.charsPerToken ?? CHARS_PER_TOKEN_HEURISTIC
     };
   }
 
@@ -49,11 +57,11 @@ export class SessionCompactor {
     for (const msg of messages) {
       if (msg.role === 'user') {
         const str = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-        total += Math.ceil(str.length * 0.7);
+        total += Math.ceil(str.length * this.config.charsPerToken);
       } else if (msg.role === 'assistant') {
         for (const b of msg.content) {
-          if (b.type === 'text') total += Math.ceil(b.text.length * 0.7);
-          if (b.type === 'thinking') total += Math.ceil(b.thinking.length * 0.7);
+          if (b.type === 'text') total += Math.ceil(b.text.length * this.config.charsPerToken);
+          if (b.type === 'thinking') total += Math.ceil(b.thinking.length * this.config.charsPerToken);
         }
       }
     }
@@ -106,7 +114,7 @@ export class SessionCompactor {
       summary: summaryText,
       firstKeptEntryId: keptMessages[0]?.id || 'kept_first',
       tokensBefore,
-      estimatedTokensAfter: this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * 0.7),
+      estimatedTokensAfter: this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * this.config.charsPerToken),
       createdAt: this.clock(),
       details: stateLedger ? { stateLedger } : undefined
     };

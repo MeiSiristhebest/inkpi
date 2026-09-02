@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ProjectTrustManager } from '@inkpi/agent-core';
+import { ProjectTrustStore } from '@inkpi/agent-core';
 
 describe('InkPi Project Trust & Sandbox Security Gate', () => {
   const testTrustFile = path.join(process.cwd(), '.tmp-inkpi-trust.json');
@@ -19,7 +19,7 @@ describe('InkPi Project Trust & Sandbox Security Gate', () => {
   });
 
   it('should manage trusted projects and assert security permissions', () => {
-    const trustManager = new ProjectTrustManager(testTrustFile);
+    const trustManager = new ProjectTrustStore(testTrustFile);
     const mockNovelDir = path.join(process.cwd(), 'novels', 'my-masterpiece');
 
     expect(trustManager.isTrusted(mockNovelDir)).toBe(false);
@@ -47,7 +47,7 @@ describe('InkPi Project Trust & Sandbox Security Gate', () => {
 
   it('should surface persistence failures instead of reporting trust changes as durable', () => {
     const invalidConfigPath = process.cwd();
-    const trustManager = new ProjectTrustManager(invalidConfigPath);
+    const trustManager = new ProjectTrustStore(invalidConfigPath);
     const projectDir = path.join(process.cwd(), 'workspace');
 
     expect(() => trustManager.trust(projectDir)).toThrow();
@@ -56,7 +56,7 @@ describe('InkPi Project Trust & Sandbox Security Gate', () => {
 
   it('should expose corrupted trust configuration instead of treating it as an empty store', () => {
     fs.writeFileSync(testTrustFile, '{ bad json', 'utf8');
-    const trustManager = new ProjectTrustManager(testTrustFile);
+    const trustManager = new ProjectTrustStore(testTrustFile);
 
     expect(trustManager.listTrusted()).toEqual([]);
     expect(trustManager.getDiagnostics().loadError?.message).toMatch(/Unexpected|JSON|position/i);
@@ -64,7 +64,7 @@ describe('InkPi Project Trust & Sandbox Security Gate', () => {
 
   it('should reject malformed trusted directory entries', () => {
     fs.writeFileSync(testTrustFile, JSON.stringify({ trustedDirectories: [42] }), 'utf8');
-    const trustManager = new ProjectTrustManager(testTrustFile);
+    const trustManager = new ProjectTrustStore(testTrustFile);
 
     expect(trustManager.listTrusted()).toEqual([]);
     expect(trustManager.getDiagnostics().loadError?.message).toMatch(/trustedDirectories.*strings/i);
@@ -73,7 +73,7 @@ describe('InkPi Project Trust & Sandbox Security Gate', () => {
   it('should restore the previous trust state when revoke or clear persistence fails', () => {
     const projectDir = path.join(process.cwd(), 'workspace');
     const otherProjectDir = path.join(process.cwd(), 'other-workspace');
-    const trustManager = new ProjectTrustManager(testTrustFile);
+    const trustManager = new ProjectTrustStore(testTrustFile);
     trustManager.trust(projectDir);
     trustManager.trust(otherProjectDir);
 
@@ -91,10 +91,10 @@ describe('InkPi Project Trust & Sandbox Security Gate', () => {
 
   it('should read durable trust state when a manager is recreated', () => {
     const projectDir = path.join(process.cwd(), 'workspace');
-    const first = new ProjectTrustManager(testTrustFile);
+    const first = new ProjectTrustStore(testTrustFile);
     first.trust(projectDir);
 
-    const second = new ProjectTrustManager(testTrustFile);
+    const second = new ProjectTrustStore(testTrustFile);
     expect(second.isTrusted(projectDir)).toBe(true);
     expect(second.listTrusted()).toEqual([path.resolve(projectDir)]);
   });

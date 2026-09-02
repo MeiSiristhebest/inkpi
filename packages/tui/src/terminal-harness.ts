@@ -166,6 +166,3 @@ export class TerminalHarness {
     this.logs.push(msg);
   }
 }
-
-/** @deprecated Use TerminalHarness. */
-export const TerminalWriterHarness = TerminalHarness;

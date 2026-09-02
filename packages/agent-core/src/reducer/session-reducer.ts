@@ -224,22 +224,37 @@ export function reduceSession(
 }
 
 /**
- * 查找并修正悬挂未完成的 operation (Crash Recovery)
+ * 查找并修正悬挂未完成的 operation (Crash Recovery)。
+ *
+ * 纯函数：**不修改入参**。返回值中的 `state` 是携带修复后 operations 的新快照；
+ * 被标记的 OperationRecord 是全新对象，未受影响的记录按写时复制约定保持共享
+ * （全仓无处原地改写记录，故共享是安全的）。不可变契约见 MaterializedSessionState。
  */
-export function detectAndMarkInterruptedOperations(state: MaterializedSessionState): {
+export function detectAndMarkInterruptedOperations(
+  state: MaterializedSessionState,
+  clock: () => number = Date.now
+): {
+  state: MaterializedSessionState;
   recoveredCount: number;
   interruptedIds: string[];
 } {
   const interruptedIds: string[] = [];
+  const operations = new Map<string, OperationRecord>();
   for (const [id, op] of state.operations.entries()) {
     if (op.state === 'running' || op.state === 'pending') {
-      op.state = 'interrupted';
-      op.error = 'Operation interrupted by system shutdown/crash.';
-      op.updatedAt = Date.now();
       interruptedIds.push(id);
+      operations.set(id, {
+        ...op,
+        state: 'interrupted',
+        error: 'Operation interrupted by system shutdown/crash.',
+        updatedAt: clock()
+      });
+    } else {
+      operations.set(id, op);
     }
   }
   return {
+    state: { ...state, operations },
     recoveredCount: interruptedIds.length,
     interruptedIds
   };

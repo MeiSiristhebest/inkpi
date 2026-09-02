@@ -3,7 +3,7 @@ import {
   NoModelConfiguredError,
   InvalidDiceNotationError,
   SessionRegistry,
-  SandboxManager
+  SandboxExecutor
 } from '@inkpi/agent-core';
 
 // ---------------------------------------------------------------------------
@@ -51,10 +51,10 @@ describe('InvalidDiceNotationError', () => {
     expect(err.message).toBe('custom: bad dice');
   });
 
-  // 说明：`roll` 是注入到沙箱脚本内的全局函数，不是 SandboxManager 的方法；
+  // 说明：`roll` 是注入到沙箱脚本内的全局函数，不是 SandboxExecutor 的方法；
   // 脚本内抛出的错误由 runRuleScript 捕获为 success:false，而不是向外 reject。
   it('沙箱对非法记号判定失败，而不是返回伪造随机数', async () => {
-    const sandbox = new SandboxManager();
+    const sandbox = new SandboxExecutor();
     const bad = await sandbox.runRuleScript<number>(`return roll('not-a-dice-expression');`);
     expect(bad.success).toBe(false);
     expect(String(bad.error ?? '')).toMatch(/Invalid dice notation/i);
@@ -63,7 +63,7 @@ describe('InvalidDiceNotationError', () => {
   });
 
   it('沙箱对合法记号正常返回区间内的值', async () => {
-    const sandbox = new SandboxManager();
+    const sandbox = new SandboxExecutor();
     const res = await sandbox.runRuleScript<number>(`return roll('1d6');`);
     expect(res.success).toBe(true);
     expect(res.result).toBeGreaterThanOrEqual(1);

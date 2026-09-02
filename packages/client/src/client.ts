@@ -5,6 +5,7 @@ import type {
 } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { RpcTransport } from './types.js';
+import { DEFAULT_RPC_HOST } from './types.js';
 import { TcpSocketTransport } from './transports/tcp.js';
 import { WebSocketTransport } from './transports/ws.js';
 
@@ -123,7 +124,7 @@ export class InkRpcClient {
     });
   }
 
-  public static async connectTcp(port: number, host = '127.0.0.1'): Promise<InkRpcClient> {
+  public static async connectTcp(port: number, host = DEFAULT_RPC_HOST): Promise<InkRpcClient> {
     const rawTransport = await TcpSocketTransport.connect(port, host);
     return new InkRpcClient(rawTransport);
   }

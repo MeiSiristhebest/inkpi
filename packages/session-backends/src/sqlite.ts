@@ -15,6 +15,13 @@ import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 export interface SqliteSessionBackendOptions {
   dbPath?: string; // ':memory:' or file path
   journalDir?: string;
+  /**
+   * 快照自动落位使用的默认工作区/目录 id。
+   * 文档必须有 workspace/folder 归属；保存未知文档的快照时按需创建这两个桶。
+   * 可注入以避免测试/多租户场景互相污染；默认值仅是约定俗成的桶名，不再是隐藏魔法。
+   */
+  defaultWorkspaceId?: string;
+  defaultFolderId?: string;
 }
 
 /**
@@ -58,22 +65,29 @@ export class SqliteSessionBackend implements ISessionBackend {
     this.db.close();
   }
 
+  /**
+   * 为未知文档按需创建归属桶（工作区/目录）再建文档。
+   * 这是**显式文档化**的自动落位行为：桶 id 可经 options 注入；
+   * `saveOperation` / `saveSessionEntry` 等其他写入路径**不会**触碰这两个桶。
+   */
   private ensureDocument(documentId: string, contentSize = 0): void {
     if (this.repo.getDocument(documentId)) return;
-    if (!this.repo.getWorkspace('ws_default')) {
+    const workspaceId = this.options.defaultWorkspaceId || 'ws_default';
+    const folderId = this.options.defaultFolderId || 'folder_default';
+    if (!this.repo.getWorkspace(workspaceId)) {
       this.repo.createWorkspace({
-        id: 'ws_default',
+        id: workspaceId,
         title: 'Default Workspace',
         owner: 'creator',
         createdAt: Date.now(),
         updatedAt: Date.now()
       });
     }
-    const folders = this.repo.getFolders('ws_default');
+    const folders = this.repo.getFolders(workspaceId);
     if (folders.length === 0) {
       this.repo.createFolder({
-        id: 'folder_default',
-        workspaceId: 'ws_default',
+        id: folderId,
+        workspaceId,
         title: 'Default Folder',
         orderIndex: 1,
         createdAt: Date.now(),
@@ -82,8 +96,8 @@ export class SqliteSessionBackend implements ISessionBackend {
     }
     this.repo.createDocument({
       id: documentId,
-      workspaceId: 'ws_default',
-      folderId: 'folder_default',
+      workspaceId,
+      folderId,
       title: `Document ${documentId}`,
       orderIndex: 1,
       contentSize,

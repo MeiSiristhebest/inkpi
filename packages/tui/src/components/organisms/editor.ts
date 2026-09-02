@@ -22,6 +22,23 @@ export interface EditorOptions {
   completionProvider?: AutocompleteProvider;
 }
 
+/**
+ * 纯函数：计算把光标保持在可视区内所需的滚动行号。
+ * 不改任何状态；调用方（ensureCursorVisible / render）自行决定如何使用结果。
+ */
+function cursorFollowScrollRow(cursorRow: number, scrollRow: number, lineCount: number, viewHeight: number): number {
+  if (viewHeight <= 0) return scrollRow;
+  let row = scrollRow;
+  if (cursorRow < row) {
+    row = cursorRow;
+  } else if (cursorRow >= row + viewHeight) {
+    row = cursorRow - viewHeight + 1;
+  }
+  // 与旧渲染副作用保持同一公式：光标正常情况下恒在 [0, lineCount) 内，
+  // 因此无需额外 clamp（退化输入由调用方负责约束）。
+  return row;
+}
+
 export class Editor extends Component {
   public lines: string[] = [''];
   public cursorRow = 0;
@@ -364,21 +381,29 @@ export class Editor extends Component {
     return false;
   }
 
+  /**
+   * 显式光标跟随：推进模型滚动状态，使光标落入可视区。
+   *
+   * 这是唯一允许修改 scrollRow 的入口。旧实现把这段逻辑藏在 render() 里
+   * （渲染期间静默改写组件状态，属副作用坏味道——渲染函数应可重复调用且不改变模型）。
+   * 调用方在每次绘制前按需调用一次即可；render() 本身只做只读视口计算。
+   */
+  public ensureCursorVisible(viewHeight: number): void {
+    this.scrollRow = cursorFollowScrollRow(this.cursorRow, this.scrollRow, this.lines.length, viewHeight);
+  }
+
   public render(context: RenderContext): string[] {
     const { width, height } = context;
 
-    // Adjust scrollRow to keep cursor visible
-    if (this.cursorRow < this.scrollRow) {
-      this.scrollRow = this.cursorRow;
-    } else if (this.cursorRow >= this.scrollRow + height) {
-      this.scrollRow = this.cursorRow - height + 1;
-    }
+    // 只读视口计算：此处用局部 scrollRow 决定本次绘制的窗口，绝不写 this.scrollRow。
+    // 若调用方希望模型滚动状态同步推进，应先调用 ensureCursorVisible(height)。
+    const scrollRow = cursorFollowScrollRow(this.cursorRow, this.scrollRow, this.lines.length, height);
 
     const rendered: string[] = [];
     const maxLineNumW = String(this.lines.length).length + 2;
 
     for (let r = 0; r < height; r++) {
-      const actualLineIdx = this.scrollRow + r;
+      const actualLineIdx = scrollRow + r;
       if (actualLineIdx < this.lines.length) {
         const lineContent = this.lines[actualLineIdx] || '';
         let prefix = '';
@@ -412,7 +437,7 @@ export class Editor extends Component {
 
     // 若当前正在补全，在下一行或指定位置合成补全建议下拉面板
     if (this.isCompleting && this.completionItems.length > 0) {
-      const popupY = Math.min(height - 1, this.cursorRow - this.scrollRow + 1);
+      const popupY = Math.min(height - 1, this.cursorRow - scrollRow + 1);
       if (popupY >= 0 && popupY < rendered.length) {
         const itemsPreview = this.completionItems
           .slice(0, 4)

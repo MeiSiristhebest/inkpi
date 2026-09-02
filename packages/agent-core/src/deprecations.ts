@@ -6,10 +6,13 @@
  * 新代码禁止使用本文件导出的任何名字。
  */
 import { Agent } from './agent.js';
-import { BranchExplorer } from './branch-what-if.js';
+import { BranchExplorer, type HypothesisBranchInfo, type HypothesisExecutiveReport } from './branch-what-if.js';
 import { ExtensionInstaller } from './package-manager/package-manager.js';
 import { SessionRegistry } from './rpc/session-registry.js';
 import { WorkflowCoordinator } from './pipeline/coordinator.js';
+import { SandboxExecutor, type SandboxRunner } from './sandbox/sandbox.js';
+import { SessionShareExporter } from './export/session-share.js';
+import { ProjectTrustStore } from './trust/project-trust.js';
 import type { SlashCommandExecutor } from './slash-commands.js';
 import type { TrustStoreFile } from './trust/project-trust.js';
 
@@ -46,3 +49,24 @@ export type SlashCommandHandler = SlashCommandExecutor;
 
 /** @deprecated 已由 `TrustStoreFile` 取代（该结构描述的是磁盘上信任存储文件的形状，非抽象数据）。计划移除版本：v1.0 */
 export type TrustStoreData = TrustStoreFile;
+
+/** @deprecated 已由 `SandboxExecutor` 取代（Manager 后缀空泛；此类是规则脚本/表达式求值的执行门面）。计划移除版本：v1.0 */
+export const SandboxManager = SandboxExecutor;
+export type SandboxManager = SandboxExecutor;
+
+/** @deprecated 已由 `SandboxRunner` 取代（I 前缀与仓库内命名风格不一致）。计划移除版本：v1.0 */
+export type ISandboxRunner = SandboxRunner;
+
+/** @deprecated 已由 `ProjectTrustStore` 取代（Manager 后缀空泛；此类是带磁盘持久化的项目信任库）。计划移除版本：v1.0 */
+export const ProjectTrustManager = ProjectTrustStore;
+export type ProjectTrustManager = ProjectTrustStore;
+
+/** @deprecated 已由 `SessionShareExporter` 取代（Manager 后缀空泛；此类是会话脱敏导出引擎）。计划移除版本：v1.0 */
+export const SessionShareManager = SessionShareExporter;
+export type SessionShareManager = SessionShareExporter;
+
+/** @deprecated 已由 `HypothesisBranchInfo` 取代（what-if 口语并入会话树的 hypothesis 词汇）。计划移除版本：v1.0 */
+export type WhatIfBranchInfo = HypothesisBranchInfo;
+
+/** @deprecated 已由 `HypothesisExecutiveReport` 取代（同上，统一假设推演词汇）。计划移除版本：v1.0 */
+export type WhatIfExecutiveReport = HypothesisExecutiveReport;

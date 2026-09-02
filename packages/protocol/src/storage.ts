@@ -58,7 +58,8 @@ export interface FtsSearchResult {
   documentId: string;
   title: string;
   snippet: string;
-  rank: number;
+  /** FTS5 的 bm25 相关性分数。朴素（非 FTS）后端不做相关性计算，诚实省略本字段——不返回伪造值。 */
+  rank?: number;
   orderIndex: number;
 }
 

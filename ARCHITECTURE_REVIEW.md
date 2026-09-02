@@ -8,7 +8,7 @@
 > **整改状态（Remediation status）**：
 > - **阶段 1（止血）**：7/7 已完成（`tests/` 已纳入 `tsc -b`，动态端口已落地）。
 > - **阶段 2（治本）**：**8/8 已完成**（#8 领域端口声明 / #11 storage `IDb`/`IRepository` 抽象 / #15 `conformance` 去公开 API 且修复恒真断言 / #9 包提取 / #10 删依赖 / #14 RPC 注册表 + `withSession` + `compatibilityMode` 策略对象 / #12 `TerminalStudio` 拆为 `StudioModel`/`StudioView`/`StudioController` / #13 `WorkflowCoordinator` 拆协作对象 + `runAgentLoop` 拆四段管线。公开 API 全部保持兼容，行为零变化）。
-> - **阶段 3（抛光）**：6 项中 **5 项已完成**（#17 解析器剥离 / #18 `Clock` 统一注入 / #21 文档同步 / #16 TUI 原子化重组 / #19 命名清理：评审重命名表已落地——`ExtensionInstaller`/`SessionRegistry`/`BranchExplorer`/`SlashCommandExecutor`/`TrustStoreFile`；名实不符已修——`tree.branch→addBranchMarker`、`remove→trash`、`getLoadedDocuments` 删除；全部兼容别名集中于 `agent-core/src/deprecations.ts` 并由测试守护；64 处出处式注释改写为契约描述。剩余：`Novel*` 业务前缀迁移与少量表外后缀，见 §2.13），**1 项受阻**（#20 `perFile` 覆盖率——被沙箱 safe-delete 守卫阻断而无法实测）。
+> - **阶段 3（抛光）**：6 项中 **5 项已完成**（#17 解析器剥离 / #18 `Clock` 统一注入 / #21 文档同步 / #16 TUI 原子化重组 / #19 命名清理：评审重命名表已落地——`ExtensionInstaller`/`SessionRegistry`/`BranchExplorer`/`SlashCommandExecutor`/`TrustStoreFile`；名实不符已修——`tree.branch→addBranchMarker`、`remove→trash`、`getLoadedDocuments` 删除；全部兼容别名集中于 `agent-core/src/deprecations.ts`（`@inkpi/tui` 同规则集中于 `tui/src/deprecations.ts`）并由测试守护；64 处出处式注释改写为契约描述；表外后缀扫尾与 `TuiStudio` 别名集中亦已完成，见 §2.13）。唯一命名债务为结构性的 `Novel*` 业务前缀——评估完成，属打包级改动，见 §2.13 与 ARCHITECTURE.md Known Debt），**1 项受阻**（#20 `perFile` 覆盖率——被沙箱 safe-delete 守卫阻断而无法实测）。
 >
 > 本报告的 15 项原则裁定中，核心正确性缺陷（硬编码/mock、LSP、XSS、恒真断言）已被实质性修复；
 > 结构性根因（包提取、巨型类拆分、RPC switch）属于阶段 2/3，部分已由新增守卫防止回潮，部分仍待重构。详见
@@ -31,7 +31,8 @@
 > `tests/dependency-direction.test.ts`（依赖方向棘轮，见 §3 阶段 2 状态表）。
 >
 > **核心已治本，巨型类已沿职责边界拆分完毕**：`agent-core` 已不再是杂物抽屉——`src/tui/` 与 `src/rpc/` 已迁出（分别进入 `@inkpi/tui` 与 `@inkpi/server`），运行时依赖已收敛为 `@inkpi/protocol` / `@inkpi/ai` / `@inkpi/editor-core`，依赖方向棘轮 `BASELINE` 已清空。
-> `WorkflowCoordinator`（原约 660 行）现为约 215 行装配门面，协作对象位于 `pipeline/`：`WorkflowExecutor` / `WorkflowStrategy`（替代 `compatibilityMode` 分支）/ `StageRegistry` / `GateRuleRegistry` / `RoleInvoker` / `TelemetryTracer` / `EventBus`，门禁检测（纯 `detectGateIssues`）与账本合并（纯 `mergeLedgers`）已单测。`runAgentLoop` 拆为 `turn/` 四段管线（`ContextTransformer`→`StreamInvoker`→`ToolDispatcher`→`TurnFinalizer`），两套工具并发策略合并为 `concurrency.ts` 的 `runWithConcurrency`。`TerminalStudio`（原约 494 行）拆为 `StudioModel`/`StudioView`/`StudioController` 三层 + 门面，公开字段以 getter 保持兼容。剩余债务为 P1/P2 硬编码项与 `perFile` 覆盖率（环境受阻），见 §5 Known Debt。
+> `WorkflowCoordinator`（原约 660 行）现为约 215 行装配门面，协作对象位于 `pipeline/`：`WorkflowExecutor` / `WorkflowStrategy`（替代 `compatibilityMode` 分支）/ `StageRegistry` / `GateRuleRegistry` / `RoleInvoker` / `TelemetryTracer` / `EventBus`，门禁检测（纯 `detectGateIssues`）与账本合并（纯 `mergeLedgers`）已单测。`runAgentLoop` 拆为 `turn/` 四段管线（`ContextTransformer`→`StreamInvoker`→`ToolDispatcher`→`TurnFinalizer`），两套工具并发策略合并为 `concurrency.ts` 的 `runWithConcurrency`。`TerminalStudio`（原约 494 行）拆为 `StudioModel`/`StudioView`/`StudioController` 三层 + 门面，公开字段以 getter 保持兼容。
+> 之后的本轮收尾（见 ARCHITECTURE.md §5 Known Debt）：reducer 已写时复制；硬编码/fake 值（journal NULL token、`rank` 诚实省略、sqlite 默认桶可注入、telemetry 定价可注入 + 合法 OTel ID、`CHARS_PER_TOKEN_HEURISTIC` 单一来源、`DEFAULT_RPC_HOST` 集中常量）全部清理；`session-share`/TUI render 副作用清除；`ISessionBackend.search` 改为必需、`ExtensionAPI` 拆 7 能力面、8 处索引签名移除；表外后缀与 `TuiStudio` 别名收尾。剩余债务仅剩结构性的 `Novel*` 打包迁移与 `perFile` 覆盖率（环境受阻），见 §5 Known Debt。
 
 ---
 
@@ -751,12 +752,13 @@ public isSlashCommand(input: string): boolean { return input.trim().startsWith('
 
 **注释以出处代替设计意图**：至少 10 处注释写作 *"1:1 对标 repos/pi X"*（`journal.ts:31`、`catalog.ts:101`、`leases.ts:14`、`conformance.ts:24`、`prompt-caching.ts:27` 等）。注释描述的是出处而非契约，读者无法从中得知行为承诺。
 
-**重构方向（落地状态，P3-19）**
+**重构方向（落地状态，P3-19 及其后续收尾）**
 1. 重命名表：✅ 已落地——`ExtensionPackageManager` → `ExtensionInstaller`；`LiveSessionManager` → `SessionRegistry`；`BranchManager` → `BranchExplorer`；`SlashCommandHandler` → `SlashCommandExecutor`；`TrustStoreData` → `TrustStoreFile`（后两项名称微调：前者补回 Slash 语境，后者如实描述"磁盘信任存储文件"的形状，`TrustedProjectList` 无法涵盖 `lastUpdated` 字段）。
-2. 别名集中化：✅ 已落地——全部兼容别名（`AgentEngine`/`StoryBranchManager`/`ExtensionPackageManager`/`LiveSessionManager`/`NovelCollaborativePipeline`/`CollaborativePipeline`/`PipelineCoordinator`/`SlashCommandHandler`/`TrustStoreData`）集中到 **`agent-core/src/deprecations.ts`** 一处，统一 `@deprecated` + 移除版本 v1.0，`tests/deprecations.test.ts` 守护别名与权威名同址。包外使用为零，无破坏。
+2. 别名集中化：✅ 已落地——全部兼容别名（`AgentEngine`/`StoryBranchManager`/`ExtensionPackageManager`/`LiveSessionManager`/`NovelCollaborativePipeline`/`CollaborativePipeline`/`PipelineCoordinator`/`SlashCommandHandler`/`TrustStoreData`，以及本表外后缀扫尾新增的 `SandboxManager`/`ProjectTrustManager`/`SessionShareManager`/`WhatIfBranchInfo`/`WhatIfExecutiveReport`）集中到 **`agent-core/src/deprecations.ts`** 一处，统一 `@deprecated` + 移除版本 v1.0，`tests/deprecations.test.ts` 守护别名与权威名同址。`@inkpi/tui` 包内别名（`TuiStudio`/`TerminalWriterHarness`）同规则集中于 `tui/src/deprecations.ts`，由新增 `tests/tui-deprecations.test.ts` 守护。包外使用为零，无破坏。
 3. 名实不符：✅ 已落地——`fork()` 早前改名 `selectLeaf()`；`tree.branch()` 改名 `addBranchMarker()`（弃用别名保留，RPC 线上方法名不变）；`package-manager.remove()` 改名 `trash()`（如实表达"移入隔离区"）；`extension-host.getLoadedDocuments()` 删除（`getLoadedModules()` 为权威名）。
-4. `Novel*` 业务词迁移：⏸ 未做——属打包级改动（新建领域包），超出命名清理范围，记录于 ARCHITECTURE.md Known Debt。
-5. 注释契约化：✅ 已落地——全仓 64 处 `(1:1 对标 …)` 出处式注释全部改写为契约/行为描述。
+4. 表外后缀扫尾：✅ 已落地（本轮）——`SandboxManager` → `SandboxExecutor`（`ISandboxRunner` → `SandboxRunner`）、`ProjectTrustManager` → `ProjectTrustStore`、`SessionShareManager` → `SessionShareExporter`、`WhatIfBranchInfo` → `HypothesisBranchInfo`、`WhatIfExecutiveReport` → `HypothesisExecutiveReport`、`sessionData` 形参 → `source`、`safeHelpers` → `sandboxSafeGlobals`、`compaction/utils.ts` → `compaction/summarize.ts`。**保留并说明理由**（词确有所指、非空泛后缀）：`ExtensionRunner`（装载并运行扩展模块）、`ClipboardCommandRunner`（执行剪贴板 CLI 命令的可注入通道）、`TerminalHarness`（终端测试/嵌入 harness）。
+5. `Novel*` 业务词迁移：⏸ **评估完成，维持记录为打包级债务**——该前缀是结构性的而非修辞：通用 `WorkflowCoordinator` 的默认装配内嵌叙事领域内容（`pipeline/legacy-narrative.ts` 的 `createVisualNovelGateRules()`/`createLegacyNarrativeStages()`），`compaction/state-ledger.ts` 暴露 `extractNovelStateLedger`/`formatNovelStateLedger`，`@inkpi/evals` 还有整个 `NovelEvalRunner`。干净迁移 = 新建领域包（如 `@inkpi/novel-pipeline`）消费通用核心并供给叙事阶段/规则/账本抽取默认值，属打包级改动，超出命名清理范围；此前 `NovelCollaborativePipeline` 等 4 别名已并入 `deprecations.ts`，`protocol` 侧 `NovelStateLedger`/`NovelHooks`/`NovelRoleType` 等纯类型别名带 `@deprecated` 注释。记录于 ARCHITECTURE.md Known Debt。
+6. 注释契约化：✅ 已落地——全仓 64 处 `(1:1 对标 …)` 出处式注释全部改写为契约/行为描述。
 
 ---
 
@@ -908,8 +910,8 @@ expect(emptyScreen).toContain('no entities');
 | 16 | TUI 组件按 `atoms/` / `molecules/` / `organisms/` 重组；公开 API（含 `Box`/`HStack`/`VStack`/`Spacer` 再导出别名）保持不变 | ✅ 已完成（`components/` 重组为 `atoms/`(`Box`/`HStack`/`VStack`/`Spacer`)、`molecules/`(`SelectList`/`ScrollView`/`ThinkingAccordion`/`Markdown`)、`organisms/`(`Editor`)，各含 barrel；`tsc -b` 与 TUI 测试全绿） |
 | 17 | 解析器（Markdown / Mermaid）从渲染器剥离 | ✅ 已完成（`parsers/markdown-parser.ts` / `parsers/mermaid-parser.ts` 纯函数化 + colocated 测试） |
 | 18 | 全包统一 `Clock` / `IdGenerator` 注入，删除默认值回落 | ✅ 已完成（`TelemetryCollector`/`LiveSessionManager`/`SessionCompactor`/`runAgentLoop` 注入 `Clock`；`tree`/`branch-what-if` 早先已注入） |
-| 19 | 重命名 19 个空泛后缀标识符；删除 12 组别名；修正 10 项名实不符 | ✅ 基本完成（评审重命名表落地：`ExtensionPackageManager→ExtensionInstaller`、`LiveSessionManager→SessionRegistry`、`BranchManager→BranchExplorer`、`SlashCommandHandler→SlashCommandExecutor`、`TrustStoreData→TrustStoreFile`；名实不符修正：`tree.branch→addBranchMarker`（弃用别名保留）、`remove→trash`、`getLoadedDocuments` 删除（`getLoadedExtensions` 同步标弃用）；全部兼容别名集中于 `agent-core/src/deprecations.ts`，统一 `@deprecated` + 移除版本 v1.0，`tests/deprecations.test.ts` 守护；64 处出处式注释改写为契约描述。剩余（记录于 ARCHITECTURE.md Known Debt）：`Novel*` 业务前缀迁移属打包级改动、少量表外后缀、`@inkpi/tui` 内 `TuiStudio` 别名） |
-| 20 | 启用 `perFile: true` 覆盖率；测试改为断言 ViewModel 而非 ANSI 字节 | ❌ 受阻（沙箱 safe-delete 守卫阻断 `--coverage` 的临时目录清理，无法实测；聚合分支覆盖 80.46%，余量 19 分支） |
+| 19 | 重命名 19 个空泛后缀标识符；删除 12 组别名；修正 10 项名实不符 | ✅ 已完成（评审重命名表落地：`ExtensionPackageManager→ExtensionInstaller`、`LiveSessionManager→SessionRegistry`、`BranchManager→BranchExplorer`、`SlashCommandHandler→SlashCommandExecutor`、`TrustStoreData→TrustStoreFile`；名实不符修正：`tree.branch→addBranchMarker`（弃用别名保留）、`remove→trash`、`getLoadedDocuments` 删除（`getLoadedExtensions` 同步标弃用）；全部兼容别名集中于 `agent-core/src/deprecations.ts`，统一 `@deprecated` + 移除版本 v1.0，`tests/deprecations.test.ts` 守护；64 处出处式注释改写为契约描述；后续扫尾（见 §2.13 落地状态 4/5）：`SandboxManager→SandboxExecutor`（含 `ISandboxRunner→SandboxRunner`）、`ProjectTrustManager→ProjectTrustStore`、`SessionShareManager→SessionShareExporter`、`WhatIf*→Hypothesis*`、`sessionData→source`、`safeHelpers→sandboxSafeGlobals`、`compaction/utils.ts→summarize.ts`、`@inkpi/tui` 别名集中于 `tui/src/deprecations.ts`；`Runner`/`TerminalHarness` 因词确有所指而保留。唯一剩余：结构性的 `Novel*` 业务前缀（打包级，见 §2.13 落地状态 5 与 ARCHITECTURE.md Known Debt）） |
+| 20 | 启用 `perFile: true` 覆盖率；测试改为断言 ViewModel 而非 ANSI 字节 | ❌ 受阻（沙箱 safe-delete 守卫阻断 vitest 对 `coverage/` 的清理，覆盖率需在提权 shell 下运行，无法作为常规 CI 步骤实测；聚合覆盖 91.52% stmts/lines / 94.63% funcs / 81.11% branch，门禁 80% branch 通过但余量仅 ~1.1 点） |
 | 21 | 重写 `ARCHITECTURE.md`，让它描述**代码实际的样子**，并把三条不变量写成可执行的架构测试 | ✅ 已完成（本文件 §5 与 `ARCHITECTURE.md` 持续同步为代码现状） |
 
 ---

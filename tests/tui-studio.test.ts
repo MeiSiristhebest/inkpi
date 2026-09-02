@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { TuiStudio } from '@inkpi/tui';
+import { TerminalStudio } from '@inkpi/tui';
 import { Agent } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
 
-describe('TuiStudio (Terminal Workstation)', () => {
+describe('TerminalStudio (Terminal Workstation)', () => {
   it('should initialize with default 3-pane layout and render full screen', () => {
-    const studio = new TuiStudio({ width: 120, height: 30 });
+    const studio = new TerminalStudio({ width: 120, height: 30 });
     const screen = studio.renderScreen();
 
     expect(screen).toContain('Resources');
@@ -14,7 +14,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
   });
 
   it('should support differential screen rendering', () => {
-    const studio = new TuiStudio({ width: 100, height: 26 });
+    const studio = new TerminalStudio({ width: 100, height: 26 });
     
     // First render -> full content
     const firstDiff = studio.renderDifferential();
@@ -33,7 +33,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
   });
 
   it('should support document navigation and focus switching', () => {
-    const studio = new TuiStudio({
+    const studio = new TerminalStudio({
       initialResources: [
         { id: '1', title: 'Doc 1', wordCount: 0, status: 'draft', active: true },
         { id: '2', title: 'Doc 2', wordCount: 0, status: 'draft', active: false }
@@ -57,7 +57,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
 
   it('should handle interactive input, ghost text acceptance, and commands', async () => {
     const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
-    const studio = new TuiStudio({ agent });
+    const studio = new TerminalStudio({ agent });
 
     // 1. Text input
     const inputRes = await studio.handleInput('Cool night, wind over the roof.');
@@ -85,7 +85,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
 
   it('should handle dimensions, document navigation boundaries, and agent event streaming', async () => {
     const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
-    const studio = new TuiStudio({ agent, width: 100, height: 28 });
+    const studio = new TerminalStudio({ agent, width: 100, height: 28 });
 
     studio.setDimensions(140, 35);
     const dims = studio.getDimensions();
@@ -118,13 +118,13 @@ describe('TuiStudio (Terminal Workstation)', () => {
     expect(noGhostRes).toBe('No active ghost text');
 
     // Render screen with empty ledger and dialogue
-    const emptyStudio = new TuiStudio({ width: 90, height: 26 });
+    const emptyStudio = new TerminalStudio({ width: 90, height: 26 });
     const emptyScreen = emptyStudio.renderScreen();
     expect(emptyScreen).toContain('no entities');
     expect(emptyScreen).toContain('no assets');
     expect(emptyScreen).toContain('no tracks');
     // Render screen with fully populated ledger
-    const populatedStudio = new TuiStudio({ width: 100, height: 28 });
+    const populatedStudio = new TerminalStudio({ width: 100, height: 28 });
     populatedStudio.updateStateLedger({
       entities: [{ name: 'UserD', status: 'Level 50' }],
       assets: [{ name: 'Epic Asset' }],
@@ -144,7 +144,7 @@ describe('TuiStudio (Terminal Workstation)', () => {
   });
 
   it('should handle modal input commands UP, ENTER, ESC and custom labels', async () => {
-    const studio = new TuiStudio({
+    const studio = new TerminalStudio({
       labels: {
         leftBoxTitle: 'Custom Explorer',
         statusReady: 'Custom Ready'

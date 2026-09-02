@@ -2,7 +2,7 @@ import type { StateLedger } from '@inkpi/protocol';
 import { SessionTree, type SessionTreeNode } from './tree.js';
 import type { Clock, IdGenerator } from './ports/index.js';
 
-export interface WhatIfBranchInfo {
+export interface HypothesisBranchInfo {
   branchId: string;
   branchName: string;
   premise: string;
@@ -30,7 +30,7 @@ export interface DocumentDiffResult {
   }>;
 }
 
-export interface WhatIfExecutiveReport {
+export interface HypothesisExecutiveReport {
   baseBranchName: string;
   targetBranchName: string;
   premise: string;
@@ -45,13 +45,13 @@ export interface BranchExplorerOptions {
   idGenerator?: IdGenerator;
   clock?: Clock;
   formatSwitchSummary?: (input: {
-    currentBranch: WhatIfBranchInfo;
-    targetBranch: WhatIfBranchInfo;
+    currentBranch: HypothesisBranchInfo;
+    targetBranch: HypothesisBranchInfo;
     diff: LedgerDiffResult;
   }) => string;
   formatExecutiveReport?: (input: {
-    baseBranch: WhatIfBranchInfo;
-    targetBranch: WhatIfBranchInfo;
+    baseBranch: HypothesisBranchInfo;
+    targetBranch: HypothesisBranchInfo;
     ledgerDiff: LedgerDiffResult;
     documentDiff: DocumentDiffResult;
   }) => string;
@@ -65,7 +65,7 @@ export interface BranchExplorerOptions {
 export class BranchExplorer {
   private tree: SessionTree;
   private options: BranchExplorerOptions;
-  private branches = new Map<string, WhatIfBranchInfo>();
+  private branches = new Map<string, HypothesisBranchInfo>();
   private activeBranchId = 'main';
   private idGenerator: IdGenerator;
   private clock: Clock;
@@ -103,11 +103,11 @@ export class BranchExplorer {
     return this.activeBranchId;
   }
 
-  public getAllBranches(): WhatIfBranchInfo[] {
+  public getAllBranches(): HypothesisBranchInfo[] {
     return Array.from(this.branches.values());
   }
 
-  public getBranch(branchId: string): WhatIfBranchInfo | undefined {
+  public getBranch(branchId: string): HypothesisBranchInfo | undefined {
     return this.branches.get(branchId);
   }
 
@@ -120,7 +120,7 @@ export class BranchExplorer {
     premise: string,
     initialLedger?: StateLedger,
     initialDocuments?: Record<string, string>
-  ): WhatIfBranchInfo {
+  ): HypothesisBranchInfo {
     const currentLeaf = this.tree.getCurrentLeafId();
     const activeBranch = this.branches.get(this.activeBranchId);
 
@@ -136,7 +136,7 @@ export class BranchExplorer {
       ? { ...activeBranch.documentSnapshots }
       : {};
 
-    const branchInfo: WhatIfBranchInfo = {
+    const branchInfo: HypothesisBranchInfo = {
       branchId,
       branchName,
       premise,
@@ -156,7 +156,7 @@ export class BranchExplorer {
    */
   public async switchBranch(targetBranchId: string): Promise<{
     switched: boolean;
-    branch: WhatIfBranchInfo;
+    branch: HypothesisBranchInfo;
     summary?: string;
   }> {
     const target = this.branches.get(targetBranchId);
@@ -294,7 +294,7 @@ export class BranchExplorer {
   /**
    * Generate a branch comparison report.
    */
-  public generateExecutiveReport(baseBranchId: string, targetBranchId: string): WhatIfExecutiveReport {
+  public generateExecutiveReport(baseBranchId: string, targetBranchId: string): HypothesisExecutiveReport {
     const baseBranch = this.branches.get(baseBranchId);
     const targetBranch = this.branches.get(targetBranchId);
     if (!baseBranch || !targetBranch) {

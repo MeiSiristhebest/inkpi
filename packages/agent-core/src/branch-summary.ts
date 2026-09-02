@@ -1,6 +1,6 @@
 import type { AgentMessage, AssistantMessage, BranchSummaryDetails } from '@inkpi/protocol';
 import type { SessionTree, SessionTreeNode } from './tree.js';
-import { serializeConversationForSummary } from './compaction/utils.js';
+import { serializeConversationForSummary } from './compaction/summarize.js';
 
 export class BranchSummarizer {
   private customSummarizer?: (serializedBranchText: string) => Promise<string>;

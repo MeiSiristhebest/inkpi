@@ -12,7 +12,7 @@ import {
   parseKey
 } from '@inkpi/tui';
 import {
-  ProjectTrustManager,
+  ProjectTrustStore,
   runPrintMode,
   Agent,
   SessionTree,
@@ -155,10 +155,10 @@ describe('System Integration & Edge Cases Suite', () => {
     await client.getTelemetry();
   });
 
-  it('should test ProjectTrustManager file read/parse recovery branches', () => {
+  it('should test ProjectTrustStore file read/parse recovery branches', () => {
     const tmpTrustCorrupted = path.join(process.cwd(), '.tmp-corrupted-trust.json');
     fs.writeFileSync(tmpTrustCorrupted, '{ bad json file', 'utf8');
-    const mgr1 = new ProjectTrustManager(tmpTrustCorrupted);
+    const mgr1 = new ProjectTrustStore(tmpTrustCorrupted);
     expect(mgr1.listTrusted().length).toBe(0);
     expect(mgr1.getDiagnostics().loadError).toBeInstanceOf(Error);
     fs.unlinkSync(tmpTrustCorrupted);
@@ -166,7 +166,7 @@ describe('System Integration & Edge Cases Suite', () => {
     const testPath = path.resolve(process.cwd(), 'trusted_proj');
     const tmpTrustValid = path.join(process.cwd(), '.tmp-valid-trust.json');
     fs.writeFileSync(tmpTrustValid, JSON.stringify([testPath]), 'utf8');
-    const mgr2 = new ProjectTrustManager(tmpTrustValid);
+    const mgr2 = new ProjectTrustStore(tmpTrustValid);
     expect(mgr2.isTrusted(testPath)).toBe(true);
     fs.unlinkSync(tmpTrustValid);
   });

@@ -1,5 +1,6 @@
 import * as net from 'node:net';
 import type { RpcTransport } from '../types.js';
+import { DEFAULT_RPC_HOST } from '../types.js';
 
 /**
  * Node.js 原生 TCP RPC 传输层实现 (带换行符消息帧隔离)
@@ -38,7 +39,7 @@ export class TcpSocketTransport implements RpcTransport {
     });
   }
 
-  public static async connect(port: number, host = '127.0.0.1'): Promise<TcpSocketTransport> {
+  public static async connect(port: number, host = DEFAULT_RPC_HOST): Promise<TcpSocketTransport> {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ port, host }, () => {
         resolve(new TcpSocketTransport(socket));

@@ -2,6 +2,12 @@
  * 通用 RPC 传输层抽象
  */
 
+/**
+ * RPC 监听/连接的默认主机。仅回环地址——守护进程默认不暴露到外部网卡。
+ * 需要对外暴露时必须在调用点显式传入 host（安全默认，而非散落的字面量）。
+ */
+export const DEFAULT_RPC_HOST = '127.0.0.1';
+
 export interface RpcTransport {
   send(message: string): Promise<void> | void;
   onMessage(handler: (message: string) => void): void;

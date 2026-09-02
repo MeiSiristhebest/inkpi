@@ -14,14 +14,14 @@ export interface TrustDiagnostics {
   loadError?: Error;
 }
 
-export class ProjectTrustManager {
+export class ProjectTrustStore {
   private configPath: string;
   private memoryStore: Set<string> = new Set();
   private diagnostics: TrustDiagnostics = {};
 
   constructor(configPath = '.inkpi/trusted-projects.json') {
     if (typeof configPath !== 'string' || configPath.trim().length === 0) {
-      throw new TypeError('ProjectTrustManager requires a non-empty config path.');
+      throw new TypeError('ProjectTrustStore requires a non-empty config path.');
     }
     this.configPath = configPath;
     this.load();

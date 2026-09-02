@@ -16,6 +16,7 @@ import type { WorkflowCoordinator } from '@inkpi/agent-core';
 import type { TelemetryCollector } from '@inkpi/agent-core';
 import type { ExtensionHost } from '@inkpi/agent-core';
 import type { RpcTransport } from './transport.js';
+import { DEFAULT_RPC_HOST } from './transport.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import { WebSocketRpcTransport } from './ws-transport.js';
 
@@ -102,7 +103,7 @@ export class InkRpcServer {
     });
   }
 
-  public async listenTcp(port: number, host = '127.0.0.1'): Promise<net.Server> {
+  public async listenTcp(port: number, host = DEFAULT_RPC_HOST): Promise<net.Server> {
     return new Promise((resolve, reject) => {
       const server = net.createServer((socket) => {
         const transport = new TcpSocketTransport(socket);
@@ -124,7 +125,7 @@ export class InkRpcServer {
    * 监听 WebSocket 连接 (浏览器 / Tauri WebView 等 GUI 客户端可直接接入)
    * 复用与 TCP 完全相同的换行无关 JSON-RPC 消息协议 (每条 WS 消息即一条 RPC 消息)
    */
-  public async listenWebSocket(port: number, host = '127.0.0.1'): Promise<any> {
+  public async listenWebSocket(port: number, host = DEFAULT_RPC_HOST): Promise<any> {
     const { createRequire } = await import('node:module');
     const nodeRequire = createRequire(import.meta.url);
     const { WebSocketServer } = nodeRequire('ws');

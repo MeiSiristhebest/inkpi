@@ -1,6 +1,24 @@
 import type { AgentMessage, StateLedger } from '@inkpi/protocol';
 import type { CacheControl } from './types.js';
 
+/**
+ * 字符→Token 的启发式换算系数。
+ *
+ * 这是全仓**唯一**的估算来源：触发判断与事后统计都必须用同一个值，
+ * 否则误差自我印证（估算触发压缩 → 压缩后也用它结算 → 永远"看起来正确"）。
+ * 它是一个粗糙启发式（对英文约 0.25 token/char，对中文明显偏高）；
+ * 需要精确计量的场景应注入真实 tokenizer 并自行替换本系数。
+ */
+export const CHARS_PER_TOKEN_HEURISTIC = 0.7;
+
+/** 按启发式系数把字符数换算为估算 token 数（向上取整）。 */
+export function estimateTokensFromChars(
+  chars: number,
+  factor: number = CHARS_PER_TOKEN_HEURISTIC
+): number {
+  return Math.ceil(chars * factor);
+}
+
 export interface OptimizedCachedPromptResult {
   cachedSystemPrompt: string;
   cacheControl: CacheControl;
@@ -65,7 +83,7 @@ export class PromptCacheOptimizer {
     }
 
     const cachedSystemPrompt = prefixSections.join('\n\n');
-    const estimatedPrefixTokens = Math.ceil(cachedSystemPrompt.length * 0.7);
+    const estimatedPrefixTokens = estimateTokensFromChars(cachedSystemPrompt.length);
 
     return {
       cachedSystemPrompt,
@@ -95,7 +113,7 @@ export class PromptCacheOptimizer {
       type: 'system',
       content: baseContent,
       cacheControl: { type: 'ephemeral' },
-      estimatedTokens: Math.ceil(baseContent.length * 0.7)
+      estimatedTokens: estimateTokensFromChars(baseContent.length)
     });
 
     // Slot 2: Long-form World Lore & Setting (Immutable)
@@ -106,7 +124,7 @@ export class PromptCacheOptimizer {
         type: 'lore',
         content: loreContent,
         cacheControl: { type: 'ephemeral' },
-        estimatedTokens: Math.ceil(loreContent.length * 0.7)
+        estimatedTokens: estimateTokensFromChars(loreContent.length)
       });
     }
 
@@ -126,7 +144,7 @@ export class PromptCacheOptimizer {
           type: 'ledger',
           content: ledgerContent,
           cacheControl: { type: 'ephemeral' },
-          estimatedTokens: Math.ceil(ledgerContent.length * 0.7)
+          estimatedTokens: estimateTokensFromChars(ledgerContent.length)
         });
       }
     }

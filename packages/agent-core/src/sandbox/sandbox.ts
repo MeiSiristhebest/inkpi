@@ -26,14 +26,14 @@ export interface SandboxExecutionResult<T = any> {
   terminatedByTimeout?: boolean;
 }
 
-export interface ISandboxRunner {
+export interface SandboxRunner {
   execute<T = any>(code: string, options?: SandboxExecutionOptions): Promise<SandboxExecutionResult<T>>;
 }
 
 /**
  * 基于 Node.js 受限安全上下文的内存隔离沙箱 (NodeVMSandbox)
  */
-export class NodeVMSandbox implements ISandboxRunner {
+export class NodeVMSandbox implements SandboxRunner {
   private defaultTimeoutMs: number;
   private maxOutputChars: number;
 
@@ -67,7 +67,7 @@ export class NodeVMSandbox implements ISandboxRunner {
     };
 
     // 内置常用安全辅助函数（如随机数与数值计算）
-    const safeHelpers = {
+    const sandboxSafeGlobals = {
       roll: (diceNotation: string): number => {
         // e.g. "1d20", "3d6+2"
         const match = diceNotation.match(/^(\d+)d(\d+)([+-]\d+)?$/i);
@@ -99,7 +99,7 @@ export class NodeVMSandbox implements ISandboxRunner {
       RegExp,
       Map,
       Set,
-      ...safeHelpers,
+      ...sandboxSafeGlobals,
       ...(options.globals || {})
     };
 
@@ -143,12 +143,13 @@ export class NodeVMSandbox implements ISandboxRunner {
 }
 
 /**
- * 统一沙箱执行管理器 (SandboxManager)
+ * 统一沙箱执行门面 (SandboxExecutor)
+ * 包装任意 SandboxRunner，对外提供规则脚本与表达式两类安全求值入口。
  */
-export class SandboxManager {
-  private runner: ISandboxRunner;
+export class SandboxExecutor {
+  private runner: SandboxRunner;
 
-  constructor(runner: ISandboxRunner = new NodeVMSandbox()) {
+  constructor(runner: SandboxRunner = new NodeVMSandbox()) {
     this.runner = runner;
   }
 

@@ -135,7 +135,9 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     const recovery = detectAndMarkInterruptedOperations(state);
     expect(recovery.recoveredCount).toBe(1);
     expect(recovery.interruptedIds).toContain('op_hanging_stream');
-    expect(state.operations.get('op_hanging_stream')?.state).toBe('interrupted');
+    expect(recovery.state.operations.get('op_hanging_stream')?.state).toBe('interrupted');
+    // 纯函数：入参快照不被改写
+    expect(state.operations.get('op_hanging_stream')?.state).toBe('running');
   });
 
   it('should be pure and idempotent on replay', () => {
@@ -295,5 +297,52 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     const recovery = detectAndMarkInterruptedOperations(reduced);
     expect(recovery.recoveredCount).toBe(1);
     expect(recovery.interruptedIds).toEqual(['op_generic']);
+    // 纯函数：入参快照不被改写
+    expect(reduced.operations.get('op_generic')?.state).toBe('running');
+  });
+
+  it('快照隔离：reduceSessionEntry 与 detectAndMarkInterruptedOperations 均写时复制', () => {
+    const base: SessionEntry[] = [
+      {
+        id: 'op_a',
+        sessionId: 'sess_iso',
+        seq: 1,
+        parentId: null,
+        type: 'operation_intent',
+        timestamp: 100,
+        payload: { id: 'op_a', type: 'custom', intent: { model: 'm1' } }
+      },
+      {
+        id: 'm1',
+        sessionId: 'sess_iso',
+        seq: 2,
+        parentId: null,
+        type: 'user_message',
+        timestamp: 200,
+        payload: 'hello'
+      }
+    ];
+    const s1 = reduceSession(base);
+    const recordBefore = s1.operations.get('op_a');
+    expect(recordBefore?.state).toBe('running');
+
+    // 1) 归约新条目后，旧快照完全不变
+    const s2 = reduceSessionEntry(s1, {
+      id: 'op_a',
+      sessionId: 'sess_iso',
+      seq: 3,
+      parentId: null,
+      type: 'operation_settlement',
+      timestamp: 300,
+      payload: { id: 'op_a', settlement: { ok: true } }
+    } as SessionEntry);
+    expect(s2.operations.get('op_a')?.state).toBe('settled');
+    expect(s1.operations.get('op_a')?.state).toBe('running');
+    expect(s1.operations.get('op_a')).toBe(recordBefore); // 未触碰的记录写时复制共享，不被修改
+
+    // 2) 崩溃恢复返回新快照，且被标记记录是全新对象
+    const rec = detectAndMarkInterruptedOperations(s2, () => 999);
+    expect(rec.state.operations.get('op_a')?.state).toBe('settled'); // settled 不受影响
+    expect(s2.operations.get('op_a')).toBe(rec.state.operations.get('op_a'));
   });
 });
