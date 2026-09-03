@@ -8,9 +8,7 @@
   "references": [
     { "path": "../protocol" },
     { "path": "../ai" },
-    { "path": "../editor-core" },
-    { "path": "../session-backends" },
-    { "path": "../client" }
+    { "path": "../editor-core" }
   ],
   "include": ["src/**/*"]
 }
