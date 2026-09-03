@@ -125,12 +125,10 @@ export class DifferentialRenderer {
   public render(newScreenText: string): {
     changedLines: number;
     output: string;
-    diffAnsi: string;
     isDiff: boolean;
   } {
     const currentLines = newScreenText.split('\n');
     let changed = 0;
-    const diffSegments: string[] = [];
     const maxLines = Math.max(this.lastBuffer.length, currentLines.length);
 
     for (let i = 0; i < maxLines; i++) {
@@ -139,12 +137,6 @@ export class DifferentialRenderer {
 
       if (oldLine !== newLine) {
         changed++;
-        const row = i + 1;
-        if (newLine !== undefined) {
-          diffSegments.push(`\x1b[${row};1H\x1b[2K${newLine}`);
-        } else {
-          diffSegments.push(`\x1b[${row};1H\x1b[2K`);
-        }
       }
     }
 
@@ -152,7 +144,6 @@ export class DifferentialRenderer {
     return {
       changedLines: changed,
       output: newScreenText,
-      diffAnsi: diffSegments.join(''),
       isDiff: changed > 0
     };
   }

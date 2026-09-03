@@ -111,6 +111,7 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
 
   it('should embed structured state ledger into CompactionEntry details and prompt during compact', async () => {
     const compactor = new SessionCompactor({
+      clock: Date.now,
       triggerTokensThreshold: 30,
       preserveRecentCount: 1,
       summarizer: async () => 'Core Summary: Key acquired and initialization completed.',

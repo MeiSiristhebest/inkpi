@@ -6,6 +6,7 @@ import * as fs from 'node:fs';
 import { getModelPreset } from '@inkpi/ai';
 import { Agent } from '../agent.js';
 import { WorkflowCoordinator } from '../pipeline/coordinator.js';
+import { REAL_CLOCK } from '../ports/index.js';
 import { TelemetryCollector } from '../telemetry/telemetry.js';
 
 import type { ModelConfig } from '@inkpi/ai';
@@ -114,7 +115,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
             'Use a custom workflow or call WorkflowCoordinator.runPipeline() for the legacy narrative pipeline.'
         );
       }
-      const telemetry = new TelemetryCollector();
+      const telemetry = new TelemetryCollector(REAL_CLOCK);
       const coordinator = new WorkflowCoordinator({
         telemetry,
         model: options.modelConfig || (options.model ? getModelPreset(options.model) : undefined),

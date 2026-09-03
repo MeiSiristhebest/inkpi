@@ -4,6 +4,7 @@
 
 export * from './render.js';
 export * from './width.js';
+export * from './terminal.js';
 export * from './cursor.js';
 export * from './overlay.js';
 export * from './keys.js';

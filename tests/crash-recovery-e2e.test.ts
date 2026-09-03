@@ -124,7 +124,7 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
     expect(op?.state).toBe('running');
 
     // Run crash recovery detection (pure: input state must stay untouched)
-    const recoveryResult = detectAndMarkInterruptedOperations(materializedState);
+    const recoveryResult = detectAndMarkInterruptedOperations(materializedState, Date.now);
     expect(recoveryResult.recoveredCount).toBe(1);
     expect(recoveryResult.interruptedIds).toContain('op_interrupted_stream');
     expect(recoveryResult.state.operations.get('op_interrupted_stream')?.state).toBe('interrupted');

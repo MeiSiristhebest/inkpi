@@ -1,5 +1,6 @@
 export * from './types.js';
 export * from './stream.js';
+export * from './http-client.js';
 export * from './providers.js';
 export * from './presets.js';
 export * from './catalog.js';

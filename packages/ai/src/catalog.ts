@@ -7,6 +7,8 @@ import {
 } from './models.generated.js';
 import type { ModelConfig, ProviderType } from './types.js';
 
+export type ModelRole = 'planning' | 'drafting' | 'auditing' | 'polishing';
+
 export interface ModelCatalogEntry {
   id: string;
   name: string;
@@ -23,6 +25,14 @@ export interface ModelCatalogEntry {
     cacheWritePerMillionUsd?: number;
   };
   description?: string;
+  /**
+   * Explicit roles this model is recommended for. When present, the catalog
+   * manager prefers these over the capability heuristic. Kept optional so
+   * generated catalog entries (which carry no role data) still work.
+   */
+  roles?: ModelRole[];
+  /** Explicit preference within a role; higher wins. Defaults to 0. */
+  priority?: number;
 }
 
 /**
@@ -60,31 +70,31 @@ export function getThinkingBudgetForLevel(level: ThinkingLevel): number {
   }
 }
 
+/**
+ * Explicit canonical aliases. Maps a user-facing alias to the exact catalog id.
+ * Replaces the previous substring heuristics (`query.includes('claude-3-7')`
+ * etc.) with a declarative, unambiguous mapping.
+ */
+const CANONICAL_ALIASES: Record<string, string> = {
+  'deepseek-reasoner': 'deepseek/deepseek-r1',
+  'deepseek/deepseek-reasoner': 'deepseek/deepseek-r1'
+};
+
 export function findModelInCatalog(idOrName: string): ModelCatalogEntry | undefined {
   if (!idOrName) return undefined;
   const query = idOrName.toLowerCase().trim();
-  const normalizedQuery = query.replace(/[./_-\s]/g, '');
 
+  // Resolve explicit canonical aliases without substring guessing.
+  const aliased = CANONICAL_ALIASES[query];
+  if (aliased) return findModelInCatalog(aliased);
+
+  const normalizedQuery = query.replace(/[./_-\s]/g, '');
   const found = (KNOWN_MODELS || []).find((m) => {
     const mId = (m.id || '').toLowerCase();
     const mName = (m.name || '').toLowerCase();
 
     if (mId === query || mName === query) return true;
     if (mId.endsWith(`/${query}`)) return true;
-
-    // Canonical Aliases
-    if (
-      (query === 'deepseek-reasoner' || query === 'deepseek/deepseek-reasoner') &&
-      (mId.includes('deepseek-r1') || mId.includes('deepseek/deepseek-r1'))
-    )
-      return true;
-    if (
-      (query === 'deepseek-chat' || query === 'deepseek/deepseek-chat') &&
-      (mId.includes('deepseek-chat') || mId.includes('deepseek-v3'))
-    )
-      return true;
-    if (query.includes('claude-3-7') && mId.includes('claude-3.7')) return true;
-    if (query.includes('claude-3-5') && mId.includes('claude-3.5')) return true;
 
     const normId = mId.replace(/[./_-\s]/g, '');
     const normName = mName.replace(/[./_-\s]/g, '');
@@ -154,24 +164,46 @@ export class ModelCatalogManager {
     });
   }
 
+  /**
+   * Explicit per-role preference ordering. Each entry is an exact catalog id
+   * (no substring matching); earlier entries win. This replaces the previous
+   * `id.includes('mini')` / `id.includes('r1')` heuristics with a curated,
+   * unambiguous priority list.
+   */
+  private static readonly ROLE_PREFERENCES: Record<ModelRole, string[]> = {
+    planning: ['deepseek/deepseek-r1', 'anthropic/claude-3.7-sonnet', 'openai/o3-mini', 'google/gemini-2.5-pro'],
+    drafting: [
+      'deepseek/deepseek-chat',
+      'openai/gpt-4o-mini',
+      'anthropic/claude-haiku-4.5',
+      'deepseek/deepseek-v4-flash'
+    ],
+    auditing: ['deepseek/deepseek-r1', 'anthropic/claude-3.7-sonnet'],
+    polishing: ['deepseek/deepseek-chat', 'openai/gpt-4o-mini']
+  };
+
+  private recommend(role: ModelRole): ModelCatalogEntry {
+    const all = this.getAllModels();
+    const prefs = ModelCatalogManager.ROLE_PREFERENCES[role];
+    const qualifies = (m: ModelCatalogEntry): boolean =>
+      m.roles?.includes(role) ?? (role === 'planning' ? m.supportsThinking : !m.supportsThinking);
+    const candidates = all.filter(qualifies);
+    if (candidates.length === 0) return all[0];
+
+    return candidates
+      .map((m) => {
+        const index = prefs.indexOf(m.id);
+        return { entry: m, pref: index === -1 ? Number.POSITIVE_INFINITY : index, priority: m.priority ?? 0 };
+      })
+      .sort((a, b) => a.pref - b.pref || b.priority - a.priority)[0].entry;
+  }
+
   public getRecommendedPlanningModel(): ModelCatalogEntry {
-    const candidates = this.filterByCapability({ thinking: true });
-    // Prioritize deepseek-r1, claude-3.7, o3-mini, gemini-2.5-pro
-    const preferred = candidates.find(
-      (m) => m.id.includes('r1') || m.id.includes('3.7') || m.id.includes('o3') || m.id.includes('gemini-2.5-pro')
-    );
-    return preferred || candidates[0] || this.getAllModels()[0];
+    return this.recommend('planning');
   }
 
   public getRecommendedDraftingModel(): ModelCatalogEntry {
-    const all = this.getAllModels();
-    // Prioritize high-throughput cost-effective models (deepseek-chat, gemini-flash, 4o-mini, haiku)
-    const preferred = all.find(
-      (m) =>
-        (m.id.includes('chat') || m.id.includes('flash') || m.id.includes('mini') || m.id.includes('haiku')) &&
-        !m.supportsThinking
-    );
-    return preferred || all[0];
+    return this.recommend('drafting');
   }
 
   public routeModelForTask(

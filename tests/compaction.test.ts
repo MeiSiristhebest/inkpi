@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('@inkpi/agent-core -> Context Compaction Engine (1:1 Ported from repos/pi)', () => {
   it('should estimate tokens, detect context overflow, and perform recursive summarization', async () => {
     const compactor = new SessionCompactor({
+      clock: Date.now,
       triggerTokensThreshold: 50, // Small threshold for testing
       preserveRecentCount: 2,
       summarizer: async (conv) => {

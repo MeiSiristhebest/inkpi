@@ -109,7 +109,7 @@ InkPi is divided into 10 decoupled packages with zero cyclic dependencies:
 | **`@inkpi/session-backends`** | Pluggable session storage adapters | `ISessionBackend`, `MemorySessionBackend`, `JsonlSessionBackend`, `SqliteSessionBackend` |
 | **`@inkpi/server`** | Headless daemon & session manager | `InkPiDaemon`, `SessionRegistry`, `InkRpcServer` |
 | **`@inkpi/client`** | Type-safe client SDK & transports | `InkRpcClient`, `TcpSocketTransport`, `WebSocketTransport`, `MemoryTransport` |
-| **`@inkpi/agent-core`** | Reasoning engine & session trees | `Agent`, `AgentEngine`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
+| **`@inkpi/agent-core`** | Reasoning engine & session trees | `Agent`, `SessionTree`, `WorkflowCoordinator`, `StateLedger` |
 | **`@inkpi/editor-core`** | Headless editor & typography | `HeadlessEditorState`, `GhostTextManager`, `TypographyEngine` |
 | **`@inkpi/storage`** | SQLite, FTS5 BM25 search, leases | `InkDb`, `InkRepository`, `FtsSearchEngine`, `AppendOnlySessionJournal` |
 | **`@inkpi/tui`** | ANSI diff rendering & CJK layout | `TerminalStudio`, `DifferentialRenderer`, `calculateDisplayWidth`, `TerminalImage` |
@@ -253,7 +253,7 @@ console.log(session.editor.getText());
 2. **Pluggable Persistence via Ports & Adapters**:
    Domain logic relies entirely on the `ISessionBackend` interface.
 3. **Rigorous Quality Gate ($\ge 85\%$ Lines, $\ge 80\%$ Branches)**:
-   Every pull request is verified against 280+ unit and integration tests across Linux, macOS, and Windows.
+   Every pull request is verified against 415 unit and integration tests across Linux, macOS, and Windows.
 4. **Supply-Chain Security**:
    All dependencies are locked to exact versions without floating range operators (`^` or `~`).
 5. **Deterministic Event Sourcing**:

@@ -1,5 +1,6 @@
 import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
 import { AppendOnlySessionJournal, FtsSearchEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { BackendClosedError } from './errors.js';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 export interface SqliteSessionBackendOptions {
@@ -32,6 +33,7 @@ export class SqliteSessionBackend implements ISessionBackend {
   private fts: FtsSearchEngine;
   private journal?: AppendOnlySessionJournal;
   private options: SqliteSessionBackendOptions;
+  private closed = false;
 
   constructor(options: SqliteSessionBackendOptions = {}) {
     this.options = options;
@@ -47,12 +49,21 @@ export class SqliteSessionBackend implements ISessionBackend {
     }
   }
 
+  private assertOpen(): void {
+    if (this.closed) {
+      throw new BackendClosedError(this.name);
+    }
+  }
+
   public async initialize(): Promise<void> {
+    this.assertOpen();
     // Db initialization occurs in InkDb constructor with DDL
   }
 
   public async close(): Promise<void> {
+    if (this.closed) return;
     this.db.close();
+    this.closed = true;
   }
 
   /**
@@ -98,34 +109,41 @@ export class SqliteSessionBackend implements ISessionBackend {
   }
 
   public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
+    this.assertOpen();
     this.repo.saveSessionEntry(entry);
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
+    this.assertOpen();
     const all = this.repo.getSessionEntries(sessionId);
     if (fromTimestamp === undefined) return all;
     return all.filter((e) => e.timestamp >= fromTimestamp);
   }
 
   public async saveSnapshot(snapshot: DocumentSnapshot): Promise<void> {
+    this.assertOpen();
     this.ensureDocument(snapshot.documentId, snapshot.contentSize);
     this.repo.upsertSnapshot(snapshot);
   }
 
   public async getSnapshot(documentId: string): Promise<DocumentSnapshot | null> {
+    this.assertOpen();
     return this.repo.getSnapshot(documentId) || null;
   }
 
   public async appendDelta(delta: DocumentDelta): Promise<void> {
+    this.assertOpen();
     this.ensureDocument(delta.documentId);
     this.repo.appendDelta(delta);
   }
 
   public async getDeltas(documentId: string, fromId?: number): Promise<DocumentDelta[]> {
+    this.assertOpen();
     return this.repo.getDeltas(documentId, fromId);
   }
 
   public async search(query: string, limit = 20): Promise<FtsSearchResult[]> {
+    this.assertOpen();
     return this.fts.search(query, limit);
   }
 }

@@ -16,6 +16,17 @@ export interface ISessionBackend {
   readonly capabilities: SessionBackendCapabilities;
 
   initialize(): Promise<void>;
+
+  /**
+   * 释放后端持有的全部资源（连接、文件句柄、内存映射等）。
+   *
+   * **后置条件（契约，实现必须遵守）：**
+   * 1. 幂等：重复调用 `close()` 不得抛错，也不得产生副作用。
+   * 2. 终止态：一旦 `close()` 成功返回，后端进入终止态，此后调用本接口的**任意其他方法**
+   *    （含 `initialize`）都必须以 `BackendClosedError` 拒绝，而不是静默写穿或返回陈旧数据。
+   * 3. 不同后端的"破坏性"语义可以不同（Memory 的 `close` 丢弃数据；Jsonl/Sqlite 的 `close`
+   *    仅释放连接，数据仍可从磁盘重新装载），但"终止态拒绝后续调用"这一条对所有后端一致。
+   */
   close(): Promise<void>;
 
   // Journal / Events (Event Sourcing)

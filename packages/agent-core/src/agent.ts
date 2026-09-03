@@ -1,6 +1,7 @@
 import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMessage } from '@inkpi/protocol';
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
 import { runAgentLoop } from './loop.js';
+import { consoleLogger } from './ports/index.js';
 import { MessageQueue } from './queues.js';
 import { ToolRegistry } from './tools.js';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
@@ -74,7 +75,7 @@ export class Agent {
       try {
         await listener(event, this.abortController?.signal);
       } catch (err) {
-        console.error('[Agent] Listener error:', err);
+        consoleLogger.error('[Agent] Listener error:', err);
       }
     }
   }

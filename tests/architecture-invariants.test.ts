@@ -45,7 +45,7 @@ describe('Architecture invariants (no silent fake / DIP regressions)', () => {
   it('a session without a configured model fails loudly (no silent mock)', async () => {
     vi.resetModules();
     const { SessionRegistry } = await import('@inkpi/agent-core');
-    const sm = new SessionRegistry();
+    const sm = new SessionRegistry(Date.now);
     expect(() => sm.createSession({ sessionId: 'invariant-session' })).toThrow();
   });
 

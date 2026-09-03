@@ -70,6 +70,18 @@ importers:
         specifier: workspace:*
         version: link:../protocol
 
+  packages/cli:
+    dependencies:
+      '@inkpi/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@inkpi/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@inkpi/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/client:
     dependencies:
       '@inkpi/protocol':

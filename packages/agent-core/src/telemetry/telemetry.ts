@@ -80,7 +80,7 @@ export class TelemetryCollector {
 
   /** 成本单价（USD / 1M tokens），可部分覆盖。 */
   constructor(
-    clock: Clock = Date.now,
+    clock: Clock,
     pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number }
   ) {
     this.clock = clock;

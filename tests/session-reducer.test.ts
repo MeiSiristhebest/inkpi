@@ -132,7 +132,7 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     const state = reduceSession(entries);
     expect(state.operations.get('op_hanging_stream')?.state).toBe('running');
 
-    const recovery = detectAndMarkInterruptedOperations(state);
+    const recovery = detectAndMarkInterruptedOperations(state, Date.now);
     expect(recovery.recoveredCount).toBe(1);
     expect(recovery.interruptedIds).toContain('op_hanging_stream');
     expect(recovery.state.operations.get('op_hanging_stream')?.state).toBe('interrupted');
@@ -294,7 +294,7 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
       updatedAt: 2
     });
 
-    const recovery = detectAndMarkInterruptedOperations(reduced);
+    const recovery = detectAndMarkInterruptedOperations(reduced, Date.now);
     expect(recovery.recoveredCount).toBe(1);
     expect(recovery.interruptedIds).toEqual(['op_generic']);
     // 纯函数：入参快照不被改写

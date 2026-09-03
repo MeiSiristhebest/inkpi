@@ -17,6 +17,14 @@ import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rp
 /** Wall-clock / monotonic time source. Inject a test clock; never call `Date.now()` directly. */
 export type Clock = () => number;
 
+/**
+ * The real system clock. Provided **once** at the composition root
+ * (`daemon.ts`, `print-mode.ts`, …) and injected downward.
+ * Port-implementing sites must take `Clock` as a required parameter — never
+ * fall back to `Date.now` themselves, or the injection becomes a no-op.
+ */
+export const REAL_CLOCK: Clock = Date.now;
+
 /** Stable identifier generator. Inject a deterministic generator in tests. */
 export type IdGenerator = () => string;
 

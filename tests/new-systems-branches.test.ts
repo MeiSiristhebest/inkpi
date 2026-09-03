@@ -53,7 +53,7 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
   });
 
   it('should test TelemetryCollector with missing usage, no first token, and 0 tokens', () => {
-    const collector = new TelemetryCollector();
+    const collector = new TelemetryCollector(Date.now);
     collector.startTurn();
 
     // Usage undefined
@@ -98,7 +98,7 @@ describe('@inkpi/agent-core -> New Systems In-Depth Branch Coverage Suite', () =
   });
 
   it('should test SessionCompactor default options and short messages edge case', async () => {
-    const defaultCompactor = new SessionCompactor();
+    const defaultCompactor = new SessionCompactor({ clock: Date.now });
     const shortMessages: AgentMessage[] = [
       { role: 'user', content: 'hello' },
       { role: 'assistant', content: [{ type: 'text', text: 'hi' }] }

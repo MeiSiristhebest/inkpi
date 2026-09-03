@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ExtensionInstaller, runPackageManagerCli } from '@inkpi/agent-core';
+import { ExtensionInstaller } from '@inkpi/agent-core';
+import { runPackageManagerCli } from '@inkpi/cli';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 describe('InkPi Extension Package Manager', () => {

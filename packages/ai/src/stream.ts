@@ -65,6 +65,10 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     this.end();
   }
 
+  public get isAborted(): boolean {
+    return this.aborted;
+  }
+
   public on(listener: (event: AssistantMessageEvent) => void | Promise<void>): () => void {
     this.listeners.push(listener);
     return () => {
@@ -242,11 +246,38 @@ export interface RetryOptions {
   maxDelayMs?: number;
   backoffFactor?: number;
   onRetry?: (attempt: number, error: unknown, delayMs: number) => void;
+  signal?: AbortSignal;
 }
 
 /**
  * 带指数退避与抖动的可靠 Stream 执行器
  */
+function abortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason;
+  return reason instanceof Error ? reason : new Error('Aborted');
+}
+
+/**
+ * 可被 AbortSignal 中断的延迟。signal 在等待期间被 abort 时，立即以 abort 错误 reject。
+ */
+function delayWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError(signal));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(abortError(signal));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 export async function retryAssistantStream<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const maxRetries = options.maxRetries ?? 3;
   let delay = options.initialDelayMs ?? 1000;
@@ -260,10 +291,16 @@ export async function retryAssistantStream<T>(fn: () => Promise<T>, options: Ret
     } catch (err) {
       lastError = err;
       if (attempt >= maxRetries) break;
+      if (options.signal?.aborted) throw abortError(options.signal);
 
       const jitter = delay * (0.8 + Math.random() * 0.4);
       options.onRetry?.(attempt, err, jitter);
-      await new Promise((res) => setTimeout(res, jitter));
+      try {
+        await delayWithSignal(jitter, options.signal);
+      } catch (abortErr) {
+        lastError = abortErr;
+        break;
+      }
       delay = Math.min(delay * factor, maxDelay);
     }
   }
@@ -309,9 +346,7 @@ export function createResilientStream(
       if (shouldRetry) {
         const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
         options.onRetry?.(attempt, retryError, delay);
-        setTimeout(() => {
-          runStream();
-        }, delay);
+        scheduleRetry(delay);
         return;
       }
 
@@ -320,13 +355,24 @@ export function createResilientStream(
       if (attempt < maxRetries) {
         const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
         options.onRetry?.(attempt, err, delay);
-        setTimeout(() => {
-          runStream();
-        }, delay);
+        scheduleRetry(delay);
       } else {
         outerStream.error(err?.message || String(err));
       }
     }
+  }
+
+  /**
+   * 计划一次重试：若已 abort（通过 signal 或 outerStream.abort()），则不再递归，
+   * 避免游离递归在重入期间无视 AbortSignal 持续重试。
+   */
+  function scheduleRetry(delayMs: number): void {
+    setTimeout(() => {
+      if (options.signal?.aborted || outerStream.isAborted) {
+        return;
+      }
+      void runStream();
+    }, delayMs);
   }
 
   runStream();

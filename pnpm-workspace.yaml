@@ -3,6 +3,7 @@ packages:
 minimumReleaseAgeExclude:
   - '@inkpi/agent-core@1.0.0'
   - '@inkpi/ai@1.0.0'
+  - '@inkpi/cli@1.0.0'
   - '@inkpi/client@1.0.0'
   - '@inkpi/editor-core@1.0.0'
   - '@inkpi/protocol@1.0.0'

@@ -422,6 +422,12 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
 
   // -------------------------------------------------------------
   // Pillar 6: Release Engineering & Supply Chain
+  //
+  // 这两个用例是**构建验证**，不是单元测试：它们在单个 `it()` 内派生 3~4 个子进程
+  // （`git status` ×2 + `build-binaries --dry-run` / `inkpi-standalone.mjs` ×3）。
+  // 实测冷启动约 4.8s、机器有负载时 5.8~6.3s，均会超出 vitest 默认 5000ms。
+  // 因此显式放宽超时；ARCHITECTURE_REVIEW.md §2.15-3 仍建议把它们整体拆出 vitest
+  // 套件（改为独立的构建冒烟脚本），此项作为已知债务保留。
   // -------------------------------------------------------------
   describe('Pillar 6: Release Engineering & Standalone Single Binary Packaging', () => {
     it('should execute build-binaries pipeline in dry-run mode and verify pinned dependencies', () => {
@@ -437,7 +443,7 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(output).toContain('Step 2: Preparing Standalone Release Entrypoint');
       expect(output).toContain('Build pipeline completed successfully');
       expect(after).toBe(before);
-    });
+    }, 30_000);
 
     it('should execute inkpi-standalone.mjs CLI both in studio frame and print mode', () => {
       // 1. Studio frame render
@@ -468,6 +474,6 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
           stdio: 'pipe'
         })
       ).toThrow();
-    });
+    }, 30_000);
   });
 });

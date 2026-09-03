@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('Creative Telemetry & Conformance Suite (1:1 Ported from pi-telemetry)', () => {
   it('should collect turn metrics, spans, and creative interaction metrics accurately', () => {
-    const collector = new TelemetryCollector();
+    const collector = new TelemetryCollector(Date.now);
     const events: TelemetryEvent[] = [];
     const unsubscribe = collector.onEvent((ev) => events.push(ev));
 

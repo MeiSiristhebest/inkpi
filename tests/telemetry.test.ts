@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> Telemetry Collector (1:1 Ported from repos/pi)', () => {
   it('should foreshadowing TTFT, tokens per second, prompt caching hit rate, and estimated costs', async () => {
-    const collector = new TelemetryCollector();
+    const collector = new TelemetryCollector(Date.now);
 
     collector.startTurn();
 

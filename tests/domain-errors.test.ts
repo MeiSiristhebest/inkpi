@@ -22,7 +22,7 @@ describe('NoModelConfiguredError', () => {
   });
 
   it('由 SessionRegistry 在无模型时抛出，且可按类型捕获', () => {
-    const sm = new SessionRegistry();
+    const sm = new SessionRegistry(Date.now);
     expect(() => sm.createSession({ sessionId: 'err-session' })).toThrow(NoModelConfiguredError);
     try {
       sm.createSession({ sessionId: 'err-session-2' });

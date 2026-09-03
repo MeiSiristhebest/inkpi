@@ -1,5 +1,6 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage } from '@inkpi/protocol';
 import { ProviderNotImplementedError } from './errors.js';
+import { getHttpClient } from './http-client.js';
 import { AssistantEventStream } from './stream.js';
 import type { EventStream, FauxScriptedResponse, ModelConfig, ProviderType, StreamOptions } from './types.js';
 
@@ -412,7 +413,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         }));
       }
 
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await getHttpClient().fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -687,7 +688,7 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
         headers['anthropic-beta'] = 'prompt-caching-2024-07-25';
       }
 
-      const response = await fetch(`${baseUrl}/messages`, {
+      const response = await getHttpClient().fetch(`${baseUrl}/messages`, {
         method: 'POST',
         headers,
         body: JSON.stringify(bodyPayload),
@@ -893,7 +894,7 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
         ];
       }
 
-      const response = await fetch(endpoint, {
+      const response = await getHttpClient().fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(geminiBody),
@@ -1006,7 +1007,7 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
 
   (async () => {
     try {
-      const response = await fetch(`${baseUrl}/api/chat`, {
+      const response = await getHttpClient().fetch(`${baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,4 +1,5 @@
 import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
+import { BackendClosedError } from './errors.js';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 /**
@@ -18,19 +19,30 @@ export class MemorySessionBackend implements ISessionBackend {
   private snapshots = new Map<string, DocumentSnapshot>();
   private deltas = new Map<string, DocumentDelta[]>();
   private initialized = false;
+  private closed = false;
+
+  private assertOpen(): void {
+    if (this.closed) {
+      throw new BackendClosedError(this.name);
+    }
+  }
 
   public async initialize(): Promise<void> {
+    this.assertOpen();
     this.initialized = true;
   }
 
   public async close(): Promise<void> {
+    if (this.closed) return;
     this.initialized = false;
+    this.closed = true;
     this.journals.clear();
     this.snapshots.clear();
     this.deltas.clear();
   }
 
   public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
+    this.assertOpen();
     if (!this.journals.has(sessionId)) {
       this.journals.set(sessionId, []);
     }
@@ -38,6 +50,7 @@ export class MemorySessionBackend implements ISessionBackend {
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
+    this.assertOpen();
     const list = this.journals.get(sessionId) || [];
     if (fromTimestamp === undefined) {
       return [...list];
@@ -46,15 +59,18 @@ export class MemorySessionBackend implements ISessionBackend {
   }
 
   public async saveSnapshot(snapshot: DocumentSnapshot): Promise<void> {
+    this.assertOpen();
     this.snapshots.set(snapshot.documentId, { ...snapshot });
   }
 
   public async getSnapshot(documentId: string): Promise<DocumentSnapshot | null> {
+    this.assertOpen();
     const snap = this.snapshots.get(documentId);
     return snap ? { ...snap } : null;
   }
 
   public async appendDelta(delta: DocumentDelta): Promise<void> {
+    this.assertOpen();
     if (!this.deltas.has(delta.documentId)) {
       this.deltas.set(delta.documentId, []);
     }
@@ -64,6 +80,7 @@ export class MemorySessionBackend implements ISessionBackend {
   }
 
   public async getDeltas(documentId: string, fromId?: number): Promise<DocumentDelta[]> {
+    this.assertOpen();
     const list = this.deltas.get(documentId) || [];
     if (fromId === undefined) {
       return [...list];
@@ -72,6 +89,7 @@ export class MemorySessionBackend implements ISessionBackend {
   }
 
   public async search(query: string, limit = 20): Promise<FtsSearchResult[]> {
+    this.assertOpen();
     const results: FtsSearchResult[] = [];
     const lowerQuery = query.toLowerCase();
 

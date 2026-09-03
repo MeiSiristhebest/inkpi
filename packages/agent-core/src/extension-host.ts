@@ -12,6 +12,7 @@ import type {
   ShortcutHandler,
   UIDelegate
 } from '@inkpi/protocol';
+import { consoleLogger } from './ports/index.js';
 
 export interface CommandDefinition {
   name: string;
@@ -70,7 +71,7 @@ export class ExtensionHost implements ExtensionAPI {
       try {
         await listener(...args);
       } catch (err) {
-        console.error(`[ExtensionHost] Error executing event listener for '${event}':`, err);
+        consoleLogger.error(`[ExtensionHost] Error executing event listener for '${event}':`, err);
       }
     }
   }
@@ -275,7 +276,7 @@ export class ExtensionRunner {
       }
       return true;
     } catch (err) {
-      console.error('[ExtensionRunner] Failed to load extension:', err);
+      consoleLogger.error('[ExtensionRunner] Failed to load extension:', err);
       return false;
     }
   }

@@ -71,7 +71,6 @@ export interface EntityRecord {
   affiliation?: string;
   relationship?: string;
   attributes?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 export interface AssetRecord {
@@ -82,7 +81,6 @@ export interface AssetRecord {
   type?: string;
   state?: string;
   attributes?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 export interface TrackRecord {
@@ -93,14 +91,12 @@ export interface TrackRecord {
   status?: string;
   notes?: string;
   metadata?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 export interface LocationRecord {
   id?: string;
   name: string;
   description?: string;
-  [key: string]: unknown;
 }
 
 /** 结构化通用状态账本 (1:1 移植自 repos/pi FileOperations 思想) */
@@ -111,13 +107,14 @@ export interface StateLedger {
   locations: LocationRecord[];
   /** Optional in practice: all readers fall back to modifiedChapters/modifiedDocuments. */
   modifiedResources?: string[];
+  /** Free-form domain extension bag (e.g. workflow-injected state). Typed explicitly; do not use an index signature. */
+  customExtension?: unknown;
   // 兼容别名
   characters?: EntityRecord[];
   items?: AssetRecord[];
   foreshadowings?: TrackRecord[];
   modifiedChapters?: string[];
   modifiedDocuments?: string[];
-  [key: string]: unknown;
 }
 
 export type NovelStateLedger = StateLedger;
@@ -133,7 +130,7 @@ export interface CompactionEntry {
   tokensBefore: number;
   estimatedTokensAfter?: number;
   createdAt: number;
-  details?: Record<string, unknown> | { stateLedger?: StateLedger; [key: string]: unknown };
+  details?: Record<string, unknown> | { stateLedger?: StateLedger };
 }
 
 /** 多进程排他写锁租约 */

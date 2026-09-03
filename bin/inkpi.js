@@ -150,7 +150,7 @@ async function main() {
       const modelIdx = args.indexOf('--model');
       const model = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
 
-      const { runPrintMode } = await import('@inkpi/agent-core');
+      const { runPrintMode } = await import('@inkpi/cli');
       const result = await runPrintMode({
         prompt,
         model,
@@ -162,7 +162,7 @@ async function main() {
 
     case 'plugin': {
       const sub = args[1] || 'list';
-      const { runPackageManagerCli } = await import('@inkpi/agent-core');
+      const { runPackageManagerCli } = await import('@inkpi/cli');
       const output = await runPackageManagerCli(args.slice(1));
       console.log(output);
       break;

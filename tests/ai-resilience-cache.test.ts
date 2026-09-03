@@ -93,4 +93,58 @@ describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai
     );
     expect(result).toBe('success_val');
   });
+
+  it('retryAssistantStream rejects immediately when signal is already aborted', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    let calls = 0;
+    const fn = async () => {
+      calls++;
+      throw new Error('should not retry');
+    };
+    await expect(retryAssistantStream(fn, { signal: ac.signal, maxRetries: 3, initialDelayMs: 10 })).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
+  it('retryAssistantStream stops the backoff delay when aborted mid-retry', async () => {
+    const ac = new AbortController();
+    let calls = 0;
+    const fn = vi.fn(async () => {
+      calls++;
+      throw new Error('transient');
+    });
+    const promise = retryAssistantStream(fn, {
+      signal: ac.signal,
+      maxRetries: 5,
+      initialDelayMs: 200
+    });
+    // abort during the backoff delay (before a second attempt would run)
+    setTimeout(() => ac.abort(), 30);
+    await expect(promise).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
+  it('createResilientStream stops retrying once aborted via signal', async () => {
+    const ac = new AbortController();
+    let callCount = 0;
+    const stream = createResilientStream(
+      async () => {
+        callCount++;
+        const s = new AssistantEventStream();
+        setTimeout(() => s.push({ type: 'error', error: 'transient' }), 10);
+        return s;
+      },
+      {
+        signal: ac.signal,
+        maxRetries: 5,
+        initialDelayMs: 20,
+        isRetryable: () => true
+      }
+    );
+    ac.abort();
+    // allow any scheduled retry timer to fire (it must bail out without recursing)
+    await new Promise((r) => setTimeout(r, 100));
+    expect(callCount).toBe(1);
+    stream.abort();
+  });
 });

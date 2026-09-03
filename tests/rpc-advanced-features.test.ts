@@ -13,7 +13,7 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
     const fts = new FtsSearchEngine(db);
     const journal = new AppendOnlySessionJournal('rpc_session_1');
     const jitRetriever = new JitMemoryRetriever({ repository: repo, ftsEngine: fts });
-    const telemetry = new TelemetryCollector();
+    const telemetry = new TelemetryCollector(Date.now);
     const pipeline = new WorkflowCoordinator({ telemetry, model });
 
     const server = new InkRpcServer({

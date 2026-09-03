@@ -11,7 +11,6 @@ export interface QualityGateIssue {
   entityOrEntity?: string;
   severity: GateSeverity;
   metadata?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 export interface QualityGateDecision {
@@ -20,7 +19,6 @@ export interface QualityGateDecision {
   /** @deprecated Use modifiedContent. */
   modifiedOutlineText?: string;
   feedback?: string;
-  [key: string]: unknown;
 }
 
 export interface QualityGateRule<TContext = any> {
@@ -45,7 +43,6 @@ export type QualityGateHandler<TContext = any> = (event: {
   chapterTitle?: string;
   /** @deprecated Use content. */
   outlineText?: string;
-  [key: string]: unknown;
 }) => Promise<QualityGateDecision> | QualityGateDecision;
 
 export interface AgentRoleConfig {
@@ -103,7 +100,6 @@ export interface WorkflowContext {
   /** @deprecated Use stageOutputs. */
   polishedText?: string;
   metadata?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 export type WorkflowEvent =

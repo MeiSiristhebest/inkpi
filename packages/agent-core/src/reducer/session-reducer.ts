@@ -237,7 +237,7 @@ export function reduceSession(
  */
 export function detectAndMarkInterruptedOperations(
   state: MaterializedSessionState,
-  clock: () => number = Date.now
+  clock: () => number
 ): {
   state: MaterializedSessionState;
   recoveredCount: number;

@@ -10,10 +10,10 @@ import {
   SlashCommandRegistry,
   SyncedClipboard,
   TelemetryCollector,
-  createStandardEntitySafetyRules,
-  runPrintMode
+  createStandardEntitySafetyRules
 } from '@inkpi/agent-core';
 import { convertMessagesToStandard, getModelPreset, streamAi } from '@inkpi/ai';
+import { runPrintMode } from '@inkpi/cli';
 import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import { StateLedgerSchema, sanitizeStateLedger, validateSchema } from '@inkpi/protocol';
 import { InMemoryTransport, InkRpcClient, InkRpcServer } from '@inkpi/server';
@@ -99,7 +99,7 @@ describe('System Integration & Edge Cases Suite', () => {
     ]);
     const journal = new AppendOnlySessionJournal('test_sess');
     const slashRegistry = new SlashCommandRegistry();
-    const telemetry = new TelemetryCollector();
+    const telemetry = new TelemetryCollector(Date.now);
     const db = new InkDb(':memory:');
     const fts = new FtsSearchEngine(db);
 

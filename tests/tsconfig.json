@@ -20,6 +20,7 @@
     { "path": "../packages/client" },
     { "path": "../packages/server" },
     { "path": "../packages/agent-core" },
+    { "path": "../packages/cli" },
     { "path": "../packages/evals" }
   ],
   "include": ["./**/*.ts"]

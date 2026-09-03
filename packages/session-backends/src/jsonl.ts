@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
+import { BackendClosedError } from './errors.js';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
 /**
@@ -17,18 +18,28 @@ export class JsonlSessionBackend implements ISessionBackend {
   };
 
   private baseDir: string;
+  private closed = false;
 
   constructor(baseDir: string) {
     this.baseDir = baseDir;
   }
 
+  private assertOpen(): void {
+    if (this.closed) {
+      throw new BackendClosedError(this.name);
+    }
+  }
+
   public async initialize(): Promise<void> {
+    this.assertOpen();
     if (!fs.existsSync(this.baseDir)) {
       fs.mkdirSync(this.baseDir, { recursive: true });
     }
   }
 
   public async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
     // No persistent connection to close
   }
 
@@ -45,12 +56,14 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
+    this.assertOpen();
     const filePath = this.getSessionJournalPath(sessionId);
     const line = `${JSON.stringify(entry)}\n`;
     fs.appendFileSync(filePath, line, 'utf8');
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
+    this.assertOpen();
     const filePath = this.getSessionJournalPath(sessionId);
     if (!fs.existsSync(filePath)) return [];
 
@@ -73,6 +86,7 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   public async saveSnapshot(snapshot: DocumentSnapshot): Promise<void> {
+    this.assertOpen();
     const filePath = this.getSnapshotsPath();
     let map: Record<string, DocumentSnapshot> = {};
     if (fs.existsSync(filePath)) {
@@ -87,6 +101,7 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   public async getSnapshot(documentId: string): Promise<DocumentSnapshot | null> {
+    this.assertOpen();
     const filePath = this.getSnapshotsPath();
     if (!fs.existsSync(filePath)) return null;
     try {
@@ -98,6 +113,7 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   public async appendDelta(delta: DocumentDelta): Promise<void> {
+    this.assertOpen();
     const filePath = this.getDeltasPath(delta.documentId);
     const existing = await this.getDeltas(delta.documentId);
     const nextId = delta.id !== undefined ? delta.id : existing.length + 1;
@@ -106,6 +122,7 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   public async getDeltas(documentId: string, fromId?: number): Promise<DocumentDelta[]> {
+    this.assertOpen();
     const filePath = this.getDeltasPath(documentId);
     if (!fs.existsSync(filePath)) return [];
 
@@ -128,6 +145,7 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   public async search(query: string, limit = 20): Promise<FtsSearchResult[]> {
+    this.assertOpen();
     const snapPath = this.getSnapshotsPath();
     if (!fs.existsSync(snapPath)) return [];
 

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { runPrintMode } from '@inkpi/agent-core';
+import { runPrintMode } from '@inkpi/cli';
 import { describe, expect, it } from 'vitest';
 
 describe('InkPi Print Mode (Non-interactive batch mode)', () => {

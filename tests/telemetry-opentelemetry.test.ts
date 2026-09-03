@@ -3,7 +3,7 @@ import { getModelPreset } from '@inkpi/ai';
 
 describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
   it('should track spans, tokens, TTFT, and export valid OpenTelemetry JSON', () => {
-    const telem = new TelemetryCollector();
+    const telem = new TelemetryCollector(Date.now);
     telem.startTurn();
 
     const span1 = telem.startSpan('architect_stage', 'outline', 'architect');
@@ -40,7 +40,7 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
   it('should collect OpenTelemetry spans automatically during 4-phase pipeline execution', async () => {
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'telemetry provider output', inputTokens: 5, outputTokens: 7 };
-    const telem = new TelemetryCollector();
+    const telem = new TelemetryCollector(Date.now);
     const pipeline = new WorkflowCoordinator({ telemetry: telem, model });
 
     const result = await pipeline.runPipeline('Test Workspace B', 'Document 1 Start', '主角初入World');
@@ -56,7 +56,7 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
   });
 
   it('should handle edge cases in span lifecycle and usage calculations', () => {
-    const telem = new TelemetryCollector();
+    const telem = new TelemetryCollector(Date.now);
     telem.startTurn();
 
     // Span with error

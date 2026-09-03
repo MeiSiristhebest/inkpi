@@ -11,9 +11,9 @@
  *                            WebSocket <port+1> 供 Web 客户端接入
  */
 
-import { runPrintMode } from '../packages/agent-core/dist/modes/print-mode.js';
+import { runPrintMode } from '../packages/cli/dist/index.js';
 import { TerminalStudio } from '../packages/tui/dist/studio.js';
-import { runPackageManagerCli } from '../packages/agent-core/dist/package-manager-cli.js';
+import { runPackageManagerCli } from '../packages/cli/dist/index.js';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
 // The standalone harness is the dev/test entrypoint exercised by the integration

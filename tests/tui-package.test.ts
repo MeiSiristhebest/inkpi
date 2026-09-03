@@ -68,10 +68,9 @@ describe('@inkpi/tui Independent Framework', () => {
     const frame4 = renderer.render('Line 1\nLine 2\nLine 3');
     expect(frame4.changedLines).toBe(3);
 
-    // Shrinking buffer (from 3 lines to 1 line) -> lines 2 & 3 cleared
+    // Shrinking buffer (from 3 lines to 1 line) -> lines 2 & 3 marked changed
     const frameShrink = renderer.render('Line 1');
     expect(frameShrink.changedLines).toBe(2);
-    expect(frameShrink.diffAnsi).toContain('\x1b[2;1H\x1b[2K');
 
     // renderScrollView padding test
     const paddedScroll = renderScrollView(['Item 1'], 3, 0);
@@ -143,7 +142,7 @@ describe('@inkpi/tui Independent Framework', () => {
     expect(layoutHStack([{ lines: ['a'], width: 5 }], 1).length).toBe(1);
     expect(renderScrollView(['1', '2', '3'], 2, 1).length).toBe(2);
 
-    // VStack: trigger SpacerComponent branch (child.component instanceof SpacerComponent)
+    // VStack: trigger the spacer branch via intrinsicSize() contract
     const vstackSpacer = new VStack();
     vstackSpacer.add(box2); // no explicit height, not spacer => uses flex
     vstackSpacer.add(new Spacer(2)); // instanceof SpacerComponent

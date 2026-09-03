@@ -1,0 +1,42 @@
+{
+  "name": "@inkpi/cli",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
+  },
+  "dependencies": {
+    "@inkpi/protocol": "workspace:*",
+    "@inkpi/ai": "workspace:*",
+    "@inkpi/agent-core": "workspace:*"
+  },
+  "description": "InkPi command-line surface: headless print mode and extension package manager CLI",
+  "author": "InkPi Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeiSiristhebest/inkpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeiSiristhebest/inkpi/issues"
+  },
+  "homepage": "https://github.com/MeiSiristhebest/inkpi#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ]
+}

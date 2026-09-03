@@ -8,25 +8,39 @@ import { type KeyEvent, parseKey } from './keys.js';
 import type { Component } from './layout.js';
 import { type OverlayHandle, OverlayManager, type OverlayOptions } from './overlay.js';
 import { ANSI, DifferentialRenderer, type ScreenDimensions } from './render.js';
+import { ProcessTerminal, type Terminal } from './terminal.js';
 import { ScreenManager } from './tui-screens.js';
 
 export interface TuiOptions {
   altScreen?: boolean;
   onKey?: (key: KeyEvent) => void;
   rootComponent?: Component;
+  /** 终端 I/O 端口，默认包裹 process.stdout 的 ProcessTerminal。 */
+  terminal?: Terminal;
+}
+
+interface KeyHandler {
+  handleKey(key: KeyEvent): boolean;
+}
+
+function hasKeyHandler(component: Component): component is Component & KeyHandler {
+  return typeof (component as { handleKey?: unknown }).handleKey === 'function';
 }
 
 export class TUI {
   public differentialRenderer = new DifferentialRenderer();
-  public screenManager = new ScreenManager();
   public overlayManager = new OverlayManager();
   public rootComponent?: Component;
   public onKey?: (key: KeyEvent) => void;
   public lastCursorPosition: CursorPosition | null = null;
+  public screenManager: ScreenManager;
+  private terminal: Terminal;
   private isRunning = false;
   private resizeListener?: () => void;
 
   constructor(options: TuiOptions = {}) {
+    this.terminal = options.terminal ?? new ProcessTerminal();
+    this.screenManager = new ScreenManager(this.terminal);
     if (options.altScreen) {
       this.screenManager.enterAltScreen();
     }
@@ -36,8 +50,8 @@ export class TUI {
 
   public getDimensions(): ScreenDimensions {
     return {
-      cols: process.stdout.columns || 80,
-      rows: process.stdout.rows || 24
+      cols: this.terminal.columns,
+      rows: this.terminal.rows
     };
   }
 
@@ -68,7 +82,7 @@ export class TUI {
     this.resizeListener = () => {
       this.refresh();
     };
-    process.stdout.on('resize', this.resizeListener);
+    this.terminal.onResize(this.resizeListener);
     this.refresh();
   }
 
@@ -83,7 +97,7 @@ export class TUI {
     }
 
     if (this.resizeListener) {
-      process.stdout.removeListener('resize', this.resizeListener);
+      this.terminal.offResize(this.resizeListener);
     }
 
     this.screenManager.leaveAltScreen();
@@ -99,8 +113,8 @@ export class TUI {
 
     if (activeOverlay?.options.modal) {
       // Route input to modal overlay first if supported
-      if ('handleKey' in activeOverlay.component && typeof (activeOverlay.component as any).handleKey === 'function') {
-        const handled = (activeOverlay.component as any).handleKey(key);
+      if (hasKeyHandler(activeOverlay.component)) {
+        const handled = activeOverlay.component.handleKey(key);
         if (handled) {
           this.refresh();
           return;
@@ -135,15 +149,15 @@ export class TUI {
 
     if (changedLines > 0) {
       if (this.screenManager.getMode() === 'alt') {
-        process.stdout.write(ANSI.CURSOR_HOME + output);
+        this.terminal.write(ANSI.CURSOR_HOME + output);
       } else {
-        process.stdout.write(`${output}\n`);
+        this.terminal.write(`${output}\n`);
       }
     }
 
     // Position hardware cursor for IME candidate alignment
     if (cursor) {
-      process.stdout.write(`\x1b[${cursor.row};${cursor.col}H${ANSI.CURSOR_SHOW}`);
+      this.terminal.write(`\x1b[${cursor.row};${cursor.col}H${ANSI.CURSOR_SHOW}`);
     }
   }
 }

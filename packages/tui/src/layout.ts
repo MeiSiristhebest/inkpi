@@ -20,6 +20,15 @@ export interface RenderContext {
 
 export abstract class Component {
   public flex = 1;
+  /**
+   * The fixed height/width this component contributes to its parent stack when
+   * no explicit size is provided. Non-spacer components default to `0` (they are
+   * flexible); `SpacerComponent` overrides this to expose its spacer size.
+   * Layout engines call this instead of `instanceof` discrimination.
+   */
+  public intrinsicSize(): number {
+    return 0;
+  }
   public abstract render(context: RenderContext): string[];
 }
 
@@ -141,12 +150,10 @@ export class VStackComponent extends Component {
   public render(context: RenderContext): string[] {
     const { width, height } = context;
     const totalExplicitHeight = this.children.reduce((acc, c) => {
-      const h = c.height !== undefined ? c.height : c.component instanceof SpacerComponent ? c.component.size : 0;
+      const h = c.height !== undefined ? c.height : c.component.intrinsicSize();
       return acc + h;
     }, 0);
-    const flexibleChildren = this.children.filter(
-      (c) => c.height === undefined && !(c.component instanceof SpacerComponent)
-    );
+    const flexibleChildren = this.children.filter((c) => c.height === undefined && c.component.intrinsicSize() === 0);
     const totalFlex = flexibleChildren.reduce((acc, c) => acc + (c.flex || 1), 0);
     const remainingHeight = Math.max(0, height - totalExplicitHeight);
 
@@ -156,8 +163,8 @@ export class VStackComponent extends Component {
       let childHeight: number;
       if (child.height !== undefined) {
         childHeight = child.height;
-      } else if (child.component instanceof SpacerComponent) {
-        childHeight = child.component.size;
+      } else if (child.component.intrinsicSize() > 0) {
+        childHeight = child.component.intrinsicSize();
       } else {
         const share = (child.flex || 1) / (totalFlex || 1);
         childHeight = Math.max(1, Math.floor(remainingHeight * share));
@@ -180,6 +187,9 @@ export class SpacerComponent extends Component {
   constructor(size = 1) {
     super();
     this.size = size;
+  }
+  public intrinsicSize(): number {
+    return this.size;
   }
   public render(context: RenderContext): string[] {
     return Array(this.size).fill(' '.repeat(context.width));

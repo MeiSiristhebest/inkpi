@@ -15,8 +15,8 @@ export interface CompactionConfig {
   ledgerExtractors?: LedgerExtractor[];
   /** Optional domain adapter for rendering the extracted state into the summary message. */
   ledgerFormatter?: (ledger: ReturnType<typeof extractStateLedger>) => string;
-  /** Injectable clock for timestamps / ids. Defaults to `Date.now`. */
-  clock?: Clock;
+  /** Injectable clock for timestamps / ids. Required — no `Date.now` fallback. */
+  clock: Clock;
   /**
    * 字符→Token 估算系数（与 `@inkpi/ai` 的 `CHARS_PER_TOKEN_HEURISTIC` 同源，默认取其值）。
    * 触发判断与压缩后结算共用本系数；注入与线上 tokenizer 一致的值可获得真实计量。
@@ -37,8 +37,8 @@ export class SessionCompactor {
   private config: ResolvedCompactionConfig;
   private clock: Clock;
 
-  constructor(config: CompactionConfig = {}) {
-    this.clock = config.clock ?? Date.now;
+  constructor(config: CompactionConfig) {
+    this.clock = config.clock;
     this.config = {
       triggerTokensThreshold: config.triggerTokensThreshold ?? 50000,
       preserveRecentCount: config.preserveRecentCount ?? 4,

@@ -8,6 +8,13 @@
  */
 export const DEFAULT_RPC_HOST = '127.0.0.1';
 
+/**
+ * 守护进程 TCP 监听的默认端口。此前该数字以字面量形式重复出现在
+ * `daemon.ts` 的构造函数与 `startWebSocket()` 的默认参数里，改一处会漏另一处。
+ * 生产使用应通过 `DaemonOptions.port` 显式注入；此常量只作为"未指定时的兜底"。
+ */
+export const DEFAULT_RPC_PORT = 41829;
+
 export interface RpcTransport {
   send(message: string): Promise<void> | void;
   onMessage(handler: (message: string) => void): void;

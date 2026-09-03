@@ -1,10 +1,10 @@
 import type * as net from 'node:net';
-import { type ManagedSession, type SessionCreateOptions, SessionRegistry } from '@inkpi/agent-core';
+import { type ManagedSession, REAL_CLOCK, type SessionCreateOptions, SessionRegistry } from '@inkpi/agent-core';
 import type { ModelConfig } from '@inkpi/protocol';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
-import { DEFAULT_RPC_HOST } from './transport.js';
+import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -41,11 +41,11 @@ export class InkPiDaemon {
 
   constructor(options: DaemonOptions = {}) {
     this.options = {
-      port: 41829,
+      port: DEFAULT_RPC_PORT,
       host: DEFAULT_RPC_HOST,
       ...options
     };
-    this.sessionManager = new SessionRegistry(options.defaultModel);
+    this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
     this.rpcServer = new InkRpcServer(options.context as ServerContext);
     this.registerDaemonMethods();
   }
@@ -211,7 +211,7 @@ export class InkPiDaemon {
    * 默认端口：`options.wsPort`（可注入）→ 否则退回约定 `TCP 端口 + 1`。
    */
   public async startWebSocket(
-    wsPort = this.options.wsPort ?? (this.options.port ?? 41829) + 1,
+    wsPort = this.options.wsPort ?? (this.options.port ?? DEFAULT_RPC_PORT) + 1,
     host = this.options.host
   ): Promise<this> {
     this.wsPort = wsPort;

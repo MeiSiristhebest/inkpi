@@ -95,7 +95,7 @@ export function mergeLedgers(
 /**
  * 按 `keyOf` 归并两条记录数组：相同 key 的后项浅覆盖前项。纯函数。
  */
-export function mergeRecords<T extends Record<string, unknown>>(
+export function mergeRecords<T extends object>(
   base: T[],
   addition: T[],
   keyOf: (record: T, index: number) => string

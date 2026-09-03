@@ -1,4 +1,5 @@
 import type { WorkflowEvent, WorkflowEventListener } from '@inkpi/protocol';
+import { consoleLogger } from '../ports/index.js';
 
 /**
  * 工作流事件总线。
@@ -23,7 +24,7 @@ export class WorkflowEventBus {
       try {
         await listener(event);
       } catch (err) {
-        console.error('[WorkflowCoordinator] Error in event listener:', err);
+        consoleLogger.error('[WorkflowCoordinator] Error in event listener:', err);
       }
     }
   }

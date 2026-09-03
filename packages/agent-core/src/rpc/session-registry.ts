@@ -45,7 +45,7 @@ export class SessionRegistry implements SessionStore {
   private defaultModel?: ModelConfig;
   private clock: Clock;
 
-  constructor(defaultModel?: ModelConfig, clock: Clock = Date.now) {
+  constructor(clock: Clock, defaultModel?: ModelConfig) {
     // 注意：不再静默回落到假模型。defaultModel 可选，但当会话既未显式指定模型、
     // 管理器也无默认模型时，createSession 会抛出明确的错误。
     this.defaultModel = defaultModel;
