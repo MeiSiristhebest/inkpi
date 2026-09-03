@@ -292,7 +292,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 | P2 | C6 | `tui`：`as any` → `hasKeyHandler` 类型守卫 + `instanceof` → `intrinsicSize()` 多态契约；命名导出别名层已是真实类再导出（无空子类） | 中 · ✅ 已做 |
 | P2 | C5 | `tui` 抽出 `Terminal` 端口（`Terminal` 接口 + `ProcessTerminal` 默认 + `MemoryTerminal` 替身），`tui.ts`/`tui-screens.ts` 不再直接耦合 `process.stdout` | 中 · ✅ 已做 |
 | P2 | C4 | `ai` 抽出 `HttpClient` 端口（`HttpClient` 接口 + `GlobalFetchHttpClient` 默认委托全局 `fetch` + `setHttpClient`/`getHttpClient` 注入点），4 处 `fetch(` 改走 `getHttpClient().fetch(` | 中 · ✅ 已做 |
-| P2 | C2 | `ai` catalog 路由/别名显式化：`ModelCatalogEntry` 增 `roles`/`priority`；`ROLE_PREFERENCES` 精确 ID 优先序表 + `CANONICAL_ALIASES` 显式映射，消除 `includes('mini')` 等子串猜测 | 中 · ✅ 已做 |
+| P2 | C2 | `ai` catalog 路由/别名显式化：`ModelCatalogEntry` 增 `roles`/`priority`；`ROLE_PREFERENCES` 精确 ID 优先序表 + `CANONICAL_ALIASES` 显式映射，消除 `includes('mini')` 等子串猜测 | 中 · ⚠️ 部分（子串猜测已消除；评审原要求的"能力声明驱动数据模型 `capabilities: {reasoning, costTier}`"未做，见 §F） |
 | P2 | C9 | 真实 SQLite 已满足（`:memory:`）；`vi.useFakeTimers` 尝试后因 fake-timer+异步流死锁、且本环境 sqlite 测试挂起而**回退**，保持真实 timer 等待 | 中~高 · ⚠️ timer 部分回退 |
 
 > 建议：先把 P0 + P1 合并成一个 commit（"复核发现项整改 + 文档数字同步"），
@@ -312,7 +312,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 | T3 | Clock 默认回落 | 端口层 `ports/index.ts` 新增具名 `REAL_CLOCK`；`telemetry.ts`/`compaction.ts`/`session-registry.ts`/`session-reducer.ts` 四处 `= Date.now`/`?? Date.now` 兜底**全部移除**，`Clock` 改为必填；生产组合根 `print-mode.ts`、`daemon.ts` 注入 `REAL_CLOCK`，13 个测试调用点改为显式传 `Date.now`。`tsc -b` 通过。 |
 | T4 | 领域内 `console.error` | `agent.ts`/`extension-host.ts`/`pipeline/event-bus.ts` 共 4 处 `console.error` 改为走声明的 `Logger` 端口（`consoleLogger.error`）。`agent-core/src` 内仅剩 `consoleLogger` 默认实现本体；`editor-core/src` 零残留。 |
 | T5 | 冗余索引签名 | `protocol/pipeline.ts` 4 处独立索引签名**已移除**（tsc 无调用点依赖任意键）；`protocol/storage.ts` 5 处独立 + 1 处 union 内联索引签名**已移除**，但：① 测试 `multi-agent-pipeline.test.ts` 依赖 `StateLedger.customExtension` 任意扩展键 → 改为显式可选字段 `customExtension?: unknown`；② `ledger-merge.ts` 的 `mergeRecords<T extends Record<string, unknown>>` 约束过严 → 放宽为 `T extends object`。**结论**：storage 记录类型原非"纯冗余"，是承载领域扩展键的内容容器，复核报告"C 类第 12 项"的判断需修正——索引签名移除的前提是用显式字段/`object` 约束承接，已正确承接。 |
-| T6 | 文档过期数字与别名 | `README.md` "280+ tests" → "415"；`ARCHITECTURE.md` "81 files / 408 tests" → "82 files / 415 tests"；`README.md` 包表弃用别名 `AgentEngine` 已删除（保留 `Agent`）。 |
+| T6 | 文档过期数字与别名 | `README.md` "280+ tests" → "415"；`ARCHITECTURE.md` "81 files / 408 tests" → "82 files / 415 tests"；`README.md` 包表弃用别名 `AgentEngine` → `Agent`（注：最终核验发现 `README.md` 第 84/252 行仍残留 `AgentEngine`，已于 2026-09-03 收尾时清除，见 §F）。 |
 
 ### 仍属 P2（本次未动，登记为已知债务）
 
@@ -430,3 +430,43 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 
 - **C4（`ai` 包 `HttpClient` 端口）**：✅ **已做（2026-09-03）**。原评估认为"抽象面大、非小步"，实际用模块级 `setHttpClient`/`getHttpClient` 注入点（与既有 `registerProvider`/`getProvider` 同范式）即可最小化落地——`GlobalFetchHttpClient` 委托全局 `fetch` 保证了既有桩测试的零回归。详见 §C4。
 - **C2（`catalog.ts` 模型路由子串猜测）**：`KNOWN_MODELS` 来自 `GENERATED_MODELS`（生成式目录），模型 ID 动态。子串匹配（`includes('mini')` 等）要改成"显式优先列表/别名映射"需先给 `ModelCatalogEntry` 加角色字段并改生成器，**数据模型级改动**，超出"顺手继续"范围。
+
+---
+
+## F. 最终核验（2026-09-03 收尾 · 逐条对照 `ARCHITECTURE_REVIEW.md`）
+
+> 方式：不采信本报告 §B/§C 的"已做"自述，对每一条到**当前代码（`f118e5e`）**做独立 grep/读证。
+
+### F.1 代码层——全部 11 项 P2 + P0/P1 均在代码实证到位
+
+| 项 | 代码实证 | 结论 |
+|---|---|---|
+| C1 (P0) | `tests/pi-six-pillars-integration.test.ts:446,477` 两个 Pillar 6 用例带 `, 30_000)` 第三参超时；第 423–431 行注释说明。 | ✅ 已做（非 `testTimeout` 关键字，是 vitest 3 参字面量） |
+| B1 | `server/src/transport.ts:16` `DEFAULT_RPC_PORT = 41829`；`daemon.ts:44,214` 两处引用；无裸 `41829`。 | ✅ 已做 |
+| B2 | `protocol/src/extensions.ts` 索引签名 **0 处**；`pipeline.ts`/`storage.ts` 无冗余 `[key: string]: unknown`。 | ✅ 已做 |
+| B3 | `telemetry.ts`/`compaction.ts`/`session-reducer.ts`/`coordinator.ts` 四处 `= Date.now`/`?? Date.now` 回落**全无**；`ports/index.ts:26` `REAL_CLOCK` 定义并被组合根注入。 | ✅ 已做 |
+| B4 | `agent.ts`/`extension-host.ts`/`pipeline/event-bus.ts` 三处原 `console.error` 均改为 `consoleLogger.error`（注入的 `Logger` 端口）。 | ✅ 已做 |
+| C2 | `catalog.ts` 无 `includes('mini'/'r1'/'3.7'/'o3'/'gemini-2.5-pro')` 子串猜测；`ROLE_PREFERENCES`/`CANONICAL_ALIASES`/`roles?`/`priority?` 落地。 | ⚠️ **部分**：子串消除达成；评审原要求的"能力声明驱动数据模型 `capabilities:{reasoning,costTier}`"**未做**（见 §C2 评估） |
+| C3 | `agent-core/src/export/report-assets.ts` 抽出 `REPORT_STYLE`/`REPORT_SCRIPT`；`session-report-export.ts` 内联块改为引用。 | ✅ 已做 |
+| C4 | `ai/src/http-client.ts` 存在；`providers.ts:416,691,897,1010` 四处 `getHttpClient().fetch(`；守卫测试存在。 | ✅ 已做 |
+| C5 | `tui/src/terminal.ts` 含 `Terminal`/`ProcessTerminal`/`MemoryTerminal`；守卫测试存在。 | ✅ 已做 |
+| C6 | `tui/src/layout.ts` `intrinsicSize()` 多态契约（含 `SpacerComponent` 覆写）；`tui.ts:22,26,116` `KeyHandler`+`hasKeyHandler` 守卫替换 `as any`；守卫测试存在。 | ✅ 已做 |
+| C7 | `tui/src` 全局无 `diffAnsi`；`tui-package.test.ts` 固化断言已删。 | ✅ 已做 |
+| C8 | `session-backends/src/{types,memory,jsonl,sqlite}.ts`：`BackendClosedError`+`assertOpen()`（jsonl/sqlite 各 9 处）；参数化守卫测试覆盖三后端。 | ✅ 已做 |
+| C9 | 真实 SQLite 已满足（`:memory:`）；`vi.useFakeTimers` 因 fake-timer+异步流死锁、且本环境 sqlite 测试挂起而**回退**（保持真实 timer）。 | ⚠️ timer 部分回退（环境所致，非回归） |
+| C10 | `ai/src/stream.ts`：`signal?: AbortSignal` + `delayWithSignal` + `get isAborted` + `scheduleRetry` 检查 `signal.aborted`/`isAborted`；守卫测试 3 例。 | ✅ 已做 |
+| C11 | `packages/cli` 真实存在（`index`/`print-mode`/`package-manager-cli`）；`agent-core/src/index.ts` 不再再导出 CLI 表面；`bin`/`scripts`/3 测试均改 `@inkpi/cli`；`tsc -b` 绿。 | ✅ 已做 |
+
+### F.2 文档/打包同步——发现 3 处遗漏，已在本节收尾修正
+
+| 遗漏 | 现状 | 处置 |
+|---|---|---|
+| README 残留 `AgentEngine`（第 84 行架构图、第 252 行散文） | 本报告 §E T6 声称"已删除"，实际没删 | ✅ 已改为 `Agent`（与 ARCHITECTURE.md 一致） |
+| ARCHITECTURE.md 仍写 "10-Package" 且完全未列 `@inkpi/cli` | C11 已新建第 11 个包，但架构文档未同步 | ✅ 已改 "11-Package" 并补 #11 cli 条目 |
+| 根 `package.json` 未声明 `@inkpi/cli` 依赖 | `bin/inkpi.js` 动态 `import('@inkpi/cli')` 靠 workspace 符号链接侥幸解析，严格 `--frozen-lockfile`（CI）会断 | ✅ 已加 `"@inkpi/cli": "workspace:*"` 并 `pnpm install --lockfile-only` 同步锁文件（现 "12 workspace projects"，root→cli 登记为 `link:packages/cli`） |
+
+### F.3 结论
+
+- **代码逻辑层**：原始评审报告所有可行动项（P0/P1/P2 共 15 项 + 复核补充 C1–C11）**均在代码实证到位**，除 C9（timer 部分，环境性回退）与 C2（能力驱动数据模型未做，属更大的数据模型改动）两处为**有意的部分完成**。
+- **文档同步**：本次最终核验发现 3 处"代码已改、文档/打包未跟"的遗漏（README 别名、ARCHITECTURE 包数量、根 package.json 依赖），**已全部修正**。
+- **唯一未彻底闭环**：C2 的"能力声明驱动"改造（需给 `ModelCatalogEntry` 加 `capabilities` 字段并改生成器，数据模型级）与 C9 的 fake-timer 化（需稳定 CI 环境再评估）——二者均超出"顺手继续"范围，作为已知债务保留，已在本报告标注。

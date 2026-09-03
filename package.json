@@ -17,6 +17,7 @@
   "dependencies": {
     "@inkpi/agent-core": "workspace:*",
     "@inkpi/ai": "workspace:*",
+    "@inkpi/cli": "workspace:*",
     "@inkpi/client": "workspace:*",
     "@inkpi/editor-core": "workspace:*",
     "@inkpi/protocol": "workspace:*",

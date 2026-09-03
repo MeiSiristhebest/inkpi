@@ -54,7 +54,7 @@ InkPi separates domain logic from interface drivers and persistence adapters thr
 
 ---
 
-## 📦 2. 10-Package Decoupled Monorepo Structure
+## 📦 2. 11-Package Decoupled Monorepo Structure
 
 1. **`@inkpi/protocol`**: Pure domain schemas, TypeBox types, and JSON-RPC frames. Zero runtime dependencies.
 2. **`@inkpi/session-backends`**: Pluggable storage backend adapters implementing the `ISessionBackend` contract with full LSP conformance (`id >= fromId` delta semantics across all backends).
@@ -66,6 +66,7 @@ InkPi separates domain logic from interface drivers and persistence adapters thr
 8. **`@inkpi/tui`**: ANSI differential rendering pipeline, CJK width calculation, and terminal images.
 9. **`@inkpi/ai`**: Multi-provider abstractions, model preset catalog, and stream reconnection. **Test doubles (`faux` provider, `mock-test` preset) are NOT registered on the production path** — see §3.
 10. **`@inkpi/evals`**: Evaluation benchmarks and narrative consistency scoring.
+11. **`@inkpi/cli`**: CLI command surface extracted from `@inkpi/agent-core` (2026-09-03, remediation C11). Hosts `print-mode` (`inkpi --print`) and `package-manager-cli` (`inkpi plugin …`). Depends only on `@inkpi/agent-core` / `@inkpi/ai` / `@inkpi/protocol` — a clean one-directional `cli → agent-core` edge, no circular dependency. `bin/inkpi.js` and `scripts/inkpi-standalone.mjs` import the CLI entry from `@inkpi/cli`.
 
 ---
 

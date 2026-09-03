@@ -34,7 +34,7 @@
   - [What InkPi is NOT](#what-inkpi-is-not)
   - [Architecture & Decoupled Layers](#architecture--decoupled-layers)
 - [✨ Key Capabilities](#-key-capabilities)
-  - [1. 10-Package Hexagonal Topology](#1-10-package-hexagonal-topology)
+  - [1. 11-Package Hexagonal Topology](#1-11-package-hexagonal-topology)
   - [2. Pluggable Session Backends](#2-pluggable-session-backends)
   - [3. 4-Tier Prompt Caching & Stream Resilience](#3-4-tier-prompt-caching--stream-resilience)
   - [4. Headless Buffer & Ghost Text Engine](#4-headless-buffer--ghost-text-engine)
@@ -81,7 +81,7 @@ InkPi is an **extensible AI agent harness and workstation foundation** inspired 
     ┌──────────────────────────────────────────────────────────────────┐
     │            @inkpi/agent-core (Domain State Engine)               │
     │                                                                  │
-    │  AgentEngine · Agent Loop · SessionTree · WorkflowCoordinator    │
+    │  Agent · Agent Loop · SessionTree · WorkflowCoordinator    │
     │  StateLedger · ToolRegistry · ExtensionHost · Queues             │
     └──────────────┬───────────────────────────────┬───────────────────┘
                    │                               │
@@ -99,7 +99,7 @@ InkPi is an **extensible AI agent harness and workstation foundation** inspired 
 
 ## ✨ Key Capabilities
 
-### 1. 10-Package Hexagonal Topology
+### 1. 11-Package Hexagonal Topology
 
 InkPi is divided into 10 decoupled packages with zero cyclic dependencies:
 
@@ -192,7 +192,7 @@ cd inkpi
 # Install monorepo dependencies (without lifecycle scripts)
 pnpm install --ignore-scripts
 
-# Compile all 10 packages
+# Compile all 11 packages
 pnpm run build
 
 # Run tests
@@ -249,7 +249,7 @@ console.log(session.editor.getText());
 ## 🛡️ The 5 Absolute Engineering Invariants
 
 1. **Strict Single Responsibility Principle (SRP)**:
-   The `AgentEngine` state machine is decoupled from slash command interpretations and RPC framing.
+   The `Agent` state machine is decoupled from slash command interpretations and RPC framing.
 2. **Pluggable Persistence via Ports & Adapters**:
    Domain logic relies entirely on the `ISessionBackend` interface.
 3. **Rigorous Quality Gate ($\ge 85\%$ Lines, $\ge 80\%$ Branches)**:
