@@ -455,7 +455,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 | C8 | `session-backends/src/{types,memory,jsonl,sqlite}.ts`：`BackendClosedError`+`assertOpen()`（jsonl/sqlite 各 9 处）；参数化守卫测试覆盖三后端。 | ✅ 已做 |
 | C9 | 真实 SQLite 已满足（`:memory:`）；`vi.useFakeTimers` 因 fake-timer+异步流死锁、且本环境 sqlite 测试挂起而**回退**（保持真实 timer）。 | ⚠️ timer 部分回退（环境所致，非回归） |
 | C10 | `ai/src/stream.ts`：`signal?: AbortSignal` + `delayWithSignal` + `get isAborted` + `scheduleRetry` 检查 `signal.aborted`/`isAborted`；守卫测试 3 例。 | ✅ 已做 |
-| C11 | `packages/cli` 真实存在（`index`/`print-mode`/`package-manager-cli`）；`agent-core/src/index.ts` 不再再导出 CLI 表面；`bin`/`scripts`/3 测试均改 `@inkpi/cli`；`tsc -b` 绿。 | ✅ 已做 |
+| C11 | `packages/cli` 真实存在（`index`/`print-mode`/`package-manager-cli`）；`agent-core/src/index.ts` 不再再导出 CLI 表面；`bin`/`scripts`/3 测试均改 `@inkpi/cli`；`agent-core` 内部孤儿文件已彻底清理并收敛 tsconfig references；`tsc -b` 绿。 | ✅ 已做 |
 
 ### F.2 文档/打包同步——发现 3 处遗漏，已在本节收尾修正
 
