@@ -27,6 +27,8 @@ export class MockClipboardDriver implements ClipboardDriver {
   }
 }
 
+const DEFAULT_CLIPBOARD_TIMEOUT_MS = 1000;
+
 export class NativeSystemClipboardDriver implements ClipboardDriver {
   constructor(
     private readonly commandRunner: ClipboardCommandRunner = execFileSync as ClipboardCommandRunner,
@@ -40,19 +42,27 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
           this.commandRunner('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard'], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe'],
-            timeout: 1000
+            timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
           })
         ).trimEnd();
       }
       if (this.platform === 'darwin') {
         return String(
-          this.commandRunner('pbpaste', [], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 })
+          this.commandRunner('pbpaste', [], {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
+          })
         );
       }
       if (this.platform === 'linux') {
         try {
           return String(
-            this.commandRunner('wl-paste', [], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 })
+            this.commandRunner('wl-paste', [], {
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe'],
+              timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
+            })
           );
         } catch (waylandError) {
           try {
@@ -60,7 +70,7 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
               this.commandRunner('xclip', ['-selection', 'clipboard', '-o'], {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'pipe'],
-                timeout: 1000
+                timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
               })
             );
           } catch (xclipError) {
@@ -80,23 +90,31 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
         this.commandRunner(
           'powershell.exe',
           ['-NoProfile', '-Command', '$value = [Console]::In.ReadToEnd(); Set-Clipboard -Value $value'],
-          { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 }
+          { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS }
         );
         return true;
       }
       if (this.platform === 'darwin') {
-        this.commandRunner('pbcopy', [], { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 });
+        this.commandRunner('pbcopy', [], {
+          input: text,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
+        });
         return true;
       }
       if (this.platform === 'linux') {
         try {
-          this.commandRunner('wl-copy', [], { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: 1000 });
+          this.commandRunner('wl-copy', [], {
+            input: text,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
+          });
         } catch (waylandError) {
           try {
             this.commandRunner('xclip', ['-selection', 'clipboard'], {
               input: text,
               stdio: ['pipe', 'pipe', 'pipe'],
-              timeout: 1000
+              timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
             });
           } catch (xclipError) {
             throw new Error('No supported Linux clipboard command is available.', { cause: xclipError });

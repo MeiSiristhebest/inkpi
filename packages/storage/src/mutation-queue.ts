@@ -14,12 +14,16 @@ export interface MutationTask<T = unknown> {
  * 文档原子修改与事务锁队列 (1:1 移植自 repos/pi packages/agent/src/harness/tools/file-mutation-queue.ts)
  * 解决多 Agent 协作并发写库冲突 (基于资源粒度串行锁机制)
  */
+export const DEFAULT_MUTATION_TTL_MS = 15000;
+
 export class DocumentMutationQueue {
   private leaseManager: WriterLeaseManager;
+  private defaultTtlMs: number;
   private queues = new Map<string, Array<MutationTask<any>>>();
   private activeProcessing = new Set<string>();
 
-  constructor(db: InkDb, defaultTtlMs = 15000) {
+  constructor(db: InkDb, defaultTtlMs = DEFAULT_MUTATION_TTL_MS) {
+    this.defaultTtlMs = defaultTtlMs;
     this.leaseManager = new WriterLeaseManager(db, defaultTtlMs);
   }
 
@@ -84,7 +88,7 @@ export class DocumentMutationQueue {
         const leaseAcquired = this.leaseManager.acquire(
           `lease_${documentId}`,
           task.holderId,
-          15000,
+          this.defaultTtlMs,
           `mutation:${task.id}`
         );
 

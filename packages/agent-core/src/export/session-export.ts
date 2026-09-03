@@ -1,6 +1,7 @@
 import { type AgentMessage, AgentMessageSchema, type ExportOptions, assertValid } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
+import { SESSION_EXPORT_STYLE } from './report-assets.js';
 
 export interface MessageJsonlImportOptions {
   strict?: boolean;
@@ -71,17 +72,7 @@ export class SessionExporter {
   <meta charset="UTF-8">
   <title>${this.escapeHtml(title)}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
-    .container { max-width: 900px; margin: 0 auto; }
-    h1 { border-bottom: 2px solid #334155; padding-bottom: 12px; font-size: 24px; color: #38bdf8; }
-    .msg-box { margin-bottom: 20px; padding: 16px; border-radius: 8px; border: 1px solid #334155; }
-    .msg-box.user { background: #1e293b; border-left: 4px solid #38bdf8; }
-    .msg-box.assistant { background: #1e293b; border-left: 4px solid #34d399; }
-    .msg-box.tool-result { background: #0f172a; border-left: 4px solid #f59e0b; }
-    .role-badge { font-weight: bold; font-size: 13px; margin-bottom: 8px; text-transform: uppercase; color: #94a3b8; }
-    .thinking-box { background: #020617; border-left: 3px solid #818cf8; padding: 10px; margin-bottom: 10px; font-size: 13px; color: #cbd5e1; white-space: pre-wrap; }
-    .text-box { line-height: 1.7; font-size: 15px; white-space: pre-wrap; }
-    .tool-box { background: #020617; padding: 8px; font-size: 12px; color: #f59e0b; font-family: monospace; }
+${SESSION_EXPORT_STYLE}
   </style>
 </head>
 <body>

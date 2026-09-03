@@ -1,3 +1,4 @@
+import { parseKey } from './keys.js';
 import type { StudioModel } from './studio-model.js';
 import type { StudioDialogueEntry, StudioFocusMode } from './studio-types.js';
 
@@ -16,28 +17,29 @@ export class StudioController {
   }
 
   public async handleInput(input: string): Promise<string> {
+    const key = parseKey(input);
     const trimmed = input.trim();
 
     if (this.model.activeModal === 'selectList') {
-      if (input === '\u001b[A' || trimmed === 'UP' || trimmed === 'k') {
+      if (key.name === 'up' || trimmed === 'UP' || trimmed === 'k') {
         this.model.selectPrev();
         return 'Selection up';
       }
-      if (input === '\u001b[B' || trimmed === 'DOWN' || trimmed === 'j') {
+      if (key.name === 'down' || trimmed === 'DOWN' || trimmed === 'j') {
         this.model.selectNext();
         return 'Selection down';
       }
-      if (input === '\r' || trimmed === 'ENTER') {
+      if (key.name === 'enter' || trimmed === 'ENTER') {
         const val = this.model.confirmSelection();
         return `Selected: ${JSON.stringify(val)}`;
       }
-      if (input === '\u001b' || trimmed === 'ESC') {
+      if (key.name === 'escape' || trimmed === 'ESC') {
         this.model.closeModal();
         return 'Modal closed';
       }
     }
 
-    if (input === '\t' || trimmed.toUpperCase() === 'TAB') {
+    if (key.name === 'tab' || trimmed.toUpperCase() === 'TAB') {
       if (this.model.ghost.hasGhostText()) {
         this.model.ghost.acceptGhostText();
         this.model.setStatusMessage('Ghost text accepted');

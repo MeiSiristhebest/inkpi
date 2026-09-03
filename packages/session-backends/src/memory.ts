@@ -18,7 +18,6 @@ export class MemorySessionBackend implements ISessionBackend {
   private journals = new Map<string, SessionEntry[]>();
   private snapshots = new Map<string, DocumentSnapshot>();
   private deltas = new Map<string, DocumentDelta[]>();
-  private initialized = false;
   private closed = false;
 
   private assertOpen(): void {
@@ -29,12 +28,10 @@ export class MemorySessionBackend implements ISessionBackend {
 
   public async initialize(): Promise<void> {
     this.assertOpen();
-    this.initialized = true;
   }
 
   public async close(): Promise<void> {
     if (this.closed) return;
-    this.initialized = false;
     this.closed = true;
     this.journals.clear();
     this.snapshots.clear();

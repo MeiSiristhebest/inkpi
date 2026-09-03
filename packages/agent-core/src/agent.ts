@@ -2,6 +2,7 @@ import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMe
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
 import { runAgentLoop } from './loop.js';
 import { consoleLogger } from './ports/index.js';
+import { REAL_CLOCK } from './ports/index.js';
 import { MessageQueue } from './queues.js';
 import { ToolRegistry } from './tools.js';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
@@ -192,7 +193,8 @@ export class Agent {
       steeringQueue: this.steeringQueue,
       followUpQueue: this.followUpQueue,
       emitEvent: (ev) => this.emitEvent(ev),
-      signal: abortController.signal
+      signal: abortController.signal,
+      clock: REAL_CLOCK
     });
 
     const settledRunPromise = runPromise.then(

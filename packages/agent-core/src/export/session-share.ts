@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import type { AgentMessage, StateLedger } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
+import { SESSION_SHARE_STYLE } from './report-assets.js';
 
 export interface CreativeSessionShareOptions {
   title?: string;
@@ -74,7 +75,13 @@ export const SessionShareExporter = {
    * 对单条消息进行脱敏
    */
   sanitizeMessage(msg: AgentMessage, options: CreativeSessionShareOptions = {}): AgentMessage {
-    const cloned = JSON.parse(JSON.stringify(msg)) as AgentMessage;
+    let cloned: AgentMessage;
+    try {
+      cloned = JSON.parse(JSON.stringify(msg)) as AgentMessage;
+    } catch {
+      return { ...msg };
+    }
+
     if (typeof cloned.content === 'string') {
       cloned.content = SessionShareExporter.sanitize(cloned.content, options);
     } else if (Array.isArray(cloned.content)) {
@@ -86,7 +93,12 @@ export const SessionShareExporter = {
           return { ...block, thinking: SessionShareExporter.sanitize(block.thinking, options) };
         }
         if (block.type === 'toolCall') {
-          const sanitizedArgs = JSON.parse(SessionShareExporter.sanitize(JSON.stringify(block.arguments), options));
+          let sanitizedArgs = block.arguments;
+          try {
+            sanitizedArgs = JSON.parse(SessionShareExporter.sanitize(JSON.stringify(block.arguments), options));
+          } catch {
+            // retain original arguments on serialization failure
+          }
           return { ...block, arguments: sanitizedArgs };
         }
         return block;
@@ -196,20 +208,7 @@ export const SessionShareExporter = {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(dataset.title)} - InkPi Creative Share</title>
   <style>
-    :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --accent: #38bdf8; --border: #334155; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; margin: 0; line-height: 1.6; }
-    .container { max-width: 900px; margin: 0 auto; }
-    header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
-    h1 { margin: 0 0 0.5rem; color: var(--accent); }
-    .meta-bar { display: flex; gap: 1rem; color: #94a3b8; font-size: 0.9rem; flex-wrap: wrap; }
-    .tag { background: #0369a1; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
-    .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; padding: 1.2rem; }
-    .message-card.user { border-left: 4px solid var(--accent); }
-    .message-card.assistant { border-left: 4px solid #10b981; }
-    .role-badge { font-weight: bold; font-size: 0.9rem; color: var(--accent); }
-    .msg-thinking { background: #090d16; border-left: 3px solid #eab308; padding: 0.8rem; border-radius: 4px; margin: 0.8rem 0; font-size: 0.9rem; color: #cbd5e1; }
-    .badge { font-weight: bold; }
-    pre { white-space: pre-wrap; word-break: break-all; margin: 0.4rem 0 0; }
+${SESSION_SHARE_STYLE}
   </style>
 </head>
 <body>

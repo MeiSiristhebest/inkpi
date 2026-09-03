@@ -11,7 +11,7 @@ import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 export class JsonlSessionBackend implements ISessionBackend {
   public readonly name = 'jsonl';
   public readonly capabilities: SessionBackendCapabilities = {
-    fts: false,
+    fts: true,
     snapshots: true,
     concurrencyLeases: false,
     durableDisk: true

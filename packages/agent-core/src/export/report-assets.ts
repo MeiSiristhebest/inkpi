@@ -48,3 +48,30 @@ export const REPORT_SCRIPT = `    function switchTab(event, name) {
       const target = document.getElementById('tab-' + name);
       if (target) target.classList.add('active');
     }`;
+
+export const SESSION_EXPORT_STYLE = `    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { border-bottom: 2px solid #334155; padding-bottom: 12px; font-size: 24px; color: #38bdf8; }
+    .msg-box { margin-bottom: 20px; padding: 16px; border-radius: 8px; border: 1px solid #334155; }
+    .msg-box.user { background: #1e293b; border-left: 4px solid #38bdf8; }
+    .msg-box.assistant { background: #1e293b; border-left: 4px solid #34d399; }
+    .msg-box.tool-result { background: #0f172a; border-left: 4px solid #f59e0b; }
+    .role-badge { font-weight: bold; font-size: 13px; margin-bottom: 8px; text-transform: uppercase; color: #94a3b8; }
+    .thinking-box { background: #020617; border-left: 3px solid #818cf8; padding: 10px; margin-bottom: 10px; font-size: 13px; color: #cbd5e1; white-space: pre-wrap; }
+    .text-box { line-height: 1.7; font-size: 15px; white-space: pre-wrap; }
+    .tool-box { background: #020617; padding: 8px; font-size: 12px; color: #f59e0b; font-family: monospace; }`;
+
+export const SESSION_SHARE_STYLE = `    :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --accent: #38bdf8; --border: #334155; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; margin: 0; line-height: 1.6; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    h1 { margin: 0 0 0.5rem; color: var(--accent); }
+    .meta-bar { display: flex; gap: 1rem; color: #94a3b8; font-size: 0.9rem; flex-wrap: wrap; }
+    .tag { background: #0369a1; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+    .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; padding: 1.2rem; }
+    .message-card.user { border-left: 4px solid var(--accent); }
+    .message-card.assistant { border-left: 4px solid #10b981; }
+    .role-badge { font-weight: bold; font-size: 0.9rem; color: var(--accent); }
+    .msg-thinking { background: #090d16; border-left: 3px solid #eab308; padding: 0.8rem; border-radius: 4px; margin: 0.8rem 0; font-size: 0.9rem; color: #cbd5e1; }
+    .badge { font-weight: bold; }
+    pre { white-space: pre-wrap; word-break: break-all; margin: 0.4rem 0 0; }`;
