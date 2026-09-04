@@ -17,7 +17,7 @@
 ## 0. 实测基线
 
 | 命令 | 结果 |
-|---|---|
+| --- | --- |
 | `npx tsc -b` | 退出码 0（`tsconfig.json` 的 `references` 已含 `./tests`） |
 | `npx biome check packages tests scripts` | 255 文件，**零诊断** |
 | `npx vitest run` | **82 files / 415 tests 全绿** |
@@ -36,7 +36,7 @@
 ## A. 复核通过（实证确认已修复）
 
 | 项 | 证据 |
-|---|---|
+| --- | --- |
 | 生产路径无假模型 | `mock-test`/`faux` 只存在于 `ai/src/test-fixtures.ts`，靠显式 `installTestDoubles()` 装配 |
 | `azure`/`bedrock` 不再静默映射 | `providers.ts:1117-1118` 注册 `unsupportedProvider()`，抛 `ProviderNotImplementedError` |
 | 沙箱非法骰子抛错 | `sandbox.ts:78` 抛 `InvalidDiceNotationError`（`:85` 的 `Math.random` 是解析成功后的正常掷骰） |
@@ -81,7 +81,7 @@ server/src/daemon.ts:214   wsPort = this.options.wsPort ?? (this.options.port ??
 ### B2 · 索引签名只清了 `extensions.ts`，全仓仍剩 **12 处**
 
 | 文件 | 行 | 备注 |
-|---|---|---|
+| --- | --- | --- |
 | `protocol/src/pipeline.ts` | 14, 23, 48, 106 | 这些接口**已经有** `metadata?: Record<string, unknown>`，索引签名是冗余的第二条逃生舱 |
 | `protocol/src/storage.ts` | 74, 85, 96, 103, 120, 136 | 同上（`:136` 甚至与 `Record<string, unknown>` 并列） |
 | `protocol/src/typebox.ts` | 12 | `TSchema` 的 `[key: string]: any`——TypeBox 兼容所需，**宜保留并加注释说明** |
@@ -139,6 +139,7 @@ ai/src/catalog.ts:78,83,86,87  另有四条同型匹配
 ```
 
 > ✅ **已修（2026-09-03，本轮）**：路由/别名改为显式数据，不再用子串猜测。
+>
 > - `ModelCatalogEntry` 增可选 `roles?: ModelRole[]` 与 `priority?: number`（`ModelRole = planning|drafting|auditing|polishing`），向后兼容（生成式目录条目不携带，走能力回退）。
 > - 新增 `ROLE_PREFERENCES: Record<ModelRole, string[]>`——**精确 ID 的优先序表**（如 planning: `deepseek/deepseek-r1` → `anthropic/claude-3.7-sonnet` → `openai/o3-mini` → `google/gemini-2.5-pro`），零 `includes` 猜测；`recommend(role)` 先按表序、再按 `priority` 排序，候选资格 = `roles` 含该角色或能力匹配（planning=支持思考 / drafting=不支持）。
 > - `findModelInCatalog` 的 4 条 `query.includes(...)` 规范别名块改为显式 `CANONICAL_ALIASES` 映射（`deepseek-reasoner`/`deepseek/deepseek-reasoner` → `deepseek/deepseek-r1`），无子串启发式。
@@ -150,7 +151,7 @@ ai/src/catalog.ts:78,83,86,87  另有四条同型匹配
 ### C3 · `SessionReportExporter` 未拆（评审 §2.2-4），三个导出器仍内嵌 CSS/JS
 
 | 文件 | 行数 | 内嵌资源 |
-|---|---|---|
+| --- | --- | --- |
 | `agent-core/src/export/session-report-export.ts` | **299** | `:118 <style>`、`:175 <script>` |
 | `agent-core/src/export/session-export.ts` | 166 | `:73 <style>` |
 | `agent-core/src/export/session-share.ts` | 232 | `:198 <style>` |
@@ -159,7 +160,7 @@ ai/src/catalog.ts:78,83,86,87  另有四条同型匹配
 `runAgentLoop` 三个**。同表内仍未拆的：
 
 | 类 | 位置 | 行数 | 评审原判规模 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `InkRpcServer` | `server/src/server.ts` | **467** | 465 |
 | `ExtensionHost` | `agent-core/src/extension-host.ts` | **297** | 216（已增大） |
 | `SessionReportExporter` | `agent-core/src/export/session-report-export.ts` | **299** | 299 |
@@ -171,6 +172,7 @@ ai/src/catalog.ts:78,83,86,87  另有四条同型匹配
 测试只能 monkey-patch 全局。
 
 > ✅ **已修（2026-09-03，本轮）**：新增 `packages/ai/src/http-client.ts`
+>
 > - `interface HttpClient { fetch(url, init?): Promise<Response> }`
 > - `class GlobalFetchHttpClient`：默认实现，**委托全局 `fetch` 绑定**——故既有 `ai.test.ts`
 >   等靠 `globalThis.fetch = vi.fn(...)` 桩的用例**仍全绿**（实测 36/36）。
@@ -201,6 +203,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 - `tui.ts:102-103` 仍是 `(activeOverlay.component as any).handleKey`（评审要求声明 `KeyHandler` 可选接口）
 
 > ✅ **已修（2026-09-03，本轮）**，分两步：
+>
 > 1. **`as any` → 类型守卫**（续七）：`tui.ts` 新增 `KeyHandler` 接口 + `hasKeyHandler()` 类型守卫，两处 `as any` 改为窄化调用。
 > 2. **`instanceof` → `intrinsicSize()` 契约**（本轮）：在 `Component` 抽象基类加默认 `intrinsicSize(): number { return 0 }`，`SpacerComponent` 覆写为 `return this.size`；`VStackComponent.render` 三处 `instanceof SpacerComponent` 改为 `c.component.intrinsicSize()` / `=== 0` / `> 0` 判别。布局引擎不再依赖运行时类型切换（多态契约替代类型判别）。
 > 3. **命名导出别名层已在上轮 mega-refactor 收回**：`Box`/`HStack`/`VStack`/`Spacer` 现为真实类的再导出（`components/atoms/*.ts` 无空子类体），`instanceof Box` 等仍可用且语义正确，无需再"收敛"。同步修正 3 个别名文件里仍写过时"empty subclass"的注释。
@@ -210,6 +213,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 ### C7 · `DifferentialRenderer.diffAnsi` 仍是死产出（评审 §2.14-4）
 
 `render.ts:155` 算出 `diffAnsi`，但：
+
 - `tui.ts:134` 只解构 `{ changedLines, output }`
 - `studio-view.ts:76` 也不用
 
@@ -230,7 +234,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 ### C9 · 测试仍依赖真实基础设施（评审 §2.15(c)）
 
 | 项 | 实测 | 评审要求 |
-|---|---|---|
+| --- | --- | --- |
 | 领域测试中的真实 SQLite | **23 处** `new InkDb`，横跨 13 个测试文件 | 改用内存后端/stub |
 | `vi.useFakeTimers` | **0 处命中** | 用它替换真实 `setTimeout` |
 | 断言 ANSI 字节 | `tests/tui-package.test.ts:74` 仍在断言 `\x1b[2;1H\x1b[2K` | 改为断言 ViewModel |
@@ -238,6 +242,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 
 > ⚠️ **C9 本轮尝试后回退（2026-09-03）**：真实 SQLite 部分**已满足**（`new InkDb(':memory:')` 为主，非真实文件库）。
 > `vi.useFakeTimers` 部分**尝试并回退**——原因：
+>
 > 1. `tests/ai-resilience-cache.test.ts` 用 `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync()` 重写后，**死锁**（流式 `AssistantEventStream` 的事件投递在 fake-timer 下无法驱动 `collect()` promise 完成）。
 > 2. 退而求其次改 `tests/mutation-queue.test.ts` 的单测 `setTimeout(res,20)` 等待为 fake timer，但本环境（沙箱内外均验证）**`mutation-queue.test.ts` 等 sqlite 支撑测试会挂起（60s+ timeout）**，与是否改 fake timer 无关——属环境/运行时问题，非本次改动引入。
 > 结论：强行上 fake timer 会让本就脆弱的异步/sqlite 测试**退化为挂起**，违反"不破坏测试"的底线。故 C9 的 timer 部分**保持原真实 timer 等待（20~100ms， benign）**，不强行改造。建议后续在稳定的 CI 环境再评估 fake-timer 化。
@@ -278,7 +283,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 ## E. 建议处置顺序
 
 | 优先级 | 项 | 动作 | 风险 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | P0 | C1 | 给 Pillar 6 两个用例加 `testTimeout`，或按评审要求把 execSync 构建验证拆出 vitest | 极低 |
 | P1 | B1 | 抽 `DEFAULT_RPC_PORT` 常量，消掉 daemon.ts 的两处 `41829` | 极低 |
 | P1 | B3 | 去掉三处 `Clock` 默认回落（或明确记录"刻意保留"并说明理由） | 低，需改调用点 |
@@ -306,7 +311,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 > 注：本沙箱内 `vitest run` 会因 safe-delete 守卫（单 turn 累计删除 ≥50 次）假失败，故未以单元测试运行时态作为验收门禁，仅以类型检查 + lint 为门禁。
 
 | # | 项 | 落地情况 |
-|---|----|---------|
+| --- | ---- | --------- |
 | T1 | Pillar 6 测试结构性超时 | `tests/pi-six-pillars-integration.test.ts` 两个用例显式 `testTimeout = 30_000`，并注释登记"构建验证应拆出 vitest"为已知债务（复核报告 C1）。 |
 | T2 | 硬编码端口 `41829` | `server/src/transport.ts` 新增 `DEFAULT_RPC_PORT = 41829`，`daemon.ts` 两处引用全部替换；全仓除定义外无裸字面量。 |
 | T3 | Clock 默认回落 | 端口层 `ports/index.ts` 新增具名 `REAL_CLOCK`；`telemetry.ts`/`compaction.ts`/`session-registry.ts`/`session-reducer.ts` 四处 `= Date.now`/`?? Date.now` 兜底**全部移除**，`Clock` 改为必填；生产组合根 `print-mode.ts`、`daemon.ts` 注入 `REAL_CLOCK`，13 个测试调用点改为显式传 `Date.now`。`tsc -b` 通过。 |
@@ -328,6 +333,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 ### C8 · `close()` 后置条件契约
 
 **改动（已全部后端落地）：**
+
 - `session-backends/src/types.ts`：在 `close()` 上方写入**后置条件契约 JSDoc**（幂等；终止态下任意其它方法必须以 `BackendClosedError` 拒绝；各后端"破坏性"语义可不同，但"终止态拒绝"一致）。
 - 新增 `session-backends/src/errors.ts`：`BackendClosedError`（经 `index.ts` 导出）。
 - `session-backends/src/memory.ts`（`MemorySessionBackend`）：
@@ -348,6 +354,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 **评估结论：** 审计复核 §2.14-4 指出 `diffAnsi` 仅被测试消费，且测试把实现细节（`\x1b[2;1H\x1b[2K`）固化成契约。P2 表已列明二选一："接入生产路径，或删掉产出 + 删掉那条测试断言"。本次选择**删掉**（低风险、消除死代码 + 测试固化实现细节的异味）。
 
 **改动：**
+
 - `packages/tui/src/render.ts`：`DifferentialRenderer.render()` 返回类型移除 `diffAnsi: string`；移除仅用于构造该字段的 `diffSegments` 数组与 `row`/`\x1b[...2K` 拼接逻辑；保留 `changedLines` / `output` / `isDiff`（仍是有效产出）。
 - `tests/tui-package.test.ts`：删除 `expect(frameShrink.diffAnsi).toContain('\x1b[2;1H\x1b[2K')` 这条固化实现细节的断言（保留 `changedLines` 计数校验）。
 - `tsc -b` 重建 `packages/tui/dist/render.d.ts`，自动清除声明中的 `diffAnsi` 字段（已核验 `grep -c diffAnsi` 为 0）。
@@ -361,6 +368,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 **评估：** 审计 §2.9-6 指出 `createResilientStream` 三处 `setTimeout` 游离递归在重入期间**不响应 AbortSignal**（全文件 `signal` 零命中）；`retryAssistantStream` 的退避 `setTimeout` 同样无法被中断。本轮做**有界的"信号响应"修复**（不改整体递归结构，避免大改 API）。
 
 **改动（`packages/ai/src/stream.ts`）：**
+
 - `RetryOptions` 增 `signal?: AbortSignal`（`ResilientStreamOptions extends RetryOptions`，自动继承，调用方向后兼容）。
 - 新增模块级 `delayWithSignal(ms, signal)`：可被 `signal.abort()` 在等待期间中断，立即以 abort 错误 reject；正常完成时移除监听，无泄漏。
 - `retryAssistantStream`：重试前检查 `signal?.aborted` 立即抛出；退避等待改走 `delayWithSignal`（中途 abort 则中断、不再进入下一轮）。
@@ -368,6 +376,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 - `AssistantEventStream` 增公开只读 `get isAborted(): boolean`，使"消费者直接 `stream.abort()`"路径也能被重试调度感知。
 
 **守卫测试（`tests/ai-resilience-cache.test.ts` 新增 3 例）：**
+
 - `retryAssistantStream` 在 signal 已 abort 时立即 reject，且 `fn` 仅调用 1 次（不重试）。
 - `retryAssistantStream` 在退避延迟中途 abort → 中断等待、`fn` 仅 1 次、promise reject。
 - `createResilientStream` 在 signal abort 后不再重调度，`factory` 调用次数保持 1（验证游离递归被信号掐断）。
@@ -383,6 +392,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 **评估：** 审计 §2 指出 `SessionReportExporter`（`packages/agent-core/src/export/session-report-export.ts`）在导出逻辑里内嵌大段 `<style>`（约 36 行 CSS）与 `<script>`（tab 切换 JS）。两者均为**纯静态内容、无插值**，适合抽成独立资源模块，与导出逻辑解耦（审计原话"拆分"）。这是低风险、行为不变（字节级一致）的清理。
 
 **改动：**
+
 - 新增 `packages/agent-core/src/export/report-assets.ts`：导出 `REPORT_STYLE` 与 `REPORT_SCRIPT` 两个字符串常量（内容逐字保留原 CSS/JS，含缩进）。
 - `session-report-export.ts`：`export function buildReport()` 模板里的 `<style>…</style>` 与 `<script>…</script>` 内联块替换为 `<style>\n${REPORT_STYLE}  </style>` 与 `<script>\n${REPORT_SCRIPT}  </script>`，并 `import { REPORT_SCRIPT, REPORT_STYLE } from './report-assets.js'`。
 - 输出与改动前**逐字节一致**（已用 `tests/session-report-export.test.ts` 2/2 通过验证）。
@@ -396,6 +406,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 **评估：** 审计 §2 点名 `tui` 有三处异味：① 布局原语双份（空子类 `VStack`/`HStack`/`Spacer`/`Box` 仅为保留 `instanceof` 而存在）；② `layout.ts` 多处 `instanceof`；③ `tui.ts:102-103` 用 `as any` 调 `handleKey`。本轮只做**最安全、行为不变**的 ③（消除 `as any`），①+② 属组件模型重构，单独评估。
 
 **改动（`packages/tui/src/tui.ts`）：**
+
 - 新增 `interface KeyHandler { handleKey(key: KeyEvent): boolean }` 与类型守卫 `hasKeyHandler(component: Component): component is Component & KeyHandler`（守卫内用窄形状 `{ handleKey?: unknown }` 判定，非 `any`）。
 - 调用点由 `'handleKey' in ... && typeof (... as any).handleKey === 'function'` + 两处 `as any` 调用，改为 `if (hasKeyHandler(activeOverlay.component)) { const handled = activeOverlay.component.handleKey(key); ... }`。
 
@@ -408,6 +419,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 **评估：** 审计 §2 点名 "TUI 无 `Writer` 端口"——`tui.ts` / `tui-screens.ts` 直接耦合 `process.stdout`（`write` / `columns` / `rows` / `resize` 事件），测试与非 TTY 环境无法注入替身。本轮做**有界的端口抽取**（与 P0+P1 的 `Logger`/`Clock` 同范式）：新增 `Terminal` 端口 + 默认 `ProcessTerminal` + 测试替身 `MemoryTerminal`，`Tui`/`ScreenManager` 改为消费端口，行为不变。
 
 **改动：**
+
 - 新增 `packages/tui/src/terminal.ts`：
   - `interface Terminal { readonly columns; readonly rows; write(data); onResize(listener); offResize(listener); }`
   - `ProcessTerminal implements Terminal`：包裹 `process.stdout`（`columns/rows` 降级 80/24、`write`/`on('resize')`/`removeListener`）。
@@ -418,6 +430,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 - 输入侧 `process.stdin`（raw mode / `data` 事件）**保留原样**——审计关切是输出 `Writer` 端口，输入属另一关注，超出本次范围。
 
 **守卫测试（`tests/tui-terminal-port.test.ts` 新增 3 例）：**
+
 - `getDimensions()` 经注入的 `MemoryTerminal` 返回其 `columns/rows`；
 - `refresh()` 经注入终端写出（断言 `writes` 含组件内容，且未走 `process.stdout`）；
 - `start()`/`stop()` 经注入终端订阅/退订 `resize`（`resizeListeners` size 1→0）。
@@ -440,7 +453,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 ### F.1 代码层——全部 11 项 P2 + P0/P1 均在代码实证到位
 
 | 项 | 代码实证 | 结论 |
-|---|---|---|
+| --- | --- | --- |
 | C1 (P0) | `tests/pi-six-pillars-integration.test.ts:446,477` 两个 Pillar 6 用例带 `, 30_000)` 第三参超时；第 423–431 行注释说明。 | ✅ 已做（非 `testTimeout` 关键字，是 vitest 3 参字面量） |
 | B1 | `server/src/transport.ts:16` `DEFAULT_RPC_PORT = 41829`；`daemon.ts:44,214` 两处引用；无裸 `41829`。 | ✅ 已做 |
 | B2 | `protocol/src/extensions.ts` 索引签名 **0 处**；`pipeline.ts`/`storage.ts` 无冗余 `[key: string]: unknown`。 | ✅ 已做 |
@@ -460,7 +473,7 @@ tui/src/tui.ts:71           process.stdout.on('resize', ...)
 ### F.2 文档/打包同步——发现 3 处遗漏，已在本节收尾修正
 
 | 遗漏 | 现状 | 处置 |
-|---|---|---|
+| --- | --- | --- |
 | README 残留 `AgentEngine`（第 84 行架构图、第 252 行散文） | 本报告 §E T6 声称"已删除"，实际没删 | ✅ 已改为 `Agent`（与 ARCHITECTURE.md 一致） |
 | ARCHITECTURE.md 仍写 "10-Package" 且完全未列 `@inkpi/cli` | C11 已新建第 11 个包，但架构文档未同步 | ✅ 已改 "11-Package" 并补 #11 cli 条目 |
 | 根 `package.json` 未声明 `@inkpi/cli` 依赖 | `bin/inkpi.js` 动态 `import('@inkpi/cli')` 靠 workspace 符号链接侥幸解析，严格 `--frozen-lockfile`（CI）会断 | ✅ 已加 `"@inkpi/cli": "workspace:*"` 并 `pnpm install --lockfile-only` 同步锁文件（现 "12 workspace projects"，root→cli 登记为 `link:packages/cli`） |
