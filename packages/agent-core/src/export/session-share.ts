@@ -1,4 +1,7 @@
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { AgentMessage, StateLedger } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
@@ -227,5 +230,22 @@ ${SESSION_SHARE_STYLE}
   </div>
 </body>
 </html>`;
+  },
+
+  /**
+   * 安全隔离并发导出到独立沙箱目录（对齐上游 v0.84.4 PR #8613）。
+   * 确保多个会话同时执行 share/export 时不会在全局临时目录发生命名冲突或竞态互相覆盖。
+   */
+  async withIsolatedExportSandbox<T>(action: (tempDir: string) => Promise<T>): Promise<T> {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inkpi-share-'));
+    try {
+      return await action(tempDir);
+    } finally {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup failure
+      }
+    }
   }
 };
