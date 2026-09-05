@@ -1,0 +1,29 @@
+# 统一换行符策略：所有文本文件在仓库内一律使用 LF（Unix 行尾）。
+# - 检出(checkout)时：保持 LF，不做 CRLF 转换
+# - 提交(commit)时：统一规范化为 LF
+# 这样同一仓库在 Windows / macOS / Linux 上都不会出现 CRLF/LF 混用导致的“伪修改”。
+* text=auto eol=lf
+
+# 二进制文件明确按字节原样保留，禁止任何行尾/换行处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.map binary
+
+# 需要保持精确格式、不由 eol=lf 统一处理的文件（若有需求可在此按需放开）
