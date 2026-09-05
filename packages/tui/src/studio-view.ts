@@ -95,8 +95,10 @@ export class StudioView {
 
   /** 中栏：编辑器与 ghost 文本。 */
   private renderEditorPane(centerWidth: number, mainHeight: number): string[] {
+    const isStreaming = this.model.agent?.state?.isStreaming;
     const labels = this.model.labels;
-    const editorBorder = this.model.focusMode === 'editor' ? ANSI.FG_GREEN : ANSI.FG_GRAY;
+    // 对齐上游 v0.85.0 PR #8799：流式工作指示器融合到编辑器边框，跟随思考/流式状态动态变化
+    const editorBorder = isStreaming ? ANSI.FG_CYAN : this.model.focusMode === 'editor' ? ANSI.FG_GREEN : ANSI.FG_GRAY;
     const currentResource = this.model.resources[this.model.activeResourceIndex] || {
       title: 'Untitled resource'
     };
@@ -113,13 +115,9 @@ export class StudioView {
         );
       }
     }
-    return drawBox(
-      `${labels.editorTitle || 'Editor'} - ${currentResource.title} (${labels.resourceMetric?.(this.model.editor.getWordCount()) || this.model.editor.getWordCount()})`,
-      contentLines,
-      centerWidth,
-      mainHeight,
-      editorBorder
-    );
+    const spinnerPrefix = isStreaming ? `${ANSI.FG_CYAN}⠋ ` : '';
+    const title = `${spinnerPrefix}${labels.editorTitle || 'Editor'} - ${currentResource.title} (${labels.resourceMetric?.(this.model.editor.getWordCount()) || this.model.editor.getWordCount()})${isStreaming ? ANSI.RESET : ''}`;
+    return drawBox(title, contentLines, centerWidth, mainHeight, editorBorder);
   }
 
   /** 右栏：运行时状态账本与对话流。 */

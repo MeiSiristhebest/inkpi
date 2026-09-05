@@ -14,6 +14,7 @@ export * from './components/index.js';
 export * from './terminal-image.js';
 
 export * from './mermaid.js';
+export * from './alt-screen-search.js';
 export * from './tui-screens.js';
 export * from './tui.js';
 

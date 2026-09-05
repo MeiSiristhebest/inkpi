@@ -28,8 +28,9 @@ export class ScrollView extends Component {
     this.clampScroll();
   }
 
-  public scrollBy(delta: number, viewHeight?: number): void {
-    this.scrollOffset += delta;
+  public scrollBy(delta: number, viewHeight?: number, isAltSpeed = false): void {
+    const multiplier = isAltSpeed ? 5 : 1;
+    this.scrollOffset += delta * multiplier;
     if (viewHeight !== undefined) {
       this.clampScroll(viewHeight);
     } else {
@@ -39,6 +40,22 @@ export class ScrollView extends Component {
 
   public scrollTo(offset: number): void {
     this.scrollOffset = Math.max(0, offset);
+  }
+
+  /**
+   * 快速滚动至最底部（对齐上游 v0.85.0 PR #9080：Jump to latest）。
+   */
+  public scrollToEnd(viewHeight = 10): void {
+    const maxOffset = Math.max(0, this.content.length - viewHeight);
+    this.scrollOffset = maxOffset;
+  }
+
+  /**
+   * 判断当前是否已处于最底部视口
+   */
+  public isAtEnd(viewHeight = 10): boolean {
+    const maxOffset = Math.max(0, this.content.length - viewHeight);
+    return this.scrollOffset >= maxOffset;
   }
 
   private clampScroll(viewHeight = 10): void {

@@ -98,6 +98,49 @@ export class SelectList<T = any> extends Component {
     return false;
   }
 
+  /**
+   * 鼠标事件处理（对齐上游 v0.85.1 Commit 9841914）。
+   * 契约：纯鼠标悬停 (hover/move) 绝不改变 selectedIndex，
+   * 只有显式 press 或 click 时才更新选中项，防止视口剧烈跳动和误触。
+   */
+  public handleMouse(
+    event: { type: 'move' | 'press' | 'click' | 'wheel'; x: number; y: number; button?: string; wheelDelta?: number },
+    viewHeight = 10
+  ): boolean {
+    if (event.type === 'wheel') {
+      const delta = event.wheelDelta ?? 1;
+      const filtered = this.getFilteredItems();
+      this.selectedIndex = Math.max(0, Math.min(filtered.length - 1, this.selectedIndex + delta));
+      return true;
+    }
+
+    // 纯悬停不改变 selection
+    if (event.type !== 'press' && event.type !== 'click') {
+      return false;
+    }
+
+    const filtered = this.getFilteredItems();
+    const listHeight = Math.max(1, viewHeight - 2);
+    const scrollOffset = Math.max(
+      0,
+      Math.min(this.selectedIndex - Math.floor(listHeight / 2), Math.max(0, filtered.length - listHeight))
+    );
+
+    const clickedIndex = scrollOffset + event.y - 1; // 扣除标题栏 1 行
+    if (clickedIndex >= 0 && clickedIndex < filtered.length) {
+      const item = filtered[clickedIndex];
+      if (item && !item.disabled) {
+        this.selectedIndex = clickedIndex;
+        if (event.type === 'click' && this.onSelect) {
+          this.onSelect(item);
+        }
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   public render(context: RenderContext): string[] {
     const { width, height } = context;
     const lines: string[] = [];
