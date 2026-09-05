@@ -22,6 +22,8 @@ export type AgentEvent =
   | { type: 'tool_execution_end'; toolCallId: string; result: unknown }
   | { type: 'journal_entry_appended'; entry: unknown }
   | { type: 'projection_updated'; table: string; id: string }
-  | { type: 'pipeline_stage_span'; stage: string; role: string; durationMs: number; usage?: Usage };
+  | { type: 'pipeline_stage_span'; stage: string; role: string; durationMs: number; usage?: Usage }
+  | { type: 'ui_prompt_start'; promptId: string; title?: string }
+  | { type: 'ui_prompt_end'; promptId: string; response?: unknown };
 
 export type AgentEventListener = (event: AgentEvent, signal?: AbortSignal) => Promise<void> | void;

@@ -29,6 +29,10 @@ export class Agent {
   private abortController: AbortController | null = null;
   private currentRunPromise: Promise<void> | null = null;
   private runActive = false;
+  // 手动 compaction 的 idle 追踪（对齐上游 v0.85.0 #8920：abort 必须等待 compaction 收尾）。
+  private compactionAbortController: AbortController | null = null;
+  private compactionPromise: Promise<unknown> | null = null;
+  private idleWait: { promise: Promise<void>; resolve: () => void } | null = null;
 
   constructor(options: AgentOptions = {}) {
     this.options = options;
@@ -125,21 +129,99 @@ export class Agent {
     this.followUpQueue.enqueue(message);
   }
 
-  public abort(): void {
-    if (this.abortController) {
-      this.abortController.abort();
+  /**
+   * 清空排队中的 steering 与 follow-up 消息（对齐上游 v0.84.4 PR #8432：clear_queue）。
+   * 返回被丢弃的消息数量。
+   */
+  public clearQueues(): { steering: number; followUp: number } {
+    const steeringCount = this.steeringQueue.size();
+    const followUpCount = this.followUpQueue.size();
+    this.steeringQueue.clear();
+    this.followUpQueue.clear();
+    return { steering: steeringCount, followUp: followUpCount };
+  }
+
+  /**
+   * 是否存在进行中的手动 compaction（参与 idle 追踪，对齐上游 pi isIdle 语义）。
+   */
+  public get isCompacting(): boolean {
+    return this.compactionPromise !== null;
+  }
+
+  /**
+   * 会话是否空闲：无进行中的 agent run，也无进行中的 compaction（对齐上游 pi #8920）。
+   */
+  public get isIdle(): boolean {
+    return !this.runActive && !this.isCompacting;
+  }
+
+  public abortCompaction(): void {
+    if (this.compactionAbortController) {
+      this.compactionAbortController.abort();
     }
   }
 
-  public async waitForIdle(): Promise<void> {
-    if (this.currentRunPromise) {
-      await this.currentRunPromise;
+  /**
+   * 在 Agent 的 idle 追踪与 abort 所有权下执行手动 compaction。
+   * 任务收到的 AbortSignal 会在 `abort()`（或 `abortCompaction()`）时被触发；
+   * 运行期间 `isIdle` 返回 false，`waitForIdle()` 会等待其落定。
+   */
+  public async runCompaction<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.compactionPromise) {
+      throw new Error('A compaction is already in progress. Wait for it to settle or abort it first.');
     }
+    const controller = new AbortController();
+    this.compactionAbortController = controller;
+    const promise = (async () => {
+      try {
+        return await task(controller.signal);
+      } finally {
+        this.compactionAbortController = null;
+        this.compactionPromise = null;
+        this.resolveIdleWaitIfIdle();
+      }
+    })();
+    this.compactionPromise = promise;
+    return promise;
+  }
+
+  /**
+   * 中止当前操作并等待会话空闲（含 compaction 收尾）后才返回。
+   * 对齐上游 pi：RPC `abort` 必须等到取消真正落定，而非报告成功却仍在压缩。
+   */
+  public async abort(): Promise<void> {
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    this.abortCompaction();
+    await this.waitForIdle();
+  }
+
+  public async waitForIdle(): Promise<void> {
+    if (this.isIdle) return;
+    if (!this.idleWait) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => {
+        resolve = r;
+      });
+      this.idleWait = { promise, resolve };
+    }
+    await this.idleWait.promise;
+  }
+
+  private resolveIdleWaitIfIdle(): void {
+    if (!this.isIdle || !this.idleWait) return;
+    const waiter = this.idleWait;
+    this.idleWait = null;
+    waiter.resolve();
   }
 
   public reset(): void {
     if (this.runActive || this.currentRunPromise) {
       throw new Error('Agent is already processing. Wait for completion before resetting.');
+    }
+    if (this.compactionPromise) {
+      throw new Error('A compaction is in progress. Wait for it to settle or abort it before resetting.');
     }
     this.abort();
     this.state.messages = [];
@@ -153,6 +235,21 @@ export class Agent {
 
   public getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
+  }
+
+  /**
+   * 通知前端/RPC 进入交互式等待状态（对齐上游 v0.84.4 PR #8355：ui_prompt_start / ui_prompt_end）。
+   * 让宿主进程或 RPC 客户端明确感知“当前挂起源于等待人工输入或门禁确认”，而非 AI 卡顿或网络超时。
+   */
+  public async notifyUiPromptStart(promptId: string, title?: string): Promise<void> {
+    await this.emitEvent({ type: 'ui_prompt_start', promptId, title });
+  }
+
+  public async notifyUiPromptEnd(
+    promptId: string,
+    response?: Record<string, unknown> | string | boolean
+  ): Promise<void> {
+    await this.emitEvent({ type: 'ui_prompt_end', promptId, response });
   }
 
   public getExtensionHost(): ExtensionHost {
@@ -210,6 +307,7 @@ export class Agent {
       }
       this.abortController = null;
       this.runActive = false;
+      this.resolveIdleWaitIfIdle();
     }
   }
 

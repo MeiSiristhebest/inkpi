@@ -79,10 +79,16 @@ export class SessionCompactor {
   /**
    * Execute atomic context compaction (1:1 aligned with repos/pi compact)
    */
-  public async compact(messages: AgentMessage[]): Promise<{
+  public async compact(
+    messages: AgentMessage[],
+    signal?: AbortSignal
+  ): Promise<{
     compactedMessages: AgentMessage[];
     entry: CompactionEntry;
   }> {
+    if (signal?.aborted) {
+      throw new Error('Session compaction aborted by signal');
+    }
     if (!this.config.summarizer) {
       throw new Error('Session compaction requires an explicit summarizer capability.');
     }
@@ -100,7 +106,13 @@ export class SessionCompactor {
 
     // Generate conversation summary
     const serialized = serializeConversationForSummary(oldMessages);
+    if (signal?.aborted) {
+      throw new Error('Session compaction aborted by signal');
+    }
     const summaryText = await this.config.summarizer(serialized, GENERIC_SUMMARIZATION_SYSTEM_PROMPT);
+    if (signal?.aborted) {
+      throw new Error('Session compaction aborted by signal');
+    }
 
     const fullSummaryContent = formattedLedger
       ? `【Context Summary / 会话前情提要】\n${summaryText}\n\n【State Ledger / 核心状态账本】\n${formattedLedger}`

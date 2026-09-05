@@ -56,9 +56,29 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
     };
   },
 
-  'agent.abort': (_params, ctx) => {
+  'agent.abort': async (_params, ctx) => {
     if (!ctx.agent) throw new Error('Agent not initialized');
-    ctx.agent.abort();
+    // 对齐上游 pi：abort 等待会话空闲（含 compaction 收尾）后才响应，
+    // 避免 RPC 报告成功却仍有压缩在进行（pi #8920）。
+    await ctx.agent.abort();
+    return { success: true };
+  },
+
+  'agent.clearQueue': (_params, ctx) => {
+    if (!ctx.agent) throw new Error('Agent not initialized');
+    const cleared = ctx.agent.clearQueues();
+    return { success: true, ...cleared };
+  },
+
+  'agent.notifyUiPrompt': async (params, ctx) => {
+    if (!ctx.agent) throw new Error('Agent not initialized');
+    const { promptId, stage, title, response } = params;
+    if (!promptId) throw new Error('agent.notifyUiPrompt requires promptId');
+    if (stage === 'start') {
+      await ctx.agent.notifyUiPromptStart(promptId, title);
+    } else {
+      await ctx.agent.notifyUiPromptEnd(promptId, response);
+    }
     return { success: true };
   },
 
