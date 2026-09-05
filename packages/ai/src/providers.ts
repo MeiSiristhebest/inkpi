@@ -1,8 +1,15 @@
-import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage, ThinkingLevel } from '@inkpi/protocol';
 import { ProviderNotImplementedError } from './errors.js';
 import { getHttpClient } from './http-client.js';
 import { AssistantEventStream } from './stream.js';
-import type { EventStream, FauxScriptedResponse, ModelConfig, ProviderType, StreamOptions } from './types.js';
+import type {
+  AnthropicEffort,
+  EventStream,
+  FauxScriptedResponse,
+  ModelConfig,
+  ProviderType,
+  StreamOptions
+} from './types.js';
 
 export function convertMessagesToStandard(messages: AgentMessage[], systemPrompt?: string): StandardLlmMessage[] {
   const result: StandardLlmMessage[] = [];
@@ -115,6 +122,68 @@ export interface AnthropicWireMessage {
 export interface AnthropicMessageConversion {
   systemMessages: string[];
   messages: AnthropicWireMessage[];
+  /**
+   * 逐轮思考档位登记表：converted 消息下标 → 该 assistant 消息生成时的
+   * providerThinkingLevel（对齐上游 pi assistantLevels，用于回放时按轮还原 effort）。
+   */
+  assistantLevels: Map<number, string>;
+}
+
+/**
+ * Anthropic 消息数组中的逐轮 effort 占位条目（system 角色 + output_config）。
+ */
+export interface AnthropicSystemEffortMessage {
+  role: 'system';
+  content: never[];
+  output_config: { effort: AnthropicEffort };
+}
+
+export type AnthropicWireRequestMessage = AnthropicWireMessage | AnthropicSystemEffortMessage;
+
+/**
+ * Map ThinkingLevel to Anthropic effort levels for adaptive thinking.
+ * Note: effort "max" is available on all adaptive-thinking Claude models, while native
+ * "xhigh" is only available on specific models, so unlisted levels fall back to "high"
+ * (对齐上游 pi mapThinkingLevelToEffort)。
+ * 额外接受 agent-core 侧的 'minimal' / 'off' 扩展档位（'minimal' 视作 'low'）。
+ */
+export function mapThinkingLevelToEffort(level: ThinkingLevel | 'minimal' | 'off' | null | undefined): AnthropicEffort {
+  switch (level) {
+    case 'minimal':
+    case 'low':
+      return 'low';
+    case 'medium':
+      return 'medium';
+    case 'high':
+      return 'high';
+    default:
+      return 'high';
+  }
+}
+
+/**
+ * 按轮次插入 effort 占位：历史 assistant 消息前插入其生成时的档位，
+ * 末尾插入本轮活跃档位（对齐上游 pi insertThinkingLevelMessages）。
+ */
+export function insertThinkingLevelMessages(
+  converted: AnthropicWireMessage[],
+  assistantLevels: Map<number, string>,
+  activeEffort: AnthropicEffort
+): AnthropicWireRequestMessage[] {
+  const messages: AnthropicWireRequestMessage[] = [];
+  for (let index = 0; index < converted.length; index += 1) {
+    const historicalEffort = assistantLevels.get(index);
+    if (historicalEffort && isAnthropicEffort(historicalEffort)) {
+      messages.push({ role: 'system', content: [], output_config: { effort: historicalEffort } });
+    }
+    messages.push(converted[index]);
+  }
+  messages.push({ role: 'system', content: [], output_config: { effort: activeEffort } });
+  return messages;
+}
+
+function isAnthropicEffort(value: unknown): value is AnthropicEffort {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max';
 }
 
 function convertAnthropicUserContent(
@@ -152,6 +221,7 @@ function convertAnthropicUserContent(
 export function convertMessagesToAnthropic(messages: AgentMessage[]): AnthropicMessageConversion {
   const systemMessages: string[] = [];
   const converted: AnthropicWireMessage[] = [];
+  const assistantLevels = new Map<number, string>();
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
@@ -188,6 +258,10 @@ export function convertMessagesToAnthropic(messages: AgentMessage[]): AnthropicM
         }
       }
       if (blocks.length > 0) {
+        // 登记该 assistant 消息生成时的思考档位（push 前取下标即其将占据的位置）。
+        if (message.providerThinkingLevel) {
+          assistantLevels.set(converted.length, message.providerThinkingLevel);
+        }
         converted.push({ role: 'assistant', content: blocks });
       }
       continue;
@@ -215,7 +289,7 @@ export function convertMessagesToAnthropic(messages: AgentMessage[]): AnthropicM
     }
   }
 
-  return { systemMessages, messages: converted };
+  return { systemMessages, messages: converted, assistantLevels };
 }
 
 export type ProviderHandler = (
@@ -638,7 +712,13 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
   }
 
   const anthropicConversion = convertMessagesToAnthropic(messages);
-  const anthropicMessages = anthropicConversion.messages;
+
+  const activeEffort = options?.thinkingEffort;
+  const effortMode = model.supportsMidConvoEffort === true && activeEffort !== undefined;
+
+  const anthropicMessages: AnthropicWireRequestMessage[] = effortMode
+    ? insertThinkingLevelMessages(anthropicConversion.messages, anthropicConversion.assistantLevels, activeEffort)
+    : anthropicConversion.messages;
 
   const bodyPayload: Record<string, unknown> = {
     model: model.id,
@@ -662,10 +742,17 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
     ];
   }
 
-  if (model.supportsThinking || (options?.thinkingBudget && options.thinkingBudget > 0)) {
+  if (effortMode) {
+    // 自适应思考：模型自行决定何时思考、思考多少（对齐上游 pi v0.85.0）。
+    bodyPayload.thinking = { type: 'adaptive', display: 'summarized' };
+    bodyPayload.output_config = { effort: activeEffort };
+  } else if (model.supportsThinking || (options?.thinkingBudget && options.thinkingBudget > 0)) {
+    const maxTokens = options?.maxTokens ?? model.maxTokens ?? 4096;
+    const requestedBudget = options?.thinkingBudget ?? model.thinkingBudget ?? 2048;
+    // budget_tokens 必须小于 max_tokens：预留 1024 输出空间（对齐上游 pi）。
     bodyPayload.thinking = {
       type: 'enabled',
-      budget_tokens: options?.thinkingBudget ?? model.thinkingBudget ?? 2048
+      budget_tokens: Math.min(requestedBudget, Math.max(0, maxTokens - 1024))
     };
   }
 

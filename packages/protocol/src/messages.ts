@@ -51,6 +51,11 @@ export interface AssistantMessage extends BaseMessage {
   stopReason?: 'stop' | 'tool_use' | 'length' | 'error' | 'aborted';
   errorMessage?: string;
   usage?: Usage;
+  /**
+   * 本条消息生成时使用的 provider 思考档位（如 Anthropic 自适应思考 effort）。
+   * 回放历史时按轮次还原逐轮 effort，避免中途调档后串档（对齐上游 pi v0.85.0）。
+   */
+  providerThinkingLevel?: string;
 }
 
 export interface ToolResultMessage extends BaseMessage {

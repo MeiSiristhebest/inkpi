@@ -24,5 +24,6 @@ export * from './package-manager/package-manager.js';
 export * from './trust/project-trust.js';
 export * from './sandbox/index.js';
 export * from './reducer/session-reducer.js';
+export * from './turn/assistant-frames.js';
 export * from './deprecations.js';
 export type { QualityGateIssue, ExtensionFactory, ProviderType } from '@inkpi/protocol';
