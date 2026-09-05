@@ -65,6 +65,8 @@ export type KnownModelId =
   | 'qwen3.8-2.4t-a95b:batch'
   | 'bytedance-seed/seed-2.0-code'
   | 'seed-2.0-code'
+  | 'openai/gpt-6-astra'
+  | 'gpt-6-astra'
   | (string & {});
 
 export type KnownProviderType =
@@ -2656,6 +2658,39 @@ export const GENERATED_MODELS: GeneratedModelMeta[] = [
       "GPT-5.6 Sol is the flagship model in OpenAI's GPT-5.6 series. It is suited for complex reasoning, coding, and agentic workflows, and is particularly s"
   },
   {
+    id: 'openai/gpt-6-astra',
+    name: 'OpenAI: GPT-6 Astra',
+    provider: 'openai',
+    contextWindow: 272000,
+    maxTokens: 128000,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+    cost: {
+      inputPerMillionUsd: 10,
+      outputPerMillionUsd: 50,
+      cacheReadPerMillionUsd: 1
+    },
+    description:
+      "GPT-6 Astra is OpenAI's frontier reasoning model with text and image input, long context (272k) and up to 128k output tokens."
+  },
+  {
+    id: 'gpt-6-astra',
+    name: 'GPT-6 Astra',
+    provider: 'openai',
+    contextWindow: 272000,
+    maxTokens: 128000,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+    cost: {
+      inputPerMillionUsd: 10,
+      outputPerMillionUsd: 50,
+      cacheReadPerMillionUsd: 1
+    },
+    description: 'OpenAI 前沿推理模型：272k 上下文、128k 输出，支持视觉与工具调用'
+  },
+  {
     id: 'x-ai/grok-4.5',
     name: 'SpaceXAI: Grok 4.5',
     provider: 'xai',
@@ -3876,40 +3911,6 @@ export const GENERATED_MODELS: GeneratedModelMeta[] = [
     },
     description:
       "Qwen3.7-Max is the flagship model in Alibaba's Qwen3.7 series. It supports text input and output and is designed for agent-centric workloads, with par"
-  },
-  {
-    id: 'x-ai/grok-build-0.1',
-    name: 'SpaceXAI: Grok Build 0.1',
-    provider: 'xai',
-    contextWindow: 256000,
-    maxTokens: 230400,
-    supportsThinking: true,
-    supportsTools: true,
-    supportsVision: true,
-    cost: {
-      inputPerMillionUsd: 1,
-      outputPerMillionUsd: 2,
-      cacheReadPerMillionUsd: 0.2
-    },
-    description:
-      'Grok Build 0.1 is SpaceXAI’s fast coding model trained specifically for agentic software engineering workflows. It supports text and image inputs with'
-  },
-  {
-    id: 'grok-build-0.1',
-    name: 'SpaceXAI: Grok Build 0.1',
-    provider: 'xai',
-    contextWindow: 256000,
-    maxTokens: 230400,
-    supportsThinking: true,
-    supportsTools: true,
-    supportsVision: true,
-    cost: {
-      inputPerMillionUsd: 1,
-      outputPerMillionUsd: 2,
-      cacheReadPerMillionUsd: 0.2
-    },
-    description:
-      'Grok Build 0.1 is SpaceXAI’s fast coding model trained specifically for agentic software engineering workflows. It supports text and image inputs with'
   },
   {
     id: 'google/gemini-3.5-flash',

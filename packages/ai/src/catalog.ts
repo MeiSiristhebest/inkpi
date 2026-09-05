@@ -1,10 +1,5 @@
 import type { ThinkingLevel } from '@inkpi/protocol';
-import {
-  GENERATED_MODELS,
-  type GeneratedModelMeta,
-  findGeneratedModel,
-  listGeneratedModelsByProvider
-} from './models.generated.js';
+import { GENERATED_MODELS } from './models.generated.js';
 import type { ModelConfig, ProviderType } from './types.js';
 
 export type ModelRole = 'planning' | 'drafting' | 'auditing' | 'polishing';
@@ -18,6 +13,11 @@ export interface ModelCatalogEntry {
   supportsThinking: boolean;
   supportsTools: boolean;
   supportsVision?: boolean;
+  /**
+   * 是否支持逐轮思考档位（Anthropic 自适应思考 effort）。
+   * 生成的目录条目默认不带此标记；可通过 registerModel 显式注入。
+   */
+  supportsMidConvoEffort?: boolean;
   cost: {
     inputPerMillionUsd: number;
     outputPerMillionUsd: number;
@@ -42,6 +42,7 @@ export interface ModelCatalogEntry {
  * artifact still contains one. This keeps test transport configuration out of
  * production model discovery.
  */
+// SAFETY: GENERATED_MODELS entries match ModelCatalogEntry shape from model definitions.
 export const KNOWN_MODELS: ModelCatalogEntry[] = (GENERATED_MODELS as unknown as ModelCatalogEntry[]).filter(
   (model) => !isTestOnlyModel(model)
 );
@@ -51,7 +52,7 @@ function isTestOnlyModel(model: Pick<ModelCatalogEntry, 'id' | 'provider'>): boo
   return model.provider === 'faux' || id === 'mock-model-v1' || id.startsWith('mock/');
 }
 
-export function getThinkingBudgetForLevel(level: ThinkingLevel): number {
+export function getThinkingBudgetForLevel(level: ThinkingLevel | 'minimal' | 'off' | null | undefined): number {
   switch (level) {
     case 'none':
       return 0;
@@ -77,7 +78,9 @@ export function getThinkingBudgetForLevel(level: ThinkingLevel): number {
  */
 const CANONICAL_ALIASES: Record<string, string> = {
   'deepseek-reasoner': 'deepseek/deepseek-r1',
-  'deepseek/deepseek-reasoner': 'deepseek/deepseek-r1'
+  'deepseek/deepseek-reasoner': 'deepseek/deepseek-r1',
+  'gpt-6-astra': 'openai/gpt-6-astra',
+  'deepseek-v4-flash-vision-exp': 'deepseek/deepseek-v4-flash-vision-exp'
 };
 
 export function findModelInCatalog(idOrName: string): ModelCatalogEntry | undefined {
@@ -110,6 +113,7 @@ export function modelCatalogEntryToConfig(entry: ModelCatalogEntry): ModelConfig
     name: entry.name,
     provider: entry.provider as ProviderType,
     supportsThinking: entry.supportsThinking,
+    ...(entry.supportsMidConvoEffort !== undefined ? { supportsMidConvoEffort: entry.supportsMidConvoEffort } : {}),
     maxTokens: entry.maxTokens,
     supportsPromptCache: Boolean(entry.cost.cacheReadPerMillionUsd !== undefined)
   };

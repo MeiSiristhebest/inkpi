@@ -17,6 +17,7 @@ const packageRoot = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const isStrict = args.includes('--strict');
 const isDataOnly = args.includes('--data-only');
+const isFromJson = args.includes('--from-json');
 
 /**
  * 从 OpenRouter 实时抓取全量最新模型目录
@@ -242,6 +243,24 @@ const OFFLINE_CORE_MODELS = [
 ];
 
 async function main() {
+  // --from-json：离线模式，直接复用现有 models-data.json 只再生成 TypeScript 目录。
+  // 用于对数据集做精准修订（移除/新增条目）后同步生成物，而不触发远程抓取造成全量漂移。
+  if (isFromJson) {
+    console.log('[InkPi Model Hydrator] --from-json: regenerating TypeScript catalog from existing models-data.json...');
+    const jsonPath = path.join(packageRoot, 'src', 'models-data.json');
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      throw new Error('models-data.json is empty or malformed.');
+    }
+    const allModels = parsed.filter((model) => {
+      const id = String(model.id || '').toLowerCase();
+      return model.provider !== 'faux' && !id.startsWith('mock/');
+    });
+    console.log(`📦 Loaded ${allModels.length} models from existing dataset.`);
+    writeTypeScriptCatalog(allModels);
+    return;
+  }
+
   console.log('[InkPi Model Hydrator] Starting full dynamic model discovery & code generation...');
 
   const liveModels = await fetchOpenRouterModels();
@@ -284,6 +303,11 @@ async function main() {
 
   if (isDataOnly) return;
 
+  writeTypeScriptCatalog(allModels);
+}
+
+function writeTypeScriptCatalog(allModels) {
+  const dataDir = path.join(packageRoot, 'src');
   // 2. 生成 TypeScript 强类型定义
   const topModelIds = allModels.slice(0, 60).map((m) => `  | '${m.id}'`).join('\n');
   const providerTypes = Array.from(new Set(allModels.map((m) => m.provider)))
