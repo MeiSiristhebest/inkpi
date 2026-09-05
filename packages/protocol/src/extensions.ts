@@ -2,6 +2,22 @@ import type { AgentMessage, ImageContent, TextContent } from './messages.js';
 
 export type ToolExecutionMode = 'parallel' | 'sequential';
 
+/**
+ * 工具重放策略（对齐上游 pi tool-durability 的 `replay` 合约）：
+ * - `'safe'`（默认）：中断后允许携带原 invocationId 重放（工具幂等或副作用可接受）；
+ * - `'never'`：中断后绝不重跑外部副作用，恢复方必须合成"结果未知"的占位结果。
+ */
+export type ToolReplayPolicy = 'safe' | 'never';
+
+/** 工具进度更新选项（对齐上游 pi tool-durability 的 checkpoint 请求）。 */
+export interface ToolUpdateOptions {
+  /**
+   * 请求把本次**完整有界**进度快照持久化为 `tool_progress` journal 条目。
+   * 这是持久化请求而非持久化确认；节流与快照有界性由工具自行负责（可信工具合约）。
+   */
+  checkpoint?: boolean;
+}
+
 export interface ToolResult {
   content: (TextContent | ImageContent)[];
   details?: unknown;
@@ -19,11 +35,13 @@ export interface AgentTool<TParams = any> {
   readonly description: string;
   readonly parameters?: unknown; // TypeBox or JSON Schema
   readonly executionMode?: ToolExecutionMode;
+  /** 中断后的重放策略，缺省视为 `'safe'`（见 {@link ToolReplayPolicy}）。 */
+  readonly replay?: ToolReplayPolicy;
   execute(
     toolCallId: string,
     params: TParams,
     signal?: AbortSignal,
-    onUpdate?: (update: { content: TextContent[]; details?: unknown }) => void,
+    onUpdate?: (update: { content: TextContent[]; details?: unknown }, options?: ToolUpdateOptions) => void,
     context?: unknown
   ): Promise<ToolResult>;
 }

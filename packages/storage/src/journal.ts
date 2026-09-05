@@ -372,6 +372,8 @@ const JOURNAL_ENTRY_TYPES = new Set<JournalEntryType>([
   'operation_intent',
   'operation_settlement',
   'pipeline_stage',
+  'assistant_frame',
+  'tool_progress',
   'custom'
 ]);
 

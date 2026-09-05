@@ -86,6 +86,34 @@ describe('Pluggable Session Backends Conformance Suite (LSP Verification)', () =
         expect(filteredSess1.length).toBe(1);
         expect(filteredSess1[0].timestamp).toBe(2000);
 
+        // Test loadEntries (Batch restore without recreating IDs)
+        const batchEntries: SessionEntry[] = [
+          {
+            id: 'batch_ent_1',
+            sessionId: 'sess_batch',
+            seq: 1,
+            parentId: null,
+            timestamp: 5000,
+            type: 'user_message',
+            payload: { role: 'user', content: '批量恢复消息 1' }
+          },
+          {
+            id: 'batch_ent_2',
+            sessionId: 'sess_batch',
+            seq: 2,
+            parentId: 'batch_ent_1',
+            timestamp: 6000,
+            type: 'compaction',
+            payload: { role: 'assistant', content: '压缩前情提要' }
+          }
+        ];
+        await backend.loadEntries('sess_batch', batchEntries);
+        const restored = await backend.getEntries('sess_batch');
+        expect(restored.length).toBe(2);
+        expect(restored[0].id).toBe('batch_ent_1');
+        expect(restored[1].id).toBe('batch_ent_2');
+        expect(restored[1].parentId).toBe('batch_ent_1');
+
         // 2. Document snapshots
         const snapshot: DocumentSnapshot = {
           documentId: 'doc_alpha',

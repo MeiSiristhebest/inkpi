@@ -108,9 +108,16 @@ export class SqliteSessionBackend implements ISessionBackend {
     });
   }
 
-  public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
+  public async appendEntry(_sessionId: string, entry: SessionEntry): Promise<void> {
     this.assertOpen();
     this.repo.saveSessionEntry(entry);
+  }
+
+  public async loadEntries(_sessionId: string, entries: SessionEntry[]): Promise<void> {
+    this.assertOpen();
+    for (const e of entries) {
+      this.repo.saveSessionEntry(e);
+    }
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {

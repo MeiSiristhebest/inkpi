@@ -1,5 +1,12 @@
 import { validateSchema } from '@inkpi/protocol';
-import type { AgentTool, TSchema, ToolCallContent, ToolResult, ToolResultMessage } from '@inkpi/protocol';
+import type {
+  AgentTool,
+  TSchema,
+  ToolCallContent,
+  ToolResult,
+  ToolResultMessage,
+  ToolUpdateOptions
+} from '@inkpi/protocol';
 import { runWithConcurrency } from './concurrency.js';
 import type { ToolExecutionMode } from './types.js';
 
@@ -33,7 +40,7 @@ export class ToolRegistry {
   public async executeTool(
     toolCall: ToolCallContent,
     signal?: AbortSignal,
-    onUpdate?: (update: { content: any[]; details?: unknown }) => void,
+    onUpdate?: (update: { content: any[]; details?: unknown }, options?: ToolUpdateOptions) => void,
     context?: unknown
   ): Promise<ToolResultMessage & { terminate?: boolean }> {
     const tool = this.tools.get(toolCall.name);

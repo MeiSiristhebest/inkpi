@@ -46,6 +46,17 @@ export class MemorySessionBackend implements ISessionBackend {
     this.journals.get(sessionId)!.push({ ...entry });
   }
 
+  public async loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void> {
+    this.assertOpen();
+    if (!this.journals.has(sessionId)) {
+      this.journals.set(sessionId, []);
+    }
+    const current = this.journals.get(sessionId)!;
+    for (const e of entries) {
+      current.push({ ...e });
+    }
+  }
+
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
     this.assertOpen();
     const list = this.journals.get(sessionId) || [];

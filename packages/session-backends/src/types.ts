@@ -32,6 +32,12 @@ export interface ISessionBackend {
   // Journal / Events (Event Sourcing)
   appendEntry(sessionId: string, entry: SessionEntry): Promise<void>;
   getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]>;
+  /**
+   * 批量装载/还原会话条目（对齐上游 v0.85.0 PR #8980：无损摄入外部 SessionEntry）。
+   * 保留外部持久化存储传入的原生 id、parentId、firstKeptEntryId 及时间戳，
+   * 避免通过多次 appendEntry 单条追加产生的伪新状态或并发写冲突。
+   */
+  loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void>;
 
   // Document Snapshots & Deltas
   saveSnapshot(snapshot: DocumentSnapshot): Promise<void>;

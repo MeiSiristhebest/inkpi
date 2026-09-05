@@ -191,6 +191,47 @@ export class SessionTree {
     return Array.from(this.nodes.values());
   }
 
+  /**
+   * 提取从根节点到指定目标叶子节点的主链历史路径，并安全清理纯标签/纯标记节点（如分支推演点），
+   * 确保压缩边界（Compaction firstKeptEntryId）不会因标签被剪除而游离失效（对齐上游 PR #8990）。
+   */
+  public getCleanHistoryPath(targetLeafId?: string): AgentMessage[] {
+    const rawHistory = this.getHistory(targetLeafId);
+    if (rawHistory.length === 0) return [];
+
+    const cleaned: AgentMessage[] = [];
+    const replacementByLabelId = new Map<string, string>();
+    const pendingLabelIds: string[] = [];
+
+    for (const msg of rawHistory) {
+      const isLabel = msg.role === 'custom' && (msg as any).customType === 'branch';
+      if (isLabel) {
+        if (msg.id) pendingLabelIds.push(msg.id);
+        continue;
+      }
+      if (msg.id) {
+        for (const labelId of pendingLabelIds) {
+          replacementByLabelId.set(labelId, msg.id);
+        }
+        pendingLabelIds.length = 0;
+      }
+
+      // 如果这是压缩摘要条目，修复其 firstKeptEntryId 边界
+      if ((msg as any).firstKeptEntryId) {
+        const origBoundary = (msg as any).firstKeptEntryId;
+        const mappedBoundary = replacementByLabelId.get(origBoundary) ?? origBoundary;
+        cleaned.push({
+          ...msg,
+          firstKeptEntryId: mappedBoundary
+        } as any);
+      } else {
+        cleaned.push(msg);
+      }
+    }
+
+    return cleaned;
+  }
+
   public size(): number {
     return this.nodes.size;
   }

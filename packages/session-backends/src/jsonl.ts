@@ -62,6 +62,14 @@ export class JsonlSessionBackend implements ISessionBackend {
     fs.appendFileSync(filePath, line, 'utf8');
   }
 
+  public async loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void> {
+    this.assertOpen();
+    if (entries.length === 0) return;
+    const filePath = this.getSessionJournalPath(sessionId);
+    const lines = entries.map((e) => `${JSON.stringify(e)}\n`).join('');
+    fs.appendFileSync(filePath, lines, 'utf8');
+  }
+
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
     this.assertOpen();
     const filePath = this.getSessionJournalPath(sessionId);

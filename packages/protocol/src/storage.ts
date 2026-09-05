@@ -170,6 +170,16 @@ export type SessionEntryType =
   | 'operation_intent'
   | 'operation_settlement'
   | 'pipeline_stage'
+  /**
+   * 助手流式紧凑帧（对齐上游 pi assistant-durability）。
+   * 辅助观察数据：缺失合法、不证明成败、不选重启点；`agent_turn` 结算落地后即被归约丢弃。
+   */
+  | 'assistant_frame'
+  /**
+   * 工具进度持久化检查点（对齐上游 pi tool-durability "checkpoint"）。
+   * 仅承载"完整有界"快照，绝不作为工具完成证明；基础恢复不读取它。
+   */
+  | 'tool_progress'
   | 'custom';
 
 export type JournalEntryType = SessionEntryType;

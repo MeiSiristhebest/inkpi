@@ -5,6 +5,12 @@ import { getModelPreset } from '@inkpi/ai';
 import type { ModelConfig } from '@inkpi/protocol';
 import { NoModelConfiguredError } from '../errors.js';
 import type { Clock, SessionStore } from '../ports/index.js';
+import {
+  detectAndMarkInterruptedOperations,
+  planInterruptedRecovery,
+  reduceSession,
+  synthesizeInterruptedToolResult
+} from '../reducer/session-reducer.js';
 import { SessionTree } from '../tree.js';
 
 export interface ManagedSession {
@@ -24,6 +30,8 @@ export interface SessionCreateOptions {
   initialText?: string;
   systemPrompt?: string;
   metadata?: Record<string, unknown>;
+  /** 预置恢复的历史条目（对齐上游 v0.85.0 PR #8980 SessionManager.inMemory with preloaded entries） */
+  entries?: import('@inkpi/protocol').SessionEntry[];
 }
 
 export interface SessionSummary {
@@ -75,6 +83,29 @@ export class SessionRegistry implements SessionStore {
     const editor = new HeadlessEditorState(options.initialText || '');
     const ghost = new GhostTextManager(editor);
     const tree = new SessionTree();
+
+    if (options.entries && options.entries.length > 0) {
+      for (const entry of options.entries) {
+        if (entry.type === 'user_message' || entry.type === 'agent_turn') {
+          const msg = entry.payload as import('@inkpi/protocol').AgentMessage;
+          if (msg && 'role' in msg) {
+            agent.state.messages.push(msg);
+            tree.addMessage(msg, entry.parentId || undefined);
+          }
+        }
+      }
+
+      // 恢复语义（对齐上游 pi tool-durability "unsafe orphan synthesis"）：
+      // 对被中断且 replay: 'never' 的工具调用，合成"结果未知"占位结果并入历史，
+      // 绝不重跑外部副作用；'safe' 的调用由调用方按 planInterruptedRecovery 决策重放。
+      const recovered = detectAndMarkInterruptedOperations(reduceSession(options.entries), this.clock);
+      for (const plan of planInterruptedRecovery(recovered.state)) {
+        if (plan.action !== 'synthesize') continue;
+        const synthetic = synthesizeInterruptedToolResult(plan, this.clock);
+        agent.state.messages.push(synthetic);
+        tree.addMessage(synthetic);
+      }
+    }
 
     const managed: ManagedSession = {
       sessionId,

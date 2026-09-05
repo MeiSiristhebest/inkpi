@@ -23,6 +23,9 @@ importers:
       '@inkpi/editor-core':
         specifier: workspace:*
         version: link:packages/editor-core
+      '@inkpi/evals':
+        specifier: workspace:*
+        version: link:packages/evals
       '@inkpi/protocol':
         specifier: workspace:*
         version: link:packages/protocol
