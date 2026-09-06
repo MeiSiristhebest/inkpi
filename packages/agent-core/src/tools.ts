@@ -10,6 +10,19 @@ import type {
 import { runWithConcurrency } from './concurrency.js';
 import type { ToolExecutionMode } from './types.js';
 
+export {
+  detectLineEnding,
+  normalizeToLF,
+  restoreLineEndings,
+  normalizeForFuzzyMatch,
+  splitLinesWithEndings,
+  fuzzyFindText,
+  applyFuzzyTextEdit
+} from './tools/edit-diff.js';
+export type { DiffFuzzyMatchResult } from './tools/edit-diff.js';
+export * from './tools/output-guard.js';
+export * from './tools/authoring-tools.js';
+
 export class ToolRegistry {
   private tools = new Map<string, AgentTool>();
 
