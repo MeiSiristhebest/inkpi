@@ -777,4 +777,155 @@ describe('@inkpi/ai', () => {
       else process.env.CLAUDE_API_KEY = originalClaudeKey;
     }
   });
+
+  it('should support declarative compat mapping (qwen-bool, custom-field, extraBody, extraHeaders)', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom(['data: {"choices":[{"delta":{"content":"compat test ok"}}]}\n\n', 'data: [DONE]\n\n'])
+      );
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const stream = streamAi(
+        {
+          id: 'qwen-custom-deploy',
+          name: 'Qwen Custom',
+          provider: 'openai',
+          baseUrl: 'https://custom-qwen.test/v1',
+          apiKey: 'test-key',
+          supportsThinking: true,
+          thinkingBudget: 3000,
+          compat: {
+            thinkingFormat: 'qwen-bool',
+            maxTokensField: 'max_completion_tokens',
+            supportsUsageInStreaming: false,
+            extraHeaders: { 'X-Tenant-Id': 'tenant-88' },
+            extraBody: { custom_param: 'foo' }
+          }
+        },
+        [{ role: 'user', content: 'hi' }]
+      );
+
+      const msg = await stream.collect();
+      expect(msg.content[0]).toEqual({ type: 'text', text: 'compat test ok' });
+
+      const requestCall = fetchMock.mock.calls[0];
+      const headers = requestCall[1].headers;
+      const body = JSON.parse(requestCall[1].body);
+
+      expect(headers['X-Tenant-Id']).toBe('tenant-88');
+      expect(body.enable_thinking).toBe(true);
+      expect(body.max_completion_tokens).toBe(4096);
+      expect(body.max_tokens).toBeUndefined();
+      expect(body.stream_options).toBeUndefined();
+      expect(body.custom_param).toBe('foo');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should perform self-healing retry on 400 Bad Request', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    const fetchMock = vi.fn().mockImplementation(async (_url, options) => {
+      callCount += 1;
+      const body = JSON.parse(options.body);
+      if (callCount === 1) {
+        // 第一轮返回 400：模拟服务端不认识 stream_options
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          clone() {
+            return {
+              text: async () => 'Unknown parameter: stream_options'
+            };
+          }
+        };
+      }
+      // 第二轮成功（确认 stream_options 已被剥离）
+      expect(body.stream_options).toBeUndefined();
+      return responseFrom(['data: {"choices":[{"delta":{"content":"healed response"}}]}\n\n', 'data: [DONE]\n\n']);
+    });
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const stream = streamAi(
+        {
+          id: 'vllm-legacy',
+          name: 'vLLM Legacy',
+          provider: 'openai',
+          baseUrl: 'https://vllm.test/v1',
+          apiKey: 'test-key'
+        },
+        [{ role: 'user', content: 'test healing' }]
+      );
+
+      const msg = await stream.collect();
+      expect(msg.content[0]).toEqual({ type: 'text', text: 'healed response' });
+      expect(callCount).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should sanitize cross-model messages and normalize tool call IDs', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom(['data: {"choices":[{"delta":{"content":"sanitized ok"}}]}\n\n', 'data: [DONE]\n\n'])
+      );
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const dirtyMessages: AgentMessage[] = [
+        { role: 'user', content: 'call tool' },
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'toolCall',
+              id: 'call_invalid|pipe|special_character_and_very_long_identifier_that_exceeds_sixty_four_characters_limit',
+              name: 'calculator',
+              arguments: { expr: '1+1' }
+            }
+          ]
+        },
+        {
+          role: 'toolResult',
+          toolCallId:
+            'call_invalid|pipe|special_character_and_very_long_identifier_that_exceeds_sixty_four_characters_limit',
+          content: [{ type: 'text', text: '2' }],
+          isError: false
+        }
+      ];
+
+      const stream = streamAi(
+        {
+          id: 'openai-test',
+          name: 'OpenAI Test',
+          provider: 'openai',
+          baseUrl: 'https://openai.test/v1',
+          apiKey: 'test-key'
+        },
+        dirtyMessages
+      );
+
+      await stream.collect();
+
+      const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const assistantWire = requestBody.messages[1];
+      const toolWire = requestBody.messages[2];
+
+      // 验证特殊字符 | 已被替换为 _，且被截断在 64 字符以内
+      expect(assistantWire.tool_calls[0].id).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+      expect(assistantWire.tool_calls[0].id).not.toContain('|');
+      expect(toolWire.tool_call_id).toBe(assistantWire.tool_calls[0].id);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

@@ -1,6 +1,7 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage, ThinkingLevel } from '@inkpi/protocol';
 import { ProviderNotImplementedError } from './errors.js';
 import { getHttpClient } from './http-client.js';
+import { sanitizeMessagesForProvider } from './sanitize.js';
 import { AssistantEventStream } from './stream.js';
 import type {
   AnthropicEffort,
@@ -444,6 +445,78 @@ function consumeFinalLine(buffer: string, onLine: (line: string) => void): void 
 // ----------------------------------------------------------------------
 // 2. OpenAI / OpenRouter / DeepSeek / Groq / SiliconFlow / Azure SSE Provider
 // ----------------------------------------------------------------------
+
+/**
+ * 思考预算安全钳位：保留至少 1024 tokens 供输出正文，防止深思模型（R1/Thinking）撑爆 maxTokens 导致无内容输出。
+ */
+export function clampThinkingBudget(maxTokens = 4096, requestedBudget?: number): number {
+  if (!requestedBudget || requestedBudget <= 0) return 0;
+  const safeAnswerRoom = 1024;
+  return Math.min(requestedBudget, Math.max(256, maxTokens - safeAnswerRoom));
+}
+
+/**
+ * 应用声明式方言与兼容性配置到 OpenAI 兼容请求体
+ */
+export function applyCompatToOpenAiPayload(
+  payload: Record<string, unknown>,
+  model: ModelConfig,
+  options?: StreamOptions
+): void {
+  const compat = model.compat;
+  const maxTokens = options?.maxTokens ?? model.maxTokens ?? 4096;
+
+  // 1. maxTokens 字段名称映射
+  if (compat?.maxTokensField === 'max_completion_tokens') {
+    payload.max_completion_tokens = maxTokens;
+    delete payload.max_tokens;
+  } else {
+    payload.max_tokens = maxTokens;
+  }
+
+  // 2. stream_options.include_usage 控制
+  if (compat?.supportsUsageInStreaming === false) {
+    delete payload.stream_options;
+  }
+
+  // 3. 思考/推理参数方言转换与安全钳位
+  const thinkingBudget = options?.thinkingBudget ?? model.thinkingBudget;
+  const thinkingFormat = compat?.thinkingFormat;
+
+  if (model.supportsThinking || (thinkingBudget && thinkingBudget > 0)) {
+    const clampedBudget = clampThinkingBudget(maxTokens, thinkingBudget);
+    switch (thinkingFormat) {
+      case 'qwen-bool':
+        payload.enable_thinking = true;
+        break;
+      case 'deepseek':
+        payload.thinking = { type: 'enabled' };
+        break;
+      case 'openrouter':
+        payload.reasoning = { effort: 'high' };
+        break;
+      case 'custom-field':
+        if (compat?.thinkingCustomField) {
+          payload[compat.thinkingCustomField] = clampedBudget;
+        }
+        break;
+      case 'disabled':
+        // 显式不发送思考参数
+        break;
+      case 'openai':
+      default:
+        // OpenAI 标准 reasoning_effort
+        payload.reasoning_effort = 'high';
+        break;
+    }
+  }
+
+  // 4. 自定义 Extra Body 参数合并
+  if (compat?.extraBody) {
+    Object.assign(payload, compat.extraBody);
+  }
+}
+
 export const openAiCompatibleProvider: ProviderHandler = (model, messages, options) => {
   const stream = new AssistantEventStream();
   const baseUrl = resolveProviderBaseUrl(model.provider, model.baseUrl);
@@ -461,7 +534,9 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
     return stream;
   }
 
-  const standardMessages = convertMessagesToOpenAi(messages, options?.systemPrompt);
+  // 跨模型历史上下文消毒：规范化 Tool Call ID 与非法字符
+  const sanitizedMessages = sanitizeMessagesForProvider(messages, model);
+  const standardMessages = convertMessagesToOpenAi(sanitizedMessages, options?.systemPrompt);
 
   (async () => {
     try {
@@ -470,11 +545,13 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         messages: standardMessages,
         stream: true,
         temperature: options?.temperature ?? model.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? model.maxTokens,
         presence_penalty: model.presencePenalty,
         frequency_penalty: model.frequencyPenalty,
         stream_options: { include_usage: true }
       };
+
+      // 应用声明式方言与参数抹平
+      applyCompatToOpenAiPayload(payload, model, options);
 
       if (options?.tools && options.tools.length > 0) {
         payload.tools = options.tools.map((t) => ({
@@ -487,15 +564,59 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         }));
       }
 
-      const response = await getHttpClient().fetch(`${baseUrl}/chat/completions`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      };
+      if (model.compat?.extraHeaders) {
+        Object.assign(headers, model.compat.extraHeaders);
+      }
+
+      const httpClient = getHttpClient();
+      let response = await httpClient.fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
+        headers,
         body: JSON.stringify(payload),
         signal: options?.signal
       });
+
+      // 智能自愈单次重试：捕获非标网关返回的 400 Bad Request
+      const enableSelfHealing = model.compat?.enableSelfHealing !== false;
+      if (!response.ok && response.status === 400 && enableSelfHealing) {
+        let errorText = '';
+        try {
+          errorText = await response.clone().text();
+        } catch {
+          // clone 读取失败则忽略
+        }
+
+        let healed = false;
+        // 1. 遇到不认识 stream_options 的老旧网关或 vLLM，剔除后重试
+        if (errorText.toLowerCase().includes('stream_options') && payload.stream_options) {
+          delete payload.stream_options;
+          healed = true;
+        }
+        // 2. 遇到不认识 thinking / reasoning 字段的非标模型，剔除后重试
+        const reasoningKeys = ['reasoning_effort', 'reasoning', 'thinking', 'enable_thinking'];
+        if (reasoningKeys.some((k) => errorText.toLowerCase().includes(k) && payload[k])) {
+          for (const k of reasoningKeys) delete payload[k];
+          healed = true;
+        }
+        // 3. 遇到不认识 tools 字段的纯文本端点，剔除 tools 后重试
+        if (errorText.toLowerCase().includes('tools') && payload.tools) {
+          delete payload.tools;
+          healed = true;
+        }
+
+        if (healed) {
+          response = await httpClient.fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+            signal: options?.signal
+          });
+        }
+      }
 
       if (!response.ok) {
         stream.error(`${model.provider} API Error: ${response.status} ${response.statusText}`);
@@ -1228,7 +1349,7 @@ export function registerProvider(type: ProviderType, handler: ProviderHandler): 
 export function getProvider(type: ProviderType): ProviderHandler {
   const handler = providerRegistry.get(type);
   if (!handler) {
-    return (model, _messages, _options) => {
+    return (_model, _messages, _options) => {
       const stream = new AssistantEventStream();
       queueMicrotask(() => {
         stream.error(`Provider '${type}' is not registered. Use registerProvider('${type}', handler) to register.`);

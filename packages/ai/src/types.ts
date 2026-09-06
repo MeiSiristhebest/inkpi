@@ -45,6 +45,54 @@ export interface ModelConfig {
   cacheControl?: { type: 'ephemeral' | 'disabled' };
   /** Explicit faux-provider fixture. Never inferred by production providers. */
   fauxScript?: FauxScriptedResponse;
+  /**
+   * 声明式方言兼容与运行时容错选项（面向小众/非标/自部署网关）。
+   */
+  compat?: ModelCompatConfig;
+}
+
+/**
+ * 思考/推理参数的传输格式：
+ * - 'openai': 标准 reasoning_effort
+ * - 'deepseek': thinking: { type: 'enabled' }
+ * - 'qwen-bool': 顶层 enable_thinking: true
+ * - 'openrouter': reasoning: { effort: string }
+ * - 'custom-field': 顶层自定义字段（配合 thinkingCustomField）
+ * - 'disabled': 显式禁用思考参数发送
+ */
+export type ThinkingWireFormat = 'openai' | 'deepseek' | 'qwen-bool' | 'openrouter' | 'custom-field' | 'disabled';
+
+export interface ModelCompatConfig {
+  /**
+   * 思考/推理字段的传输格式。未设置时根据 provider 推导或遵循标准。
+   */
+  thinkingFormat?: ThinkingWireFormat;
+  /**
+   * 当 thinkingFormat 为 'custom-field' 时使用的字段名，如 "thinking_budget"。
+   */
+  thinkingCustomField?: string;
+  /**
+   * 指定 max_tokens 的字段名（某些网关使用 max_completion_tokens 或仅接受 max_tokens）。
+   */
+  maxTokensField?: 'max_tokens' | 'max_completion_tokens';
+  /**
+   * 是否发送 stream_options: { include_usage: true }。
+   * 默认为 true；某些老旧 vLLM 或非标网关遇此字段会报 400，置为 false 则不发送。
+   */
+  supportsUsageInStreaming?: boolean;
+  /**
+   * 自定义透传到请求根 Body 的额外字段（任何私有定制字段均可直接在此配置）。
+   */
+  extraBody?: Record<string, unknown>;
+  /**
+   * 自定义额外 Header（如租户 ID、特定路由 Flag）。
+   */
+  extraHeaders?: Record<string, string>;
+  /**
+   * 是否开启报错自动自愈重试（默认 true）。
+   * 遭遇 400 时自动剥离 stream_options / thinking / tools 畸形字段并重新发起单次请求。
+   */
+  enableSelfHealing?: boolean;
 }
 
 export interface FauxScriptedResponse {
