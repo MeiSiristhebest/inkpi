@@ -9,10 +9,11 @@
  * default fallbacks inside the core.
  */
 
-import * as nodeFs from 'node:fs';
 import type { EventStream, StreamOptions } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessageEvent, ModelConfig } from '@inkpi/protocol';
 import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rpc/session-registry.js';
+
+export { nodeFileSystem } from '../adapters/node-filesystem.js';
 
 /** Wall-clock / monotonic time source. Inject a test clock; never call `Date.now()` directly. */
 export type Clock = () => number;
@@ -55,17 +56,6 @@ export interface FileSystem {
   writeFileSync(path: string, data: string | Uint8Array): void;
 }
 
-/** Default filesystem backed by `node:fs`. */
-export const nodeFileSystem: FileSystem = {
-  existsSync: (p) => nodeFs.existsSync(p),
-  mkdirSync: (p, o) => nodeFs.mkdirSync(p, o),
-  readFileSync: (p, e) => nodeFs.readFileSync(p, e),
-  readdirSync: (p) => nodeFs.readdirSync(p),
-  renameSync: (o, n) => nodeFs.renameSync(o, n),
-  rmSync: (p, o) => nodeFs.rmSync(p, o),
-  writeFileSync: (p, d) => nodeFs.writeFileSync(p, d)
-};
-
 /**
  * Model streaming port. Mirrors the `@inkpi/ai` `StreamFn` contract but is
  * declared by the core, so the loop depends on the abstraction, not the
@@ -77,6 +67,16 @@ export type ModelStreamer = (
   messages: AgentMessage[],
   options?: StreamOptions
 ) => EventStream<AssistantMessageEvent>;
+
+/**
+ * 思考预算与档位解析端口 (ThinkingMapper Port)
+ * 供 agent-core 在执行轮次时根据 thinkingLevel 解析对应的 effort 档位或 token 预算，
+ * 避免 agent-core 直接依赖具体 @inkpi/ai 的运行时映射函数 (DIP)。
+ */
+export interface ThinkingMapper {
+  mapThinkingLevelToEffort(level: string | null | undefined): any;
+  getThinkingBudgetForLevel(level: string | null | undefined): number | undefined;
+}
 
 /**
  * Multi-session store port. The live in-memory `SessionRegistry` is one

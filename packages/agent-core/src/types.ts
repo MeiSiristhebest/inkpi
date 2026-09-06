@@ -10,7 +10,7 @@ import type {
   ToolResultMessage,
   Usage
 } from '@inkpi/protocol';
-import type { ModelStreamer } from './ports/index.js';
+import type { ModelStreamer, ThinkingMapper, IdGenerator } from './ports/index.js';
 
 export type { ToolExecutionMode };
 export type QueueMode = 'all' | 'one-at-a-time';
@@ -75,6 +75,8 @@ export interface AgentOptions {
   followUpMode?: QueueMode;
   toolExecution?: ToolExecutionMode;
   streamFn?: ModelStreamer;
+  thinkingMapper?: ThinkingMapper;
+  idGenerator?: IdGenerator;
   sessionId?: string;
   journal?: any;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;

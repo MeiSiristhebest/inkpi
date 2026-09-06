@@ -34,8 +34,11 @@ export class Agent {
   private compactionPromise: Promise<unknown> | null = null;
   private idleWait: { promise: Promise<void>; resolve: () => void } | null = null;
 
+  private clock: () => number;
+
   constructor(options: AgentOptions = {}) {
     this.options = options;
+    this.clock = (options as any).clock || REAL_CLOCK;
     this.steeringMode = options.steeringMode || 'all';
     this.followUpMode = options.followUpMode || 'one-at-a-time';
     this.toolExecution = options.toolExecution || 'parallel';
@@ -105,7 +108,7 @@ export class Agent {
         msg = {
           role: 'user',
           content,
-          timestamp: Date.now()
+          timestamp: this.clock()
         } as UserMessage;
       } else {
         msg = prompt;

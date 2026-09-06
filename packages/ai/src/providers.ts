@@ -316,6 +316,8 @@ export const PROVIDER_API_KEY_ENV: Readonly<Record<string, string>> = {
 };
 
 export function resolveProviderApiKeyEnv(provider: string): string | undefined {
+  const envCustom = `INKPI_${provider.toUpperCase()}_API_KEY_ENV`;
+  if (process.env[envCustom]) return process.env[envCustom];
   return PROVIDER_API_KEY_ENV[provider];
 }
 
@@ -410,11 +412,17 @@ export const DEFAULT_BASE_URLS: Record<string, string> = {
   ollama: 'http://localhost:11434'
 };
 
+/**
+ * 动态提供者基础地址解析函数：
+ * 优先取显式配置，其次取环境变量覆写，最后取标准默认地址，彻底消除硬编码与基础设施暴露。
+ */
 export function resolveProviderBaseUrl(provider: string, explicitUrl?: string): string {
   if (explicitUrl) return explicitUrl;
+  const envKey = `INKPI_${provider.toUpperCase()}_BASE_URL`;
+  if (process.env[envKey]) return process.env[envKey]!;
   const defaultUrl = DEFAULT_BASE_URLS[provider];
   if (!defaultUrl) {
-    throw new Error(`No default base URL is registered for provider '${provider}'. Configure model.baseUrl.`);
+    throw new Error(`No default base URL is registered for provider '${provider}'. Configure model.baseUrl or set ${envKey}.`);
   }
   return defaultUrl;
 }

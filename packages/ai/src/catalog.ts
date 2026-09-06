@@ -72,23 +72,25 @@ export function getThinkingBudgetForLevel(level: ThinkingLevel | 'minimal' | 'of
 }
 
 /**
- * Explicit canonical aliases. Maps a user-facing alias to the exact catalog id.
- * Replaces the previous substring heuristics (`query.includes('claude-3-7')`
- * etc.) with a declarative, unambiguous mapping.
+ * 动态别名映射表，支持运行时动态注入与配置覆写（OCP）
  */
-const CANONICAL_ALIASES: Record<string, string> = {
-  'deepseek-reasoner': 'deepseek/deepseek-r1',
-  'deepseek/deepseek-reasoner': 'deepseek/deepseek-r1',
-  'gpt-6-astra': 'openai/gpt-6-astra',
-  'deepseek-v4-flash-vision-exp': 'deepseek/deepseek-v4-flash-vision-exp'
-};
+const dynamicAliases = new Map<string, string>([
+  ['deepseek-reasoner', 'deepseek/deepseek-r1'],
+  ['deepseek/deepseek-reasoner', 'deepseek/deepseek-r1'],
+  ['gpt-6-astra', 'openai/gpt-6-astra'],
+  ['deepseek-v4-flash-vision-exp', 'deepseek/deepseek-v4-flash-vision-exp']
+]);
+
+export function registerModelAlias(alias: string, canonicalId: string): void {
+  dynamicAliases.set(alias.toLowerCase().trim(), canonicalId);
+}
 
 export function findModelInCatalog(idOrName: string): ModelCatalogEntry | undefined {
   if (!idOrName) return undefined;
   const query = idOrName.toLowerCase().trim();
 
   // Resolve explicit canonical aliases without substring guessing.
-  const aliased = CANONICAL_ALIASES[query];
+  const aliased = dynamicAliases.get(query);
   if (aliased) return findModelInCatalog(aliased);
 
   const normalizedQuery = query.replace(/[./_-\s]/g, '');
@@ -169,12 +171,9 @@ export class ModelCatalogManager {
   }
 
   /**
-   * Explicit per-role preference ordering. Each entry is an exact catalog id
-   * (no substring matching); earlier entries win. This replaces the previous
-   * `id.includes('mini')` / `id.includes('r1')` heuristics with a curated,
-   * unambiguous priority list.
+   * 角色偏好排序映射表（支持运行时动态覆盖与自定义注入）
    */
-  private static readonly ROLE_PREFERENCES: Record<ModelRole, string[]> = {
+  private rolePreferences: Record<ModelRole, string[]> = {
     planning: ['deepseek/deepseek-r1', 'anthropic/claude-3.7-sonnet', 'openai/o3-mini', 'google/gemini-2.5-pro'],
     drafting: [
       'deepseek/deepseek-chat',
@@ -186,9 +185,13 @@ export class ModelCatalogManager {
     polishing: ['deepseek/deepseek-chat', 'openai/gpt-4o-mini']
   };
 
+  public setRolePreferences(role: ModelRole, modelIds: string[]): void {
+    this.rolePreferences[role] = [...modelIds];
+  }
+
   private recommend(role: ModelRole): ModelCatalogEntry {
     const all = this.getAllModels();
-    const prefs = ModelCatalogManager.ROLE_PREFERENCES[role];
+    const prefs = this.rolePreferences[role];
     const qualifies = (m: ModelCatalogEntry): boolean =>
       m.roles?.includes(role) ?? (role === 'planning' ? m.supportsThinking : !m.supportsThinking);
     const candidates = all.filter(qualifies);

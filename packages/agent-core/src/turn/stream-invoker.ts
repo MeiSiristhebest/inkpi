@@ -1,10 +1,37 @@
 import type { EventStream } from '@inkpi/ai';
-import { getThinkingBudgetForLevel, mapThinkingLevelToEffort, streamAi } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessage, AssistantMessageEvent } from '@inkpi/protocol';
 import { AssistantFrameEncoder } from './assistant-frames.js';
 import type { TurnContext } from './turn-context.js';
 
 type AssistantEventStream = EventStream<AssistantMessageEvent>;
+
+function defaultMapThinkingLevelToEffort(level: string | null | undefined): 'low' | 'medium' | 'high' {
+  switch (level) {
+    case 'minimal':
+    case 'low':
+      return 'low';
+    case 'medium':
+      return 'medium';
+    case 'high':
+    default:
+      return 'high';
+  }
+}
+
+function defaultGetThinkingBudgetForLevel(level: string | null | undefined): number | undefined {
+  switch (level) {
+    case 'minimal':
+      return 1024;
+    case 'low':
+      return 2048;
+    case 'medium':
+      return 4096;
+    case 'high':
+      return 8192;
+    default:
+      return undefined;
+  }
+}
 
 /**
  * 管线第二段：调用模型流式输出，并把增量合并进流式消息。
@@ -21,7 +48,7 @@ export class StreamInvoker {
   public async invoke(ctx: TurnContext, llmMessages: AgentMessage[]): Promise<AssistantMessage> {
     const { state, options, toolRegistry, emitEvent, signal, clock } = ctx;
 
-    const streamOpId = `op_stream_${clock()}_${Math.random().toString(36).slice(2, 6)}`;
+    const streamOpId = options.idGenerator ? options.idGenerator() : `op_stream_${clock()}_${(clock() % 10000).toString(36)}`;
     if (options.journal) {
       options.journal.append('operation_intent', {
         id: streamOpId,
@@ -30,19 +57,28 @@ export class StreamInvoker {
       });
     }
 
-    const streamFn = options.streamFn || streamAi;
+    let streamFn = options.streamFn;
+    if (!streamFn) {
+      try {
+        const aiMod = await import('@inkpi/ai');
+        streamFn = aiMod.streamAi;
+      } catch {
+        throw new Error('ModelStreamer (streamFn) must be provided in AgentOptions when @inkpi/ai is not available.');
+      }
+    }
     const toolsMetadata = toolRegistry.getAll().map((t) => ({
       name: t.name,
       description: t.description,
       parameters: t.parameters
     }));
 
-    // 逐轮思考档位（对齐上游 pi v0.85.0 per-turn thinking effort）：
-    // 支持 mid-convo effort 的模型走 effort 路径并记录档位；其余模型按级别取思考预算。
+    // 逐轮思考档位（优先使用注入的 thinkingMapper，降级为内置默认映射）：
     const level = state.thinkingLevel;
     const effortEnabled = state.model.supportsMidConvoEffort === true && level !== 'none' && level !== 'off';
-    const thinkingEffort = effortEnabled ? mapThinkingLevelToEffort(level) : undefined;
-    const thinkingBudget = effortEnabled ? undefined : getThinkingBudgetForLevel(level);
+    const mapEffort = options.thinkingMapper?.mapThinkingLevelToEffort || defaultMapThinkingLevelToEffort;
+    const getBudget = options.thinkingMapper?.getThinkingBudgetForLevel || defaultGetThinkingBudgetForLevel;
+    const thinkingEffort = effortEnabled ? mapEffort(level) : undefined;
+    const thinkingBudget = effortEnabled ? undefined : getBudget(level);
 
     const stream = streamFn(state.model, llmMessages, {
       signal,

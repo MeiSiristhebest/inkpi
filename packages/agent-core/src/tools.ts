@@ -7,6 +7,7 @@ import type {
   ToolResultMessage,
   ToolUpdateOptions
 } from '@inkpi/protocol';
+import type { Clock } from './ports/index.js';
 import { runWithConcurrency } from './concurrency.js';
 import type { ToolExecutionMode } from './types.js';
 
@@ -25,6 +26,11 @@ export * from './tools/authoring-tools.js';
 
 export class ToolRegistry {
   private tools = new Map<string, AgentTool>();
+  private readonly clock: Clock;
+
+  constructor(clock: Clock = Date.now) {
+    this.clock = clock;
+  }
 
   public register(tool: AgentTool): void {
     this.tools.set(tool.name, tool);
@@ -64,7 +70,7 @@ export class ToolRegistry {
         toolName: toolCall.name,
         isError: true,
         content: [{ type: 'text', text: `Tool '${toolCall.name}' not found in registry` }],
-        timestamp: Date.now()
+        timestamp: this.clock()
       };
     }
 
@@ -76,7 +82,7 @@ export class ToolRegistry {
         toolName: toolCall.name,
         isError: true,
         content: [{ type: 'text', text: `Parameter Validation Error: ${validation.error}` }],
-        timestamp: Date.now()
+        timestamp: this.clock()
       };
     }
 
@@ -88,7 +94,7 @@ export class ToolRegistry {
           toolName: toolCall.name,
           isError: true,
           content: [{ type: 'text', text: 'Tool execution aborted by signal' }],
-          timestamp: Date.now()
+          timestamp: this.clock()
         };
       }
 
@@ -102,7 +108,7 @@ export class ToolRegistry {
         details: result.details,
         isError: result.isError ?? false,
         terminate: result.terminate,
-        timestamp: Date.now()
+        timestamp: this.clock()
       };
     } catch (err: any) {
       return {
@@ -111,7 +117,7 @@ export class ToolRegistry {
         toolName: toolCall.name,
         isError: true,
         content: [{ type: 'text', text: `Tool Exception: ${err?.message || String(err)}` }],
-        timestamp: Date.now()
+        timestamp: this.clock()
       };
     }
   }
