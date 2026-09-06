@@ -20,14 +20,20 @@ function defaultMapThinkingLevelToEffort(level: string | null | undefined): 'low
 
 function defaultGetThinkingBudgetForLevel(level: string | null | undefined): number | undefined {
   switch (level) {
+    case 'none':
+    case 'off':
+      return 0;
     case 'minimal':
-      return 1024;
     case 'low':
-      return 2048;
+      return 1024;
     case 'medium':
       return 4096;
     case 'high':
-      return 8192;
+      return 16384;
+    case 'xhigh':
+      return 24576;
+    case 'max':
+      return 32768;
     default:
       return undefined;
   }
@@ -48,7 +54,9 @@ export class StreamInvoker {
   public async invoke(ctx: TurnContext, llmMessages: AgentMessage[]): Promise<AssistantMessage> {
     const { state, options, toolRegistry, emitEvent, signal, clock } = ctx;
 
-    const streamOpId = options.idGenerator ? options.idGenerator() : `op_stream_${clock()}_${(clock() % 10000).toString(36)}`;
+    const streamOpId = options.idGenerator
+      ? options.idGenerator()
+      : `op_stream_${clock()}_${(clock() % 10000).toString(36)}`;
     if (options.journal) {
       options.journal.append('operation_intent', {
         id: streamOpId,

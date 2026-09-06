@@ -422,7 +422,9 @@ export function resolveProviderBaseUrl(provider: string, explicitUrl?: string): 
   if (process.env[envKey]) return process.env[envKey]!;
   const defaultUrl = DEFAULT_BASE_URLS[provider];
   if (!defaultUrl) {
-    throw new Error(`No default base URL is registered for provider '${provider}'. Configure model.baseUrl or set ${envKey}.`);
+    throw new Error(
+      `No default base URL is registered for provider '${provider}'. Configure model.baseUrl or set ${envKey}.`
+    );
   }
   return defaultUrl;
 }

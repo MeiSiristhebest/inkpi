@@ -79,11 +79,15 @@ export class TelemetryCollector {
   private modelCacheReadCostPerM = 0.5;
 
   /** 成本单价（USD / 1M tokens），可部分覆盖。 */
+  private idGenerator?: () => string;
+
   constructor(
     clock: Clock,
-    pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number }
+    pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number },
+    idGenerator?: () => string
   ) {
     this.clock = clock;
+    this.idGenerator = idGenerator;
     if (pricing?.inputUsdPerMTokens !== undefined) this.modelInputCostPerM = pricing.inputUsdPerMTokens;
     if (pricing?.outputUsdPerMTokens !== undefined) this.modelOutputCostPerM = pricing.outputUsdPerMTokens;
     if (pricing?.cacheReadUsdPerMTokens !== undefined) this.modelCacheReadCostPerM = pricing.cacheReadUsdPerMTokens;
@@ -227,7 +231,7 @@ export class TelemetryCollector {
    */
   public startSpan(name: string, stage?: string, role?: string, attributes?: Record<string, unknown>): TelemetrySpan {
     const span: TelemetrySpan = {
-      id: `span_${this.clock()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: this.idGenerator ? this.idGenerator() : `span_${this.clock()}_${(this.clock() % 100000).toString(36)}`,
       name,
       stage,
       role,

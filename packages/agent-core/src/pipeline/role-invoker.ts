@@ -1,6 +1,7 @@
 import type { ModelConfig } from '@inkpi/ai';
-import { streamAi } from '@inkpi/ai';
 import type { AgentRoleConfig, StateLedger, Usage } from '@inkpi/protocol';
+import type { Clock, ModelStreamer } from '../ports/index.js';
+import { REAL_CLOCK } from '../ports/index.js';
 import { emptyLedger } from './ledger-merge.js';
 
 export interface RoleInvocation {
@@ -37,6 +38,14 @@ export function thinkingBudgetFor(level: AgentRoleConfig['defaultThinkingLevel']
  * 便于在测试中整体替换。
  */
 export class RoleInvoker {
+  private clock: Clock;
+  private streamFn?: ModelStreamer;
+
+  constructor(clock: Clock = REAL_CLOCK, streamFn?: ModelStreamer) {
+    this.clock = clock;
+    this.streamFn = streamFn;
+  }
+
   /**
    * 调用一个角色并返回其文本产出。
    *
@@ -49,6 +58,7 @@ export class RoleInvoker {
     model?: ModelConfig;
     signal?: AbortSignal;
     ledgerFormatter?: (ledger: StateLedger) => string;
+    streamFn?: ModelStreamer;
   }): Promise<RoleInvocation> {
     const { config, prompt, ledger, model, signal, ledgerFormatter } = args;
 
@@ -59,7 +69,13 @@ export class RoleInvoker {
     const ledgerBlock = ledgerFormatter?.(ledger || emptyLedger()) || '';
     const systemPrompt = assembleSystemPrompt(config.systemPrompt, ledgerBlock);
 
-    const stream = streamAi(model, [{ role: 'user', content: prompt, timestamp: Date.now() }], {
+    let streamer = args.streamFn || this.streamFn;
+    if (!streamer) {
+      const aiMod = await import('@inkpi/ai');
+      streamer = aiMod.streamAi;
+    }
+
+    const stream = streamer(model, [{ role: 'user', content: prompt, timestamp: this.clock() }], {
       systemPrompt,
       thinkingBudget: thinkingBudgetFor(config.defaultThinkingLevel),
       signal

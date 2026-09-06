@@ -19,6 +19,7 @@ export interface CreativeSessionShareOptions {
   includeStateLedger?: boolean;
   includeSessionTree?: boolean;
   customRedactPatterns?: RegExp[];
+  clock?: () => number;
 }
 
 export interface CreativeDatasetPayload {
@@ -145,6 +146,8 @@ export const SessionShareExporter = {
     const branches = source.tree ? source.tree.getBranches() : [];
     const entitiesCount = source.stateLedger?.entities?.length || 0;
 
+    const now = options.clock ? options.clock() : Date.now();
+
     return {
       version: '1.0',
       id: `share_${crypto.randomUUID().slice(0, 10)}`,
@@ -152,8 +155,8 @@ export const SessionShareExporter = {
       author: options.author || 'Anonymous Creator',
       category: options.category || 'creative-writing',
       tags: options.tags || ['agentic-writing', 'inkpi'],
-      createdAt: Date.now(),
-      exportedAt: Date.now(),
+      createdAt: now,
+      exportedAt: now,
       stats: {
         turnsCount: filteredMessages.filter((m) => m.role === 'user').length,
         totalMessages: filteredMessages.length,

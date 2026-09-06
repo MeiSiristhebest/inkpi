@@ -13,6 +13,7 @@ import type {
   WorkflowStageConfig
 } from '@inkpi/protocol';
 import type { TelemetryCollector } from '../telemetry/telemetry.js';
+import type { Clock } from '../ports/index.js';
 import type { RoleRegistry } from './roles.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
 
@@ -39,6 +40,7 @@ export interface PipelineExecutionOptions {
   model?: ModelConfig;
   customExecutor?: (role: string, systemPrompt: string, userPrompt: string, signal?: AbortSignal) => Promise<string>;
   telemetry?: TelemetryCollector;
+  clock?: Clock;
   hooks?: PipelineHooks[];
   stageHooks?: WorkflowStageHooks;
   signal?: AbortSignal;

@@ -117,7 +117,10 @@ export class ToolDispatcher {
 
   /** 预保留调用身份（对齐上游 "invocationId = resultEntryId"：即未来 tool_execution 条目的 id）。 */
   private reserveInvocationId(ctx: TurnContext): string {
-    return `inv_${ctx.clock()}_${Math.random().toString(36).slice(2, 10)}`;
+    if (ctx.options.idGenerator) {
+      return ctx.options.idGenerator();
+    }
+    return `inv_${ctx.clock()}_${(ctx.clock() % 1000000).toString(36)}`;
   }
 
   private async executeOne(

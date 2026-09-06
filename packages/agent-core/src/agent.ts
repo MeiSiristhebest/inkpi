@@ -38,7 +38,8 @@ export class Agent {
 
   constructor(options: AgentOptions = {}) {
     this.options = options;
-    this.clock = (options as any).clock || REAL_CLOCK;
+    this.clock = options.clock || REAL_CLOCK;
+    this.toolRegistry = new ToolRegistry(this.clock);
     this.steeringMode = options.steeringMode || 'all';
     this.followUpMode = options.followUpMode || 'one-at-a-time';
     this.toolExecution = options.toolExecution || 'parallel';
@@ -71,10 +72,11 @@ export class Agent {
   /**
    * 自动加载当前工作区与扩展目录下的所有插件（面向 Desktop/CLI 零摩擦）
    */
-  public async loadWorkspacePlugins(baseDir = process.cwd()): Promise<void> {
+  public async loadWorkspacePlugins(baseDir?: string): Promise<void> {
+    const targetDir = baseDir || (typeof process !== 'undefined' ? process.cwd() : '.');
     const { DynamicPluginLoader } = await import('./package-manager/dynamic-loader.js');
     const loader = new DynamicPluginLoader(this.extensionHost);
-    await loader.loadDefaultDirectories(baseDir);
+    await loader.loadDefaultDirectories(targetDir);
   }
 
   public subscribe(listener: AgentEventListener): () => void {
@@ -278,7 +280,7 @@ export class Agent {
       throw new Error('Agent run was not claimed before starting.');
     }
 
-    const mergedTools = new ToolRegistry();
+    const mergedTools = new ToolRegistry(this.clock);
     for (const t of this.toolRegistry.getAll()) {
       mergedTools.register(t);
     }
@@ -307,7 +309,10 @@ export class Agent {
           const extRes = await this.extensionHost.executeBeforeToolCall({
             toolCallId: event.toolCall.id,
             toolName: event.toolCall.name,
-            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<string, unknown>
+            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<
+              string,
+              unknown
+            >
           });
           if (extRes?.block) {
             return { block: true, reason: extRes.reason, terminate: extRes.terminate };
@@ -324,7 +329,10 @@ export class Agent {
           const extRes = await this.extensionHost.executeAfterToolCall({
             toolCallId: event.toolCall.id,
             toolName: event.toolCall.name,
-            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<string, unknown>,
+            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<
+              string,
+              unknown
+            >,
             result: event.result,
             isError: event.isError
           });
@@ -344,7 +352,7 @@ export class Agent {
       followUpQueue: this.followUpQueue,
       emitEvent: (ev) => this.emitEvent(ev),
       signal: abortController.signal,
-      clock: REAL_CLOCK
+      clock: this.clock
     });
 
     const settledRunPromise = runPromise.then(

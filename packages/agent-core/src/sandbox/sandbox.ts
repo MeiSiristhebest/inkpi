@@ -6,6 +6,8 @@
 
 import * as vm from 'node:vm';
 import { InvalidDiceNotationError } from '../errors.js';
+import type { Clock } from '../ports/index.js';
+import { REAL_CLOCK } from '../ports/index.js';
 
 /** 沙箱执行的统一默认超时（毫秒）。原先 3000 / 2000 / 1000 三处魔法值统一收敛到这里。 */
 export const DEFAULT_SANDBOX_TIMEOUT_MS = 3000;
@@ -13,7 +15,7 @@ export const DEFAULT_SANDBOX_TIMEOUT_MS = 3000;
 export interface SandboxExecutionOptions {
   timeoutMs?: number;
   maxOutputChars?: number;
-  globals?: Record<string, any>;
+  globals?: Record<string, unknown>;
 }
 
 export interface SandboxExecutionResult<T = any> {
@@ -36,17 +38,19 @@ export interface SandboxRunner {
 export class NodeVMSandbox implements SandboxRunner {
   private defaultTimeoutMs: number;
   private maxOutputChars: number;
+  private clock: Clock;
 
-  constructor(options: { defaultTimeoutMs?: number; maxOutputChars?: number } = {}) {
+  constructor(options: { defaultTimeoutMs?: number; maxOutputChars?: number; clock?: Clock } = {}) {
     this.defaultTimeoutMs = options.defaultTimeoutMs || DEFAULT_SANDBOX_TIMEOUT_MS;
     this.maxOutputChars = options.maxOutputChars || 65536;
+    this.clock = options.clock || REAL_CLOCK;
   }
 
   public async execute<T = any>(
     code: string,
     options: SandboxExecutionOptions = {}
   ): Promise<SandboxExecutionResult<T>> {
-    const startTime = Date.now();
+    const startTime = this.clock();
     const timeoutMs = options.timeoutMs || this.defaultTimeoutMs;
     const maxChars = options.maxOutputChars || this.maxOutputChars;
 
@@ -89,7 +93,7 @@ export class NodeVMSandbox implements SandboxRunner {
     };
 
     // 严密隔离的 Sandbox 上下文，彻底移除 process, require, import, fs, child_process
-    const contextObject: Record<string, any> = {
+    const contextObject: Record<string, unknown> = {
       console: sandboxConsole,
       Math,
       JSON,
@@ -129,7 +133,7 @@ export class NodeVMSandbox implements SandboxRunner {
         result,
         stdout,
         stderr,
-        executionTimeMs: Date.now() - startTime
+        executionTimeMs: this.clock() - startTime
       };
     } catch (err: any) {
       const isTimeout = err.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT' || err.message?.includes('timed out');
@@ -137,7 +141,7 @@ export class NodeVMSandbox implements SandboxRunner {
         success: false,
         stdout,
         stderr,
-        executionTimeMs: Date.now() - startTime,
+        executionTimeMs: this.clock() - startTime,
         error: isTimeout ? `Script execution timed out after ${timeoutMs}ms` : err.message,
         terminatedByTimeout: isTimeout
       };

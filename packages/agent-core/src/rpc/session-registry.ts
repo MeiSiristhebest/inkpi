@@ -53,15 +53,20 @@ export class SessionRegistry implements SessionStore {
   private defaultModel?: ModelConfig;
   private clock: Clock;
 
-  constructor(clock: Clock, defaultModel?: ModelConfig) {
+  private idGenerator?: () => string;
+
+  constructor(clock: Clock, defaultModel?: ModelConfig, idGenerator?: () => string) {
     // 注意：不再静默回落到假模型。defaultModel 可选，但当会话既未显式指定模型、
     // 管理器也无默认模型时，createSession 会抛出明确的错误。
     this.defaultModel = defaultModel;
     this.clock = clock;
+    this.idGenerator = idGenerator;
   }
 
   public createSession(options: SessionCreateOptions = {}): ManagedSession {
-    const sessionId = options.sessionId || `sess_${this.clock()}_${Math.random().toString(36).slice(2, 7)}`;
+    const sessionId =
+      options.sessionId ||
+      (this.idGenerator ? this.idGenerator() : `sess_${this.clock()}_${(this.clock() % 100000).toString(36)}`);
     if (this.sessions.has(sessionId)) {
       return this.sessions.get(sessionId)!;
     }

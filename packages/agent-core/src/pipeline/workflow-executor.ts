@@ -141,11 +141,12 @@ export class WorkflowExecutor {
     }
 
     ctx.stageOutputs[stage.id] = outputText;
+    const stageTimestamp = this.options.clock ? this.options.clock() : Date.now();
     ctx.stageLogs.push({
       stageId: stage.id,
       role: roleConfig.role,
       content: outputText,
-      timestamp: Date.now()
+      timestamp: stageTimestamp
     });
 
     this.strategy.applyStageOutputAliases(ctx, stage.id, outputText);
