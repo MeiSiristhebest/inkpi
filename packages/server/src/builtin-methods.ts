@@ -275,5 +275,23 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
   'telemetry.exportOtel': (_params, ctx) => {
     if (!ctx.telemetry) throw new Error('Telemetry capability not initialized');
     return ctx.telemetry.exportOpenTelemetryJson();
+  },
+
+  // 11. Workspace Project Switch (面向 Desktop 动态工程/多书切换)
+  'workspace.open': async (params, ctx) => {
+    const targetDir = params.path || params.directory;
+    if (typeof targetDir !== 'string' || targetDir.trim().length === 0) {
+      throw new Error('workspace.open requires a non-empty directory path');
+    }
+
+    // 如果挂载了 Agent，自动重载目标工作区的插件与规则
+    if (ctx.agent) {
+      await ctx.agent.loadWorkspacePlugins(targetDir);
+    }
+
+    return {
+      success: true,
+      currentWorkspace: targetDir
+    };
   }
 };

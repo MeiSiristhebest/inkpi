@@ -39,6 +39,8 @@ export interface PrintModeOptions {
   modelConfig?: ModelConfig;
   thinkingLevel?: ThinkingLevel;
   json?: boolean;
+  /** 是否开启逐行 NDJSON 实时事件流输出（面向 Desktop / 子进程实时打字） */
+  stream?: boolean;
   output?: string;
   systemPrompt?: string;
   /** Explicit workflow adapter for batch execution; no domain stages are implied. */
@@ -184,6 +186,11 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
     let hasStreamedToStdout = false;
 
     agent.subscribe((event) => {
+      // 如果开启了 --json --stream 模式，实时刷出单行 NDJSON 帧给 Desktop / 上游管道
+      if (options.json && options.stream) {
+        process.stdout.write(`${JSON.stringify({ type: 'event', event })}\n`);
+      }
+
       if (event.type === 'message_update') {
         const ev = (event as any).assistantMessageEvent;
         if (ev && !options.json) {
