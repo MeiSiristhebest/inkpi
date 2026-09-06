@@ -898,6 +898,7 @@ describe('@inkpi/ai', () => {
           role: 'toolResult',
           toolCallId:
             'call_invalid|pipe|special_character_and_very_long_identifier_that_exceeds_sixty_four_characters_limit',
+          toolName: 'calculator',
           content: [{ type: 'text', text: '2' }],
           isError: false
         }
