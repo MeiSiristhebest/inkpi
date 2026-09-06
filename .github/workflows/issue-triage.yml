@@ -1,0 +1,91 @@
+name: Issue & Community Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    name: Automatic Triage & Labeling
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Analyze and Label Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = (issue.title || '').toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+
+            const labelsToAdd = [];
+
+            const isBug =
+              title.includes('bug') ||
+              title.includes('crash') ||
+              body.includes('error') ||
+              body.includes('fail');
+            if (isBug) {
+              labelsToAdd.push('bug');
+            }
+
+            const isFeat =
+              title.includes('feat') ||
+              title.includes('enhancement') ||
+              body.includes('feature');
+            if (isFeat) {
+              labelsToAdd.push('enhancement');
+            }
+
+            const isDoc =
+              title.includes('doc') ||
+              body.includes('documentation') ||
+              body.includes('readme');
+            if (isDoc) {
+              labelsToAdd.push('documentation');
+            }
+
+            if (body.includes('tui') || body.includes('terminal')) {
+              labelsToAdd.push('area:tui');
+            }
+
+            const isAi =
+              body.includes('ai') ||
+              body.includes('model') ||
+              body.includes('provider');
+            if (isAi) {
+              labelsToAdd.push('area:ai');
+            }
+
+            if (labelsToAdd.length === 0) {
+              labelsToAdd.push('needs-triage');
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: labelsToAdd
+            });
+
+            const welcomeComment = [
+              'Thanks for opening this issue!',
+              'Our team and community contributors have been notified.',
+              'We will review it shortly.'
+            ].join(' ');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: welcomeComment
+            });

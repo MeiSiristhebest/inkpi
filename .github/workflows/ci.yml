@@ -4,23 +4,23 @@ on:
   push:
     branches: [master, main]
     paths:
-      - 'packages/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'vitest.config.ts'
-      - '.github/workflows/ci.yml'
+      - "packages/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vitest.config.ts"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [master, main]
     paths:
-      - 'packages/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'vitest.config.ts'
-      - '.github/workflows/ci.yml'
+      - "packages/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vitest.config.ts"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -54,7 +54,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Install Dependencies
         run: pnpm install --no-frozen-lockfile --ignore-scripts
