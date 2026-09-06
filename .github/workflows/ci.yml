@@ -1,16 +1,42 @@
+---
 name: CI
 
 on:
   push:
     branches: [master, main]
+    paths:
+      - 'packages/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'vitest.config.ts'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [master, main]
+    paths:
+      - 'packages/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'vitest.config.ts'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
-    name: Lint, Build & Test Coverage (${{ matrix.os }}, Node ${{ matrix.node-version }})
+    name: Build & Test (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node-version: [22.x]
@@ -30,6 +56,14 @@ jobs:
           corepack enable
           corepack prepare pnpm@latest --activate
 
+      - name: Setup pnpm Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
       - name: Install Dependencies
         run: pnpm install --no-frozen-lockfile --ignore-scripts
 
@@ -41,3 +75,4 @@ jobs:
 
       - name: Run Test Coverage & Thresholds
         run: pnpm run test:coverage
+...
