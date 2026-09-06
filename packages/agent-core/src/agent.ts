@@ -65,6 +65,15 @@ export class Agent {
     this.extensionRunner = new ExtensionRunner(this.extensionHost);
   }
 
+  /**
+   * 自动加载当前工作区与扩展目录下的所有插件（面向 Desktop/CLI 零摩擦）
+   */
+  public async loadWorkspacePlugins(baseDir = process.cwd()): Promise<void> {
+    const { DynamicPluginLoader } = await import('./package-manager/dynamic-loader.js');
+    const loader = new DynamicPluginLoader(this.extensionHost);
+    await loader.loadDefaultDirectories(baseDir);
+  }
+
   public subscribe(listener: AgentEventListener): () => void {
     this.listeners.push(listener);
     return () => {
@@ -284,6 +293,47 @@ export class Agent {
             transformed = await this.options.transformContext(transformed, signal);
           }
           return this.extensionHost.transformContext(transformed, signal);
+        },
+        beforeToolCall: async (event) => {
+          // 优先触发 Agent 显式 options.beforeToolCall
+          if (this.options.beforeToolCall) {
+            const res = await this.options.beforeToolCall(event);
+            if (res?.block) return res;
+          }
+          // 自动桥接第三方扩展注册的 beforeToolCall
+          const extRes = await this.extensionHost.executeBeforeToolCall({
+            toolCallId: event.toolCall.id,
+            toolName: event.toolCall.name,
+            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<string, unknown>
+          });
+          if (extRes?.block) {
+            return { block: true, reason: extRes.reason, terminate: extRes.terminate };
+          }
+          return undefined;
+        },
+        afterToolCall: async (event) => {
+          // 优先触发 Agent 显式 options.afterToolCall
+          if (this.options.afterToolCall) {
+            const res = await this.options.afterToolCall(event);
+            if (res) return res;
+          }
+          // 自动桥接第三方扩展注册的 afterToolCall
+          const extRes = await this.extensionHost.executeAfterToolCall({
+            toolCallId: event.toolCall.id,
+            toolName: event.toolCall.name,
+            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<string, unknown>,
+            result: event.result,
+            isError: event.isError
+          });
+          if (extRes) {
+            return {
+              content: extRes.content,
+              details: extRes.details,
+              isError: extRes.isError,
+              terminate: extRes.terminate
+            };
+          }
+          return undefined;
         }
       },
       toolRegistry: mergedTools,

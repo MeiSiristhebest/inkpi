@@ -21,6 +21,7 @@ export * from './telemetry/index.js';
 export * from './pipeline/index.js';
 export * from './branch-what-if.js';
 export * from './package-manager/package-manager.js';
+export * from './package-manager/dynamic-loader.js';
 export * from './trust/project-trust.js';
 export * from './sandbox/index.js';
 export * from './reducer/session-reducer.js';

@@ -214,6 +214,44 @@ export interface ExtensionPipelineHooks {
   getPipelineHooks(): PipelineHooks[];
 }
 
+export interface ToolExecutionEvent {
+  toolCallId: string;
+  toolName: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface ToolExecutionResultEvent {
+  toolCallId: string;
+  toolName: string;
+  parameters: Record<string, unknown>;
+  result: ToolResult;
+  isError: boolean;
+}
+
+export interface BeforeToolHookResult {
+  block?: boolean;
+  reason?: string;
+  terminate?: boolean;
+  modifiedParams?: Record<string, unknown>;
+}
+
+export interface AfterToolHookResult {
+  content?: (TextContent | ImageContent)[];
+  details?: unknown;
+  isError?: boolean;
+  terminate?: boolean;
+}
+
+/** 创作工具执行前后置门控与质检钩子 (PreToolUse / PostToolUse) */
+export interface ExtensionToolHooks {
+  registerToolHooks(hooks: {
+    beforeToolCall?: (event: ToolExecutionEvent) => Promise<BeforeToolHookResult | void> | BeforeToolHookResult | void;
+    afterToolCall?: (
+      event: ToolExecutionResultEvent
+    ) => Promise<AfterToolHookResult | void> | AfterToolHookResult | void;
+  }): () => void;
+}
+
 /**
  * 纯净通用 ExtensionAPI 总线契约（对外聚合面，等价于各能力面的并集）。
  * 具备 0 业务偏见，支持外部任意扩展注册工具、命令、快捷键、UI 交互与生命周期钩子。
@@ -226,7 +264,8 @@ export interface ExtensionAPI
     ExtensionShortcutRegistry,
     ExtensionContextTransformers,
     ExtensionUi,
-    ExtensionPipelineHooks {}
+    ExtensionPipelineHooks,
+    ExtensionToolHooks {}
 
 export type ExtensionFactory = (api: ExtensionAPI) => Promise<void> | void;
 

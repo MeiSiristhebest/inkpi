@@ -33,6 +33,20 @@ export class ExtensionHost implements ExtensionAPI {
   private tools = new Map<string, any>();
   private transformers: ContextTransformer[] = [];
   private pipelineHooks: PipelineHooks[] = [];
+  private toolHooks: Array<{
+    beforeToolCall?: (
+      event: import('@inkpi/protocol').ToolExecutionEvent
+    ) =>
+      | Promise<import('@inkpi/protocol').BeforeToolHookResult | void>
+      | import('@inkpi/protocol').BeforeToolHookResult
+      | void;
+    afterToolCall?: (
+      event: import('@inkpi/protocol').ToolExecutionResultEvent
+    ) =>
+      | Promise<import('@inkpi/protocol').AfterToolHookResult | void>
+      | import('@inkpi/protocol').AfterToolHookResult
+      | void;
+  }> = [];
   private uiDelegate?: UIDelegate;
 
   constructor(uiDelegate?: UIDelegate) {
@@ -227,6 +241,66 @@ export class ExtensionHost implements ExtensionAPI {
     return this.registerPipelineHooks(hooks);
   }
 
+  public registerToolHooks(hooks: {
+    beforeToolCall?: (
+      event: import('@inkpi/protocol').ToolExecutionEvent
+    ) =>
+      | Promise<import('@inkpi/protocol').BeforeToolHookResult | void>
+      | import('@inkpi/protocol').BeforeToolHookResult
+      | void;
+    afterToolCall?: (
+      event: import('@inkpi/protocol').ToolExecutionResultEvent
+    ) =>
+      | Promise<import('@inkpi/protocol').AfterToolHookResult | void>
+      | import('@inkpi/protocol').AfterToolHookResult
+      | void;
+  }): () => void {
+    this.toolHooks.push(hooks);
+    return () => {
+      const idx = this.toolHooks.indexOf(hooks);
+      if (idx !== -1) this.toolHooks.splice(idx, 1);
+    };
+  }
+
+  public async executeBeforeToolCall(
+    event: import('@inkpi/protocol').ToolExecutionEvent
+  ): Promise<import('@inkpi/protocol').BeforeToolHookResult> {
+    let currentParams = { ...event.parameters };
+    for (const h of this.toolHooks) {
+      if (h.beforeToolCall) {
+        const res = await h.beforeToolCall({ ...event, parameters: currentParams });
+        if (res?.block) {
+          return { block: true, reason: res.reason, terminate: res.terminate };
+        }
+        if (res?.modifiedParams) {
+          currentParams = res.modifiedParams;
+        }
+      }
+    }
+    return { block: false, modifiedParams: currentParams };
+  }
+
+  public async executeAfterToolCall(
+    event: import('@inkpi/protocol').ToolExecutionResultEvent
+  ): Promise<import('@inkpi/protocol').AfterToolHookResult | undefined> {
+    let currentResult = { ...event.result };
+    let overridden = false;
+    let terminate = false;
+    for (const h of this.toolHooks) {
+      if (h.afterToolCall) {
+        const res = await h.afterToolCall({ ...event, result: currentResult });
+        if (res) {
+          overridden = true;
+          if (res.content) currentResult.content = res.content;
+          if (res.details !== undefined) currentResult.details = res.details;
+          if (res.isError !== undefined) currentResult.isError = res.isError;
+          if (res.terminate) terminate = true;
+        }
+      }
+    }
+    return overridden ? { ...currentResult, terminate } : undefined;
+  }
+
   public getPipelineHooks(): PipelineHooks[] {
     return [...this.pipelineHooks];
   }
@@ -242,6 +316,7 @@ export class ExtensionHost implements ExtensionAPI {
     this.tools.clear();
     this.transformers = [];
     this.pipelineHooks = [];
+    this.toolHooks = [];
   }
 }
 
