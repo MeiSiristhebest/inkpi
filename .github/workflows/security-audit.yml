@@ -3,12 +3,12 @@ name: Dependency Security & Supply Chain Audit
 on:
   pull_request:
     paths:
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/security-audit.yml'
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/security-audit.yml"
   schedule:
     # 每周一凌晨 03:00 自动进行定期供应链漏洞巡检
-    - cron: '0 3 * * 1'
+    - cron: "0 3 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Verify Exact Pinned Versions
         run: pnpm run check:pinned-deps
