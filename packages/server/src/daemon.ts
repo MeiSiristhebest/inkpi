@@ -5,7 +5,10 @@ import {
   type SessionCreateOptions,
   SessionRegistry,
   ContextPipeline,
+  InstructionRegistry,
   TaskRouter,
+  type InstructionDefinition,
+  type InstructionEntry,
 } from '@inkpi/agent-core';
 import type {
   DomainSyncPullParams,
@@ -33,6 +36,7 @@ export interface DaemonOptions {
   host?: string;
   wsPort?: number;
   defaultModel?: ModelConfig;
+  instructionRegistry?: InstructionRegistry;
   context?: Partial<ServerContext>;
 }
 
@@ -61,6 +65,7 @@ export class InkPiDaemon {
   private tcpServer: net.Server | null = null;
   private wsPort: number | null = null;
   private options: DaemonOptions;
+  private readonly instructionRegistry: InstructionRegistry;
 
   constructor(options: DaemonOptions = {}) {
     this.options = {
@@ -69,6 +74,8 @@ export class InkPiDaemon {
       ...options
     };
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
+    this.instructionRegistry =
+      options.instructionRegistry ?? options.context?.instructionRegistry ?? new InstructionRegistry();
     const contextPipeline = options.context?.contextPipeline ?? new ContextPipeline();
     if (
       options.context?.jitRetriever &&
@@ -80,11 +87,16 @@ export class InkPiDaemon {
       checkpointStore: options.context?.checkpointStore,
       executionStore: options.context?.executionStore,
       contextPipeline,
+      instructionRegistry: this.instructionRegistry,
     });
     if (options.defaultModel && !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')) {
       this.taskRouter.registry.register(new TaskModelHandler({ model: options.defaultModel }));
     }
-    this.rpcServer = new InkRpcServer({ ...options.context, taskRouter: this.taskRouter } as ServerContext);
+    this.rpcServer = new InkRpcServer({
+      ...options.context,
+      taskRouter: this.taskRouter,
+      instructionRegistry: this.instructionRegistry,
+    } as ServerContext);
     this.taskRouter.subscribe((event) => {
       this.rpcServer.notify('task.event', event);
     });
@@ -101,6 +113,11 @@ export class InkPiDaemon {
 
   public getTaskRouter(): TaskRouter {
     return this.taskRouter;
+  }
+
+  /** The registry used by the daemon-owned TaskRouter and instruction RPCs. */
+  public getInstructionRegistry(): InstructionRegistry {
+    return this.instructionRegistry;
   }
 
   /** 返回守护进程实际监听的 TCP 端口（端口 0 时由操作系统分配）。 */
@@ -123,6 +140,26 @@ export class InkPiDaemon {
 
     this.rpcServer.registerMethod('domain.sync.restore', (params: DomainSyncRestoreParams) => {
       return this.withDomainProjection().restoreSnapshot(params.snapshot);
+    });
+
+    this.rpcServer.registerMethod('instruction.register', (params: unknown) => {
+      return this.registerInstructions(params);
+    });
+
+    this.rpcServer.registerMethod('instruction.list', (params: InstructionListParams = {}) => {
+      const entries = this.instructionRegistry.list();
+      if (!params.taskKind) return entries;
+      return entries.filter((entry) => entry.tags?.includes(`task:${params.taskKind}`));
+    });
+
+    this.rpcServer.registerMethod('instruction.status', () => {
+      const entries = this.instructionRegistry.list();
+      return {
+        ready: true,
+        version: this.instructionRegistry.version(),
+        count: entries.length,
+        instructionIds: entries.map((entry) => entry.id),
+      } satisfies InstructionRegistryStatus;
     });
 
     this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
@@ -284,6 +321,47 @@ export class InkPiDaemon {
     return projection;
   }
 
+  private registerInstructions(params: unknown): InstructionRegisterResult {
+    const definitions = normalizeInstructionDefinitions(params);
+    const added: string[] = [];
+    const updated: string[] = [];
+    const unchanged: string[] = [];
+    const results: InstructionRegistrationStatus[] = [];
+
+    for (const definition of definitions) {
+      const entry = instructionEntry(definition);
+      const existing = this.instructionRegistry.list().find((candidate) => candidate.id === entry.id);
+      if (!existing) {
+        this.instructionRegistry.register(entry);
+        added.push(entry.id);
+        results.push({ id: entry.id, version: definition.version, status: 'added' });
+        continue;
+      }
+
+      if (sameInstruction(existing, entry)) {
+        unchanged.push(entry.id);
+        results.push({ id: entry.id, version: definition.version, status: 'unchanged' });
+        continue;
+      }
+
+      this.instructionRegistry.upsert(entry);
+      updated.push(entry.id);
+      results.push({ id: entry.id, version: definition.version, status: 'updated' });
+    }
+
+    return {
+      success: true,
+      registered: true,
+      count: definitions.length,
+      instructionIds: definitions.map((definition) => definition.id),
+      added,
+      updated,
+      unchanged,
+      results,
+      version: this.instructionRegistry.version(),
+    };
+  }
+
   public async start(port = this.options.port, host = this.options.host): Promise<this> {
     if (this.running) return this;
     this.startTime = Date.now();
@@ -342,4 +420,94 @@ export class InkPiDaemon {
       uptimeMs: this.running ? Date.now() - this.startTime : 0
     };
   }
+}
+
+interface InstructionListParams {
+  taskKind?: string;
+}
+
+interface InstructionRegistryStatus {
+  ready: boolean;
+  version: string;
+  count: number;
+  instructionIds: string[];
+}
+
+interface InstructionRegistrationStatus {
+  id: string;
+  version: string;
+  status: 'added' | 'updated' | 'unchanged';
+}
+
+interface InstructionRegisterResult {
+  success: true;
+  registered: true;
+  count: number;
+  instructionIds: string[];
+  added: string[];
+  updated: string[];
+  unchanged: string[];
+  results: InstructionRegistrationStatus[];
+  version: string;
+}
+
+function normalizeInstructionDefinitions(params: unknown): InstructionDefinition[] {
+  const rawDefinitions = Array.isArray(params)
+    ? params
+    : isRecord(params) && Array.isArray(params.instructions)
+      ? params.instructions
+      : isRecord(params) && params.instruction !== undefined
+        ? [params.instruction]
+        : isRecord(params)
+          ? [params]
+          : [];
+  if (rawDefinitions.length === 0) {
+    throw new Error('instruction.register requires an instruction or instructions array');
+  }
+  return rawDefinitions.map((raw) => normalizeInstructionDefinition(raw));
+}
+
+function normalizeInstructionDefinition(raw: unknown): InstructionDefinition {
+  if (!isRecord(raw)) throw new Error('Instruction definition must be an object');
+  const id = requiredString(raw.id, 'id');
+  const version = requiredString(raw.version, 'version');
+  const systemInstruction = requiredString(raw.systemInstruction, 'systemInstruction');
+  const taskKind = typeof raw.taskKind === 'string' && raw.taskKind.trim().length > 0
+    ? raw.taskKind.trim()
+    : inferTaskKind(id);
+  return { id, version, taskKind, systemInstruction };
+}
+
+function instructionEntry(definition: InstructionDefinition): InstructionEntry {
+  return {
+    id: definition.id,
+    scope: 'task',
+    content: definition.systemInstruction,
+    version: definition.version,
+    source: `task:${definition.taskKind}`,
+    tags: [`task:${definition.taskKind}`],
+  };
+}
+
+function sameInstruction(left: InstructionEntry, right: InstructionEntry): boolean {
+  return left.scope === right.scope
+    && left.content === right.content
+    && left.version === right.version
+    && right.tags?.every((tag) => left.tags?.includes(tag)) === true;
+}
+
+function inferTaskKind(id: string): string {
+  const versionSeparator = id.lastIndexOf(':');
+  return versionSeparator > 0 ? id.slice(0, versionSeparator) : id;
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Instruction ${field} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

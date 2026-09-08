@@ -104,6 +104,12 @@ export class TaskModelHandler implements TaskHandler {
         usage: finalAssistant.usage,
         toolCalls: toolTrace,
         toolStepCount: toolStep,
+        ...(context.instructions && context.instructions.entryIds.length > 0
+          ? {
+              instructionIds: [...context.instructions.entryIds],
+              instructionVersion: context.instructions.version,
+            }
+          : {}),
       },
     };
   }
@@ -152,13 +158,19 @@ function publicSteeringMessage(inputs: unknown[]): AgentMessage {
 
 function buildPrompt(context: TaskHandlerContext): string {
   const payload = context.task.input.payload;
-  const instructions = typeof context.task.metadata?.instruction === 'string'
+  const stableInstruction = context.instructions?.entryIds.length
+    ? context.instructions.text.trim()
+    : '';
+  // Backward compatibility only: metadata instruction is accepted for tasks
+  // that have no matching InstructionRegistry entry. Registered tasks never
+  // receive this dynamic string, which prevents duplicate prompt assembly.
+  const fallbackInstruction = !stableInstruction && typeof context.task.metadata?.instruction === 'string'
     ? context.task.metadata.instruction
     : '';
   return [
     `Task kind: ${context.task.kind}`,
-    instructions ? `Instruction: ${instructions}` : '',
-    context.instructions?.text ? `Stable task instruction:\n${context.instructions.text}` : '',
+    fallbackInstruction ? `Legacy instruction (unregistered task fallback): ${fallbackInstruction}` : '',
+    stableInstruction ? `Stable task instruction:\n${stableInstruction}` : '',
     'Return only the declared output format. Do not describe hidden reasoning.',
     `Context:\n${context.context.text}`,
     payload === undefined ? '' : `Task payload:\n${stableSerialize(payload)}`,

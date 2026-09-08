@@ -16,6 +16,7 @@ import type { DomainProjectionStore } from '@inkpi/storage';
 import type { TaskCheckpointStore } from '@inkpi/agent-core';
 import type { TaskExecutionStore } from '@inkpi/agent-core';
 import type { ContextPipeline } from '@inkpi/agent-core';
+import type { InstructionRegistry } from '@inkpi/agent-core';
 import { BUILTIN_RPC_METHODS, type RpcMethodHandler } from './builtin-methods.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
@@ -29,6 +30,7 @@ export interface ServerContext {
   checkpointStore?: TaskCheckpointStore;
   executionStore?: TaskExecutionStore;
   contextPipeline?: ContextPipeline;
+  instructionRegistry?: InstructionRegistry;
   tree?: SessionTree;
   editor?: HeadlessEditorState;
   ghost?: GhostTextManager;
