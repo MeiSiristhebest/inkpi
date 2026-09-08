@@ -31,6 +31,13 @@ export interface ProgressiveSkillRuntimeOptions {
   discovery?: SkillDiscoveryEngine;
 }
 
+export interface SkillResolveQuery {
+  intent?: string;
+  capability?: string;
+  taskKind?: string;
+  activation?: SkillActivation;
+}
+
 /**
  * Keeps skill discovery cheap and loads full prompt bodies only on demand.
  * Dynamic extensions continue to use the existing ExtensionHost and loader;
@@ -52,7 +59,11 @@ export class ProgressiveSkillRuntime {
   }
 
   discover(): SkillManifestEntry[] {
-    for (const skill of this.discovery.discover()) this.skills.set(skill.name, skill);
+    for (const skill of this.discovery.discover()) {
+      // Keep an already loaded body in memory while refreshing metadata from
+      // disk. A second metadata scan must not trigger another body load.
+      if (!this.loaded.has(skill.name)) this.skills.set(skill.name, skill);
+    }
     return [...this.skills.values()]
       .map((skill) => ({
         name: skill.name,
@@ -67,11 +78,12 @@ export class ProgressiveSkillRuntime {
     return [...this.skills.values()].map(toManifest).sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  resolve(query: { intent?: string; capability?: string; taskKind?: string }): SkillManifest[] {
+  resolve(query: SkillResolveQuery): SkillManifest[] {
     return this.discoverManifests().filter((manifest) =>
       (!query.intent || manifest.intents?.includes(query.intent)) &&
       (!query.capability || manifest.capabilities?.includes(query.capability)) &&
-      (!query.taskKind || manifest.taskKinds?.includes(query.taskKind)),
+      (!query.taskKind || manifest.taskKinds?.includes(query.taskKind)) &&
+      (!query.activation || manifest.activation === query.activation),
     );
   }
 
@@ -107,21 +119,43 @@ export class ProgressiveSkillRuntime {
 function toManifest(skill: SkillInfo): SkillManifest {
   const frontmatter = skill.frontmatter;
   return {
-    id: String(frontmatter.id || skill.name),
-    version: String(frontmatter.version || '1.0.0'),
-    title: String(frontmatter.title || skill.name),
+    id: scalarString(firstDefined(frontmatter, ['id', 'name'])) ?? skill.name,
+    version: scalarString(firstDefined(frontmatter, ['version'])) ?? '1.0.0',
+    title: scalarString(firstDefined(frontmatter, ['title', 'name'])) ?? skill.name,
     description: skill.description,
-    intents: asList(frontmatter.intents),
-    capabilities: asList(frontmatter.capabilities),
-    taskKinds: asList(frontmatter.taskKinds),
-    tools: asList(frontmatter.tools),
-    activation: isActivation(frontmatter.activation) ? frontmatter.activation : 'lazy',
+    intents: asList(firstDefined(frontmatter, ['intents', 'intent'])),
+    capabilities: asList(firstDefined(frontmatter, ['capabilities', 'capability'])),
+    taskKinds: asList(firstDefined(frontmatter, ['taskKinds', 'task-kinds', 'task_kinds'])),
+    tools: asList(firstDefined(frontmatter, ['tools', 'tool'])),
+    activation: isActivation(firstDefined(frontmatter, ['activation']))
+      ? (firstDefined(frontmatter, ['activation']) as SkillActivation)
+      : 'lazy',
   };
 }
 
+function firstDefined(frontmatter: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (frontmatter[key] !== undefined && frontmatter[key] !== null) return frontmatter[key];
+  }
+  return undefined;
+}
+
+function scalarString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const result = typeof value === 'string' ? value.trim() : String(value);
+  return result || undefined;
+}
+
 function asList(value: unknown): string[] | undefined {
-  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string');
-  if (typeof value === 'string' && value.trim()) return value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (Array.isArray(value)) {
+    const items = value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
+    return items.length > 0 ? items : undefined;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const normalized = value.trim().replace(/^\[|\]$/g, '');
+    const items = normalized.split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+    return items.length > 0 ? items : undefined;
+  }
   return undefined;
 }
 
