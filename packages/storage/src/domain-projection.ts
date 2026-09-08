@@ -1,4 +1,5 @@
 import type {
+  DomainChange,
   DomainProjectionSnapshot,
   DomainChangeSet,
   DomainProjectionApplyResult,
@@ -6,12 +7,19 @@ import type {
 } from '@inkpi/protocol';
 import { calculateDomainChangeSetChecksum } from '@inkpi/protocol';
 import type { IDb } from './ports.js';
+import { DomainMaterializer } from './domain-materializer.js';
+
+export { DomainMaterializer, DomainMaterializer as DomainProjectionMaterializer } from './domain-materializer.js';
 
 export class DomainProjectionStore {
+  private readonly materializer: DomainMaterializer;
+
   constructor(
     private readonly db: IDb,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    this.materializer = new DomainMaterializer(db);
+  }
 
   public apply(changeSet: DomainChangeSet): DomainProjectionApplyResult {
     validateChangeSet(changeSet);
@@ -54,10 +62,11 @@ export class DomainProjectionStore {
           changeSet.sourceDeviceId,
           changeSet.baseRevision,
           changeSet.revision,
-          JSON.stringify(changeSet.changes),
+          serializeChanges(changeSet.changes),
           changeSet.checksum,
           changeSet.createdAt,
         );
+      this.materializer.applyInTransaction(changeSet.workspaceId, changeSet.changes);
       const updatedAt = this.now();
       this.db
         .prepare(
@@ -105,13 +114,25 @@ export class DomainProjectionStore {
         sourceDeviceId: String(row.source_device_id),
         baseRevision: Number(row.base_revision),
         revision: Number(row.revision),
-        changes: JSON.parse(String(row.changes_json)),
+        changes: deserializeChanges(String(row.changes_json)),
         checksum: String(row.checksum),
         createdAt: Number(row.created_at),
       } satisfies DomainChangeSet;
       const { checksum: _checksum, ...unsigned } = changeSet;
       if (calculateDomainChangeSetChecksum(unsigned) !== changeSet.checksum) {
-        throw new Error(`Corrupt domain change set checksum: ${changeSet.id}`);
+        // Versions before the reversible encoding persisted optional delete
+        // payloads by omitting them from JSON. Accept that exact historical
+        // representation while returning the typed shape to callers.
+        const legacyChanges = changeSet.changes.map((change) =>
+          Object.prototype.hasOwnProperty.call(change, 'payload')
+            ? change
+            : { ...change, payload: undefined },
+        ) as DomainChange[];
+        const legacyUnsigned = { ...unsigned, changes: legacyChanges };
+        if (calculateDomainChangeSetChecksum(legacyUnsigned) !== changeSet.checksum) {
+          throw new Error(`Corrupt domain change set checksum: ${changeSet.id}`);
+        }
+        changeSet.changes = legacyChanges;
       }
       if (changeSet.revision !== expectedRevision || changeSet.baseRevision !== changeSet.revision - 1) {
         throw new Error('Domain projection change log is out of order');
@@ -153,11 +174,12 @@ export class DomainProjectionStore {
             changeSet.sourceDeviceId,
             changeSet.baseRevision,
             changeSet.revision,
-            JSON.stringify(changeSet.changes),
+            serializeChanges(changeSet.changes),
             changeSet.checksum,
             changeSet.createdAt,
           );
       }
+      this.materializer.rebuildInTransaction(snapshot.workspaceId, snapshot.changeSets);
       const updatedAt = this.now();
       this.db
         .prepare(
@@ -167,6 +189,13 @@ export class DomainProjectionStore {
         )
         .run(snapshot.workspaceId, snapshot.revision, updatedAt);
       return { workspaceId: snapshot.workspaceId, revision: snapshot.revision, updatedAt };
+    });
+  }
+
+  /** Rebuild derived SQLite rows from the daemon's stored authoritative log. */
+  public rebuild(workspaceId: string): void {
+    this.db.transaction(() => {
+      this.materializer.rebuildInTransaction(workspaceId, this.list(workspaceId));
     });
   }
 }
@@ -210,4 +239,26 @@ function validateSnapshot(snapshot: DomainProjectionSnapshot): void {
     expected += 1;
   }
   if (snapshot.revision !== expected - 1) throw new Error('Domain projection snapshot cursor does not match its changes');
+}
+
+const UNDEFINED_SENTINEL = '__inkpi_domain_projection_undefined__';
+
+/** JSON cannot represent undefined, but the wire checksum can. Round-trip it. */
+function serializeChanges(changes: DomainChangeSet['changes']): string {
+  return JSON.stringify(changes, (_key, value: unknown) =>
+    value === undefined ? { [UNDEFINED_SENTINEL]: true } : value,
+  );
+}
+
+function deserializeChanges(serialized: string): DomainChangeSet['changes'] {
+  return restoreUndefined(JSON.parse(serialized)) as DomainChangeSet['changes'];
+}
+
+function restoreUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(restoreUndefined);
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length === 1 && record[UNDEFINED_SENTINEL] === true) return undefined;
+  for (const key of Object.keys(record)) record[key] = restoreUndefined(record[key]);
+  return record;
 }
