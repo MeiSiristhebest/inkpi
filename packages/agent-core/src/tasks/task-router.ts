@@ -63,6 +63,8 @@ interface TaskRecord {
 export class TaskRouter {
   readonly registry: TaskRegistry;
   readonly contextPipeline: ContextPipeline;
+  /** Resolves after asynchronous execution recovery and its normalization writes finish. */
+  readonly ready: Promise<void>;
   private readonly now: () => number;
   private readonly observer?: TaskRunObserver;
   private readonly checkpointStore: TaskCheckpointStore;
@@ -73,6 +75,8 @@ export class TaskRouter {
   private readonly records = new Map<string, TaskRecord>();
   private readonly listeners = new Set<TaskRouterListener>();
   private persistenceTail: Promise<void> = Promise.resolve();
+  private stopPromise?: Promise<void>;
+  private stopping = false;
 
   constructor(options: TaskRouterOptions = {}) {
     this.registry = options.registry ?? new TaskRegistry();
@@ -84,7 +88,15 @@ export class TaskRouter {
     this.instructionRegistry = options.instructionRegistry ?? new InstructionRegistry();
     this.toolRegistry = options.toolRegistry ?? new ToolRegistry();
     this.retryDelayMs = Math.max(0, options.retryDelayMs ?? 0);
-    this.recoverPersistedRecords();
+    this.ready = this.recoverPersistedRecords();
+    // Keep constructor-started recovery from becoming an unhandled rejection while
+    // still exposing the original rejection to callers that await `ready`.
+    void this.ready.catch(() => undefined);
+  }
+
+  /** Alias for callers that prefer an explicit recovery gate. */
+  whenReady(): Promise<void> {
+    return this.ready;
   }
 
   subscribe(listener: TaskRouterListener): () => void {
@@ -129,11 +141,22 @@ export class TaskRouter {
       steering: [],
     };
     this.records.set(task.id, record);
-    this.persist(record);
+    const persistence = this.persist(record);
     this.emit({ type: 'created', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
     this.emit({ type: 'queued', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
     queueMicrotask(() => {
-      void this.execute(record);
+      void Promise.all([this.ready, persistence]).then(
+        () => this.execute(record),
+        (error) => {
+          if (this.records.get(task.id) === record) {
+            this.finishFailed(record, {
+              code: 'TASK_RECOVERY_FAILED',
+              message: error instanceof Error ? error.message : String(error),
+              retryable: true,
+            });
+          }
+        },
+      );
     });
     return { taskId: task.id, status: snapshot.status };
   }
@@ -141,7 +164,7 @@ export class TaskRouter {
   cancel(taskId: string): TaskCancelResult {
     const record = this.getRecord(taskId);
     const terminal = isTerminal(record.snapshot.status);
-    if (terminal || record.task.executionPolicy?.cancellable === false) {
+    if (terminal || record.snapshot.status === 'interrupted' || record.task.executionPolicy?.cancellable === false) {
       return { taskId, cancelled: false, status: record.snapshot.status };
     }
     record.controller.abort();
@@ -158,7 +181,10 @@ export class TaskRouter {
   }
 
   async wait(taskId: string): Promise<TaskResult> {
-    return this.getRecord(taskId).completion;
+    await this.ready;
+    const result = await this.getRecord(taskId).completion;
+    await this.persistenceTail;
+    return result;
   }
 
   getTask(taskId: string): AiTask {
@@ -202,6 +228,8 @@ export class TaskRouter {
   }
 
   async resume(taskId: string): Promise<TaskSubmitResult> {
+    await this.ready;
+    if (this.stopPromise) await this.stopPromise;
     const record = this.getRecord(taskId);
     if (!['waiting-user', 'failed', 'cancelled', 'interrupted'].includes(record.snapshot.status)) {
       throw new Error(`Task ${taskId} cannot be resumed from ${record.snapshot.status}`);
@@ -213,6 +241,7 @@ export class TaskRouter {
     record.controller = new AbortController();
     record.attempts = 0;
     record.executionRun.status = 'queued';
+    record.executionRun.attempts = 0;
     record.executionRun.finishedAt = undefined;
     record.executionRun.updatedAt = this.now();
     record.snapshot.status = 'queued';
@@ -225,7 +254,7 @@ export class TaskRouter {
       resolveCompletion = resolve;
     });
     record.resolveCompletion = resolveCompletion;
-    this.persist(record);
+    await this.persist(record);
     this.emit({ type: 'queued', taskId, snapshot: cloneSnapshot(record.snapshot) });
     queueMicrotask(() => void this.execute(record));
     return { taskId, status: 'queued' };
@@ -236,8 +265,27 @@ export class TaskRouter {
   }
 
   async stop(): Promise<void> {
+    if (this.stopPromise) {
+      await this.stopPromise;
+      return;
+    }
+    this.stopping = true;
+    const stopPromise = this.finishStop();
+    this.stopPromise = stopPromise;
+    try {
+      await stopPromise;
+    } finally {
+      if (this.stopPromise === stopPromise) {
+        this.stopPromise = undefined;
+        this.stopping = false;
+      }
+    }
+  }
+
+  private async finishStop(): Promise<void> {
+    await this.ready;
     for (const record of this.records.values()) {
-      if (isTerminal(record.snapshot.status)) continue;
+      if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') continue;
       // Runtime shutdown is distinct from user cancellation: preserve the
       // execution record as resumable even for tasks that allow cancellation.
       this.finishInterrupted(record);
@@ -246,6 +294,11 @@ export class TaskRouter {
   }
 
   private async execute(record: TaskRecord): Promise<void> {
+    if (record.snapshot.status === 'interrupted') return;
+    if (this.stopping) {
+      this.finishInterrupted(record);
+      return;
+    }
     if (isTerminal(record.snapshot.status)) return;
     if (record.controller.signal.aborted) {
       this.finishCancelled(record);
@@ -342,7 +395,7 @@ export class TaskRouter {
           },
         }),
       );
-      if (record.snapshot.status === 'interrupted') return;
+      if (isInterrupted(record)) return;
       if (record.controller.signal.aborted) {
         this.finishCancelled(record);
         return;
@@ -376,12 +429,12 @@ export class TaskRouter {
       record.snapshot.status = status;
       record.snapshot.finishedAt = this.now();
       this.markExecutionSettled(record, status);
-      this.persist(record);
+      await this.persist(record);
       this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
       this.emit({ type: status === 'waiting-user' ? 'waiting-user' : 'completed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
       record.resolveCompletion(result);
     } catch (error) {
-      if (record.snapshot.status === 'interrupted') return;
+      if (isInterrupted(record)) return;
       if (error instanceof TaskTimeoutError) {
         this.retryOrFail(record, toTaskError(error));
       } else if (record.controller.signal.aborted || isAbortError(error)) {
@@ -414,7 +467,7 @@ export class TaskRouter {
   }
 
   private finishCancelled(record: TaskRecord): void {
-    if (isTerminal(record.snapshot.status)) return;
+    if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
     const result: TaskResult = {
       taskId: record.task.id,
       kind: record.task.kind,
@@ -432,7 +485,7 @@ export class TaskRouter {
   }
 
   private finishFailed(record: TaskRecord, error: TaskError): void {
-    if (isTerminal(record.snapshot.status)) return;
+    if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
     const result: TaskResult = {
       taskId: record.task.id,
       kind: record.task.kind,
@@ -457,13 +510,17 @@ export class TaskRouter {
       record.snapshot.error = error;
       record.snapshot.result = undefined;
       this.markExecutionRetrying(record, error);
-      this.persist(record);
+      const persistence = this.persist(record);
       this.emit({ type: 'queued', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
       const schedule = () => {
-        if (!isTerminal(record.snapshot.status) && !record.controller.signal.aborted) void this.execute(record);
+        if (!isTerminal(record.snapshot.status) && !isInterrupted(record) && !record.controller.signal.aborted) {
+          void this.execute(record);
+        }
       };
-      if (this.retryDelayMs > 0) setTimeout(schedule, this.retryDelayMs);
-      else queueMicrotask(schedule);
+      void persistence.then(() => {
+        if (this.retryDelayMs > 0) setTimeout(schedule, this.retryDelayMs);
+        else queueMicrotask(schedule);
+      });
       return;
     }
     this.finishFailed(record, error);
@@ -485,11 +542,7 @@ export class TaskRouter {
     if (isTerminal(record.snapshot.status)) return;
     record.controller.abort();
     record.snapshot.status = 'interrupted';
-    record.snapshot.error = {
-      code: 'TASK_INTERRUPTED',
-      message: 'Task was interrupted by runtime shutdown; resume it to continue',
-      retryable: true,
-    };
+    record.snapshot.error = interruptionError('Task was interrupted by runtime shutdown; resume it to continue');
     record.snapshot.finishedAt = this.now();
     this.markExecutionSettled(record, 'interrupted', record.snapshot.error);
     this.persist(record);
@@ -537,26 +590,33 @@ export class TaskRouter {
     }
   }
 
-  private recoverPersistedRecords(): void {
-    const loaded = this.executionStore.list();
-    if (loaded instanceof Promise) {
-      void loaded.then((records) => records.forEach((record) => this.hydrate(record))).catch(() => undefined);
-      return;
+  private recoverPersistedRecords(): Promise<void> {
+    try {
+      const loaded = this.executionStore.list();
+      if (loaded instanceof Promise) return loaded.then((records) => this.finishRecovery(records));
+      return this.finishRecovery(loaded);
+    } catch (error) {
+      return Promise.reject(error);
     }
-    loaded.forEach((record) => this.hydrate(record));
+  }
+
+  private finishRecovery(records: TaskExecutionRecord[]): Promise<void> {
+    for (const record of records) this.hydrate(record);
+    // Hydration normalizes in-flight records to `interrupted` and queues a
+    // durable write. Do not release the recovery gate before that write lands.
+    return this.persistenceTail;
   }
 
   private hydrate(stored: TaskExecutionRecord): void {
     if (this.records.has(stored.task.id)) return;
     const snapshot = cloneSnapshot(stored.snapshot);
-    if (snapshot.status === 'queued' || snapshot.status === 'running' || snapshot.status === 'checkpointed') {
+    if (!isTerminal(snapshot.status) && snapshot.status !== 'interrupted') {
       snapshot.status = 'interrupted';
-      snapshot.error = {
-        code: 'TASK_INTERRUPTED',
-        message: 'Task was interrupted before the previous runtime stopped',
-        retryable: true,
-      };
+      snapshot.error = interruptionError('Task was interrupted before the previous runtime stopped');
       snapshot.finishedAt = this.now();
+    } else if (snapshot.status === 'interrupted') {
+      snapshot.error ??= interruptionError('Task was interrupted before the previous runtime stopped');
+      snapshot.finishedAt ??= this.now();
     }
     let resolveCompletion!: (result: TaskResult) => void;
     const completion = new Promise<TaskResult>((resolve) => {
@@ -593,15 +653,19 @@ export class TaskRouter {
       record.executionRun.updatedAt = this.now();
     }
     this.records.set(record.task.id, record);
+    if (snapshot.status === 'interrupted') {
+      this.markExecutionSettled(record, 'interrupted', snapshot.error);
+    }
     if (snapshot.result && isTerminal(snapshot.status)) resolveCompletion(snapshot.result);
     this.persist(record);
   }
 
-  private persist(record: TaskRecord): void {
+  private persist(record: TaskRecord): Promise<void> {
     const persisted = this.persistedRecord(record);
     this.persistenceTail = this.persistenceTail
       .then(() => this.executionStore.save(persisted))
       .catch(() => undefined);
+    return this.persistenceTail;
   }
 
   private persistedRecord(record: TaskRecord): TaskExecutionRecord {
@@ -687,6 +751,14 @@ function isAbortError(error: unknown): boolean {
 
 function isTerminal(status: TaskStatus): boolean {
   return status === 'waiting-user' || status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+function isInterrupted(record: TaskRecord): boolean {
+  return record.snapshot.status === 'interrupted';
+}
+
+function interruptionError(message: string): TaskError {
+  return { code: 'TASK_INTERRUPTED', message, retryable: true };
 }
 
 function cloneSnapshot(snapshot: TaskStatusSnapshot): TaskStatusSnapshot {
