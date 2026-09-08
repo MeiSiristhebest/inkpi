@@ -1,13 +1,13 @@
 import type {
   DomainChange,
-  DomainProjectionSnapshot,
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionCursor,
+  DomainProjectionSnapshot
 } from '@inkpi/protocol';
 import { calculateDomainChangeSetChecksum } from '@inkpi/protocol';
-import type { IDb } from './ports.js';
 import { DomainMaterializer } from './domain-materializer.js';
+import type { IDb } from './ports.js';
 
 export { DomainMaterializer, DomainMaterializer as DomainProjectionMaterializer } from './domain-materializer.js';
 
@@ -16,7 +16,7 @@ export class DomainProjectionStore {
 
   constructor(
     private readonly db: IDb,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number = Date.now
   ) {
     this.materializer = new DomainMaterializer(db);
   }
@@ -35,7 +35,7 @@ export class DomainProjectionStore {
           accepted: true,
           duplicate: true,
           workspaceId: changeSet.workspaceId,
-          revision: Number(existing.revision),
+          revision: Number(existing.revision)
         };
       }
 
@@ -46,7 +46,7 @@ export class DomainProjectionStore {
           duplicate: false,
           workspaceId: changeSet.workspaceId,
           revision: cursor.revision,
-          reason: 'revision-conflict',
+          reason: 'revision-conflict'
         };
       }
 
@@ -54,7 +54,7 @@ export class DomainProjectionStore {
         .prepare(
           `INSERT INTO domain_change_sets
             (id, workspace_id, source_device_id, base_revision, revision, changes_json, checksum, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           changeSet.id,
@@ -64,7 +64,7 @@ export class DomainProjectionStore {
           changeSet.revision,
           serializeChanges(changeSet.changes),
           changeSet.checksum,
-          changeSet.createdAt,
+          changeSet.createdAt
         );
       this.materializer.applyInTransaction(changeSet.workspaceId, changeSet.changes);
       const updatedAt = this.now();
@@ -72,14 +72,14 @@ export class DomainProjectionStore {
         .prepare(
           `INSERT INTO domain_projection_cursors (workspace_id, revision, updated_at)
            VALUES (?, ?, ?)
-           ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at`,
+           ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at`
         )
         .run(changeSet.workspaceId, changeSet.revision, updatedAt);
       return {
         accepted: true,
         duplicate: false,
         workspaceId: changeSet.workspaceId,
-        revision: changeSet.revision,
+        revision: changeSet.revision
       };
     });
   }
@@ -92,7 +92,7 @@ export class DomainProjectionStore {
     return {
       workspaceId: row.workspace_id,
       revision: Number(row.revision),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
@@ -103,7 +103,7 @@ export class DomainProjectionStore {
     const rows = this.db
       .prepare(
         `SELECT * FROM domain_change_sets
-         WHERE workspace_id = ? AND revision > ? ORDER BY revision ASC`,
+         WHERE workspace_id = ? AND revision > ? ORDER BY revision ASC`
       )
       .all(workspaceId, afterRevision) as Array<Record<string, unknown>>;
     let expectedRevision = afterRevision + 1;
@@ -116,7 +116,7 @@ export class DomainProjectionStore {
         revision: Number(row.revision),
         changes: deserializeChanges(String(row.changes_json)),
         checksum: String(row.checksum),
-        createdAt: Number(row.created_at),
+        createdAt: Number(row.created_at)
       } satisfies DomainChangeSet;
       const { checksum: _checksum, ...unsigned } = changeSet;
       if (calculateDomainChangeSetChecksum(unsigned) !== changeSet.checksum) {
@@ -124,9 +124,7 @@ export class DomainProjectionStore {
         // payloads by omitting them from JSON. Accept that exact historical
         // representation while returning the typed shape to callers.
         const legacyChanges = changeSet.changes.map((change) =>
-          Object.prototype.hasOwnProperty.call(change, 'payload')
-            ? change
-            : { ...change, payload: undefined },
+          Object.prototype.hasOwnProperty.call(change, 'payload') ? change : { ...change, payload: undefined }
         ) as DomainChange[];
         const legacyUnsigned = { ...unsigned, changes: legacyChanges };
         if (calculateDomainChangeSetChecksum(legacyUnsigned) !== changeSet.checksum) {
@@ -152,7 +150,7 @@ export class DomainProjectionStore {
       workspaceId,
       revision: cursor.revision,
       changeSets,
-      createdAt: this.now(),
+      createdAt: this.now()
     };
   }
 
@@ -166,7 +164,7 @@ export class DomainProjectionStore {
           .prepare(
             `INSERT INTO domain_change_sets
               (id, workspace_id, source_device_id, base_revision, revision, changes_json, checksum, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             changeSet.id,
@@ -176,7 +174,7 @@ export class DomainProjectionStore {
             changeSet.revision,
             serializeChanges(changeSet.changes),
             changeSet.checksum,
-            changeSet.createdAt,
+            changeSet.createdAt
           );
       }
       this.materializer.rebuildInTransaction(snapshot.workspaceId, snapshot.changeSets);
@@ -185,7 +183,7 @@ export class DomainProjectionStore {
         .prepare(
           `INSERT INTO domain_projection_cursors (workspace_id, revision, updated_at)
            VALUES (?, ?, ?)
-           ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at`,
+           ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at`
         )
         .run(snapshot.workspaceId, snapshot.revision, updatedAt);
       return { workspaceId: snapshot.workspaceId, revision: snapshot.revision, updatedAt };
@@ -233,12 +231,17 @@ function validateSnapshot(snapshot: DomainProjectionSnapshot): void {
   let expected = 1;
   for (const changeSet of snapshot.changeSets) {
     validateChangeSet(changeSet);
-    if (changeSet.workspaceId !== snapshot.workspaceId || changeSet.revision !== expected || changeSet.baseRevision !== expected - 1) {
+    if (
+      changeSet.workspaceId !== snapshot.workspaceId ||
+      changeSet.revision !== expected ||
+      changeSet.baseRevision !== expected - 1
+    ) {
       throw new Error('Domain projection snapshot revisions are not contiguous');
     }
     expected += 1;
   }
-  if (snapshot.revision !== expected - 1) throw new Error('Domain projection snapshot cursor does not match its changes');
+  if (snapshot.revision !== expected - 1)
+    throw new Error('Domain projection snapshot cursor does not match its changes');
 }
 
 const UNDEFINED_SENTINEL = '__inkpi_domain_projection_undefined__';
@@ -246,7 +249,7 @@ const UNDEFINED_SENTINEL = '__inkpi_domain_projection_undefined__';
 /** JSON cannot represent undefined, but the wire checksum can. Round-trip it. */
 function serializeChanges(changes: DomainChangeSet['changes']): string {
   return JSON.stringify(changes, (_key, value: unknown) =>
-    value === undefined ? { [UNDEFINED_SENTINEL]: true } : value,
+    value === undefined ? { [UNDEFINED_SENTINEL]: true } : value
   );
 }
 

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, SkillInfo } from '@inkpi/protocol';
 import { ExtensionHost } from '../extension-host.js';
-import { DynamicPluginLoader, type DynamicLoadSummary } from '../package-manager/dynamic-loader.js';
+import { type DynamicLoadSummary, DynamicPluginLoader } from '../package-manager/dynamic-loader.js';
 import { ToolRegistry } from '../tools.js';
 import { SkillDiscoveryEngine } from './skills.js';
 
@@ -68,7 +68,7 @@ export class ProgressiveSkillRuntime {
       .map((skill) => ({
         name: skill.name,
         description: skill.description,
-        loaded: this.loaded.has(skill.name),
+        loaded: this.loaded.has(skill.name)
       }))
       .sort((left, right) => left.name.localeCompare(right.name));
   }
@@ -79,11 +79,12 @@ export class ProgressiveSkillRuntime {
   }
 
   resolve(query: SkillResolveQuery): SkillManifest[] {
-    return this.discoverManifests().filter((manifest) =>
-      (!query.intent || manifest.intents?.includes(query.intent)) &&
-      (!query.capability || manifest.capabilities?.includes(query.capability)) &&
-      (!query.taskKind || manifest.taskKinds?.includes(query.taskKind)) &&
-      (!query.activation || manifest.activation === query.activation),
+    return this.discoverManifests().filter(
+      (manifest) =>
+        (!query.intent || manifest.intents?.includes(query.intent)) &&
+        (!query.capability || manifest.capabilities?.includes(query.capability)) &&
+        (!query.taskKind || manifest.taskKinds?.includes(query.taskKind)) &&
+        (!query.activation || manifest.activation === query.activation)
     );
   }
 
@@ -129,7 +130,7 @@ function toManifest(skill: SkillInfo): SkillManifest {
     tools: asList(firstDefined(frontmatter, ['tools', 'tool'])),
     activation: isActivation(firstDefined(frontmatter, ['activation']))
       ? (firstDefined(frontmatter, ['activation']) as SkillActivation)
-      : 'lazy',
+      : 'lazy'
   };
 }
 
@@ -148,12 +149,18 @@ function scalarString(value: unknown): string | undefined {
 
 function asList(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
-    const items = value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
+    const items = value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
     return items.length > 0 ? items : undefined;
   }
   if (typeof value === 'string' && value.trim()) {
     const normalized = value.trim().replace(/^\[|\]$/g, '');
-    const items = normalized.split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+    const items = normalized
+      .split(',')
+      .map((item) => item.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
     return items.length > 0 ? items : undefined;
   }
   return undefined;

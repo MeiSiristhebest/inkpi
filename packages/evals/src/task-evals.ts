@@ -24,25 +24,28 @@ export function evaluateTaskCase(input: TaskEvaluationCase): TaskEvaluationRepor
   checks.status = {
     passed: input.result.status === expectedStatus,
     score: input.result.status === expectedStatus ? 100 : 0,
-    details: `expected ${expectedStatus}, received ${input.result.status}`,
+    details: `expected ${expectedStatus}, received ${input.result.status}`
   };
   const expectedFormat = input.expected?.outputFormat ?? input.task.outputContract?.format;
   const actualFormat = input.result.output?.format;
   checks.outputContract = {
     passed: expectedFormat === undefined || actualFormat === expectedFormat,
     score: expectedFormat === undefined || actualFormat === expectedFormat ? 100 : 0,
-    details: expectedFormat ? `expected ${expectedFormat}, received ${actualFormat || 'none'}` : 'not specified',
+    details: expectedFormat ? `expected ${expectedFormat}, received ${actualFormat || 'none'}` : 'not specified'
   };
   const requiredKeys = input.expected?.requiredProvenanceKeys || [];
   const provenance = input.result.provenance || {};
   checks.provenance = {
     passed: requiredKeys.every((key) => provenance[key] !== undefined),
-    score: requiredKeys.length === 0 ? 100 : Math.round((requiredKeys.filter((key) => provenance[key] !== undefined).length / requiredKeys.length) * 100),
+    score:
+      requiredKeys.length === 0
+        ? 100
+        : Math.round((requiredKeys.filter((key) => provenance[key] !== undefined).length / requiredKeys.length) * 100)
   };
   checks.effectSafety = {
     passed: input.task.effectPolicy?.mode !== 'proposal' || input.task.effectPolicy.requiresApproval === true,
     score: input.task.effectPolicy?.mode !== 'proposal' || input.task.effectPolicy.requiresApproval === true ? 100 : 0,
-    details: 'proposal effects require explicit approval',
+    details: 'proposal effects require explicit approval'
   };
   const values = Object.values(checks).map((check) => check.score);
   const score = values.length === 0 ? 0 : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
@@ -51,6 +54,6 @@ export function evaluateTaskCase(input: TaskEvaluationCase): TaskEvaluationRepor
     kind: input.task.kind,
     score,
     passed: score >= 85 && Object.values(checks).every((check) => check.passed),
-    checks,
+    checks
   };
 }

@@ -60,13 +60,14 @@ export class TaskObservability implements TaskRunObserver {
       provenance: {
         taskId: task.id,
         taskKind: task.kind,
-        createdAt: this.now(),
-      },
+        createdAt: this.now()
+      }
     });
     const observation = this.require(task.id);
     if (typeof metadata.instructionVersion === 'string') observation.instructionVersion = metadata.instructionVersion;
     if (typeof metadata.instructionId === 'string') observation.instructionId = metadata.instructionId;
-    if (Array.isArray(metadata.skillIds)) observation.skillIds = metadata.skillIds.filter((id): id is string => typeof id === 'string');
+    if (Array.isArray(metadata.skillIds))
+      observation.skillIds = metadata.skillIds.filter((id): id is string => typeof id === 'string');
     if (metadata.skillVersions && typeof metadata.skillVersions === 'object') {
       observation.skillVersions = { ...(metadata.skillVersions as Record<string, string>) };
     }
@@ -95,7 +96,7 @@ export class TaskObservability implements TaskRunObserver {
       taskId: task.id,
       kind: task.kind,
       status: observation.status,
-      provenance: { taskId: task.id, taskKind: task.kind },
+      provenance: { taskId: task.id, taskKind: task.kind }
     };
     const startedAt = existing.startedAt ?? observation.startedAt;
     const finishedAt = observation.finishedAt ?? this.now();
@@ -105,7 +106,7 @@ export class TaskObservability implements TaskRunObserver {
       startedAt,
       finishedAt,
       durationMs: startedAt === undefined ? undefined : Math.max(0, finishedAt - startedAt),
-      provenance: { ...existing.provenance, ...observation.provenance },
+      provenance: { ...existing.provenance, ...observation.provenance }
     });
     const stored = this.observations.get(task.id);
     if (stored && observation.resultType === undefined) {

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { InMemoryTaskCheckpointStore, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('durable task checkpoints', () => {
   it('resumes a task from a checkpoint after the original router fails', async () => {
@@ -17,7 +17,7 @@ describe('durable task checkpoints', () => {
             throw new Error('simulated process failure');
           }
           return { output: { format: 'structured', data: checkpoint.data } };
-        },
+        }
       });
       return registry;
     };
@@ -30,7 +30,7 @@ describe('durable task checkpoints', () => {
     second.submit({ id: 'resume-me', kind: 'test.resumable', input: {}, outputContract: { format: 'structured' } });
     expect(await second.wait('resume-me')).toMatchObject({
       status: 'completed',
-      output: { data: { value: 42 } },
+      output: { data: { value: 42 } }
     });
     expect(attempts).toBe(2);
     expect(await checkpoints.load('resume-me')).toBeUndefined();

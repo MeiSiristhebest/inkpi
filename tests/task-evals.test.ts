@@ -1,6 +1,4 @@
 import { readFileSync } from 'node:fs';
-import type { AiTask, TaskResult } from '@inkpi/protocol';
-import { describe, expect, it } from 'vitest';
 import {
   type EntityContradictionInput,
   type InvalidStateTransitionInput,
@@ -15,13 +13,13 @@ import {
   evaluateMutationCase,
   evaluateSourceMapRanges,
   evaluateTaskCase,
-  runMutationChecks,
+  runMutationChecks
 } from '@inkpi/evals';
+import type { AiTask, TaskResult } from '@inkpi/protocol';
+import { describe, expect, it } from 'vitest';
 
 function readFixture<T>(relativePath: string): T {
-  return JSON.parse(
-    readFileSync(new URL(`../packages/evals/fixtures/${relativePath}`, import.meta.url), 'utf8'),
-  ) as T;
+  return JSON.parse(readFileSync(new URL(`../packages/evals/fixtures/${relativePath}`, import.meta.url), 'utf8')) as T;
 }
 
 describe('AI task evaluation contract', () => {
@@ -31,19 +29,19 @@ describe('AI task evaluation contract', () => {
       kind: 'creative.continue',
       input: {},
       outputContract: { format: 'text' },
-      effectPolicy: { mode: 'proposal', requiresApproval: true },
+      effectPolicy: { mode: 'proposal', requiresApproval: true }
     };
     const result: TaskResult = {
       taskId: task.id,
       kind: task.kind,
       status: 'completed',
       output: { format: 'text', text: '继续' },
-      provenance: { contextFingerprint: 'abc' },
+      provenance: { contextFingerprint: 'abc' }
     };
     const report = evaluateTaskCase({
       task,
       result,
-      expected: { requiredProvenanceKeys: ['contextFingerprint'] },
+      expected: { requiredProvenanceKeys: ['contextFingerprint'] }
     });
     expect(report.passed).toBe(true);
     expect(report.score).toBe(100);
@@ -55,11 +53,11 @@ describe('AI task evaluation contract', () => {
       kind: 'creative.rewrite',
       input: {},
       outputContract: { format: 'patch' },
-      effectPolicy: { mode: 'proposal' },
+      effectPolicy: { mode: 'proposal' }
     };
     const report = evaluateTaskCase({
       task,
-      result: { taskId: task.id, kind: task.kind, status: 'completed', output: { format: 'text', text: 'bad' } },
+      result: { taskId: task.id, kind: task.kind, status: 'completed', output: { format: 'text', text: 'bad' } }
     });
     expect(report.passed).toBe(false);
     expect(report.checks.outputContract.passed).toBe(false);
@@ -73,13 +71,15 @@ describe('AI task evaluation contract', () => {
     expect(
       runMutationChecks(
         benchmark.task,
-        [{
-          name: 'remove-budget',
-          mutate: (task) => ({ ...task, contextPolicy: { maxTokens: 10 } }),
-          expectedDetection: true,
-        }],
-        (task) => (task.contextPolicy?.maxTokens ?? 0) < 512,
-      ),
+        [
+          {
+            name: 'remove-budget',
+            mutate: (task) => ({ ...task, contextPolicy: { maxTokens: 10 } }),
+            expectedDetection: true
+          }
+        ],
+        (task) => (task.contextPolicy?.maxTokens ?? 0) < 512
+      )
     ).toEqual([{ name: 'remove-budget', passed: true }]);
   });
 
@@ -90,12 +90,12 @@ describe('AI task evaluation contract', () => {
     expect(report.passed).toBe(false);
     expect(report.metrics.contradictionCount).toBeGreaterThanOrEqual(2);
     expect(report.violations.map((violation) => violation.code)).toEqual(
-      expect.arrayContaining(['entity-action-contradiction', 'entity-status-contradiction']),
+      expect.arrayContaining(['entity-action-contradiction', 'entity-status-contradiction'])
     );
 
     const ledgerReport = evaluateEntityContradiction({
       ledger: { entities: [{ name: '林舟', status: 'dead' }] },
-      claims: [{ entity: '林舟', action: 'returns' }],
+      claims: [{ entity: '林舟', action: 'returns' }]
     });
     expect(ledgerReport.passed).toBe(false);
 
@@ -103,8 +103,8 @@ describe('AI task evaluation contract', () => {
       facts: fixture.facts,
       claims: [
         { entity: '林舟', action: 'waits', chapter: 12 },
-        { entity: '苏棠', status: 'injured', chapter: 10 },
-      ],
+        { entity: '苏棠', status: 'injured', chapter: 10 }
+      ]
     });
     expect(repaired.passed).toBe(true);
   });
@@ -121,11 +121,11 @@ describe('AI task evaluation contract', () => {
       ...fixture,
       transitions: [
         { entity: '林舟', from: 'alive', to: 'injured', chapter: 2 },
-        { entity: '林舟', from: 'injured', to: 'dead', chapter: 3 },
-      ],
+        { entity: '林舟', from: 'injured', to: 'dead', chapter: 3 }
+      ]
     });
     expect(valid.passed).toBe(true);
-    expect(valid.finalStates['林舟']).toBe('dead');
+    expect(valid.finalStates.林舟).toBe('dead');
   });
 
   it('detects source-map and range failures deterministically', () => {
@@ -135,14 +135,14 @@ describe('AI task evaluation contract', () => {
     const fixture = readFixture<SourceMapFixture>('semantic-content/source-map-range.json');
     const valid = evaluateSourceMapRanges({
       ...fixture,
-      requireCoverage: false,
+      requireCoverage: false
     });
     expect(valid.passed).toBe(true);
     expect(valid.metrics.invalidSegmentCount).toBe(0);
 
     const invalidRange = evaluateSourceMapRanges({
       ...fixture,
-      ranges: [fixture.mutatedRange],
+      ranges: [fixture.mutatedRange]
     });
     expect(invalidRange.passed).toBe(false);
     expect(invalidRange.metrics.invalidRangeCount).toBe(1);
@@ -150,7 +150,7 @@ describe('AI task evaluation contract', () => {
 
     const invalidSegment = evaluateSourceMapRanges({
       ...fixture,
-      segments: [{ ...fixture.segments[0], editorTo: 99 }],
+      segments: [{ ...fixture.segments[0], editorTo: 99 }]
     });
     expect(invalidSegment.passed).toBe(false);
     expect(invalidSegment.metrics.invalidSegmentCount).toBe(1);
@@ -164,11 +164,11 @@ describe('AI task evaluation contract', () => {
 
     const report100 = evaluateLongContextBenchmark({
       ...fixture100,
-      chapters: benchmark100.chapters,
+      chapters: benchmark100.chapters
     });
     const report300 = evaluateLongContextBenchmark({
       ...fixture300,
-      chapters: benchmark300.chapters,
+      chapters: benchmark300.chapters
     });
 
     expect(report100.passed).toBe(true);
@@ -185,7 +185,7 @@ describe('AI task evaluation contract', () => {
       maxTokens: 120,
       chapters: benchmark300.chapters,
       anchorChapters: [1, 150, 300],
-      expectedAnchorRecall: 1,
+      expectedAnchorRecall: 1
     });
     expect(pruned.passed).toBe(true);
     expect(pruned.metrics.prunedChapterCount).toBeGreaterThan(0);
@@ -205,7 +205,7 @@ describe('AI task evaluation contract', () => {
       baseline: fixture.baseline,
       mutated: fixture.mutated,
       repaired: fixture.repaired,
-      detect: (candidate) => !evaluateEntityContradiction(candidate).passed,
+      detect: (candidate) => !evaluateEntityContradiction(candidate).passed
     };
     const report = evaluateMutationCase(input);
 

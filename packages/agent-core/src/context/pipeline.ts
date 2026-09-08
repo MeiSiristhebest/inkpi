@@ -38,7 +38,7 @@ export class ContextPipeline {
       signal,
       purpose: task.kind,
       projectRevision: task.input.selection?.revision,
-      metadata: task.contextPolicy?.metadata,
+      metadata: task.contextPolicy?.metadata
     };
     const fragments: ContextFragment[] = [];
     if (task.input.text) {
@@ -47,7 +47,7 @@ export class ContextPipeline {
         source: 'task-input',
         kind: 'input',
         text: task.input.text,
-        priority: Number.MAX_SAFE_INTEGER,
+        priority: Number.MAX_SAFE_INTEGER
       });
     }
 
@@ -60,14 +60,14 @@ export class ContextPipeline {
       fragments.push(...provided);
     }
 
-    const packet = buildPacket(
-      fragments,
-      task.contextPolicy?.maxTokens ?? this.maxTokens,
-      request.projectRevision,
-    );
+    const packet = buildPacket(fragments, task.contextPolicy?.maxTokens ?? this.maxTokens, request.projectRevision);
     if (task.contextPolicy?.maxFragments !== undefined && packet.fragments.length > task.contextPolicy.maxFragments) {
       const limited = packet.fragments.slice(0, Math.max(0, task.contextPolicy.maxFragments));
-      const limitedPacket = buildPacket(limited, task.contextPolicy.maxTokens ?? this.maxTokens, request.projectRevision);
+      const limitedPacket = buildPacket(
+        limited,
+        task.contextPolicy.maxTokens ?? this.maxTokens,
+        request.projectRevision
+      );
       limitedPacket.metadata = task.contextPolicy?.metadata;
       return limitedPacket;
     }
@@ -84,7 +84,7 @@ function buildPacket(input: ContextFragment[], maxTokens: number, projectRevisio
     unique.set(fragment.id, {
       ...fragment,
       priority: fragment.priority ?? 0,
-      tokenEstimate: fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment),
+      tokenEstimate: fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment)
     });
   }
 
@@ -128,7 +128,7 @@ function buildPacket(input: ContextFragment[], maxTokens: number, projectRevisio
     tokenEstimate,
     fingerprint: fingerprint(accepted, projectRevision),
     truncated,
-    projectRevision,
+    projectRevision
   };
 }
 
@@ -148,10 +148,12 @@ function serializeData(data: unknown): string {
 }
 
 function score(fragment: ContextFragment): number {
-  return (fragment.priority ?? 0) * 1_000_000 +
+  return (
+    (fragment.priority ?? 0) * 1_000_000 +
     (fragment.relevance ?? 0) * 10_000 +
     (fragment.dependency ?? 0) * 100 +
-    (fragment.recency ?? 0);
+    (fragment.recency ?? 0)
+  );
 }
 
 function stableSerialize(value: unknown): string {
@@ -165,20 +167,22 @@ function stableSerialize(value: unknown): string {
 }
 
 function fingerprint(fragments: ContextFragment[], projectRevision?: number): string {
-  const value = fragments
-    .map((fragment) => stableSerialize({
-      id: fragment.id,
-      source: fragment.source,
-      kind: fragment.kind,
-      text: fragment.text,
-      content: fragment.data ?? fragment.content,
-      priority: fragment.priority ?? 0,
-      relevance: fragment.relevance ?? 0,
-      recency: fragment.recency ?? 0,
-      dependency: fragment.dependency ?? 0,
-      tokenEstimate: fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment),
-    }))
-    .join('\u0001') + `\u0002revision:${projectRevision ?? ''}`;
+  const value = `${fragments
+    .map((fragment) =>
+      stableSerialize({
+        id: fragment.id,
+        source: fragment.source,
+        kind: fragment.kind,
+        text: fragment.text,
+        content: fragment.data ?? fragment.content,
+        priority: fragment.priority ?? 0,
+        relevance: fragment.relevance ?? 0,
+        recency: fragment.recency ?? 0,
+        dependency: fragment.dependency ?? 0,
+        tokenEstimate: fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment)
+      })
+    )
+    .join('\u0001')}\u0002revision:${projectRevision ?? ''}`;
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);

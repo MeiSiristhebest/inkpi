@@ -49,7 +49,7 @@ export class InstructionRegistry {
       content: definition.systemInstruction,
       version: definition.version,
       source: `task:${definition.taskKind}`,
-      tags: [`task:${definition.taskKind}`],
+      tags: [`task:${definition.taskKind}`]
     });
   }
 

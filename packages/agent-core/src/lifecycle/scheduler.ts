@@ -82,13 +82,13 @@ export class TaskScheduler {
     if (!work.id.trim()) throw new Error(`Scheduled task id is unavailable: ${work.id}`);
     const duplicate = work.dedupeKey
       ? [...this.records.values()].find(
-          (record) => record.work.dedupeKey === work.dedupeKey && !isTerminal(record.snapshot.status),
+          (record) => record.work.dedupeKey === work.dedupeKey && !isTerminal(record.snapshot.status)
         )
       : undefined;
     if (duplicate) {
       return {
         promise: duplicate.promise as Promise<T | undefined>,
-        cancel: () => this.cancel(duplicate.work.id),
+        cancel: () => this.cancel(duplicate.work.id)
       };
     }
     if (this.records.has(work.id)) throw new Error(`Scheduled task id is unavailable: ${work.id}`);
@@ -107,7 +107,7 @@ export class TaskScheduler {
       resolve: resolve as (value: unknown) => void,
       reject,
       attempts: 0,
-      readyAt: this.now() + Math.max(0, work.debounceMs ?? 0),
+      readyAt: this.now() + Math.max(0, work.debounceMs ?? 0)
     };
     this.records.set(work.id, record);
     this.emit({ type: 'created', snapshot: this.status(work.id) });
@@ -154,7 +154,7 @@ export class TaskScheduler {
       .filter((record) => record.snapshot.status === 'queued' && record.readyAt <= this.now())
       .sort(
         (left, right) =>
-          (right.work.priority ?? 0) - (left.work.priority ?? 0) || left.work.id.localeCompare(right.work.id),
+          (right.work.priority ?? 0) - (left.work.priority ?? 0) || left.work.id.localeCompare(right.work.id)
       );
     for (const record of available) {
       const foreground = record.work.mode === 'interactive' || record.work.mode === 'foreground';
@@ -168,7 +168,7 @@ export class TaskScheduler {
 
   private runningCount(mode: ScheduledMode): number {
     return [...this.records.values()].filter(
-      (record) => record.snapshot.status === 'running' && record.work.mode === mode,
+      (record) => record.snapshot.status === 'running' && record.work.mode === mode
     ).length;
   }
 
@@ -231,7 +231,7 @@ export class TaskScheduler {
         record.controller.abort();
         const error = new Error(`Scheduled task exceeded its timeout of ${timeoutMs}ms`);
         error.name = 'TaskTimeoutError';
-        ;(error as Error & { retryable?: boolean }).retryable = true;
+        (error as Error & { retryable?: boolean }).retryable = true;
         reject(error);
       }, timeoutMs);
     });
@@ -263,6 +263,8 @@ function isTerminal(status: ScheduledStatus): boolean {
 }
 
 function isRetryable(error: unknown): boolean {
-  return error instanceof Error &&
-    (error.name === 'TaskTimeoutError' || (error as Error & { retryable?: boolean }).retryable === true);
+  return (
+    error instanceof Error &&
+    (error.name === 'TaskTimeoutError' || (error as Error & { retryable?: boolean }).retryable === true)
+  );
 }

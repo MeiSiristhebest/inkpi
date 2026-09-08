@@ -5,28 +5,38 @@ import type {
   TaskResult,
   TaskStatus,
   TaskStatusSnapshot,
-  TaskSubmitResult,
+  TaskSubmitResult
 } from '@inkpi/protocol';
+import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
 import { ContextPipeline } from '../context/index.js';
+import { InstructionRegistry } from '../instructions/instruction-registry.js';
 import type { TaskRunObserver } from '../telemetry/task-observability.js';
-import { TaskRegistry } from './task-registry.js';
-import type { TaskHandler, TaskHandlerResult } from './task-handler.js';
+import { ToolRegistry } from '../tools.js';
 import { InMemoryTaskCheckpointStore, type TaskCheckpointStore } from './checkpoints.js';
 import {
-  InMemoryTaskExecutionStore,
   type ExecutionAttempt,
   type ExecutionRun,
   type ExecutionStep,
+  InMemoryTaskExecutionStore,
   type ResumeToken,
   type TaskExecutionRecord,
-  type TaskExecutionStore,
+  type TaskExecutionStore
 } from './execution-store.js';
-import { InstructionRegistry } from '../instructions/instruction-registry.js';
-import { ToolRegistry } from '../tools.js';
-import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
+import type { TaskHandler, TaskHandlerResult } from './task-handler.js';
+import { TaskRegistry } from './task-registry.js';
 
 export interface TaskRouterEvent {
-  type: 'created' | 'queued' | 'started' | 'progress' | 'checkpointed' | 'waiting-user' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+  type:
+    | 'created'
+    | 'queued'
+    | 'started'
+    | 'progress'
+    | 'checkpointed'
+    | 'waiting-user'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'interrupted';
   taskId: string;
   snapshot: TaskStatusSnapshot;
 }
@@ -122,14 +132,14 @@ export class TaskRouter {
       kind: task.kind,
       status: 'queued',
       executionRunId,
-      attempts: 0,
+      attempts: 0
     };
     const executionRun: ExecutionRun = {
       id: executionRunId,
       taskId: task.id,
       status: 'queued',
       attempts: 0,
-      updatedAt: this.now(),
+      updatedAt: this.now()
     };
     const record: TaskRecord = {
       task,
@@ -142,7 +152,7 @@ export class TaskRouter {
       executionRun,
       executionSteps: [],
       executionAttempts: [],
-      steering: [],
+      steering: []
     };
     this.records.set(task.id, record);
     const persistence = this.persist(record);
@@ -156,10 +166,10 @@ export class TaskRouter {
             this.finishFailed(record, {
               code: 'TASK_RECOVERY_FAILED',
               message: error instanceof Error ? error.message : String(error),
-              retryable: true,
+              retryable: true
             });
           }
-        },
+        }
       );
     });
     return { taskId: task.id, status: snapshot.status };
@@ -176,7 +186,7 @@ export class TaskRouter {
     return {
       taskId,
       cancelled: true,
-      status: record.snapshot.status,
+      status: record.snapshot.status
     };
   }
 
@@ -216,7 +226,7 @@ export class TaskRouter {
     return this.submit({
       ...task,
       id: replayTaskId,
-      metadata: { ...task.metadata, replayOf: taskId },
+      metadata: { ...task.metadata, replayOf: taskId }
     });
   }
 
@@ -227,7 +237,7 @@ export class TaskRouter {
       ...patch,
       id: forkTaskId,
       input: patch.input ?? cloneValue(task.input),
-      metadata: { ...task.metadata, ...patch.metadata, forkOf: taskId },
+      metadata: { ...task.metadata, ...patch.metadata, forkOf: taskId }
     });
   }
 
@@ -336,14 +346,14 @@ export class TaskRouter {
       runId: record.executionRun.id,
       attempt: record.attempts,
       startedAt: attemptStartedAt,
-      status: 'running',
+      status: 'running'
     };
     const step: ExecutionStep = {
       id: `step:${record.task.id}:${record.attempts}`,
       runId: record.executionRun.id,
       step: record.task.executionPolicy?.checkpoint?.step ?? record.task.kind,
       startedAt: attemptStartedAt,
-      status: 'running',
+      status: 'running'
     };
     record.executionAttempts.push(attempt);
     record.executionSteps.push(step);
@@ -370,12 +380,10 @@ export class TaskRouter {
           attempt: record.attempts,
           toolRegistry: this.toolRegistry,
           executeTool: (call: ToolCallContent): Promise<ToolResultMessage & { terminate?: boolean }> =>
-            this.toolRegistry.executeTool(
-              call,
-              record.controller.signal,
-              undefined,
-              { taskId: record.task.id, executionRunId: record.executionRun.id },
-            ),
+            this.toolRegistry.executeTool(call, record.controller.signal, undefined, {
+              taskId: record.task.id,
+              executionRunId: record.executionRun.id
+            }),
           consumeSteering: () => {
             const steering = record.steering.splice(0);
             return steering.map((input) => cloneValue(input));
@@ -388,14 +396,14 @@ export class TaskRouter {
               step,
               data,
               contextFingerprint: context.fingerprint,
-              updatedAt: this.now(),
+              updatedAt: this.now()
             });
             const checkpointUpdatedAt = this.now();
             const resumeToken: ResumeToken = {
               taskId: record.task.id,
               checkpointStep: step,
               contextFingerprint: context.fingerprint,
-              issuedAt: checkpointUpdatedAt,
+              issuedAt: checkpointUpdatedAt
             };
             record.executionRun.resumeToken = resumeToken;
             record.resumeToken = resumeToken;
@@ -411,8 +419,8 @@ export class TaskRouter {
             const bounded = Math.max(0, Math.min(1, progress));
             this.observer?.progress?.(record.task, bounded);
             this.update(record, { progress: bounded }, 'progress');
-          },
-        }),
+          }
+        })
       );
       if (isInterrupted(record)) return;
       if (record.controller.signal.aborted) {
@@ -437,8 +445,8 @@ export class TaskRouter {
           executionRunId: record.executionRun.id,
           executionAttempt: record.attempts,
           instructionVersion: instructions.version,
-          instructionIds: instructions.entryIds,
-        },
+          instructionIds: instructions.entryIds
+        }
       };
       if (status !== 'waiting-user') {
         await this.checkpointStore.clear(record.task.id);
@@ -450,7 +458,11 @@ export class TaskRouter {
       this.markExecutionSettled(record, status);
       await this.persist(record);
       this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
-      this.emit({ type: status === 'waiting-user' ? 'waiting-user' : 'completed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+      this.emit({
+        type: status === 'waiting-user' ? 'waiting-user' : 'completed',
+        taskId: record.task.id,
+        snapshot: cloneSnapshot(record.snapshot)
+      });
       record.resolveCompletion(result);
     } catch (error) {
       if (isInterrupted(record)) return;
@@ -466,7 +478,7 @@ export class TaskRouter {
 
   private async executeWithTimeout(
     record: TaskRecord,
-    operation: Promise<TaskHandlerResult>,
+    operation: Promise<TaskHandlerResult>
   ): Promise<TaskHandlerResult> {
     const timeoutMs = record.task.executionPolicy?.timeoutMs;
     if (!timeoutMs || timeoutMs <= 0) return operation;
@@ -491,7 +503,7 @@ export class TaskRouter {
       taskId: record.task.id,
       kind: record.task.kind,
       status: 'cancelled',
-      error: { code: 'TASK_CANCELLED', message: 'Task was cancelled', retryable: true },
+      error: { code: 'TASK_CANCELLED', message: 'Task was cancelled', retryable: true }
     };
     record.snapshot.status = 'cancelled';
     record.snapshot.result = result;
@@ -509,7 +521,7 @@ export class TaskRouter {
       taskId: record.task.id,
       kind: record.task.kind,
       status: 'failed',
-      error,
+      error
     };
     record.snapshot.status = 'failed';
     record.snapshot.error = error;
@@ -548,7 +560,7 @@ export class TaskRouter {
   private update(
     record: TaskRecord,
     patch: Partial<TaskStatusSnapshot>,
-    type: TaskRouterEvent['type'] = 'started',
+    type: TaskRouterEvent['type'] = 'started'
   ): void {
     Object.assign(record.snapshot, patch);
     if (patch.status) record.executionRun.status = patch.status;
@@ -568,11 +580,7 @@ export class TaskRouter {
     this.emit({ type: 'interrupted', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
   }
 
-  private markExecutionSettled(
-    record: TaskRecord,
-    status: TaskStatus,
-    error?: TaskError,
-  ): void {
+  private markExecutionSettled(record: TaskRecord, status: TaskStatus, error?: TaskError): void {
     const finishedAt = record.snapshot.finishedAt ?? this.now();
     record.executionRun.status = status;
     record.executionRun.finishedAt = finishedAt;
@@ -666,12 +674,12 @@ export class TaskRouter {
         finishedAt: snapshot.finishedAt,
         attempts: stored.attempts,
         updatedAt: stored.updatedAt,
-        resumeToken: stored.resumeToken,
+        resumeToken: stored.resumeToken
       },
       executionSteps: stored.steps ? cloneValue(stored.steps) : [],
       executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
       resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
-      steering: stored.steering ? cloneValue(stored.steering) : [],
+      steering: stored.steering ? cloneValue(stored.steering) : []
     };
     snapshot.executionRunId = record.executionRun.id;
     snapshot.attempts = stored.attempts;
@@ -690,9 +698,7 @@ export class TaskRouter {
 
   private persist(record: TaskRecord): Promise<void> {
     const persisted = this.persistedRecord(record);
-    this.persistenceTail = this.persistenceTail
-      .then(() => this.executionStore.save(persisted))
-      .catch(() => undefined);
+    this.persistenceTail = this.persistenceTail.then(() => this.executionStore.save(persisted)).catch(() => undefined);
     return this.persistenceTail;
   }
 
@@ -710,7 +716,7 @@ export class TaskRouter {
       steps: cloneValue(record.executionSteps),
       executionAttempts: cloneValue(record.executionAttempts),
       resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
-      steering: cloneValue(record.steering),
+      steering: cloneValue(record.steering)
     };
   }
 
@@ -748,7 +754,7 @@ function validateOutput(task: AiTask, result: TaskHandlerResult): TaskError | un
   if (result.output.format !== contract.format) {
     return {
       code: 'OUTPUT_CONTRACT_MISMATCH',
-      message: `Expected ${contract.format} output, received ${result.output.format}`,
+      message: `Expected ${contract.format} output, received ${result.output.format}`
     };
   }
   if (result.output.format === 'text' && !contract.allowEmpty && result.output.text.length === 0) {
@@ -767,7 +773,7 @@ function toTaskError(error: unknown): TaskError {
       code: 'TASK_FAILED',
       message: error.message,
       retryable: metadata.retryable,
-      details: metadata.details,
+      details: metadata.details
     };
   }
   return { code: 'TASK_FAILED', message: String(error) };
@@ -794,7 +800,7 @@ function cloneSnapshot(snapshot: TaskStatusSnapshot): TaskStatusSnapshot {
     ...snapshot,
     result: snapshot.result ? { ...snapshot.result } : undefined,
     error: snapshot.error ? { ...snapshot.error } : undefined,
-    checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined,
+    checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined
   };
 }
 
@@ -813,7 +819,7 @@ function observationFromSnapshot(snapshot: TaskStatusSnapshot) {
     proposalIds: snapshot.result?.proposalIds ? [...snapshot.result.proposalIds] : undefined,
     checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined,
     resultType: snapshot.result?.output?.format,
-    provenance: { taskId: snapshot.taskId, taskKind: snapshot.kind, ...resultProvenance },
+    provenance: { taskId: snapshot.taskId, taskKind: snapshot.kind, ...resultProvenance }
   };
 }
 

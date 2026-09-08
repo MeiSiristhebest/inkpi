@@ -18,14 +18,14 @@ export interface DeterministicEvaluationReport {
 
 function createReport(
   violations: DeterministicViolation[],
-  metrics: Record<string, number>,
+  metrics: Record<string, number>
 ): DeterministicEvaluationReport {
   const score = Math.max(0, 100 - violations.length * 25);
   return {
     score,
     passed: violations.length === 0,
     violations,
-    metrics,
+    metrics
   };
 }
 
@@ -114,7 +114,7 @@ function addEntityContradiction(
   message: string,
   path: string,
   expected: unknown,
-  actual: unknown,
+  actual: unknown
 ): void {
   violations.push({ code, message, path, expected, actual });
 }
@@ -131,15 +131,11 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
     ...ledgerEntities.map((entity) => ({
       entity: entity.entity ?? entity.name ?? '',
       status: entity.status,
-      attributes: entity.attributes,
+      attributes: entity.attributes
     })),
-    ...(input.facts ?? []),
+    ...(input.facts ?? [])
   ];
-  const claims = [
-    ...(input.claims ?? []),
-    ...(input.observations ?? []),
-    ...(input.event ? [input.event] : []),
-  ];
+  const claims = [...(input.claims ?? []), ...(input.observations ?? []), ...(input.event ? [input.event] : [])];
   const factsByEntity = new Map<string, EntityFact[]>();
 
   for (const [index, fact] of facts.entries()) {
@@ -148,7 +144,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
       violations.push({
         code: 'entity-name-missing',
         message: 'Entity facts must include a non-empty entity name.',
-        path: `facts[${index}].entity`,
+        path: `facts[${index}].entity`
       });
       continue;
     }
@@ -158,11 +154,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
   }
 
   for (const [entity, entityFacts] of factsByEntity) {
-    const statuses = new Set(
-      entityFacts
-        .map((fact) => normalized(fact.status))
-        .filter((status) => status.length > 0),
-    );
+    const statuses = new Set(entityFacts.map((fact) => normalized(fact.status)).filter((status) => status.length > 0));
     if (statuses.size > 1) {
       addEntityContradiction(
         violations,
@@ -170,7 +162,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
         `Entity ${entity} has mutually exclusive baseline statuses.`,
         `facts.${entity}.status`,
         'one status',
-        [...statuses],
+        [...statuses]
       );
     }
   }
@@ -181,7 +173,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
       violations.push({
         code: 'claim-entity-missing',
         message: 'Entity claims must include a non-empty entity name.',
-        path: `claims[${index}].entity`,
+        path: `claims[${index}].entity`
       });
       continue;
     }
@@ -198,7 +190,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
           `Entity ${entity} claim status conflicts with the baseline status.`,
           `claims[${index}].status`,
           baseline.status,
-          claim.status,
+          claim.status
         );
       }
     }
@@ -214,7 +206,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
             `Entity ${entity} claim attribute conflicts with the baseline attribute.`,
             `claims[${index}].attributes.${key}`,
             expected,
-            actual,
+            actual
           );
         }
       }
@@ -227,7 +219,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
         `Entity ${entity} action is incompatible with its baseline status.`,
         `claims[${index}].action`,
         'status-compatible action',
-        claim.action,
+        claim.action
       );
     }
 
@@ -238,7 +230,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
         `Entity ${entity} text implies a state incompatible with its baseline status.`,
         `claims[${index}].text`,
         'status-compatible text',
-        claim.text,
+        claim.text
       );
     }
   }
@@ -253,7 +245,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
           `Entity ${entity} context conflicts with its baseline status.`,
           'text',
           'status-compatible text',
-          input.text,
+          input.text
         );
       }
     }
@@ -262,7 +254,7 @@ export function evaluateEntityContradiction(input: EntityContradictionInput): En
   const report = createReport(violations, {
     entityCount: factsByEntity.size,
     claimCount: claims.length,
-    contradictionCount: violations.length,
+    contradictionCount: violations.length
   });
   return report as EntityContradictionReport;
 }
@@ -313,7 +305,7 @@ function initialStateMap(initial: InvalidStateTransitionInput['initial']): Map<s
 function allowedTargets(
   rules: TransitionRules | undefined,
   entity: string,
-  from: string,
+  from: string
 ): readonly string[] | undefined {
   if (!rules) return undefined;
   const record = rules as Record<string, unknown>;
@@ -328,19 +320,13 @@ function allowedTargets(
   return undefined;
 }
 
-function isTerminalState(
-  terminalStates: TerminalStateRules | undefined,
-  entity: string,
-  state: string,
-): boolean {
+function isTerminalState(terminalStates: TerminalStateRules | undefined, entity: string, state: string): boolean {
   if (!terminalStates) return false;
   if (Array.isArray(terminalStates)) return terminalStates.includes(state);
   return (terminalStates as Record<string, readonly string[]>)[entity]?.includes(state) ?? false;
 }
 
-export function evaluateInvalidStateTransition(
-  input: InvalidStateTransitionInput,
-): InvalidStateTransitionReport {
+export function evaluateInvalidStateTransition(input: InvalidStateTransitionInput): InvalidStateTransitionReport {
   const violations: DeterministicViolation[] = [];
   const states = initialStateMap(input.initial);
 
@@ -354,7 +340,7 @@ export function evaluateInvalidStateTransition(
       violations.push({
         code: 'transition-field-missing',
         message: 'State transitions require entity, from, and to values.',
-        path,
+        path
       });
       continue;
     }
@@ -368,7 +354,7 @@ export function evaluateInvalidStateTransition(
         message: `Transition source does not match the current state for ${entity}.`,
         path: `${path}.from`,
         expected: current,
-        actual: from,
+        actual: from
       });
     }
 
@@ -379,7 +365,7 @@ export function evaluateInvalidStateTransition(
         message: `Terminal state ${effectiveFrom} cannot transition to ${to}.`,
         path: `${path}.to`,
         expected: effectiveFrom,
-        actual: to,
+        actual: to
       });
     }
 
@@ -390,7 +376,7 @@ export function evaluateInvalidStateTransition(
         message: `Transition ${entity}:${from} -> ${to} is not allowed.`,
         path: `${path}.to`,
         expected: targets,
-        actual: to,
+        actual: to
       });
     }
 
@@ -400,7 +386,7 @@ export function evaluateInvalidStateTransition(
   const finalStates = Object.fromEntries(states.entries());
   const report = createReport(violations, {
     transitionCount: input.transitions.length,
-    invalidTransitionCount: violations.length,
+    invalidTransitionCount: violations.length
   });
   return { ...report, finalStates } as InvalidStateTransitionReport;
 }
@@ -465,10 +451,7 @@ function finiteLength(value: number | undefined, fallback: number): number {
   return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : fallback;
 }
 
-function maxSegmentEndpoint(
-  segments: readonly SourceMapSegmentLike[],
-  key: 'semanticTo' | 'editorTo',
-): number {
+function maxSegmentEndpoint(segments: readonly SourceMapSegmentLike[], key: 'semanticTo' | 'editorTo'): number {
   return segments.reduce((maximum, segment) => Math.max(maximum, segment[key]), 0);
 }
 
@@ -476,7 +459,7 @@ function validateRange(
   range: SourceRange | undefined,
   length: number,
   path: string,
-  violations: DeterministicViolation[],
+  violations: DeterministicViolation[]
 ): boolean {
   if (!range) return true;
   if (!Number.isInteger(range.from) || !Number.isInteger(range.to)) {
@@ -485,7 +468,7 @@ function validateRange(
       message: 'Range endpoints must be integers.',
       path,
       expected: 'integer endpoints',
-      actual: range,
+      actual: range
     });
     return false;
   }
@@ -495,7 +478,7 @@ function validateRange(
       message: 'Range is reversed or outside the source text bounds.',
       path,
       expected: { from: 0, to: length },
-      actual: range,
+      actual: range
     });
     return false;
   }
@@ -505,7 +488,7 @@ function validateRange(
 function mapPosition(
   position: number,
   segments: readonly SourceMapSegmentLike[],
-  direction: 'semantic-to-editor' | 'editor-to-semantic',
+  direction: 'semantic-to-editor' | 'editor-to-semantic'
 ): number | undefined {
   const startKey = direction === 'semantic-to-editor' ? 'semanticFrom' : 'editorFrom';
   const endKey = direction === 'semantic-to-editor' ? 'semanticTo' : 'editorTo';
@@ -521,8 +504,14 @@ function mapPosition(
 
 export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): SourceMapRangeEvaluationReport {
   const violations: DeterministicViolation[] = [];
-  const semanticLength = finiteLength(input.semanticLength, input.semanticText?.length ?? maxSegmentEndpoint(input.segments, 'semanticTo'));
-  const editorLength = finiteLength(input.editorLength, input.editorText?.length ?? maxSegmentEndpoint(input.segments, 'editorTo'));
+  const semanticLength = finiteLength(
+    input.semanticLength,
+    input.semanticText?.length ?? maxSegmentEndpoint(input.segments, 'semanticTo')
+  );
+  const editorLength = finiteLength(
+    input.editorLength,
+    input.editorText?.length ?? maxSegmentEndpoint(input.segments, 'editorTo')
+  );
   let invalidSegmentCount = 0;
   let coverageGapCount = 0;
 
@@ -533,19 +522,19 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
       { from: segment.semanticFrom, to: segment.semanticTo },
       semanticLength,
       `${path}.semantic`,
-      violations,
+      violations
     );
     const validEditor = validateRange(
       { from: segment.editorFrom, to: segment.editorTo },
       editorLength,
       `${path}.editor`,
-      violations,
+      violations
     );
     if (!validBlockId) {
       violations.push({
         code: 'source-map-block-missing',
         message: 'Source-map segments require a non-empty blockId.',
-        path: `${path}.blockId`,
+        path: `${path}.blockId`
       });
     }
     if (!validSemantic || !validEditor || !validBlockId) invalidSegmentCount++;
@@ -557,7 +546,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         message: 'Semantic source-map segments overlap or are out of order.',
         path: `${path}.semanticFrom`,
         expected: `>= ${previous.semanticTo}`,
-        actual: segment.semanticFrom,
+        actual: segment.semanticFrom
       });
     }
     if (previous && segment.editorFrom < previous.editorTo) {
@@ -566,7 +555,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         message: 'Editor source-map segments overlap or are out of order.',
         path: `${path}.editorFrom`,
         expected: `>= ${previous.editorTo}`,
-        actual: segment.editorFrom,
+        actual: segment.editorFrom
       });
     }
     if (previous && segment.semanticFrom > previous.semanticTo) {
@@ -602,7 +591,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
       message: 'Source-map coverage is required for non-empty text.',
       path: 'segments',
       expected: 'at least one covering segment',
-      actual: [],
+      actual: []
     });
   }
 
@@ -616,7 +605,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         message: 'Semantic source-map segments do not cover the complete semantic text.',
         path: 'segments',
         expected: { from: 0, to: semanticLength },
-        actual: { from: first.semanticFrom, to: last.semanticTo },
+        actual: { from: first.semanticFrom, to: last.semanticTo }
       });
     }
     if (first.editorFrom !== 0 || last.editorTo !== editorLength) {
@@ -626,7 +615,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         message: 'Editor source-map segments do not cover the complete editor text.',
         path: 'segments',
         expected: { from: 0, to: editorLength },
-        actual: { from: first.editorFrom, to: last.editorTo },
+        actual: { from: first.editorFrom, to: last.editorTo }
       });
     }
   }
@@ -650,7 +639,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         message: 'Semantic source-map probe is outside the semantic text bounds.',
         path: `probes[${index}].semantic`,
         expected: { from: 0, to: semanticLength },
-        actual: probe.semantic,
+        actual: probe.semantic
       });
     }
     if (
@@ -662,7 +651,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         message: 'Editor source-map probe is outside the editor text bounds.',
         path: `probes[${index}].editor`,
         expected: { from: 0, to: editorLength },
-        actual: probe.editor,
+        actual: probe.editor
       });
     }
     if (probe.semantic !== undefined && probe.expectedEditor !== undefined) {
@@ -673,7 +662,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
           message: 'Semantic-to-editor source-map probe returned an unexpected position.',
           path: `probes[${index}].expectedEditor`,
           expected: probe.expectedEditor,
-          actual,
+          actual
         });
       }
     }
@@ -685,7 +674,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
           message: 'Editor-to-semantic source-map probe returned an unexpected position.',
           path: `probes[${index}].expectedSemantic`,
           expected: probe.expectedSemantic,
-          actual,
+          actual
         });
       }
     }
@@ -696,7 +685,7 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
     invalidSegmentCount,
     rangeCount: input.ranges?.length ?? 0,
     invalidRangeCount,
-    coverageGapCount,
+    coverageGapCount
   });
   return report as SourceMapRangeEvaluationReport;
 }
@@ -753,13 +742,13 @@ export interface LongContextEvaluationReport extends DeterministicEvaluationRepo
 
 function normalizeChapters(
   chapters: readonly LongContextChapter[] | readonly string[] | undefined,
-  chapterCount: number,
+  chapterCount: number
 ): LongContextChapter[] {
   if (!chapters) {
     return Array.from({ length: chapterCount }, (_, index) => ({ chapter: index + 1, text: `chapter-${index + 1}` }));
   }
   return chapters.map((chapter, index) =>
-    typeof chapter === 'string' ? { chapter: index + 1, text: chapter } : chapter,
+    typeof chapter === 'string' ? { chapter: index + 1, text: chapter } : chapter
   );
 }
 
@@ -770,7 +759,7 @@ export function estimateContextTokens(text: string): number {
 export function pruneLongContextChapters(
   chapters: readonly LongContextChapter[] | readonly string[],
   maxTokens: number,
-  anchorChapters: readonly number[] = [],
+  anchorChapters: readonly number[] = []
 ): LongContextPruningResult {
   const normalizedChapters = normalizeChapters(chapters, chapters.length);
   const byNumber = new Map(normalizedChapters.map((chapter) => [chapter.chapter, chapter]));
@@ -798,7 +787,7 @@ export function pruneLongContextChapters(
     selectedChapters,
     omittedChapters,
     estimatedTokens,
-    anchorRecall: anchors.length === 0 ? 1 : retainedAnchors.length / anchors.length,
+    anchorRecall: anchors.length === 0 ? 1 : retainedAnchors.length / anchors.length
   };
 }
 
@@ -808,24 +797,20 @@ function asLongContextInput(input: LongContextEvaluationInput | LongContextBench
       chapterCount: input.chapterCount,
       maxTokens: input.task.contextPolicy?.maxTokens ?? input.expectedMaxTokens,
       chapters: input.chapters,
-      anchorChapters: input.anchorChapterNumbers,
+      anchorChapters: input.anchorChapterNumbers
     };
   }
   return input;
 }
 
 export function evaluateLongContextBenchmark(
-  input: LongContextEvaluationInput | LongContextBenchmark,
+  input: LongContextEvaluationInput | LongContextBenchmark
 ): LongContextEvaluationReport {
   const normalizedInput = asLongContextInput(input);
   const violations: DeterministicViolation[] = [];
   const chapters = normalizeChapters(normalizedInput.chapters, normalizedInput.chapterCount);
   const anchorChapters = [...(normalizedInput.anchorChapters ?? [])];
-  const pruning = pruneLongContextChapters(
-    chapters,
-    normalizedInput.maxTokens,
-    anchorChapters,
-  );
+  const pruning = pruneLongContextChapters(chapters, normalizedInput.maxTokens, anchorChapters);
   const selectedChapters = normalizedInput.retainedChapters
     ? [...normalizedInput.retainedChapters].sort((left, right) => left - right)
     : pruning.selectedChapters;
@@ -844,7 +829,7 @@ export function evaluateLongContextBenchmark(
       message: 'Long-context benchmarks require a positive integer chapter count.',
       path: 'chapterCount',
       expected: 'positive integer',
-      actual: normalizedInput.chapterCount,
+      actual: normalizedInput.chapterCount
     });
   }
   if (normalizedInput.chapters && chapters.length !== normalizedInput.chapterCount) {
@@ -853,7 +838,7 @@ export function evaluateLongContextBenchmark(
       message: 'Provided chapter data does not match the declared chapter count.',
       path: 'chapters',
       expected: normalizedInput.chapterCount,
-      actual: chapters.length,
+      actual: chapters.length
     });
   }
   if (!Number.isInteger(normalizedInput.maxTokens) || normalizedInput.maxTokens < 1) {
@@ -862,7 +847,7 @@ export function evaluateLongContextBenchmark(
       message: 'Long-context benchmarks require a positive integer token budget.',
       path: 'maxTokens',
       expected: 'positive integer',
-      actual: normalizedInput.maxTokens,
+      actual: normalizedInput.maxTokens
     });
   }
   for (const chapter of selectedChapters) {
@@ -871,7 +856,7 @@ export function evaluateLongContextBenchmark(
         code: 'retained-chapter-missing',
         message: 'Retained chapter list contains a chapter that is not in the benchmark.',
         path: 'retainedChapters',
-        actual: chapter,
+        actual: chapter
       });
     }
   }
@@ -881,7 +866,7 @@ export function evaluateLongContextBenchmark(
       message: 'Retained long-context chapters exceed the token budget.',
       path: 'retainedChapters',
       expected: normalizedInput.maxTokens,
-      actual: retainedTokens,
+      actual: retainedTokens
     });
   }
   const expectedAnchorRecall = normalizedInput.expectedAnchorRecall ?? (anchors.length > 0 ? 1 : 0);
@@ -891,7 +876,7 @@ export function evaluateLongContextBenchmark(
       message: 'Context pruning dropped more anchor chapters than the benchmark allows.',
       path: 'anchorChapters',
       expected: expectedAnchorRecall,
-      actual: anchorRecall,
+      actual: anchorRecall
     });
   }
   if (normalizedInput.entityCount !== undefined && normalizedInput.entityCount < 1) {
@@ -900,7 +885,7 @@ export function evaluateLongContextBenchmark(
       message: 'Long-context fixture must contain at least one tracked entity.',
       path: 'entityCount',
       expected: '>= 1',
-      actual: normalizedInput.entityCount,
+      actual: normalizedInput.entityCount
     });
   }
   if (normalizedInput.foreshadowingCount !== undefined && normalizedInput.foreshadowingCount < 1) {
@@ -909,7 +894,7 @@ export function evaluateLongContextBenchmark(
       message: 'Long-context fixture must contain at least one tracked foreshadowing item.',
       path: 'foreshadowingCount',
       expected: '>= 1',
-      actual: normalizedInput.foreshadowingCount,
+      actual: normalizedInput.foreshadowingCount
     });
   }
 
@@ -922,7 +907,7 @@ export function evaluateLongContextBenchmark(
         code: 'cache-statistics-invalid',
         message: 'Cache lookups and hits must be integers with 0 <= hits <= lookups.',
         path: 'cache',
-        actual: { lookups, hits },
+        actual: { lookups, hits }
       });
     } else {
       cacheHitRate = hits / lookups;
@@ -945,9 +930,9 @@ export function evaluateLongContextBenchmark(
         path: 'checkpoint',
         expected: {
           totalChapters: normalizedInput.chapterCount,
-          nextChapter: checkpoint.completedChapters + 1,
+          nextChapter: checkpoint.completedChapters + 1
         },
-        actual: checkpoint,
+        actual: checkpoint
       });
     }
   }
@@ -958,7 +943,7 @@ export function evaluateLongContextBenchmark(
     estimatedTokens: retainedTokens,
     prunedChapterCount: normalizedInput.chapterCount - selectedChapters.length,
     anchorRecallPercent: Math.round(anchorRecall * 100),
-    cacheHitRatePercent: cacheHitRate === undefined ? 0 : Math.round(cacheHitRate * 100),
+    cacheHitRatePercent: cacheHitRate === undefined ? 0 : Math.round(cacheHitRate * 100)
   });
   return {
     ...report,
@@ -966,7 +951,7 @@ export function evaluateLongContextBenchmark(
     retainedChapterCount: selectedChapters.length,
     anchorRecall,
     cacheHitRate,
-    checkpointValid,
+    checkpointValid
   } as LongContextEvaluationReport;
 }
 
@@ -1004,7 +989,7 @@ export function evaluateMutationCase<T>(input: MutationEvaluationInput<T>): Muta
       message: 'Baseline fixture was reported as invalid.',
       path: 'baseline',
       expected: false,
-      actual: true,
+      actual: true
     });
   }
   if (!mutationDetected) {
@@ -1013,7 +998,7 @@ export function evaluateMutationCase<T>(input: MutationEvaluationInput<T>): Muta
       message: 'Mutated fixture was not reported as invalid.',
       path: 'mutated',
       expected: true,
-      actual: false,
+      actual: false
     });
   }
   if (repairedDetected) {
@@ -1022,20 +1007,20 @@ export function evaluateMutationCase<T>(input: MutationEvaluationInput<T>): Muta
       message: 'Repaired fixture was still reported as invalid.',
       path: 'repaired',
       expected: false,
-      actual: true,
+      actual: true
     });
   }
   const report = createReport(violations, {
     baselineDetected: baselineDetected ? 1 : 0,
     mutationDetected: mutationDetected ? 1 : 0,
-    repairedDetected: repairedDetected ? 1 : 0,
+    repairedDetected: repairedDetected ? 1 : 0
   });
   return {
     ...report,
     name: input.name,
     baselineDetected,
     mutationDetected,
-    repairedDetected,
+    repairedDetected
   };
 }
 

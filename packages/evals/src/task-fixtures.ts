@@ -1,5 +1,5 @@
-import type { AiTask, OutputFormat, TaskResult } from '@inkpi/protocol';
 import { ContextPipeline, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
+import type { AiTask, OutputFormat, TaskResult } from '@inkpi/protocol';
 import type { TaskEvaluationCase, TaskEvaluationReport } from './task-evals.js';
 import { evaluateTaskCase } from './task-evals.js';
 
@@ -18,17 +18,17 @@ export function createTaskEvalFixtures(): TaskEvalFixture[] {
       kind,
       input: { text: 'fixture context' },
       outputContract: { format },
-      effectPolicy: { mode: 'read-only' },
+      effectPolicy: { mode: 'read-only' }
     },
     expectedFormat: format,
-    requiredProvenanceKeys: ['provider', 'model'],
+    requiredProvenanceKeys: ['provider', 'model']
   });
   return [
     base('creative.continue', 'text'),
     base('creative.rewrite', 'patch'),
     base('narrative.continuity.audit', 'structured'),
     base('narrative.deep.reason', 'structured'),
-    base('narrative.project.distill', 'structured'),
+    base('narrative.project.distill', 'structured')
   ];
 }
 
@@ -39,16 +39,21 @@ export function evaluateObjective(input: TaskEvaluationCase): TaskEvaluationRepo
 export function evaluateSubjective(
   report: TaskEvaluationReport,
   score: number,
-  feedback?: string,
+  feedback?: string
 ): TaskEvaluationReport {
   const bounded = Math.max(0, Math.min(100, Math.round(score)));
   const checks = {
     ...report.checks,
-    subjective: { passed: bounded >= 85, score: bounded, details: feedback },
+    subjective: { passed: bounded >= 85, score: bounded, details: feedback }
   };
   const scores = Object.values(checks).map((check) => check.score);
   const total = Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length);
-  return { ...report, checks, score: total, passed: total >= 85 && Object.values(checks).every((check) => check.passed) };
+  return {
+    ...report,
+    checks,
+    score: total,
+    passed: total >= 85 && Object.values(checks).every((check) => check.passed)
+  };
 }
 
 export function mutateTask(task: AiTask, mutate: (task: AiTask) => AiTask): AiTask {
@@ -62,7 +67,7 @@ export function longContextFixture(size = 20_000): AiTask {
     input: { text: 'context '.repeat(Math.max(1, size)) },
     contextPolicy: { maxTokens: 512 },
     outputContract: { format: 'structured' },
-    effectPolicy: { mode: 'read-only' },
+    effectPolicy: { mode: 'read-only' }
   };
 }
 
@@ -73,16 +78,17 @@ export async function runDeterministicTaskFixture(task: AiTask): Promise<TaskRes
     kinds: ['*'],
     async execute({ task: current, context }) {
       const format = current.outputContract?.format ?? 'text';
-      const output = format === 'text'
-        ? { format: 'text' as const, text: context.text }
-        : format === 'patch'
-          ? { format: 'patch' as const, patch: { from: 0, to: 0, text: context.text } }
-          : { format: 'structured' as const, data: { contextFingerprint: context.fingerprint } };
+      const output =
+        format === 'text'
+          ? { format: 'text' as const, text: context.text }
+          : format === 'patch'
+            ? { format: 'patch' as const, patch: { from: 0, to: 0, text: context.text } }
+            : { format: 'structured' as const, data: { contextFingerprint: context.fingerprint } };
       return {
         output,
-        provenance: { provider: 'fixture', model: 'deterministic', contextFingerprint: context.fingerprint },
+        provenance: { provider: 'fixture', model: 'deterministic', contextFingerprint: context.fingerprint }
       };
-    },
+    }
   });
   const router = new TaskRouter({ registry, contextPipeline: new ContextPipeline() });
   router.submit(task);

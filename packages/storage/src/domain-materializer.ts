@@ -112,7 +112,7 @@ export class DomainMaterializer {
         `SELECT id, workspace_id, source_device_id, base_revision, revision,
                 changes_json, checksum, created_at
          FROM domain_change_sets
-         WHERE workspace_id = ? ORDER BY revision ASC`,
+         WHERE workspace_id = ? ORDER BY revision ASC`
       )
       .all(workspaceId) as Array<Record<string, unknown>>;
     return rows.map((row) => ({
@@ -123,7 +123,7 @@ export class DomainMaterializer {
       revision: Number(row.revision),
       changes: JSON.parse(String(row.changes_json)) as DomainChange[],
       checksum: String(row.checksum ?? ''),
-      createdAt: Number(row.created_at),
+      createdAt: Number(row.created_at)
     }));
   }
 
@@ -133,7 +133,8 @@ export class DomainMaterializer {
     const existing = this.db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as WorkspaceRow | undefined;
     const title = stringValue(payload, ['title', 'name']) ?? existing?.title ?? id;
     const owner = stringValue(payload, ['owner', 'ownerId', 'owner_id', 'author']) ?? existing?.owner ?? '';
-    const category = stringValue(payload, ['category', 'genre', 'projectType', 'project_type']) ?? existing?.category ?? 'general';
+    const category =
+      stringValue(payload, ['category', 'genre', 'projectType', 'project_type']) ?? existing?.category ?? 'general';
     const targetSize = numberValue(payload, ['targetSize', 'target_size']) ?? existing?.target_size ?? 0;
     const synopsis = stringValue(payload, ['description', 'synopsis', 'intro']) ?? existing?.synopsis ?? null;
     const coverImage = stringValue(payload, ['coverImage', 'cover_image', 'cover']) ?? existing?.cover_image ?? null;
@@ -155,20 +156,9 @@ export class DomainMaterializer {
            cover_image = excluded.cover_image,
            metadata = excluded.metadata,
            created_at = excluded.created_at,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at`
       )
-      .run(
-        id,
-        title,
-        owner,
-        category,
-        targetSize,
-        synopsis,
-        coverImage,
-        metadata,
-        createdAt,
-        updatedAt,
-      );
+      .run(id, title, owner, category, targetSize, synopsis, coverImage, metadata, createdAt, updatedAt);
 
     // Desktop project changes use project.id as workspaceId. The aggregate
     // coordinate remains the canonical key even if a payload is inconsistent.
@@ -180,7 +170,9 @@ export class DomainMaterializer {
     const id = change.aggregateId;
     const existing = this.db.prepare('SELECT * FROM folders WHERE id = ?').get(id) as FolderRow | undefined;
     const parentWorkspaceId =
-      stringValue(payload, ['workspaceId', 'workspace_id', 'projectId', 'project_id']) ?? existing?.workspace_id ?? workspaceId;
+      stringValue(payload, ['workspaceId', 'workspace_id', 'projectId', 'project_id']) ??
+      existing?.workspace_id ??
+      workspaceId;
     const title = stringValue(payload, ['title', 'name']) ?? existing?.title ?? id;
     const orderIndex = numberValue(payload, ['orderIndex', 'order_index', 'order']) ?? existing?.order_index ?? 0;
     const summary = stringValue(payload, ['summary', 'description', 'intro']) ?? existing?.summary ?? null;
@@ -203,7 +195,7 @@ export class DomainMaterializer {
            order_index = excluded.order_index,
            summary = excluded.summary,
            created_at = excluded.created_at,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at`
       )
       .run(id, parentWorkspaceId, title, orderIndex, summary, createdAt, updatedAt);
   }
@@ -213,12 +205,15 @@ export class DomainMaterializer {
     const id = change.aggregateId;
     const existing = this.db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as DocumentRow | undefined;
     const parentWorkspaceId =
-      stringValue(payload, ['workspaceId', 'workspace_id', 'projectId', 'project_id']) ?? existing?.workspace_id ?? workspaceId;
+      stringValue(payload, ['workspaceId', 'workspace_id', 'projectId', 'project_id']) ??
+      existing?.workspace_id ??
+      workspaceId;
     const explicitFolderId = stringValue(payload, ['folderId', 'folder_id', 'volumeId', 'volume_id']);
     const folderId = explicitFolderId ?? existing?.folder_id;
     const title = stringValue(payload, ['title', 'name']) ?? existing?.title ?? id;
     const orderIndex = numberValue(payload, ['orderIndex', 'order_index', 'order']) ?? existing?.order_index ?? 0;
-    const synopsis = stringValue(payload, ['synopsis', 'summary', 'description', 'intro']) ?? existing?.synopsis ?? null;
+    const synopsis =
+      stringValue(payload, ['synopsis', 'summary', 'description', 'intro']) ?? existing?.synopsis ?? null;
     const contentSize =
       numberValue(payload, ['contentSize', 'content_size', 'wordCount', 'word_count']) ?? existing?.content_size ?? 0;
     const status = stringValue(payload, ['status']) ?? existing?.status ?? 'draft';
@@ -245,7 +240,7 @@ export class DomainMaterializer {
            content_size = excluded.content_size,
            status = excluded.status,
            created_at = excluded.created_at,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at`
       )
       .run(id, folderId, parentWorkspaceId, title, orderIndex, synopsis, contentSize, status, createdAt, updatedAt);
 
@@ -254,16 +249,29 @@ export class DomainMaterializer {
     }
   }
 
-  private upsertSnapshot(documentId: string, payload: JsonRecord, change: DomainChange, documentContentSize: number): void {
-    const existing = this.db.prepare('SELECT * FROM document_snapshots WHERE document_id = ?').get(documentId) as SnapshotRow | undefined;
+  private upsertSnapshot(
+    documentId: string,
+    payload: JsonRecord,
+    change: DomainChange,
+    documentContentSize: number
+  ): void {
+    const existing = this.db.prepare('SELECT * FROM document_snapshots WHERE document_id = ?').get(documentId) as
+      | SnapshotRow
+      | undefined;
     const contentMarkdown =
       stringValue(payload, ['contentMarkdown', 'content_markdown', 'markdown', 'content', 'text', 'body', 'html']) ??
       existing?.content_markdown ??
       '';
     const contentJson = contentJsonValue(payload, existing?.content_json);
-    const version = numberValue(payload, ['version', 'snapshotVersion', 'snapshot_version', 'revision']) ?? change.revision ?? existing?.version ?? 1;
+    const version =
+      numberValue(payload, ['version', 'snapshotVersion', 'snapshot_version', 'revision']) ??
+      change.revision ??
+      existing?.version ??
+      1;
     const contentSize =
-      numberValue(payload, ['contentSize', 'content_size', 'wordCount', 'word_count']) ?? documentContentSize ?? contentMarkdown.length;
+      numberValue(payload, ['contentSize', 'content_size', 'wordCount', 'word_count']) ??
+      documentContentSize ??
+      contentMarkdown.length;
     const updatedAt = numberValue(payload, ['updatedAt', 'updated_at']) ?? change.occurredAt;
 
     this.db
@@ -276,7 +284,7 @@ export class DomainMaterializer {
            content_json = excluded.content_json,
            content_markdown = excluded.content_markdown,
            content_size = excluded.content_size,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at`
       )
       .run(documentId, version, contentJson, contentMarkdown, contentSize, updatedAt);
   }
@@ -294,11 +302,15 @@ export class DomainMaterializer {
       .prepare(
         `DELETE FROM branch_tips
          WHERE document_id IN (${documentFilter})
-            OR lane_id IN (SELECT id FROM lanes WHERE workspace_id = ?)`,
+            OR lane_id IN (SELECT id FROM lanes WHERE workspace_id = ?)`
       )
       .run(workspaceId, workspaceId, workspaceId);
-    this.db.prepare(`DELETE FROM document_deltas WHERE document_id IN (${documentFilter})`).run(workspaceId, workspaceId);
-    this.db.prepare(`DELETE FROM document_snapshots WHERE document_id IN (${documentFilter})`).run(workspaceId, workspaceId);
+    this.db
+      .prepare(`DELETE FROM document_deltas WHERE document_id IN (${documentFilter})`)
+      .run(workspaceId, workspaceId);
+    this.db
+      .prepare(`DELETE FROM document_snapshots WHERE document_id IN (${documentFilter})`)
+      .run(workspaceId, workspaceId);
     this.db.prepare(`DELETE FROM documents WHERE id IN (${documentFilter})`).run(workspaceId, workspaceId);
     this.db.prepare('DELETE FROM folders WHERE workspace_id = ?').run(workspaceId);
     this.db.prepare('DELETE FROM lanes WHERE workspace_id = ?').run(workspaceId);
@@ -310,7 +322,7 @@ export class DomainMaterializer {
     this.db.prepare(`DELETE FROM branch_tips WHERE document_id IN (${documentFilter})`).run(folderId);
     this.db.prepare(`DELETE FROM document_deltas WHERE document_id IN (${documentFilter})`).run(folderId);
     this.db.prepare(`DELETE FROM document_snapshots WHERE document_id IN (${documentFilter})`).run(folderId);
-    this.db.prepare(`DELETE FROM documents WHERE folder_id = ?`).run(folderId);
+    this.db.prepare('DELETE FROM documents WHERE folder_id = ?').run(folderId);
     this.db.prepare('DELETE FROM folders WHERE id = ?').run(folderId);
   }
 
@@ -327,7 +339,7 @@ export class DomainMaterializer {
         `INSERT INTO workspaces
           (id, title, owner, category, target_size, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO NOTHING`,
+         ON CONFLICT(id) DO NOTHING`
       )
       .run(workspaceId, workspaceId, '', 'general', 0, occurredAt, occurredAt);
   }
@@ -338,7 +350,7 @@ export class DomainMaterializer {
         `INSERT INTO folders
           (id, workspace_id, title, order_index, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO NOTHING`,
+         ON CONFLICT(id) DO NOTHING`
       )
       .run(folderId, workspaceId, folderId, 0, occurredAt, occurredAt);
   }
@@ -411,19 +423,32 @@ function hasContentPayload(record: JsonRecord): boolean {
     'content',
     'text',
     'body',
-    'html',
+    'html'
   ].some((key) => hasOwn(record, key));
 }
 
 function normalizeAggregateType(value: string): 'workspace' | 'folder' | 'document' | 'unknown' {
-  const normalized = value.trim().toLowerCase().replace(/[\s_-]/g, '');
-  if (normalized === 'project' || normalized === 'projects' || normalized === 'workspace' || normalized === 'workspaces') {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, '');
+  if (
+    normalized === 'project' ||
+    normalized === 'projects' ||
+    normalized === 'workspace' ||
+    normalized === 'workspaces'
+  ) {
     return 'workspace';
   }
   if (normalized === 'volume' || normalized === 'volumes' || normalized === 'folder' || normalized === 'folders') {
     return 'folder';
   }
-  if (normalized === 'chapter' || normalized === 'chapters' || normalized === 'document' || normalized === 'documents') {
+  if (
+    normalized === 'chapter' ||
+    normalized === 'chapters' ||
+    normalized === 'document' ||
+    normalized === 'documents'
+  ) {
     return 'document';
   }
   return 'unknown';

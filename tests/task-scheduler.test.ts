@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { TaskScheduler } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 
 describe('task scheduler lifecycle', () => {
   it('limits foreground work and starts the next queued task after completion', async () => {
@@ -8,12 +8,15 @@ describe('task scheduler lifecycle', () => {
     const first = scheduler.schedule({
       id: 'first',
       mode: 'foreground',
-      run: () => new Promise<string>((resolve) => (releaseFirst = () => resolve('first'))),
+      run: () =>
+        new Promise<string>((resolve) => {
+          releaseFirst = () => resolve('first');
+        })
     });
     const second = scheduler.schedule({
       id: 'second',
       mode: 'foreground',
-      run: async () => 'second',
+      run: async () => 'second'
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(scheduler.status('first').status).toBe('running');

@@ -23,7 +23,7 @@ export function createLongContextBenchmark(chapterCount = 100, maxTokens = 2048)
   const safeCount = Math.max(1, Math.floor(chapterCount));
   const chapters = Array.from({ length: safeCount }, (_, index) => ({
     chapter: index + 1,
-    text: `chapter-${index + 1}`,
+    text: `chapter-${index + 1}`
   }));
   const anchorChapterNumbers = [...new Set([1, Math.ceil(safeCount / 2), safeCount])];
   return {
@@ -34,21 +34,21 @@ export function createLongContextBenchmark(chapterCount = 100, maxTokens = 2048)
       input: { text: chapters.map((chapter) => chapter.text).join('\n') },
       contextPolicy: { maxTokens },
       outputContract: { format: 'structured' },
-      effectPolicy: { mode: 'read-only' },
+      effectPolicy: { mode: 'read-only' }
     },
     expectedMaxTokens: maxTokens,
     chapters,
-    anchorChapterNumbers,
+    anchorChapterNumbers
   };
 }
 
 export function runMutationChecks(
   task: AiTask,
   mutations: EvalMutation[],
-  detect: (mutated: AiTask) => boolean,
+  detect: (mutated: AiTask) => boolean
 ): Array<{ name: string; passed: boolean }> {
   return mutations.map((mutation) => ({
     name: mutation.name,
-    passed: detect(mutation.mutate(structuredClone(task))) === mutation.expectedDetection,
+    passed: detect(mutation.mutate(structuredClone(task))) === mutation.expectedDetection
   }));
 }

@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { SkillInfo } from '@inkpi/protocol';
@@ -54,7 +54,12 @@ function parseSkillDocument(content: string, includePromptBody: boolean): Parsed
 
   return {
     frontmatter: parseYamlSubset(lines.slice(1, closingIndex)),
-    promptBody: includePromptBody ? lines.slice(closingIndex + 1).join('\n').trim() : '',
+    promptBody: includePromptBody
+      ? lines
+          .slice(closingIndex + 1)
+          .join('\n')
+          .trim()
+      : ''
   };
 }
 
@@ -262,7 +267,7 @@ function toSkillInfo(frontmatter: Record<string, unknown>, promptBody: string, f
     description,
     filePath,
     frontmatter,
-    promptBody,
+    promptBody
   };
 }
 
@@ -308,7 +313,7 @@ export class SkillDiscoveryEngine {
       const entries = readdirSync(dir).sort((left, right) => left.localeCompare(right));
       for (const entry of entries) {
         const fullPath = join(dir, entry);
-        let stat;
+        let stat: ReturnType<typeof statSync>;
         try {
           stat = statSync(fullPath);
         } catch {

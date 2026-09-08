@@ -37,7 +37,7 @@ export function createCheckpoint(
   step: string,
   data: unknown,
   contextFingerprint?: string,
-  updatedAt = Date.now(),
+  updatedAt = Date.now()
 ): TaskCheckpoint {
   return { taskId: task.id, kind: task.kind, step, data, contextFingerprint, updatedAt };
 }
@@ -45,7 +45,7 @@ export function createCheckpoint(
 function cloneCheckpoint(checkpoint: TaskCheckpoint): TaskCheckpoint {
   return {
     ...checkpoint,
-    data: cloneValue(checkpoint.data),
+    data: cloneValue(checkpoint.data)
   };
 }
 
