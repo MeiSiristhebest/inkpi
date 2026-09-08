@@ -6,7 +6,7 @@
 
 本文件是 Runtime v1 的正式接口基线，但不是最终验收声明。Phase 0–23 中仍有未完成或未验证项，见第 18–19 节。只有所有必需项完成并有测试证据后，才能把状态改为 Final。
 
-本基线的已验证范围仅限当前工作区 `inkpi` 与 `inkpi-desktop` 两个仓库内的单元、架构、RPC、deterministic eval 和 reliability 测试。真实 provider 能力矩阵、Desktop↔Daemon 集成、故障注入、进程级恢复报告和生产指标不属于当前证据范围，不得据此写成已完成。
+本基线的已验证范围仅限当前工作区 `inkpi` 与 `inkpi-desktop` 两个仓库内的单元、架构、RPC、deterministic eval、subjective fixture 和 reliability 测试，以及两个 Desktop↔Daemon real WebSocket child-process 集成用例。完整真实 provider 能力矩阵、五个切片的全量 Desktop↔Daemon 集成、故障注入、App 重启恢复报告和生产指标不属于当前证据范围，不得据此写成已完成。
 
 ## 1. 范围和术语
 
@@ -643,7 +643,7 @@ TaskCheckpointStore 当前是每个 task 保留一个最新 checkpoint，字段�
 - Replay：复制 task，生成新 task id，并记录 replayOf。
 - Fork：复制 task，可带 Partial<AiTask> patch，并记录 forkOf。
 
-TaskScheduler 另提供内存中的队列、优先级、并发上限、dedupe、debounce、timeout、retry 和 progress；它自身没有 durable checkpoint 或 restart recovery。Durable v1 语义以 TaskRouter + TaskCheckpointStore + TaskExecutionStore 为准。`task-reliability.test.ts` 已覆盖 retry、interrupted hydration、shutdown 后 resume、replay/fork、恢复门禁和重复恢复；SQLite store 另有文件重开、checkpoint/execution JSON 损坏显式失败和 daemon stop/start reload 测试。真实 OS 进程 crash、App restart、故障注入和生产恢复报告仍缺失。
+TaskScheduler 另提供内存中的队列、优先级、并发上限、dedupe、debounce、timeout、retry 和 progress；它自身没有 durable checkpoint 或 restart recovery。Durable v1 语义以 TaskRouter + TaskCheckpointStore + TaskExecutionStore 为准。`task-reliability.test.ts` 已覆盖 retry、interrupted hydration、shutdown 后 resume、replay/fork、恢复门禁和重复恢复；SQLite store 另有文件重开、checkpoint/execution JSON 损坏显式失败和 daemon stop/start reload 测试。`tests/process-restart-e2e.test.ts` 已通过真实 Node 子进程写入文件 SQLite、SIGKILL、重启并从 interrupted checkpoint resume，覆盖 OS 进程级 checkpoint recovery；App restart、故障注入、CLI 持久化 handler 链路和生产恢复报告仍缺失。
 
 ## 14. Skills、Artifacts、Cache、Capability、Instructions
 
@@ -676,7 +676,7 @@ SkillDiscoveryEngine metadata scan
   → existing ToolRegistry
 ~~~
 
-当前 discovery 使用 Markdown frontmatter 的 metadata，load 才读取 promptBody。第一批四个 manifest 已存在于 `inkpi/skills/hook.md`、`promise.md`、`character-voice.md` 和 `timeline-consistency.md`；`tests/skills-instructions.test.ts` 覆盖 metadata-first discovery、lazy body loading、按 capability/task kind resolve 和 instruction composition。Desktop 生产环境中的 ExtensionHost/ToolRegistry 注册和跨进程 CI 验收仍未证明。
+当前 discovery 使用 Markdown frontmatter 的 metadata，load 才读取 promptBody。第一批四个 manifest 已存在于 `inkpi/skills/hook.md`、`promise.md`、`character-voice.md` 和 `timeline-consistency.md`；`tests/skills-instructions.test.ts` 覆盖 metadata-first discovery、lazy body loading、按 capability/task kind resolve 和 instruction composition；`tests/skill-runtime-integration.test.ts` 覆盖共享 ExtensionHost、ToolRegistry、TaskRegistry、ContextPipeline 的注册、失败回滚、重试和并发幂等。实际 first-party skill 逐个激活、Desktop 生产环境中的跨进程注册和 CI 验收仍未证明。
 
 ### 14.2 Artifacts
 
@@ -710,7 +710,7 @@ Artifact 是 Runtime semantic object；JSON/Markdown 只是导出格式。当前
 
 当前有三层：context、semantic、provider。ContextCacheKey 可包含 taskKind、contextFingerprint、projectRevision、model/modelId、instructionVersion、skillVersion、providerId 和 layer。实现提供 TTL、LRU 淘汰和 hits/misses/evictions。
 
-Desktop 的 ContextCache 已由 CreativeIntelligence 接入 provider-response 路径；cache key 包含 task kind、context/intent fingerprint、project revision、instruction/skill version、route provider/model 和 layer，cache hit 会复用结果并补齐 artifact。Desktop 的 `contextCache.test.ts` 和 `creativeIntelligence.test.ts` 覆盖 TTL、LRU、hit/miss、revision/instruction/skill/model/provider 失效和 cache-hit artifact rehydration。
+Desktop 的 `daemonAiAssistant` 已把 `runTask` 路由到 CreativeIntelligence；ContextCache 已接入 provider-response 路径。cache key 包含 task kind、context/intent fingerprint、project revision、instruction/skill version、route provider/model 和 layer，cache hit 会复用结果并补齐 artifact。Desktop 的 `contextCache.test.ts` 和 `creativeIntelligence.test.ts` 覆盖 TTL、LRU、hit/miss、revision/instruction/skill/model/provider 失效和 cache-hit artifact rehydration。
 
 ContextPipeline/retrieval 的共享三层默认调用链、跨重启策略和真实命中率仍待接入或测量，不能把本地 cache 接入写成全链路完成。
 
@@ -802,9 +802,9 @@ long-context
 mutation
 ~~~
 
-已有 runner 可以检查 task status、output contract、required provenance 和 proposal approval；已有 long-context fixture、mutation helper 和 subjective score 接口。当前 deterministic 测试已覆盖实体/状态矛盾、source-map/range、100/300 chapter budget、mutation 和 distillation checkpoint 规则，并验证 fixture JSON 与 CI workflow 清单。
+已有 runner 可以检查 task status、output contract、required provenance 和 proposal approval；已有 long-context fixture、mutation helper，以及 `packages/evals/fixtures/subjective/` 下的 canonical gold-set、pairwise preference 和 rubric fixture。当前 deterministic 与 subjective 测试已覆盖实体/状态矛盾、source-map/range、100/300 chapter budget、mutation、distillation checkpoint、候选评分、pairwise 排名和 rubric 门禁，并验证 fixture JSON 与 CI workflow 清单。
 
-`.github/workflows/evals.yml` 已把 `pnpm run test:evals` 接入 push、pull request 和手动触发的 CI。当前 deterministic suite 已有可复现结果；Final 前仍需补齐真实 provider、主观 gold set、生产 benchmark 和跨进程集成门禁：
+`.github/workflows/evals.yml` 已把 `pnpm run test:evals` 接入 push、pull request 和手动触发的 CI。当前 deterministic suite 和 canonical subjective fixture suite 已有可复现结果；Final 前仍需补齐真实 provider、人类标注 gold set、生产 benchmark 和跨进程集成门禁：
 
 - 真实 provider 的 dead-character reappearance、timeline/entity contradiction、missing payoff 和 invalid state transition 回归；
 - 真实 retrieval recall、source-map/range 集成回归；
@@ -812,7 +812,7 @@ mutation
 - 100 和 300 chapter 的真实 context pruning、retrieval recall、cache hit rate；
 - distillation checkpoint/recovery 的进程级 benchmark；
 - 五个 Vertical Slice 的 Desktop ↔ Daemon 集成回归；
-- hook/style/voice 等主观任务的 human-labelled gold set、pairwise preference 和 rubric 结果。
+- hook/style/voice 等主观任务的 human-labelled gold set、真实候选 pairwise preference 和 rubric 结果。
 
 单元测试通过不等于 v1 Final。每次契约变更还必须通过 typecheck、lint、unit、architecture、RPC/integration 和相关 regression eval。
 
@@ -826,20 +826,20 @@ mutation
 | Phase 3–5 task contract/router | protocol task.ts、TaskRegistry、TaskRouter、RPC tests | 本地契约和 task RPC 已有；公开 execution 查询 RPC 仍未纳入 v1 |
 | Phase 6 context pipeline | ContextPipeline、JitContextProvider | 本地 provider/budget/fingerprint 已有；跨进程注册待验证 |
 | Phase 7 creative layer | taskFactories、CreativeIntelligence | 已有本地路径 |
-| Phase 8 five slices | verticalSlices、proposal、task handler tests | 局部；真实端到端待验证 |
+| Phase 8 five slices | verticalSlices、proposal、task handler tests、desktopDaemonIntegration | 局部；已验证 2 个 real WebSocket child-process 用例（completed、waiting-user）；五个切片全量链路仍待验收 |
 | Phase 9 projection sync | DomainChangeSet、IndexedDB store、SQLite store、DomainMaterializer | 本地 reducer、幂等、乱序、checksum、snapshot/rebuild 已测；跨设备/跨进程待验证 |
 | Phase 10 Proposal/CAS | DomainProposal、ProposalLedger、Selection Toolbar | 局部；统一持久化/跨端待验证 |
-| Phase 11 durable execution | checkpoint/execution stores、TaskRouter recovery、daemon-rpc-e2e | 本地文件重开、daemon stop/start reload、checkpoint/execution 损坏显式失败已测；OS crash/App restart/故障注入待验证 |
-| Phase 12 skills | ProgressiveSkillRuntime、四个 first-party manifest | 本地 metadata-first/lazy-load 已测；ExtensionHost/ToolRegistry 注册待验证 |
+| Phase 11 durable execution | checkpoint/execution stores、TaskRouter recovery、daemon-rpc-e2e、process-restart-e2e | 本地文件重开、daemon stop/start reload、checkpoint/execution 损坏显式失败和 OS 子进程 crash/resume 已测；App restart/故障注入待验证 |
+| Phase 12 skills | ProgressiveSkillRuntime、四个 first-party manifest、skill-runtime-integration | metadata-first/lazy-load、共享 registry 注册、回滚、重试和幂等已测；first-party 逐个激活和跨进程生产注册待验证 |
 | Phase 13 artifacts | ArtifactRuntime、IndexedDbArtifactStore、artifact store tests | 本地持久化、深拷贝、lineage、rehydration 已测；Daemon sync/RPC 待验证 |
 | Phase 14 cache | ContextCache、LayeredContextCache、CreativeIntelligence | 本地 provider-response/cache-hit 接入和失效已测；共享三层默认链/跨重启待验证 |
 | Phase 15 capability routing | CapabilityRouter、ModelCapabilities、TaskRouter/CreativeIntelligence | 本地强制选择和 mismatch-before-queue 已测；真实 provider matrix 待验证 |
 | Phase 16 instructions | InstructionRegistry、core/pluginInstructions、Desktop adapter | Desktop→Daemon registration、id/version/provenance 和 intent 分离已有本地测试；跨进程生产链路待验证 |
 | Phase 17 scheduler | TaskScheduler、TaskRouter events | 局部；scheduler 本身不 durable |
-| Phase 18 evals | fixtures、EvalRunner、deterministic evals、evals.yml | deterministic fixture/assertion 已接 CI；真实 provider、主观 gold set 和完整 benchmark 待补 |
+| Phase 18 evals | fixtures、EvalRunner、deterministic/subjective evals、evals.yml | deterministic 与 canonical subjective gold-set/pairwise/rubric fixture 已接 CI；真实 provider、人类标注 gold 和完整 benchmark 待补 |
 | Phase 19 observability | observer、provenance sanitizer、task events | task/provider/model/error、raw-CoT 脱敏和 artifact lineage 本地已有；自动 skill 注入、跨层 cache 统计和生产脱敏策略待验证 |
 | Phase 20–21 plugins/legacy | 44 runtime catalog、22 routed plugin、architecture guards | 本地分类、路由和 legacy guard 已有；生产插件注册与兼容面审计待验证 |
-| Phase 22 reliability review | architecture/reliability tests、deterministic evals、daemon restart/store corruption tests | 本地已覆盖 offline、network failure、stale proposal、duplicate task、乱序/checksum、checkpoint corruption、model mismatch、invalid structured output、context overflow、cache invalidation 和 daemon store reload；OS 进程级 crash/App restart、系统故障注入和真实 provider 仍待报告 |
+| Phase 22 reliability review | architecture/reliability tests、deterministic/subjective evals、daemon restart/store corruption/process restart tests | 本地已覆盖 offline、network failure、stale proposal、duplicate task、乱序/checksum、checkpoint corruption、model mismatch、invalid structured output、context overflow、cache invalidation、daemon store reload 和 OS 子进程 crash/resume；App restart、系统故障注入和真实 provider 仍待报告 |
 | Phase 23 final freeze | 本文件 | 条件冻结，禁止宣称 Final |
 
 ## 19. Final Freeze Checklist
@@ -851,14 +851,14 @@ mutation
 - [ ] Continue、Rewrite、Continuity Audit、Deep Reasoning、Distillation 五个切片通过 Desktop ↔ Daemon 集成测试；
 - [ ] DomainChangeSet 的 materialized projection reducer、幂等、乱序、checksum、snapshot 和离线恢复通过测试；
 - [ ] Proposal → Review → CAS Commit → Undo 在 IndexedDB 上通过并发测试；
-- [ ] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告；
+- [ ] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告（本地 OS 子进程 SIGKILL 与 checkpoint resume 已测，App restart 和故障注入报告仍缺）；
 - [ ] Context provider registration、budget、fingerprint 和 overflow 行为稳定；
-- [ ] 第一批四个 creative skill 有真实 manifest、lazy loading、ExtensionHost/ToolRegistry 注册测试；
+- [ ] 第一批四个 creative skill 有逐个激活的真实 manifest、lazy loading、ExtensionHost/ToolRegistry 注册测试（通用共享 registry 生命周期已测）；
 - [ ] ArtifactStore、lineage 和导出边界稳定；
 - [ ] 三层 Cache 接入真实调用链并有 hit/miss/invalidation 数据；
 - [ ] CapabilityRouter 接入强制模型选择，并覆盖 capability mismatch；
 - [ ] InstructionRegistry 统一 Desktop/Daemon 的 id/version/provenance；
-- [ ] Evals 进入 CI，包含客观、主观、mutation 和长上下文回归；
+- [x] Evals 进入 CI，包含客观、canonical subjective fixture、mutation 和长上下文回归；
 - [ ] Observability 完成字段、采样、脱敏和无 raw CoT 验证；
 - [ ] 44 个插件完成分类和迁移，Legacy AI 路径和过期接口文档清理；
 - [ ] 完成 offline、network failure、stale proposal、duplicate task、model unavailable、invalid structured output、context overflow 和 cache invalidation 演练。
