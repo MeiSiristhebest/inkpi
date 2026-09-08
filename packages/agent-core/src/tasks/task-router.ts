@@ -441,7 +441,7 @@ export class TaskRouter {
         artifactIds: handlerResult.artifactIds,
         proposalIds: handlerResult.proposalIds,
         provenance: {
-          ...(handlerResult.provenance || {}),
+          ...sanitizeProvenance(handlerResult.provenance || {}),
           executionRunId: record.executionRun.id,
           executionAttempt: record.attempts,
           instructionVersion: instructions.version,

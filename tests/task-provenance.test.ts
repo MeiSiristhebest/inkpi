@@ -1,4 +1,4 @@
-import { TaskObservability, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
+import { InMemoryTaskExecutionStore, TaskObservability, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -151,7 +151,8 @@ describe('observability provenance contract', () => {
     });
 
     const observer = new TaskObservability(() => 10);
-    const router = new TaskRouter({ registry, observer, now: () => 10 });
+    const executionStore = new InMemoryTaskExecutionStore();
+    const router = new TaskRouter({ registry, observer, executionStore, now: () => 10 });
     router.submit(task);
     await router.wait(task.id);
 
@@ -184,5 +185,12 @@ describe('observability provenance contract', () => {
       expect(observation?.provenance).not.toHaveProperty(key);
     }
     expect(JSON.stringify(observation)).not.toContain('must not be observed');
+
+    const persisted = await executionStore.load(task.id);
+    expect(persisted?.snapshot.result?.provenance).toBeDefined();
+    for (const key of rawCotKeys) {
+      expect(persisted?.snapshot.result?.provenance).not.toHaveProperty(key);
+    }
+    expect(JSON.stringify(persisted?.snapshot.result?.provenance)).not.toContain('must not be observed');
   });
 });
