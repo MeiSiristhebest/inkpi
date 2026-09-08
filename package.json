@@ -39,6 +39,7 @@
     "lint": "biome check packages tests scripts",
     "format": "biome format --write packages tests scripts",
     "test": "vitest run",
+    "test:evals": "vitest run tests/evals-runner.test.ts tests/task-evals.test.ts tests/task-observability.test.ts tests/task-provenance.test.ts",
     "test:coverage": "vitest run --coverage",
     "check": "pnpm run check:pinned-deps && tsc -b"
   },
