@@ -1,23 +1,23 @@
-import { streamAi, type ModelConfig } from '@inkpi/ai';
 import type { TaskHandler, TaskHandlerResult } from '@inkpi/agent-core';
-import type {
-  AgentMessage,
-  AssistantMessage,
-  TaskOutput,
-  ToolCallContent,
-} from '@inkpi/protocol';
 import type { TaskHandlerContext } from '@inkpi/agent-core';
 import type { ToolRegistry } from '@inkpi/agent-core';
+import { type ModelConfig, streamAi } from '@inkpi/ai';
+import type { AgentMessage, AssistantMessage, TaskOutput, ToolCallContent } from '@inkpi/protocol';
 import {
   CapabilityRouter,
-  createLegacyDefaultModelCapabilities,
   type ModelCapabilities,
   type ModelRoute,
   type ResolvedModelRoute,
+  createLegacyDefaultModelCapabilities
 } from './model-capability-router.js';
 
 export { CapabilityMismatchError, CapabilityRouter } from './model-capability-router.js';
-export type { CapabilityMismatchDetails, ModelCapabilities, ModelRoute, ResolvedModelRoute } from './model-capability-router.js';
+export type {
+  CapabilityMismatchDetails,
+  ModelCapabilities,
+  ModelRoute,
+  ResolvedModelRoute
+} from './model-capability-router.js';
 
 export interface TaskModelHandlerOptions {
   model?: ModelConfig;
@@ -48,17 +48,21 @@ export class TaskModelHandler implements TaskHandler {
     this.stream = options.stream ?? streamAi;
     this.toolRegistry = options.toolRegistry;
     this.maxToolSteps = Math.max(0, options.maxToolSteps ?? 8);
-    this.capabilityRouter = options.capabilityRouter ?? new CapabilityRouter([
-      ...(options.routes ?? []),
-      ...(options.model
-        ? [{
-            id: 'default-model',
-            model: options.model,
-            capabilities: options.defaultModelCapabilities ?? createLegacyDefaultModelCapabilities(options.model),
-            fallback: true,
-          }]
-        : []),
-    ]);
+    this.capabilityRouter =
+      options.capabilityRouter ??
+      new CapabilityRouter([
+        ...(options.routes ?? []),
+        ...(options.model
+          ? [
+              {
+                id: 'default-model',
+                model: options.model,
+                capabilities: options.defaultModelCapabilities ?? createLegacyDefaultModelCapabilities(options.model),
+                fallback: true
+              }
+            ]
+          : [])
+      ]);
     if (!options.capabilityRouter && !options.model && (options.routes?.length ?? 0) === 0) {
       throw new Error('TaskModelHandler requires a model, routes, or capabilityRouter');
     }
@@ -77,10 +81,7 @@ export class TaskModelHandler implements TaskHandler {
     return this.executeRoute(context, route);
   }
 
-  private async executeRoute(
-    context: TaskHandlerContext,
-    route: ResolvedModelRoute,
-  ): Promise<TaskHandlerResult> {
+  private async executeRoute(context: TaskHandlerContext, route: ResolvedModelRoute): Promise<TaskHandlerResult> {
     const startedAt = Date.now();
     const prompt = buildPrompt(context);
     const messages: AgentMessage[] = [{ role: 'user', content: prompt, timestamp: Date.now() }];
@@ -101,24 +102,25 @@ export class TaskModelHandler implements TaskHandler {
       const toolCalls = assistant.content.filter(isToolCall);
       if (toolCalls.length === 0) break;
       if (++toolStep > maxToolSteps) {
-        const error = new Error(`Task exceeded the maximum tool steps of ${maxToolSteps}`) as Error & { retryable?: boolean };
+        const error = new Error(`Task exceeded the maximum tool steps of ${maxToolSteps}`) as Error & {
+          retryable?: boolean;
+        };
         error.retryable = false;
         throw error;
       }
       if (!toolRegistry) {
-        const error = new Error('Task requested tools but no ToolRegistry is configured') as Error & { retryable?: boolean };
+        const error = new Error('Task requested tools but no ToolRegistry is configured') as Error & {
+          retryable?: boolean;
+        };
         error.retryable = false;
         throw error;
       }
       messages.push(publicAssistantMessage(assistant));
       context.reportProgress(Math.min(0.9, 0.1 + toolStep / (maxToolSteps + 1)));
-      const toolResults = await toolRegistry.executeBatch(
-        toolCalls,
-        'sequential',
-        context.signal,
-        undefined,
-        { taskId: context.task.id, executionRunId: context.executionRunId },
-      );
+      const toolResults = await toolRegistry.executeBatch(toolCalls, 'sequential', context.signal, undefined, {
+        taskId: context.task.id,
+        executionRunId: context.executionRunId
+      });
       messages.push(...toolResults);
       for (const result of toolResults) {
         toolTrace.push({ id: result.toolCallId, name: result.toolName, isError: result.isError === true });
@@ -126,10 +128,12 @@ export class TaskModelHandler implements TaskHandler {
     }
     const finalAssistant = assistant;
     if (!finalAssistant) throw new Error('Model returned no assistant message');
-    const text = stripPrivateReasoning(finalAssistant.content
-      .filter((content): content is { type: 'text'; text: string } => content.type === 'text')
-      .map((content) => content.text)
-      .join(''));
+    const text = stripPrivateReasoning(
+      finalAssistant.content
+        .filter((content): content is { type: 'text'; text: string } => content.type === 'text')
+        .map((content) => content.text)
+        .join('')
+    );
     const output = parseDeclaredOutput(context.task.outputContract?.format, text);
     context.reportProgress(1);
     return {
@@ -156,29 +160,29 @@ export class TaskModelHandler implements TaskHandler {
         ...(context.instructions && context.instructions.entryIds.length > 0
           ? {
               instructionIds: [...context.instructions.entryIds],
-              instructionVersion: context.instructions.version,
+              instructionVersion: context.instructions.version
             }
-          : {}),
-      },
+          : {})
+      }
     };
   }
 
   private async collect(
     messages: AgentMessage[],
     context: TaskHandlerContext,
-    route: ResolvedModelRoute,
+    route: ResolvedModelRoute
   ): Promise<AssistantMessage> {
     const tools = (context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry)?.getAll().map((tool) => ({
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
+      parameters: tool.parameters
     }));
     const stream = (route.stream ?? this.stream)(route.model, messages, {
       signal: context.signal,
       systemPrompt: route.systemPrompt ?? this.systemPrompt,
       maxTokens: route.model.maxTokens,
       thinkingBudget: route.model.thinkingBudget,
-      ...(tools && tools.length > 0 ? { tools } : {}),
+      ...(tools && tools.length > 0 ? { tools } : {})
     });
     const onAbort = () => stream.abort();
     context.signal.addEventListener('abort', onAbort, { once: true });
@@ -197,7 +201,7 @@ function isToolCall(content: AssistantMessage['content'][number]): content is To
 function publicAssistantMessage(assistant: AssistantMessage): AssistantMessage {
   return {
     ...assistant,
-    content: assistant.content.filter((content) => content.type === 'text' || content.type === 'toolCall'),
+    content: assistant.content.filter((content) => content.type === 'text' || content.type === 'toolCall')
   };
 }
 
@@ -205,21 +209,20 @@ function publicSteeringMessage(inputs: unknown[]): AgentMessage {
   return {
     role: 'user',
     content: `Human steering:\n${inputs.map(stableSerialize).join('\n')}`,
-    timestamp: Date.now(),
+    timestamp: Date.now()
   };
 }
 
 function buildPrompt(context: TaskHandlerContext): string {
   const payload = context.task.input.payload;
-  const stableInstruction = context.instructions?.entryIds.length
-    ? context.instructions.text.trim()
-    : '';
+  const stableInstruction = context.instructions?.entryIds.length ? context.instructions.text.trim() : '';
   // Backward compatibility only: metadata instruction is accepted for tasks
   // that have no matching InstructionRegistry entry. Registered tasks never
   // receive this dynamic string, which prevents duplicate prompt assembly.
-  const fallbackInstruction = !stableInstruction && typeof context.task.metadata?.instruction === 'string'
-    ? context.task.metadata.instruction
-    : '';
+  const fallbackInstruction =
+    !stableInstruction && typeof context.task.metadata?.instruction === 'string'
+      ? context.task.metadata.instruction
+      : '';
   const userIntent = context.task.intent?.trim() ?? '';
   return [
     `Task kind: ${context.task.kind}`,
@@ -229,8 +232,10 @@ function buildPrompt(context: TaskHandlerContext): string {
     'Return only the declared output format. Do not describe hidden reasoning.',
     `Context:\n${context.context.text}`,
     payload === undefined ? '' : `Task payload:\n${stableSerialize(payload)}`,
-    context.checkpoint ? `Resume checkpoint:\n${stableSerialize(context.checkpoint.data)}` : '',
-  ].filter(Boolean).join('\n\n');
+    context.checkpoint ? `Resume checkpoint:\n${stableSerialize(context.checkpoint.data)}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function parseDeclaredOutput(format: TaskOutput['format'] | undefined, text: string): TaskOutput {
@@ -263,7 +268,10 @@ function stableSerialize(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? '';
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
   const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+    .join(',')}}`;
 }
 
 const defaultSystemPrompt = 'You are InkPi creative intelligence. Follow the task output contract exactly.';

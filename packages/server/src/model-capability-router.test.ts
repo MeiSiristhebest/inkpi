@@ -1,8 +1,8 @@
 import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
 import type { AiTask } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CapabilityMismatchError, CapabilityRouter, type ModelRoute } from './model-capability-router.js';
 import { InkPiDaemon } from './daemon.js';
+import { CapabilityMismatchError, CapabilityRouter, type ModelRoute } from './model-capability-router.js';
 import { TaskModelHandler } from './task-model-handler.js';
 
 const baseModel: ModelConfig = {

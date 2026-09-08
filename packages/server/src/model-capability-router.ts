@@ -1,5 +1,5 @@
-import type { ModelConfig, StreamFn } from '@inkpi/ai';
 import type { ToolRegistry } from '@inkpi/agent-core';
+import type { ModelConfig, StreamFn } from '@inkpi/ai';
 import type { AiTask, OutputContract, OutputFormat, TaskRequirements } from '@inkpi/protocol';
 
 export type ModelNetworkCapability = 'offline' | 'optional' | 'required';
@@ -79,9 +79,7 @@ export function createLegacyDefaultModelCapabilities(model: ModelConfig): ModelC
     toolCalling: tools,
     jsonSchema: true,
     promptCaching: model.supportsPromptCache === true,
-    ...(Number.isFinite(contextTokens) && contextTokens! > 0
-      ? { contextTokens, maxContextTokens: contextTokens }
-      : {}),
+    ...(Number.isFinite(contextTokens) && contextTokens! > 0 ? { contextTokens, maxContextTokens: contextTokens } : {}),
     ...(model.maxTokens === undefined ? {} : { maxOutputTokens: model.maxTokens })
   };
 }

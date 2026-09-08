@@ -1,5 +1,5 @@
-import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
 import { InstructionRegistry, type TaskHandlerContext } from '@inkpi/agent-core';
+import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
 import type { AgentMessage, AiTask } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
@@ -8,14 +8,14 @@ import { TaskModelHandler } from './task-model-handler.js';
 const model: ModelConfig = {
   id: 'instruction-test-model',
   name: 'Instruction test model',
-  provider: 'faux',
+  provider: 'faux'
 };
 
 const definition = {
   id: 'plugin.demo.analysis',
   version: '1',
   taskKind: 'plugin.demo.analysis',
-  systemInstruction: 'Use the stable demo instruction.',
+  systemInstruction: 'Use the stable demo instruction.'
 };
 
 function makeTask(overrides: Partial<AiTask> = {}): AiTask {
@@ -25,7 +25,7 @@ function makeTask(overrides: Partial<AiTask> = {}): AiTask {
     input: { text: 'context' },
     outputContract: { format: 'text' },
     metadata: { instruction: 'Dynamic metadata must not be appended.' },
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -58,13 +58,13 @@ describe('daemon InstructionRegistry RPC', () => {
       jsonrpc: '2.0',
       id: 1,
       method: 'instruction.register',
-      params: { instruction: definition },
+      params: { instruction: definition }
     });
     const second = await rpc.handleRequest({
       jsonrpc: '2.0',
       id: 2,
       method: 'instruction.register',
-      params: { instructions: [definition] },
+      params: { instructions: [definition] }
     });
 
     expect(first.error).toBeUndefined();
@@ -78,12 +78,12 @@ describe('daemon InstructionRegistry RPC', () => {
       jsonrpc: '2.0',
       id: 3,
       method: 'instruction.list',
-      params: { taskKind: definition.taskKind },
+      params: { taskKind: definition.taskKind }
     });
     const status = await rpc.handleRequest({
       jsonrpc: '2.0',
       id: 4,
-      method: 'instruction.status',
+      method: 'instruction.status'
     });
 
     expect(listed.result).toEqual([
@@ -91,13 +91,13 @@ describe('daemon InstructionRegistry RPC', () => {
         id: definition.id,
         version: definition.version,
         content: definition.systemInstruction,
-        tags: [`task:${definition.taskKind}`],
-      }),
+        tags: [`task:${definition.taskKind}`]
+      })
     ]);
     expect(status.result).toMatchObject({
       ready: true,
       count: 1,
-      instructionIds: [definition.id],
+      instructionIds: [definition.id]
     });
   });
 
@@ -109,21 +109,21 @@ describe('daemon InstructionRegistry RPC', () => {
       new TaskModelHandler({
         model,
         stream: streamThatReturns('completed', seen),
-        defaultModelCapabilities: { outputFormats: ['text'] },
-      }),
+        defaultModelCapabilities: { outputFormats: ['text'] }
+      })
     );
 
     await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 1,
       method: 'instruction.register',
-      params: { instruction: definition },
+      params: { instruction: definition }
     });
     await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 2,
       method: 'task.submit',
-      params: { task: makeTask() },
+      params: { task: makeTask() }
     });
 
     const result = await daemon.getTaskRouter().wait('instruction-task');
@@ -134,7 +134,7 @@ describe('daemon InstructionRegistry RPC', () => {
     expect(prompt.match(/Use the stable demo instruction\./g)).toHaveLength(1);
     expect(result.provenance).toMatchObject({
       instructionIds: [definition.id],
-      instructionVersion: expect.stringMatching(/^instructions-/),
+      instructionVersion: expect.stringMatching(/^instructions-/)
     });
   });
 
@@ -143,33 +143,33 @@ describe('daemon InstructionRegistry RPC', () => {
     const handler = new TaskModelHandler({
       model,
       stream: streamThatReturns('intent', seen),
-      defaultModelCapabilities: { outputFormats: ['text'] },
+      defaultModelCapabilities: { outputFormats: ['text'] }
     });
     const context: TaskHandlerContext = {
       task: makeTask({
         id: 'intent-task',
         intent: '保持冷峻语气',
-        metadata: {},
+        metadata: {}
       }),
       context: {
         fragments: [],
         text: '',
         tokenEstimate: 0,
         fingerprint: 'intent-context',
-        truncated: false,
+        truncated: false
       },
       instructions: {
         text: definition.systemInstruction,
         entryIds: [definition.id],
         truncated: false,
-        version: 'instructions-1',
+        version: 'instructions-1'
       },
       signal: new AbortController().signal,
       executionRunId: 'run:intent-task',
       attempt: 1,
       consumeSteering: () => [],
       saveCheckpoint: async () => undefined,
-      reportProgress: () => undefined,
+      reportProgress: () => undefined
     };
 
     await handler.execute(context);
@@ -184,7 +184,7 @@ describe('daemon InstructionRegistry RPC', () => {
     const handler = new TaskModelHandler({
       model,
       stream: streamThatReturns('fallback', seen),
-      defaultModelCapabilities: { outputFormats: ['text'] },
+      defaultModelCapabilities: { outputFormats: ['text'] }
     });
     const context: TaskHandlerContext = {
       task: makeTask({ id: 'unregistered-task', kind: 'unregistered.kind' }),
@@ -193,20 +193,20 @@ describe('daemon InstructionRegistry RPC', () => {
         text: '',
         tokenEstimate: 0,
         fingerprint: 'empty-context',
-        truncated: false,
+        truncated: false
       },
       signal: new AbortController().signal,
       executionRunId: 'run:unregistered-task',
       attempt: 1,
       consumeSteering: () => [],
       saveCheckpoint: async () => undefined,
-      reportProgress: () => undefined,
+      reportProgress: () => undefined
     };
 
     await handler.execute(context);
 
     expect(String(seen[0][0].content)).toContain(
-      'Legacy instruction (unregistered task fallback): Dynamic metadata must not be appended.',
+      'Legacy instruction (unregistered task fallback): Dynamic metadata must not be appended.'
     );
   });
 });
