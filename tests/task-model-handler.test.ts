@@ -52,7 +52,12 @@ describe('generic model task handler', () => {
       return result;
     };
     const registry = new TaskRegistry();
-    registry.register(new TaskModelHandler({ model, stream, maxToolSteps: 2 }));
+    registry.register(new TaskModelHandler({
+      model,
+      stream,
+      maxToolSteps: 2,
+      defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true },
+    }));
     const router = new TaskRouter({ registry, toolRegistry });
 
     router.submit(task());
@@ -81,7 +86,11 @@ describe('generic model task handler', () => {
       });
       return result;
     };
-    const handler = new TaskModelHandler({ model, stream });
+    const handler = new TaskModelHandler({
+      model,
+      stream,
+      defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true },
+    });
     const context: TaskHandlerContext = {
       task: task({ id: 'model-no-tools' }),
       context: {

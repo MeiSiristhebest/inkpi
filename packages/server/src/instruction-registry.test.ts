@@ -106,7 +106,11 @@ describe('daemon InstructionRegistry RPC', () => {
     daemons.push(daemon);
     const seen: AgentMessage[][] = [];
     daemon.getTaskRouter().registry.register(
-      new TaskModelHandler({ model, stream: streamThatReturns('completed', seen) }),
+      new TaskModelHandler({
+        model,
+        stream: streamThatReturns('completed', seen),
+        defaultModelCapabilities: { outputFormats: ['text'] },
+      }),
     );
 
     await daemon.getRpcServer().handleRequest({
@@ -136,7 +140,11 @@ describe('daemon InstructionRegistry RPC', () => {
 
   it('uses metadata instruction only as an explicit fallback for an unregistered task', async () => {
     const seen: AgentMessage[][] = [];
-    const handler = new TaskModelHandler({ model, stream: streamThatReturns('fallback', seen) });
+    const handler = new TaskModelHandler({
+      model,
+      stream: streamThatReturns('fallback', seen),
+      defaultModelCapabilities: { outputFormats: ['text'] },
+    });
     const context: TaskHandlerContext = {
       task: makeTask({ id: 'unregistered-task', kind: 'unregistered.kind' }),
       context: {

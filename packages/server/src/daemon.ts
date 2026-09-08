@@ -30,12 +30,20 @@ import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
 import { TaskModelHandler } from './task-model-handler.js';
 import { JitContextProvider } from './jit-context-provider.js';
+import type {
+  CapabilityRouter,
+  ModelCapabilities,
+  ModelRoute,
+} from './model-capability-router.js';
 
 export interface DaemonOptions {
   port?: number;
   host?: string;
   wsPort?: number;
   defaultModel?: ModelConfig;
+  defaultModelCapabilities?: ModelCapabilities;
+  modelRoutes?: readonly ModelRoute[];
+  capabilityRouter?: CapabilityRouter;
   instructionRegistry?: InstructionRegistry;
   context?: Partial<ServerContext>;
 }
@@ -66,6 +74,7 @@ export class InkPiDaemon {
   private wsPort: number | null = null;
   private options: DaemonOptions;
   private readonly instructionRegistry: InstructionRegistry;
+  private readonly capabilityRouter?: CapabilityRouter;
 
   constructor(options: DaemonOptions = {}) {
     this.options = {
@@ -89,8 +98,20 @@ export class InkPiDaemon {
       contextPipeline,
       instructionRegistry: this.instructionRegistry,
     });
-    if (options.defaultModel && !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')) {
-      this.taskRouter.registry.register(new TaskModelHandler({ model: options.defaultModel }));
+    if (
+      (options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) &&
+      !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')
+    ) {
+      const modelHandler = new TaskModelHandler({
+        model: options.defaultModel,
+        defaultModelCapabilities: options.defaultModelCapabilities,
+        routes: options.modelRoutes,
+        capabilityRouter: options.capabilityRouter,
+      });
+      this.capabilityRouter = modelHandler.getCapabilityRouter();
+      this.taskRouter.registry.register(modelHandler);
+    } else {
+      this.capabilityRouter = options.capabilityRouter;
     }
     this.rpcServer = new InkRpcServer({
       ...options.context,
@@ -163,6 +184,7 @@ export class InkPiDaemon {
     });
 
     this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
+      this.capabilityRouter?.resolve(params.task);
       return this.taskRouter.submit(params.task);
     });
 

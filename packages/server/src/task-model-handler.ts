@@ -8,13 +8,25 @@ import type {
 } from '@inkpi/protocol';
 import type { TaskHandlerContext } from '@inkpi/agent-core';
 import type { ToolRegistry } from '@inkpi/agent-core';
+import {
+  CapabilityRouter,
+  type ModelCapabilities,
+  type ModelRoute,
+  type ResolvedModelRoute,
+} from './model-capability-router.js';
+
+export { CapabilityMismatchError, CapabilityRouter } from './model-capability-router.js';
+export type { CapabilityMismatchDetails, ModelCapabilities, ModelRoute, ResolvedModelRoute } from './model-capability-router.js';
 
 export interface TaskModelHandlerOptions {
-  model: ModelConfig;
+  model?: ModelConfig;
   systemPrompt?: string;
   stream?: typeof streamAi;
   toolRegistry?: ToolRegistry;
   maxToolSteps?: number;
+  routes?: readonly ModelRoute[];
+  defaultModelCapabilities?: ModelCapabilities;
+  capabilityRouter?: CapabilityRouter;
 }
 
 /**
@@ -24,18 +36,35 @@ export interface TaskModelHandlerOptions {
 export class TaskModelHandler implements TaskHandler {
   readonly id = 'runtime.model';
   readonly kinds = ['*'] as const;
-  private readonly model: ModelConfig;
   private readonly systemPrompt: string;
   private readonly stream: typeof streamAi;
   private readonly toolRegistry?: ToolRegistry;
   private readonly maxToolSteps: number;
+  private readonly capabilityRouter: CapabilityRouter;
 
   constructor(options: TaskModelHandlerOptions) {
-    this.model = options.model;
     this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
     this.stream = options.stream ?? streamAi;
     this.toolRegistry = options.toolRegistry;
     this.maxToolSteps = Math.max(0, options.maxToolSteps ?? 8);
+    this.capabilityRouter = options.capabilityRouter ?? new CapabilityRouter([
+      ...(options.routes ?? []),
+      ...(options.model
+        ? [{
+            id: 'default-model',
+            model: options.model,
+            capabilities: options.defaultModelCapabilities,
+            fallback: true,
+          }]
+        : []),
+    ]);
+    if (!options.capabilityRouter && !options.model && (options.routes?.length ?? 0) === 0) {
+      throw new Error('TaskModelHandler requires a model, routes, or capabilityRouter');
+    }
+  }
+
+  getCapabilityRouter(): CapabilityRouter {
+    return this.capabilityRouter;
   }
 
   getProviderResponseCache(): ProviderResponseCache {
@@ -43,17 +72,26 @@ export class TaskModelHandler implements TaskHandler {
   }
 
   async execute(context: TaskHandlerContext): Promise<TaskHandlerResult> {
+    const route = this.capabilityRouter.resolve(context.task);
+    return this.executeRoute(context, route);
+  }
+
+  private async executeRoute(
+    context: TaskHandlerContext,
+    route: ResolvedModelRoute,
+  ): Promise<TaskHandlerResult> {
     const startedAt = Date.now();
     const prompt = buildPrompt(context);
     const messages: AgentMessage[] = [{ role: 'user', content: prompt, timestamp: Date.now() }];
-    const toolRegistry = context.toolRegistry ?? this.toolRegistry;
+    const toolRegistry = context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry;
     const toolTrace: Array<{ id: string; name: string; isError: boolean }> = [];
+    const maxToolSteps = route.maxToolSteps ?? this.maxToolSteps;
     let assistant: AssistantMessage | undefined;
     let toolStep = 0;
     while (true) {
       const steering = context.consumeSteering();
       if (steering.length > 0) messages.push(publicSteeringMessage(steering));
-      assistant = await this.collect(messages, context);
+      assistant = await this.collect(messages, context, route);
       if (assistant.stopReason === 'error' || assistant.errorMessage) {
         const error = new Error(assistant.errorMessage ?? 'Model returned an error');
         (error as Error & { retryable?: boolean }).retryable = true;
@@ -61,8 +99,8 @@ export class TaskModelHandler implements TaskHandler {
       }
       const toolCalls = assistant.content.filter(isToolCall);
       if (toolCalls.length === 0) break;
-      if (++toolStep > this.maxToolSteps) {
-        const error = new Error(`Task exceeded the maximum tool steps of ${this.maxToolSteps}`) as Error & { retryable?: boolean };
+      if (++toolStep > maxToolSteps) {
+        const error = new Error(`Task exceeded the maximum tool steps of ${maxToolSteps}`) as Error & { retryable?: boolean };
         error.retryable = false;
         throw error;
       }
@@ -72,7 +110,7 @@ export class TaskModelHandler implements TaskHandler {
         throw error;
       }
       messages.push(publicAssistantMessage(assistant));
-      context.reportProgress(Math.min(0.9, 0.1 + toolStep / (this.maxToolSteps + 1)));
+      context.reportProgress(Math.min(0.9, 0.1 + toolStep / (maxToolSteps + 1)));
       const toolResults = await toolRegistry.executeBatch(
         toolCalls,
         'sequential',
@@ -96,8 +134,12 @@ export class TaskModelHandler implements TaskHandler {
     return {
       output,
       provenance: {
-        provider: this.model.provider,
-        model: this.model.id,
+        selectedRoute: route.id,
+        routeId: route.id,
+        selectedProvider: route.model.provider,
+        selectedModel: route.model.id,
+        provider: route.model.provider,
+        model: route.model.id,
         outputFormat: output?.format,
         resultType: output?.format,
         contextFingerprint: context.context.fingerprint,
@@ -120,17 +162,21 @@ export class TaskModelHandler implements TaskHandler {
     };
   }
 
-  private async collect(messages: AgentMessage[], context: TaskHandlerContext): Promise<AssistantMessage> {
-    const tools = (context.toolRegistry ?? this.toolRegistry)?.getAll().map((tool) => ({
+  private async collect(
+    messages: AgentMessage[],
+    context: TaskHandlerContext,
+    route: ResolvedModelRoute,
+  ): Promise<AssistantMessage> {
+    const tools = (context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry)?.getAll().map((tool) => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
     }));
-    const stream = this.stream(this.model, messages, {
+    const stream = (route.stream ?? this.stream)(route.model, messages, {
       signal: context.signal,
-      systemPrompt: this.systemPrompt,
-      maxTokens: this.model.maxTokens,
-      thinkingBudget: this.model.thinkingBudget,
+      systemPrompt: route.systemPrompt ?? this.systemPrompt,
+      maxTokens: route.model.maxTokens,
+      thinkingBudget: route.model.thinkingBudget,
       ...(tools && tools.length > 0 ? { tools } : {}),
     });
     const onAbort = () => stream.abort();
