@@ -45,7 +45,7 @@ describe('generic model task handler', () => {
           result.push({ type: 'tool_call_end', toolCall: { type: 'toolCall', id: 'call-1', name: 'lookup', arguments: {} } });
         } else {
           result.push({ type: 'thinking_delta', thinkingDelta: 'hidden' });
-          result.push({ type: 'text_delta', textDelta: '{"answer":"ok"}' });
+          result.push({ type: 'text_delta', textDelta: '<think>raw hidden reasoning</think>{"answer":"ok"}' });
         }
         result.end();
       });

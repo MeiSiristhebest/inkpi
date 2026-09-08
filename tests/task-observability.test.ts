@@ -25,4 +25,35 @@ describe('task observability and provenance', () => {
       provenance: { taskId: 'observable', taskKind: 'test.observable' },
     });
   });
+
+  it('records provider failures in the terminal observation', async () => {
+    const observer = new TaskObservability(() => 10);
+    const registry = new TaskRegistry();
+    registry.register({
+      id: 'failing-observable-handler',
+      kinds: ['test.observable.failure'],
+      async execute() {
+        const error = new Error('provider request failed');
+        (error as Error & { retryable?: boolean }).retryable = false;
+        throw error;
+      },
+    });
+    const router = new TaskRouter({ registry, observer, now: () => 10 });
+
+    router.submit({
+      id: 'observable-failure',
+      kind: 'test.observable.failure',
+      input: {},
+      outputContract: { format: 'text' },
+    });
+
+    await expect(router.wait('observable-failure')).resolves.toMatchObject({
+      status: 'failed',
+      error: { code: 'TASK_FAILED', message: 'provider request failed' },
+    });
+    expect(observer.get('observable-failure')).toMatchObject({
+      status: 'failed',
+      error: { code: 'TASK_FAILED', message: 'provider request failed' },
+    });
+  });
 });
