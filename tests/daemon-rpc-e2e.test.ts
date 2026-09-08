@@ -1,4 +1,10 @@
-import { InkPiDaemon, InkRpcClient } from '@inkpi/server';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { TaskExecutionRecord } from '@inkpi/agent-core';
+import type { AiTask } from '@inkpi/protocol';
+import { InkPiDaemon, InkRpcClient, SqliteTaskExecutionStore } from '@inkpi/server';
+import { InkDb } from '@inkpi/storage';
 import { afterAll, describe, expect, it } from 'vitest';
 
 describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () => {
@@ -178,5 +184,42 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     // Idempotent start()
     const sameDaemon = await daemon.start();
     expect(sameDaemon).toBe(daemon);
+  });
+
+  it('reloads interrupted execution state after a daemon restart', async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), 'inkpi-daemon-')), 'state.sqlite');
+    const task = { id: 'daemon-reload-task', kind: 'test.reload', input: { value: 1 } } as AiTask;
+    const firstDb = new InkDb(dbPath);
+    const executionStore = new SqliteTaskExecutionStore(firstDb);
+    executionStore.save({
+      task,
+      snapshot: { taskId: task.id, kind: task.kind, status: 'running', attempts: 1 },
+      attempts: 1,
+      updatedAt: 10
+    } satisfies TaskExecutionRecord);
+
+    const firstDaemon = new InkPiDaemon({ host: '127.0.0.1', context: { executionStore } });
+    await firstDaemon.start(0);
+    await firstDaemon.getTaskRouter().ready;
+    const firstClient = await InkRpcClient.connectTcp(firstDaemon.getStatus().port!, '127.0.0.1');
+    expect(await firstClient.request<any>('task.status', { taskId: task.id })).toMatchObject({ status: 'interrupted' });
+    await firstClient.close();
+    await firstDaemon.stop();
+    firstDb.close();
+
+    const secondDb = new InkDb(dbPath);
+    const secondDaemon = new InkPiDaemon({
+      host: '127.0.0.1',
+      context: { executionStore: new SqliteTaskExecutionStore(secondDb) }
+    });
+    await secondDaemon.start(0);
+    await secondDaemon.getTaskRouter().ready;
+    const secondClient = await InkRpcClient.connectTcp(secondDaemon.getStatus().port!, '127.0.0.1');
+    await expect(secondClient.request<any>('task.status', { taskId: task.id })).resolves.toMatchObject({
+      status: 'interrupted'
+    });
+    await secondClient.close();
+    await secondDaemon.stop();
+    secondDb.close();
   });
 });

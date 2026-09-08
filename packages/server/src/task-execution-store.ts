@@ -21,7 +21,7 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
            steps_json = excluded.steps_json,
            execution_attempts_json = excluded.execution_attempts_json,
            resume_token_json = excluded.resume_token_json,
-           steering_json = excluded.steering_json`,
+           steering_json = excluded.steering_json`
       )
       .run(
         record.task.id,
@@ -33,7 +33,7 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
         record.steps ? JSON.stringify(sanitizePrivateData(record.steps)) : null,
         record.executionAttempts ? JSON.stringify(sanitizePrivateData(record.executionAttempts)) : null,
         record.resumeToken ? JSON.stringify(record.resumeToken) : null,
-        record.steering ? JSON.stringify(record.steering) : null,
+        record.steering ? JSON.stringify(record.steering) : null
       );
   }
 
@@ -42,7 +42,7 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
       .prepare(
         `SELECT task_json, snapshot_json, attempts, updated_at,
                 run_json, steps_json, execution_attempts_json, resume_token_json, steering_json
-         FROM task_executions WHERE task_id = ?`,
+         FROM task_executions WHERE task_id = ?`
       )
       .get(taskId) as Record<string, unknown> | undefined;
     return row ? parseRecord(row) : undefined;
@@ -59,20 +59,30 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
 }
 
 function parseRecord(row: Record<string, unknown>): TaskExecutionRecord {
+  const task = parsePersistedJson(row.task_json, 'unknown', 'task_json');
+  const taskId = task && typeof task === 'object' && 'id' in task ? String(task.id) : 'unknown';
   return {
-    task: JSON.parse(String(row.task_json)),
-    snapshot: JSON.parse(String(row.snapshot_json)),
+    task: task as TaskExecutionRecord['task'],
+    snapshot: parsePersistedJson(row.snapshot_json, taskId, 'snapshot_json') as TaskExecutionRecord['snapshot'],
     attempts: Number(row.attempts),
     updatedAt: Number(row.updated_at),
-    run: parseJson(row.run_json),
-    steps: parseJson(row.steps_json),
-    executionAttempts: parseJson(row.execution_attempts_json),
-    resumeToken: parseJson(row.resume_token_json),
-    steering: parseJson(row.steering_json),
+    run: parseJson(row.run_json, taskId, 'run_json'),
+    steps: parseJson(row.steps_json, taskId, 'steps_json'),
+    executionAttempts: parseJson(row.execution_attempts_json, taskId, 'execution_attempts_json'),
+    resumeToken: parseJson(row.resume_token_json, taskId, 'resume_token_json'),
+    steering: parseJson(row.steering_json, taskId, 'steering_json')
   } as TaskExecutionRecord;
 }
 
-function parseJson(value: unknown): unknown {
+function parsePersistedJson(value: unknown, taskId: string, field: string): unknown {
+  try {
+    return JSON.parse(String(value));
+  } catch (error) {
+    throw new Error(`Corrupt task execution '${taskId}' (${field}); refusing to recover`, { cause: error });
+  }
+}
+
+function parseJson(value: unknown, taskId: string, field: string): unknown {
   if (value === null || value === undefined || value === '') return undefined;
-  return JSON.parse(String(value));
+  return parsePersistedJson(value, taskId, field);
 }

@@ -16,7 +16,7 @@ export class SqliteTaskCheckpointStore implements TaskCheckpointStore {
            step = excluded.step,
            data_json = excluded.data_json,
            context_fingerprint = excluded.context_fingerprint,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at`
       )
       .run(
         checkpoint.taskId,
@@ -24,7 +24,7 @@ export class SqliteTaskCheckpointStore implements TaskCheckpointStore {
         checkpoint.step,
         JSON.stringify(sanitizePrivateData(checkpoint.data)),
         checkpoint.contextFingerprint ?? null,
-        checkpoint.updatedAt,
+        checkpoint.updatedAt
       );
   }
 
@@ -32,21 +32,30 @@ export class SqliteTaskCheckpointStore implements TaskCheckpointStore {
     const row = this.db
       .prepare(
         `SELECT task_id, kind, step, data_json, context_fingerprint, updated_at
-         FROM task_checkpoints WHERE task_id = ?`,
+         FROM task_checkpoints WHERE task_id = ?`
       )
       .get(taskId) as Record<string, unknown> | undefined;
     if (!row) return undefined;
+    const persistedTaskId = String(row.task_id);
     return {
-      taskId: String(row.task_id),
+      taskId: persistedTaskId,
       kind: String(row.kind),
       step: String(row.step),
-      data: JSON.parse(String(row.data_json)),
+      data: parsePersistedJson(row.data_json, persistedTaskId, 'data_json'),
       contextFingerprint: row.context_fingerprint == null ? undefined : String(row.context_fingerprint),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
   clear(taskId: string): void {
     this.db.prepare('DELETE FROM task_checkpoints WHERE task_id = ?').run(taskId);
+  }
+}
+
+function parsePersistedJson(value: unknown, taskId: string, field: string): unknown {
+  try {
+    return JSON.parse(String(value));
+  } catch (error) {
+    throw new Error(`Corrupt task checkpoint for '${taskId}' (${field}); refusing to resume`, { cause: error });
   }
 }
