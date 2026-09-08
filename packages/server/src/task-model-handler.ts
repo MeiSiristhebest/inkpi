@@ -220,10 +220,12 @@ function buildPrompt(context: TaskHandlerContext): string {
   const fallbackInstruction = !stableInstruction && typeof context.task.metadata?.instruction === 'string'
     ? context.task.metadata.instruction
     : '';
+  const userIntent = context.task.intent?.trim() ?? '';
   return [
     `Task kind: ${context.task.kind}`,
     fallbackInstruction ? `Legacy instruction (unregistered task fallback): ${fallbackInstruction}` : '',
     stableInstruction ? `Stable task instruction:\n${stableInstruction}` : '',
+    userIntent ? `User intent:\n${userIntent}` : '',
     'Return only the declared output format. Do not describe hidden reasoning.',
     `Context:\n${context.context.text}`,
     payload === undefined ? '' : `Task payload:\n${stableSerialize(payload)}`,

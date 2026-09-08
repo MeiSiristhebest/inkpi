@@ -138,6 +138,47 @@ describe('daemon InstructionRegistry RPC', () => {
     });
   });
 
+  it('puts public task intent next to the stable instruction', async () => {
+    const seen: AgentMessage[][] = [];
+    const handler = new TaskModelHandler({
+      model,
+      stream: streamThatReturns('intent', seen),
+      defaultModelCapabilities: { outputFormats: ['text'] },
+    });
+    const context: TaskHandlerContext = {
+      task: makeTask({
+        id: 'intent-task',
+        intent: '保持冷峻语气',
+        metadata: {},
+      }),
+      context: {
+        fragments: [],
+        text: '',
+        tokenEstimate: 0,
+        fingerprint: 'intent-context',
+        truncated: false,
+      },
+      instructions: {
+        text: definition.systemInstruction,
+        entryIds: [definition.id],
+        truncated: false,
+        version: 'instructions-1',
+      },
+      signal: new AbortController().signal,
+      executionRunId: 'run:intent-task',
+      attempt: 1,
+      consumeSteering: () => [],
+      saveCheckpoint: async () => undefined,
+      reportProgress: () => undefined,
+    };
+
+    await handler.execute(context);
+
+    const prompt = String(seen[0][0].content);
+    expect(prompt).toContain(`Stable task instruction:\n${definition.systemInstruction}`);
+    expect(prompt).toContain('User intent:\n保持冷峻语气');
+  });
+
   it('uses metadata instruction only as an explicit fallback for an unregistered task', async () => {
     const seen: AgentMessage[][] = [];
     const handler = new TaskModelHandler({
