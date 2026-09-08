@@ -117,7 +117,16 @@ async function main() {
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
       const { InkPiDaemon } = await import('@inkpi/server');
-      const daemon = new InkPiDaemon({ port, host: '127.0.0.1' });
+      const { getModelPreset } = await import('@inkpi/ai');
+      const modelFlag = args.indexOf('--model');
+      const modelPreset = modelFlag !== -1 ? args[modelFlag + 1] : process.env.INKPI_MODEL_PRESET || 'creative-pro';
+      let defaultModel;
+      try {
+        defaultModel = getModelPreset(modelPreset);
+      } catch {
+        defaultModel = undefined;
+      }
+      const daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel });
       await daemon.start(port, '127.0.0.1');
       await daemon.startWebSocket(wsPort, '127.0.0.1');
 

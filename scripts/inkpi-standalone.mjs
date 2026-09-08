@@ -16,6 +16,7 @@ import { TerminalStudio } from '../packages/tui/dist/studio.js';
 import { runPackageManagerCli } from '../packages/cli/dist/index.js';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
+import { getModelPreset } from '../packages/ai/dist/presets.js';
 // The standalone harness is the dev/test entrypoint exercised by the integration
 // suite (e.g. `--model mock-test`). Mock providers are NOT silently registered on
 // the production path; we opt into them explicitly here so headless tests can run
@@ -49,7 +50,15 @@ async function main() {
     const wsPortIdx = args.indexOf('--ws-port');
     const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
-    const daemon = new InkPiDaemon({ port, host: '127.0.0.1' });
+    const modelIdx = args.indexOf('--model');
+    const modelPreset = modelIdx !== -1 ? readRequiredArg(modelIdx, '--model') : process.env.INKPI_MODEL_PRESET || 'creative-pro';
+    let defaultModel;
+    try {
+      defaultModel = getModelPreset(modelPreset);
+    } catch {
+      defaultModel = undefined;
+    }
+    const daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel });
     await daemon.start(port, '127.0.0.1');
     await daemon.startWebSocket(wsPort, '127.0.0.1');
 

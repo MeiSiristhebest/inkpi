@@ -1,10 +1,32 @@
 import type * as net from 'node:net';
-import { type ManagedSession, REAL_CLOCK, type SessionCreateOptions, SessionRegistry } from '@inkpi/agent-core';
-import type { ModelConfig } from '@inkpi/protocol';
+import {
+  type ManagedSession,
+  REAL_CLOCK,
+  type SessionCreateOptions,
+  SessionRegistry,
+  ContextPipeline,
+  TaskRouter,
+} from '@inkpi/agent-core';
+import type {
+  DomainSyncPullParams,
+  DomainSyncPushParams,
+  DomainSyncRestoreParams,
+  DomainSyncSnapshotParams,
+  ModelConfig,
+  TaskCancelParams,
+  TaskForkParams,
+  TaskReplayParams,
+  TaskResumeParams,
+  TaskStatusParams,
+  TaskSteerParams,
+  TaskSubmitParams,
+} from '@inkpi/protocol';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
+import { TaskModelHandler } from './task-model-handler.js';
+import { JitContextProvider } from './jit-context-provider.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -33,6 +55,7 @@ export interface DaemonStatus {
 export class InkPiDaemon {
   private rpcServer: InkRpcServer;
   private sessionManager: SessionRegistry;
+  private taskRouter: TaskRouter;
   private startTime = 0;
   private running = false;
   private tcpServer: net.Server | null = null;
@@ -46,7 +69,25 @@ export class InkPiDaemon {
       ...options
     };
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
-    this.rpcServer = new InkRpcServer(options.context as ServerContext);
+    const contextPipeline = options.context?.contextPipeline ?? new ContextPipeline();
+    if (
+      options.context?.jitRetriever &&
+      !contextPipeline.list().some((provider) => provider.id === 'retrieval.jit')
+    ) {
+      contextPipeline.register(new JitContextProvider(options.context.jitRetriever));
+    }
+    this.taskRouter = options.context?.taskRouter ?? new TaskRouter({
+      checkpointStore: options.context?.checkpointStore,
+      executionStore: options.context?.executionStore,
+      contextPipeline,
+    });
+    if (options.defaultModel && !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')) {
+      this.taskRouter.registry.register(new TaskModelHandler({ model: options.defaultModel }));
+    }
+    this.rpcServer = new InkRpcServer({ ...options.context, taskRouter: this.taskRouter } as ServerContext);
+    this.taskRouter.subscribe((event) => {
+      this.rpcServer.notify('task.event', event);
+    });
     this.registerDaemonMethods();
   }
 
@@ -58,12 +99,60 @@ export class InkPiDaemon {
     return this.rpcServer;
   }
 
+  public getTaskRouter(): TaskRouter {
+    return this.taskRouter;
+  }
+
   /** 返回守护进程实际监听的 TCP 端口（端口 0 时由操作系统分配）。 */
   public getPort(): number {
     return this.options.port ?? 0;
   }
 
   private registerDaemonMethods(): void {
+    this.rpcServer.registerMethod('domain.sync.push', (params: DomainSyncPushParams) => {
+      return this.withDomainProjection().apply(params.changeSet);
+    });
+
+    this.rpcServer.registerMethod('domain.sync.pull', (params: DomainSyncPullParams) => {
+      return this.withDomainProjection().list(params.workspaceId, params.afterRevision);
+    });
+
+    this.rpcServer.registerMethod('domain.sync.snapshot', (params: DomainSyncSnapshotParams) => {
+      return this.withDomainProjection().createSnapshot(params.workspaceId);
+    });
+
+    this.rpcServer.registerMethod('domain.sync.restore', (params: DomainSyncRestoreParams) => {
+      return this.withDomainProjection().restoreSnapshot(params.snapshot);
+    });
+
+    this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
+      return this.taskRouter.submit(params.task);
+    });
+
+    this.rpcServer.registerMethod('task.cancel', (params: TaskCancelParams) => {
+      return this.taskRouter.cancel(params.taskId);
+    });
+
+    this.rpcServer.registerMethod('task.status', (params: TaskStatusParams) => {
+      return this.taskRouter.status(params.taskId);
+    });
+
+    this.rpcServer.registerMethod('task.steer', (params: TaskSteerParams) => {
+      return this.taskRouter.steer(params.taskId, params.input);
+    });
+
+    this.rpcServer.registerMethod('task.resume', (params: TaskResumeParams) => {
+      return this.taskRouter.resume(params.taskId);
+    });
+
+    this.rpcServer.registerMethod('task.replay', (params: TaskReplayParams) => {
+      return this.taskRouter.replay(params.taskId, params.replayTaskId);
+    });
+
+    this.rpcServer.registerMethod('task.fork', (params: TaskForkParams) => {
+      return this.taskRouter.fork(params.taskId, params.forkTaskId, params.patch);
+    });
+
     // 1. Session Management RPCs
     this.rpcServer.registerMethod('daemon.status', () => this.getStatus());
 
@@ -189,6 +278,12 @@ export class InkPiDaemon {
     return session;
   }
 
+  private withDomainProjection() {
+    const projection = (this.options.context as ServerContext | undefined)?.domainProjection;
+    if (!projection) throw new Error('Domain projection storage is not configured');
+    return projection;
+  }
+
   public async start(port = this.options.port, host = this.options.host): Promise<this> {
     if (this.running) return this;
     this.startTime = Date.now();
@@ -225,8 +320,12 @@ export class InkPiDaemon {
   }
 
   public async stop(): Promise<void> {
-    if (!this.running) return;
+    if (!this.running) {
+      await this.taskRouter.stop();
+      return;
+    }
     this.running = false;
+    await this.taskRouter.stop();
     this.sessionManager.clear();
     await this.rpcServer.close();
     this.tcpServer = null;

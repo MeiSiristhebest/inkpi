@@ -1,5 +1,6 @@
 import * as net from 'node:net';
 import type { Agent } from '@inkpi/agent-core';
+import type { TaskRouter } from '@inkpi/agent-core';
 import type { SessionTree } from '@inkpi/agent-core';
 import { SlashCommandRegistry } from '@inkpi/agent-core';
 import type { BranchSummarizer } from '@inkpi/agent-core';
@@ -11,6 +12,10 @@ import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
 import type { AgentMessage } from '@inkpi/protocol';
 import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { AppendOnlySessionJournal, FtsSearchEngine, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
+import type { DomainProjectionStore } from '@inkpi/storage';
+import type { TaskCheckpointStore } from '@inkpi/agent-core';
+import type { TaskExecutionStore } from '@inkpi/agent-core';
+import type { ContextPipeline } from '@inkpi/agent-core';
 import { BUILTIN_RPC_METHODS, type RpcMethodHandler } from './builtin-methods.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
@@ -19,6 +24,11 @@ import { WebSocketRpcTransport } from './ws-transport.js';
 
 export interface ServerContext {
   agent?: Agent;
+  taskRouter?: TaskRouter;
+  domainProjection?: DomainProjectionStore;
+  checkpointStore?: TaskCheckpointStore;
+  executionStore?: TaskExecutionStore;
+  contextPipeline?: ContextPipeline;
   tree?: SessionTree;
   editor?: HeadlessEditorState;
   ghost?: GhostTextManager;
