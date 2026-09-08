@@ -3,6 +3,7 @@ import type { AiTask } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CapabilityMismatchError, CapabilityRouter, type ModelRoute } from './model-capability-router.js';
 import { InkPiDaemon } from './daemon.js';
+import { TaskModelHandler } from './task-model-handler.js';
 
 const baseModel: ModelConfig = {
   id: 'base-model',
@@ -187,6 +188,28 @@ describe('capability-aware model routing', () => {
     expect(selected.id).toBe('schema-tools');
   });
 
+  it('keeps omitted default capabilities compatible while explicit declarations stay strict', () => {
+    const compatible = new TaskModelHandler({ model: baseModel });
+    expect(
+      compatible.getCapabilityRouter().resolve(
+        task({
+          outputContract: { format: 'text' },
+          requirements: {
+            capabilities: ['creative-writing'],
+            modalities: ['text'],
+            outputFormats: ['text'],
+            streaming: true
+          }
+        })
+      ).id
+    ).toBe('default-model');
+
+    const strict = new TaskModelHandler({ model: baseModel, defaultModelCapabilities: {} });
+    expect(() => strict.getCapabilityRouter().resolve(task({ outputContract: { format: 'text' } }))).toThrow(
+      CapabilityMismatchError
+    );
+  });
+
   it('selects the route before task.submit and records route provenance', async () => {
     const daemon = new InkPiDaemon({
       defaultModel: baseModel,
@@ -239,7 +262,7 @@ describe('capability-aware model routing', () => {
   });
 
   it('returns capability mismatch from task.submit before queueing the task', async () => {
-    const daemon = new InkPiDaemon({ defaultModel: baseModel });
+    const daemon = new InkPiDaemon({ defaultModel: baseModel, defaultModelCapabilities: {} });
     daemons.push(daemon);
 
     const response = await daemon.getRpcServer().handleRequest({

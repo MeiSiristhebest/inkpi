@@ -10,6 +10,7 @@ import type { TaskHandlerContext } from '@inkpi/agent-core';
 import type { ToolRegistry } from '@inkpi/agent-core';
 import {
   CapabilityRouter,
+  createLegacyDefaultModelCapabilities,
   type ModelCapabilities,
   type ModelRoute,
   type ResolvedModelRoute,
@@ -53,7 +54,7 @@ export class TaskModelHandler implements TaskHandler {
         ? [{
             id: 'default-model',
             model: options.model,
-            capabilities: options.defaultModelCapabilities,
+            capabilities: options.defaultModelCapabilities ?? createLegacyDefaultModelCapabilities(options.model),
             fallback: true,
           }]
         : []),

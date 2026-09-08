@@ -52,6 +52,40 @@ export interface ResolvedModelRoute extends ModelRoute {
   capabilities: ModelCapabilities;
 }
 
+/**
+ * Compatibility capabilities for the legacy single-model Daemon constructor.
+ * Callers that provide a capability table still get strict route filtering.
+ */
+export function createLegacyDefaultModelCapabilities(model: ModelConfig): ModelCapabilities {
+  const extended = model as ModelConfig & {
+    contextWindow?: number;
+    supportsStreaming?: boolean;
+    supportsTools?: boolean;
+    supportsVision?: boolean;
+  };
+  const tools = extended.supportsTools ?? true;
+  const contextTokens = extended.contextWindow;
+  const offline = model.provider === 'ollama' || isLocalUrl(model.baseUrl);
+  return {
+    capabilities: ['*'],
+    tools,
+    modalities: extended.supportsVision === true ? ['text', 'image'] : ['text'],
+    network: offline ? 'offline' : 'required',
+    outputFormats: ['text', 'structured', 'patch'],
+    streaming: extended.supportsStreaming ?? true,
+    reasoning: model.supportsThinking === true,
+    structuredOutput: true,
+    patchOutput: true,
+    toolCalling: tools,
+    jsonSchema: true,
+    promptCaching: model.supportsPromptCache === true,
+    ...(Number.isFinite(contextTokens) && contextTokens! > 0
+      ? { contextTokens, maxContextTokens: contextTokens }
+      : {}),
+    ...(model.maxTokens === undefined ? {} : { maxOutputTokens: model.maxTokens })
+  };
+}
+
 export interface CapabilityMismatchDetails {
   taskId: string;
   requirements: TaskRequirements;
@@ -142,6 +176,10 @@ function normalizeRoute(route: ModelRoute): ResolvedModelRoute {
     capabilities.streaming = model.supportsStreaming;
   }
   return { ...route, capabilities };
+}
+
+function isLocalUrl(url: string | undefined): boolean {
+  return /^(?:https?:\/\/)?(?:localhost|127(?:\.\d{1,3}){3}|::1)(?::\d+)?(?:\/|$)/i.test(url ?? '');
 }
 
 function missingCapabilities(
