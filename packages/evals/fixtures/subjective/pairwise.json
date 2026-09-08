@@ -1,0 +1,19 @@
+{
+  "id": "phase-18-subjective-pairwise",
+  "threshold": 85,
+  "candidates": [
+    { "id": "hook-strong", "score": 96 },
+    { "id": "hook-plain", "score": 82 },
+    { "id": "hook-weak", "score": 60 },
+    { "id": "rewrite-polished", "score": 91 },
+    { "id": "style-balanced", "score": 91 }
+  ],
+  "comparisons": [
+    { "id": "strong-over-plain", "left": "hook-strong", "right": "hook-plain", "expectedPreference": "hook-strong" },
+    { "id": "strong-over-weak", "left": "hook-strong", "right": "hook-weak", "expectedPreference": "hook-strong" },
+    { "id": "plain-over-weak", "left": "hook-plain", "right": "hook-weak", "expectedPreference": "hook-plain" },
+    { "id": "strong-over-rewrite", "left": "hook-strong", "right": "rewrite-polished", "expectedPreference": "hook-strong" },
+    { "id": "rewrite-over-plain", "left": "rewrite-polished", "right": "hook-plain", "expectedPreference": "rewrite-polished" },
+    { "id": "rewrite-ties-style", "left": "rewrite-polished", "right": "style-balanced", "expectedPreference": "tie" }
+  ]
+}

@@ -7,3 +7,4 @@ export * from './task-evals.js';
 export * from './task-fixtures.js';
 export * from './deterministic-evals.js';
 export * from './fixtures.js';
+export * from './subjective-evals.js';

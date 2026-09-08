@@ -1,0 +1,33 @@
+{
+  "id": "phase-18-subjective-rubrics",
+  "cases": [
+    {
+      "id": "style-rubric-score",
+      "rubric": {
+        "id": "style-rubric",
+        "threshold": 85,
+        "criteria": [
+          { "id": "vocabulary", "weight": 2, "minScore": 80, "required": true },
+          { "id": "pacing", "weight": 1, "minScore": 80, "required": true },
+          { "id": "imagery", "weight": 1 }
+        ]
+      },
+      "scores": { "vocabulary": 90, "pacing": 86, "imagery": 82 },
+      "expectedScore": 87
+    },
+    {
+      "id": "voice-rubric-score",
+      "rubric": {
+        "id": "voice-rubric",
+        "threshold": 85,
+        "criteria": [
+          { "id": "consistent-vocabulary", "weight": 1, "minScore": 85, "required": true },
+          { "id": "consistent-goals", "weight": 1, "minScore": 85, "required": true },
+          { "id": "explicit-uncertainty", "weight": 2, "minScore": 85, "required": true }
+        ]
+      },
+      "scores": { "consistent-vocabulary": 90, "consistent-goals": 88, "explicit-uncertainty": 92 },
+      "expectedScore": 91
+    }
+  ]
+}
