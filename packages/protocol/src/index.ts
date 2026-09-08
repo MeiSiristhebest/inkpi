@@ -5,6 +5,8 @@ export * from './editor.js';
 export * from './extensions.js';
 export * from './rpc.js';
 export * from './pipeline.js';
+export * from './task.js';
+export * from './domain-sync.js';
 export * from './typebox.js';
 export * from './schemas.js';
 export * from './validation.js';
