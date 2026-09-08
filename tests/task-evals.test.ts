@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   type EntityContradictionInput,
   type InvalidStateTransitionInput,
@@ -20,6 +22,13 @@ import { describe, expect, it } from 'vitest';
 
 function readFixture<T>(relativePath: string): T {
   return JSON.parse(readFileSync(new URL(`../packages/evals/fixtures/${relativePath}`, import.meta.url), 'utf8')) as T;
+}
+
+function listFixtureFiles(root: string): string[] {
+  return readdirSync(root).flatMap((entry) => {
+    const file = join(root, entry);
+    return statSync(file).isDirectory() ? listFixtureFiles(file) : file.endsWith('.json') ? [file] : [];
+  });
 }
 
 describe('AI task evaluation contract', () => {
@@ -213,5 +222,18 @@ describe('AI task evaluation contract', () => {
     expect(report.baselineDetected).toBe(false);
     expect(report.mutationDetected).toBe(true);
     expect(report.repairedDetected).toBe(false);
+  });
+
+  it('keeps the checked-in fixture manifest valid and included by the CI workflow', () => {
+    const fixtureRoot = fileURLToPath(new URL('../packages/evals/fixtures/', import.meta.url));
+    const fixtureFiles = listFixtureFiles(fixtureRoot);
+    expect(fixtureFiles.length).toBeGreaterThan(0);
+    for (const file of fixtureFiles) {
+      expect(() => JSON.parse(readFileSync(file, 'utf8'))).not.toThrow();
+    }
+
+    const workflow = readFileSync(new URL('../.github/workflows/evals.yml', import.meta.url), 'utf8');
+    expect(workflow).toContain('packages/evals/**');
+    expect(workflow).toContain('pnpm run test:evals');
   });
 });

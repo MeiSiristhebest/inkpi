@@ -1,7 +1,12 @@
-import type { SkillInfo } from '@inkpi/protocol';
 import { fileURLToPath } from 'node:url';
+import {
+  InstructionRegistry,
+  ProgressiveSkillRuntime,
+  parseSkillMarkdown,
+  parseSkillMetadata
+} from '@inkpi/agent-core';
+import type { SkillInfo } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
-import { InstructionRegistry, ProgressiveSkillRuntime, parseSkillMetadata, parseSkillMarkdown } from '@inkpi/agent-core';
 
 const firstPartySkillsDir = fileURLToPath(new URL('../skills/', import.meta.url));
 
@@ -13,7 +18,7 @@ describe('progressive skills and instruction registry', () => {
       description: 'Audit story continuity',
       filePath: '.inkpi/skills/continuity.md',
       frontmatter: { capability: 'continuity-audit' },
-      promptBody: 'Full continuity instructions',
+      promptBody: 'Full continuity instructions'
     };
     runtime.registerSkill(skill);
     expect(runtime.discover()).toEqual([{ name: 'continuity', description: 'Audit story continuity', loaded: false }]);
@@ -47,14 +52,11 @@ Full prompt instructions
       taskKinds: ['creative.continue', 'narrative.continuity.audit'],
       enabled: true,
       priority: 7,
-      maxTokens: 1024,
+      maxTokens: 1024
     });
     expect(metadata?.promptBody).toBe('');
 
-    const skill = parseSkillMarkdown(
-      rawMarkdown,
-      'typed-skill.md',
-    );
+    const skill = parseSkillMarkdown(rawMarkdown, 'typed-skill.md');
 
     expect(skill?.promptBody).toBe('Full prompt instructions');
   });
@@ -66,7 +68,7 @@ Full prompt instructions
       { name: 'character-voice', description: expect.any(String), loaded: false },
       { name: 'hook', description: expect.any(String), loaded: false },
       { name: 'promise', description: expect.any(String), loaded: false },
-      { name: 'timeline-consistency', description: expect.any(String), loaded: false },
+      { name: 'timeline-consistency', description: expect.any(String), loaded: false }
     ]);
     expect(runtime.listLoaded()).toEqual([]);
 
@@ -75,7 +77,7 @@ Full prompt instructions
     expect(hook[0]).toMatchObject({
       id: 'hook',
       activation: 'on-demand',
-      taskKinds: ['creative.continue', 'creative.rewrite'],
+      taskKinds: ['creative.continue', 'creative.rewrite']
     });
 
     const eagerVoice = runtime.resolve({ capability: 'character-voice', activation: 'eager' });
@@ -98,5 +100,28 @@ Full prompt instructions
     registry.register({ id: 'disabled', scope: 'extension', content: 'skip', enabled: false });
     expect(registry.compose({ tags: ['creative'] })).toMatchObject({ text: 'task', entryIds: ['task'] });
     expect(registry.compose({ maxCharacters: 5 })).toMatchObject({ text: 'task', truncated: true });
+  });
+
+  it('retries a failed lazy body load without losing the discovered metadata', () => {
+    let attempts = 0;
+    const metadata: SkillInfo = {
+      name: 'retryable-skill',
+      description: 'A skill whose body becomes available later',
+      filePath: 'retryable-skill.md',
+      frontmatter: { capability: 'retry' },
+      promptBody: ''
+    };
+    const loaded: SkillInfo = { ...metadata, promptBody: 'Loaded after retry' };
+    const discovery = {
+      discover: () => [metadata],
+      loadSkill: () => (++attempts === 1 ? undefined : loaded)
+    } as never;
+    const runtime = new ProgressiveSkillRuntime({ discovery });
+
+    expect(runtime.discover()).toEqual([{ name: 'retryable-skill', description: metadata.description, loaded: false }]);
+    expect(runtime.load('retryable-skill').promptBody).toBe('');
+    expect(runtime.load('retryable-skill').promptBody).toBe('Loaded after retry');
+    expect(attempts).toBe(2);
+    expect(runtime.discover().find((entry) => entry.name === 'retryable-skill')?.loaded).toBe(true);
   });
 });

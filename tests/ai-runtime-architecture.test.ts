@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const INKPI_ROOT = path.resolve(TEST_DIR, '..');
 const AGENT_CORE_SRC = path.join(INKPI_ROOT, 'packages', 'agent-core', 'src');
+const CONTEXT_SRC = path.join(AGENT_CORE_SRC, 'context');
 const PROTOCOL_SRC = path.join(INKPI_ROOT, 'packages', 'protocol', 'src');
 const STORAGE_SRC = path.join(INKPI_ROOT, 'packages', 'storage', 'src');
 
@@ -114,6 +115,14 @@ describe('AI Runtime Phase 0 architecture guards', () => {
   it('storage does not import desktop domain modules', () => {
     const violations = collectViolations(STORAGE_SRC, matchesDesktopSpecifier);
     expect(violations, `storage desktop-domain imports:\n${violations.join('\n')}`).toEqual([]);
+  });
+
+  it('context pipeline does not import product-domain or presentation modules', () => {
+    const violations = collectViolations(
+      CONTEXT_SRC,
+      (specifier) => matchesCreativeDomainSpecifier(specifier) || matchesDesktopSpecifier(specifier)
+    );
+    expect(violations, `context boundary imports:\n${violations.join('\n')}`).toEqual([]);
   });
 
   it('the import scanner detects each forbidden boundary in a synthetic sample', () => {
