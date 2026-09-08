@@ -174,4 +174,50 @@ CREATE TABLE IF NOT EXISTS session_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_session_entries_lookup ON session_entries(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_session_entries_parent ON session_entries(parent_id);
+
+-- 14. Desktop authoritative domain change sets (daemon-side derived projection)
+CREATE TABLE IF NOT EXISTS domain_change_sets (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_device_id TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  revision INTEGER NOT NULL,
+  changes_json TEXT NOT NULL,
+  checksum TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, source_device_id, revision)
+);
+CREATE INDEX IF NOT EXISTS idx_domain_change_sets_workspace
+  ON domain_change_sets(workspace_id, revision);
+
+CREATE TABLE IF NOT EXISTS domain_projection_cursors (
+  workspace_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+  task_id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  step TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  context_fingerprint TEXT,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_updated_at ON task_checkpoints(updated_at);
+
+CREATE TABLE IF NOT EXISTS task_executions (
+  task_id TEXT PRIMARY KEY,
+  task_json TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  run_json TEXT,
+  steps_json TEXT,
+  execution_attempts_json TEXT,
+  resume_token_json TEXT,
+  steering_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_executions_updated_at ON task_executions(updated_at);
 `;
