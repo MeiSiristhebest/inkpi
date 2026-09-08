@@ -1,0 +1,733 @@
+import type {
+  AiTask,
+  TaskCancelResult,
+  TaskError,
+  TaskResult,
+  TaskStatus,
+  TaskStatusSnapshot,
+  TaskSubmitResult,
+} from '@inkpi/protocol';
+import { ContextPipeline } from '../context/index.js';
+import type { TaskRunObserver } from '../telemetry/task-observability.js';
+import { TaskRegistry } from './task-registry.js';
+import type { TaskHandler, TaskHandlerResult } from './task-handler.js';
+import { InMemoryTaskCheckpointStore, type TaskCheckpointStore } from './checkpoints.js';
+import {
+  InMemoryTaskExecutionStore,
+  type ExecutionAttempt,
+  type ExecutionRun,
+  type ExecutionStep,
+  type ResumeToken,
+  type TaskExecutionRecord,
+  type TaskExecutionStore,
+} from './execution-store.js';
+import { InstructionRegistry } from '../instructions/instruction-registry.js';
+import { ToolRegistry } from '../tools.js';
+import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
+
+export interface TaskRouterEvent {
+  type: 'created' | 'queued' | 'started' | 'progress' | 'checkpointed' | 'waiting-user' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+  taskId: string;
+  snapshot: TaskStatusSnapshot;
+}
+
+export type TaskRouterListener = (event: TaskRouterEvent) => void | Promise<void>;
+
+export interface TaskRouterOptions {
+  registry?: TaskRegistry;
+  contextPipeline?: ContextPipeline;
+  now?: () => number;
+  observer?: TaskRunObserver;
+  checkpointStore?: TaskCheckpointStore;
+  executionStore?: TaskExecutionStore;
+  instructionRegistry?: InstructionRegistry;
+  toolRegistry?: ToolRegistry;
+  retryDelayMs?: number;
+}
+
+interface TaskRecord {
+  task: AiTask;
+  controller: AbortController;
+  snapshot: TaskStatusSnapshot;
+  completion: Promise<TaskResult>;
+  resolveCompletion: (result: TaskResult) => void;
+  attempts: number;
+  maxAttempts: number;
+  executionRun: ExecutionRun;
+  executionSteps: ExecutionStep[];
+  executionAttempts: ExecutionAttempt[];
+  resumeToken?: ResumeToken;
+  steering: unknown[];
+}
+
+export class TaskRouter {
+  readonly registry: TaskRegistry;
+  readonly contextPipeline: ContextPipeline;
+  private readonly now: () => number;
+  private readonly observer?: TaskRunObserver;
+  private readonly checkpointStore: TaskCheckpointStore;
+  private readonly executionStore: TaskExecutionStore;
+  private readonly instructionRegistry: InstructionRegistry;
+  readonly toolRegistry: ToolRegistry;
+  private readonly retryDelayMs: number;
+  private readonly records = new Map<string, TaskRecord>();
+  private readonly listeners = new Set<TaskRouterListener>();
+  private persistenceTail: Promise<void> = Promise.resolve();
+
+  constructor(options: TaskRouterOptions = {}) {
+    this.registry = options.registry ?? new TaskRegistry();
+    this.contextPipeline = options.contextPipeline ?? new ContextPipeline();
+    this.now = options.now ?? Date.now;
+    this.observer = options.observer;
+    this.checkpointStore = options.checkpointStore ?? new InMemoryTaskCheckpointStore();
+    this.executionStore = options.executionStore ?? new InMemoryTaskExecutionStore();
+    this.instructionRegistry = options.instructionRegistry ?? new InstructionRegistry();
+    this.toolRegistry = options.toolRegistry ?? new ToolRegistry();
+    this.retryDelayMs = Math.max(0, options.retryDelayMs ?? 0);
+    this.recoverPersistedRecords();
+  }
+
+  subscribe(listener: TaskRouterListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  submit(task: AiTask): TaskSubmitResult {
+    validateTask(task);
+    if (this.records.has(task.id)) throw new Error(`Task already exists: ${task.id}`);
+    const controller = new AbortController();
+    let resolveCompletion!: (result: TaskResult) => void;
+    const completion = new Promise<TaskResult>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const executionRunId = `run:${task.id}`;
+    const snapshot: TaskStatusSnapshot = {
+      taskId: task.id,
+      kind: task.kind,
+      status: 'queued',
+      executionRunId,
+      attempts: 0,
+    };
+    const executionRun: ExecutionRun = {
+      id: executionRunId,
+      taskId: task.id,
+      status: 'queued',
+      attempts: 0,
+      updatedAt: this.now(),
+    };
+    const record: TaskRecord = {
+      task,
+      controller,
+      snapshot,
+      completion,
+      resolveCompletion,
+      attempts: 0,
+      maxAttempts: Math.max(1, task.executionPolicy?.maxAttempts ?? 1),
+      executionRun,
+      executionSteps: [],
+      executionAttempts: [],
+      steering: [],
+    };
+    this.records.set(task.id, record);
+    this.persist(record);
+    this.emit({ type: 'created', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
+    this.emit({ type: 'queued', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
+    queueMicrotask(() => {
+      void this.execute(record);
+    });
+    return { taskId: task.id, status: snapshot.status };
+  }
+
+  cancel(taskId: string): TaskCancelResult {
+    const record = this.getRecord(taskId);
+    const terminal = isTerminal(record.snapshot.status);
+    if (terminal || record.task.executionPolicy?.cancellable === false) {
+      return { taskId, cancelled: false, status: record.snapshot.status };
+    }
+    record.controller.abort();
+    this.finishCancelled(record);
+    return {
+      taskId,
+      cancelled: true,
+      status: record.snapshot.status,
+    };
+  }
+
+  status(taskId: string): TaskStatusSnapshot {
+    return cloneSnapshot(this.getRecord(taskId).snapshot);
+  }
+
+  async wait(taskId: string): Promise<TaskResult> {
+    return this.getRecord(taskId).completion;
+  }
+
+  getTask(taskId: string): AiTask {
+    return cloneValue(this.getRecord(taskId).task);
+  }
+
+  /** Submit a public human steering input for the next model/tool step. */
+  steer(taskId: string, input: unknown): { taskId: string; accepted: boolean } {
+    const record = this.getRecord(taskId);
+    if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') {
+      return { taskId, accepted: false };
+    }
+    record.steering.push(cloneValue(input));
+    this.persist(record);
+    return { taskId, accepted: true };
+  }
+
+  execution(taskId: string): TaskExecutionRecord {
+    const record = this.getRecord(taskId);
+    return this.persistedRecord(record);
+  }
+
+  replay(taskId: string, replayTaskId = `${taskId}:replay:${this.now()}`): TaskSubmitResult {
+    const task = this.getTask(taskId);
+    return this.submit({
+      ...task,
+      id: replayTaskId,
+      metadata: { ...task.metadata, replayOf: taskId },
+    });
+  }
+
+  fork(taskId: string, forkTaskId: string, patch: Partial<AiTask> = {}): TaskSubmitResult {
+    const task = this.getTask(taskId);
+    return this.submit({
+      ...task,
+      ...patch,
+      id: forkTaskId,
+      input: patch.input ?? cloneValue(task.input),
+      metadata: { ...task.metadata, ...patch.metadata, forkOf: taskId },
+    });
+  }
+
+  async resume(taskId: string): Promise<TaskSubmitResult> {
+    const record = this.getRecord(taskId);
+    if (!['waiting-user', 'failed', 'cancelled', 'interrupted'].includes(record.snapshot.status)) {
+      throw new Error(`Task ${taskId} cannot be resumed from ${record.snapshot.status}`);
+    }
+    const checkpoint = await this.checkpointStore.load(taskId);
+    if (!checkpoint && record.snapshot.status === 'waiting-user') {
+      throw new Error(`Task ${taskId} has no checkpoint to resume`);
+    }
+    record.controller = new AbortController();
+    record.attempts = 0;
+    record.executionRun.status = 'queued';
+    record.executionRun.finishedAt = undefined;
+    record.executionRun.updatedAt = this.now();
+    record.snapshot.status = 'queued';
+    record.snapshot.attempts = 0;
+    record.snapshot.result = undefined;
+    record.snapshot.error = undefined;
+    record.snapshot.finishedAt = undefined;
+    let resolveCompletion!: (result: TaskResult) => void;
+    record.completion = new Promise<TaskResult>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    record.resolveCompletion = resolveCompletion;
+    this.persist(record);
+    this.emit({ type: 'queued', taskId, snapshot: cloneSnapshot(record.snapshot) });
+    queueMicrotask(() => void this.execute(record));
+    return { taskId, status: 'queued' };
+  }
+
+  resumeTask(taskId: string): Promise<TaskSubmitResult> {
+    return this.resume(taskId);
+  }
+
+  async stop(): Promise<void> {
+    for (const record of this.records.values()) {
+      if (isTerminal(record.snapshot.status)) continue;
+      // Runtime shutdown is distinct from user cancellation: preserve the
+      // execution record as resumable even for tasks that allow cancellation.
+      this.finishInterrupted(record);
+    }
+    await this.persistenceTail;
+  }
+
+  private async execute(record: TaskRecord): Promise<void> {
+    if (isTerminal(record.snapshot.status)) return;
+    if (record.controller.signal.aborted) {
+      this.finishCancelled(record);
+      return;
+    }
+    let handler: TaskHandler;
+    try {
+      handler = this.registry.resolve(record.task);
+    } catch (error) {
+      this.finishFailed(record, toTaskError(error));
+      return;
+    }
+    record.attempts += 1;
+    const attemptStartedAt = this.now();
+    const attempt: ExecutionAttempt = {
+      runId: record.executionRun.id,
+      attempt: record.attempts,
+      startedAt: attemptStartedAt,
+      status: 'running',
+    };
+    const step: ExecutionStep = {
+      id: `step:${record.task.id}:${record.attempts}`,
+      runId: record.executionRun.id,
+      step: record.task.executionPolicy?.checkpoint?.step ?? record.task.kind,
+      startedAt: attemptStartedAt,
+      status: 'running',
+    };
+    record.executionAttempts.push(attempt);
+    record.executionSteps.push(step);
+    record.executionRun.attempts = record.attempts;
+    record.executionRun.startedAt ??= attemptStartedAt;
+    record.executionRun.status = 'running';
+    record.executionRun.updatedAt = attemptStartedAt;
+    record.snapshot.attempts = record.attempts;
+    this.update(record, { status: 'running', startedAt: record.snapshot.startedAt ?? this.now() });
+    this.observer?.started?.(record.task);
+    try {
+      const context = await this.contextPipeline.build(record.task, record.controller.signal);
+      this.observer?.contextBuilt?.(record.task, context);
+      const instructions = this.instructionRegistry.composeForTask(record.task.kind);
+      const checkpoint = await this.checkpointStore.load(record.task.id);
+      const handlerResult = await this.executeWithTimeout(
+        record,
+        handler.execute({
+          task: record.task,
+          context,
+          instructions: instructions.entryIds.length ? instructions : undefined,
+          signal: record.controller.signal,
+          executionRunId: record.executionRun.id,
+          attempt: record.attempts,
+          toolRegistry: this.toolRegistry,
+          executeTool: (call: ToolCallContent): Promise<ToolResultMessage & { terminate?: boolean }> =>
+            this.toolRegistry.executeTool(
+              call,
+              record.controller.signal,
+              undefined,
+              { taskId: record.task.id, executionRunId: record.executionRun.id },
+            ),
+          consumeSteering: () => {
+            const steering = record.steering.splice(0);
+            return steering.map((input) => cloneValue(input));
+          },
+          checkpoint,
+          saveCheckpoint: async (step, data) => {
+            await this.checkpointStore.save({
+              taskId: record.task.id,
+              kind: record.task.kind,
+              step,
+              data,
+              contextFingerprint: context.fingerprint,
+              updatedAt: this.now(),
+            });
+            const checkpointUpdatedAt = this.now();
+            const resumeToken: ResumeToken = {
+              taskId: record.task.id,
+              checkpointStep: step,
+              contextFingerprint: context.fingerprint,
+              issuedAt: checkpointUpdatedAt,
+            };
+            record.executionRun.resumeToken = resumeToken;
+            record.resumeToken = resumeToken;
+            record.snapshot.checkpoint = { step, updatedAt: this.now() };
+            this.persist(record);
+            if (record.snapshot.status === 'running') {
+              this.update(record, { status: 'checkpointed' }, 'checkpointed');
+              this.update(record, { status: 'running' }, 'started');
+            }
+          },
+          reportProgress: (progress) => {
+            if (record.snapshot.status !== 'running') return;
+            const bounded = Math.max(0, Math.min(1, progress));
+            this.observer?.progress?.(record.task, bounded);
+            this.update(record, { progress: bounded }, 'progress');
+          },
+        }),
+      );
+      if (record.snapshot.status === 'interrupted') return;
+      if (record.controller.signal.aborted) {
+        this.finishCancelled(record);
+        return;
+      }
+      const outputError = validateOutput(record.task, handlerResult);
+      if (outputError) {
+        this.finishFailed(record, outputError);
+        return;
+      }
+      const status = handlerResult.status ?? 'completed';
+      const result: TaskResult = {
+        taskId: record.task.id,
+        kind: record.task.kind,
+        status,
+        output: handlerResult.output,
+        artifactIds: handlerResult.artifactIds,
+        proposalIds: handlerResult.proposalIds,
+        provenance: {
+          ...(handlerResult.provenance || {}),
+          executionRunId: record.executionRun.id,
+          executionAttempt: record.attempts,
+          instructionVersion: instructions.version,
+          instructionIds: instructions.entryIds,
+        },
+      };
+      if (status !== 'waiting-user') {
+        await this.checkpointStore.clear(record.task.id);
+        record.snapshot.checkpoint = undefined;
+      }
+      record.snapshot.result = result;
+      record.snapshot.status = status;
+      record.snapshot.finishedAt = this.now();
+      this.markExecutionSettled(record, status);
+      this.persist(record);
+      this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+      this.emit({ type: status === 'waiting-user' ? 'waiting-user' : 'completed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+      record.resolveCompletion(result);
+    } catch (error) {
+      if (record.snapshot.status === 'interrupted') return;
+      if (error instanceof TaskTimeoutError) {
+        this.retryOrFail(record, toTaskError(error));
+      } else if (record.controller.signal.aborted || isAbortError(error)) {
+        this.finishCancelled(record);
+      } else {
+        this.retryOrFail(record, toTaskError(error));
+      }
+    }
+  }
+
+  private async executeWithTimeout(
+    record: TaskRecord,
+    operation: Promise<TaskHandlerResult>,
+  ): Promise<TaskHandlerResult> {
+    const timeoutMs = record.task.executionPolicy?.timeoutMs;
+    if (!timeoutMs || timeoutMs <= 0) return operation;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        record.controller.abort();
+        reject(new TaskTimeoutError(timeoutMs));
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([operation, timeout]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      void operation.catch(() => undefined);
+    }
+  }
+
+  private finishCancelled(record: TaskRecord): void {
+    if (isTerminal(record.snapshot.status)) return;
+    const result: TaskResult = {
+      taskId: record.task.id,
+      kind: record.task.kind,
+      status: 'cancelled',
+      error: { code: 'TASK_CANCELLED', message: 'Task was cancelled', retryable: true },
+    };
+    record.snapshot.status = 'cancelled';
+    record.snapshot.result = result;
+    record.snapshot.finishedAt = this.now();
+    this.markExecutionSettled(record, 'cancelled', result.error);
+    this.persist(record);
+    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+    this.emit({ type: 'cancelled', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+    record.resolveCompletion(result);
+  }
+
+  private finishFailed(record: TaskRecord, error: TaskError): void {
+    if (isTerminal(record.snapshot.status)) return;
+    const result: TaskResult = {
+      taskId: record.task.id,
+      kind: record.task.kind,
+      status: 'failed',
+      error,
+    };
+    record.snapshot.status = 'failed';
+    record.snapshot.error = error;
+    record.snapshot.result = result;
+    record.snapshot.finishedAt = this.now();
+    this.markExecutionSettled(record, 'failed', error);
+    this.persist(record);
+    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+    this.emit({ type: 'failed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+    record.resolveCompletion(result);
+  }
+
+  private retryOrFail(record: TaskRecord, error: TaskError): void {
+    if (error.retryable && record.attempts < record.maxAttempts) {
+      record.controller = new AbortController();
+      record.snapshot.status = 'queued';
+      record.snapshot.error = error;
+      record.snapshot.result = undefined;
+      this.markExecutionRetrying(record, error);
+      this.persist(record);
+      this.emit({ type: 'queued', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+      const schedule = () => {
+        if (!isTerminal(record.snapshot.status) && !record.controller.signal.aborted) void this.execute(record);
+      };
+      if (this.retryDelayMs > 0) setTimeout(schedule, this.retryDelayMs);
+      else queueMicrotask(schedule);
+      return;
+    }
+    this.finishFailed(record, error);
+  }
+
+  private update(
+    record: TaskRecord,
+    patch: Partial<TaskStatusSnapshot>,
+    type: TaskRouterEvent['type'] = 'started',
+  ): void {
+    Object.assign(record.snapshot, patch);
+    if (patch.status) record.executionRun.status = patch.status;
+    record.executionRun.updatedAt = this.now();
+    this.persist(record);
+    this.emit({ type, taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+  }
+
+  private finishInterrupted(record: TaskRecord): void {
+    if (isTerminal(record.snapshot.status)) return;
+    record.controller.abort();
+    record.snapshot.status = 'interrupted';
+    record.snapshot.error = {
+      code: 'TASK_INTERRUPTED',
+      message: 'Task was interrupted by runtime shutdown; resume it to continue',
+      retryable: true,
+    };
+    record.snapshot.finishedAt = this.now();
+    this.markExecutionSettled(record, 'interrupted', record.snapshot.error);
+    this.persist(record);
+    this.emit({ type: 'interrupted', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+  }
+
+  private markExecutionSettled(
+    record: TaskRecord,
+    status: TaskStatus,
+    error?: TaskError,
+  ): void {
+    const finishedAt = record.snapshot.finishedAt ?? this.now();
+    record.executionRun.status = status;
+    record.executionRun.finishedAt = finishedAt;
+    record.executionRun.updatedAt = finishedAt;
+    const attempt = record.executionAttempts.at(-1);
+    if (attempt && attempt.status === 'running') {
+      attempt.status = status;
+      attempt.finishedAt = finishedAt;
+      attempt.error = error;
+    }
+    const step = record.executionSteps.at(-1);
+    if (step && step.status === 'running') {
+      step.status = status;
+      step.finishedAt = finishedAt;
+      step.error = error;
+    }
+  }
+
+  private markExecutionRetrying(record: TaskRecord, error: TaskError): void {
+    const updatedAt = this.now();
+    record.executionRun.status = 'queued';
+    record.executionRun.updatedAt = updatedAt;
+    const attempt = record.executionAttempts.at(-1);
+    if (attempt && attempt.status === 'running') {
+      attempt.status = 'failed';
+      attempt.finishedAt = updatedAt;
+      attempt.error = error;
+    }
+    const step = record.executionSteps.at(-1);
+    if (step && step.status === 'running') {
+      step.status = 'failed';
+      step.finishedAt = updatedAt;
+      step.error = error;
+    }
+  }
+
+  private recoverPersistedRecords(): void {
+    const loaded = this.executionStore.list();
+    if (loaded instanceof Promise) {
+      void loaded.then((records) => records.forEach((record) => this.hydrate(record))).catch(() => undefined);
+      return;
+    }
+    loaded.forEach((record) => this.hydrate(record));
+  }
+
+  private hydrate(stored: TaskExecutionRecord): void {
+    if (this.records.has(stored.task.id)) return;
+    const snapshot = cloneSnapshot(stored.snapshot);
+    if (snapshot.status === 'queued' || snapshot.status === 'running' || snapshot.status === 'checkpointed') {
+      snapshot.status = 'interrupted';
+      snapshot.error = {
+        code: 'TASK_INTERRUPTED',
+        message: 'Task was interrupted before the previous runtime stopped',
+        retryable: true,
+      };
+      snapshot.finishedAt = this.now();
+    }
+    let resolveCompletion!: (result: TaskResult) => void;
+    const completion = new Promise<TaskResult>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const record: TaskRecord = {
+      task: cloneValue(stored.task),
+      controller: new AbortController(),
+      snapshot,
+      completion,
+      resolveCompletion,
+      attempts: stored.attempts,
+      maxAttempts: Math.max(1, stored.task.executionPolicy?.maxAttempts ?? 1),
+      executionRun: stored.run ?? {
+        id: snapshot.executionRunId ?? `run:${stored.task.id}`,
+        taskId: stored.task.id,
+        status: snapshot.status,
+        startedAt: snapshot.startedAt,
+        finishedAt: snapshot.finishedAt,
+        attempts: stored.attempts,
+        updatedAt: stored.updatedAt,
+        resumeToken: stored.resumeToken,
+      },
+      executionSteps: stored.steps ? cloneValue(stored.steps) : [],
+      executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
+      resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
+      steering: stored.steering ? cloneValue(stored.steering) : [],
+    };
+    snapshot.executionRunId = record.executionRun.id;
+    snapshot.attempts = stored.attempts;
+    if (snapshot.status === 'interrupted') {
+      record.executionRun.status = 'interrupted';
+      record.executionRun.finishedAt = snapshot.finishedAt;
+      record.executionRun.updatedAt = this.now();
+    }
+    this.records.set(record.task.id, record);
+    if (snapshot.result && isTerminal(snapshot.status)) resolveCompletion(snapshot.result);
+    this.persist(record);
+  }
+
+  private persist(record: TaskRecord): void {
+    const persisted = this.persistedRecord(record);
+    this.persistenceTail = this.persistenceTail
+      .then(() => this.executionStore.save(persisted))
+      .catch(() => undefined);
+  }
+
+  private persistedRecord(record: TaskRecord): TaskExecutionRecord {
+    const updatedAt = this.now();
+    record.executionRun.updatedAt = updatedAt;
+    record.snapshot.executionRunId = record.executionRun.id;
+    record.snapshot.attempts = record.attempts;
+    return {
+      task: cloneValue(record.task),
+      snapshot: cloneSnapshot(record.snapshot),
+      attempts: record.attempts,
+      updatedAt,
+      run: cloneValue(record.executionRun),
+      steps: cloneValue(record.executionSteps),
+      executionAttempts: cloneValue(record.executionAttempts),
+      resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
+      steering: cloneValue(record.steering),
+    };
+  }
+
+  private emit(event: TaskRouterEvent): void {
+    for (const listener of this.listeners) void listener(event);
+  }
+
+  private getRecord(taskId: string): TaskRecord {
+    const record = this.records.get(taskId);
+    if (!record) throw new Error(`Unknown task: ${taskId}`);
+    return record;
+  }
+}
+
+export class TaskTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Task exceeded its timeout of ${timeoutMs}ms`);
+    this.name = 'TaskTimeoutError';
+  }
+}
+
+function validateTask(task: AiTask): void {
+  if (!task.id.trim()) throw new Error('Task id must not be empty');
+  if (!task.kind.trim()) throw new Error('Task kind must not be empty');
+  if (!task.input || typeof task.input !== 'object') throw new Error('Task input must be an object');
+}
+
+function validateOutput(task: AiTask, result: TaskHandlerResult): TaskError | undefined {
+  const contract = task.outputContract;
+  if (!contract) return undefined;
+  if (!result.output) {
+    if (contract.allowEmpty) return undefined;
+    return { code: 'MISSING_OUTPUT', message: `Task did not produce ${contract.format} output` };
+  }
+  if (result.output.format !== contract.format) {
+    return {
+      code: 'OUTPUT_CONTRACT_MISMATCH',
+      message: `Expected ${contract.format} output, received ${result.output.format}`,
+    };
+  }
+  if (result.output.format === 'text' && !contract.allowEmpty && result.output.text.length === 0) {
+    return { code: 'EMPTY_OUTPUT', message: 'Task produced empty text output' };
+  }
+  return undefined;
+}
+
+function toTaskError(error: unknown): TaskError {
+  if (error instanceof TaskTimeoutError) {
+    return { code: 'TASK_TIMEOUT', message: error.message, retryable: true };
+  }
+  if (error instanceof Error) {
+    const metadata = error as Error & { retryable?: boolean; details?: unknown };
+    return {
+      code: 'TASK_FAILED',
+      message: error.message,
+      retryable: metadata.retryable,
+      details: metadata.details,
+    };
+  }
+  return { code: 'TASK_FAILED', message: String(error) };
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function isTerminal(status: TaskStatus): boolean {
+  return status === 'waiting-user' || status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+function cloneSnapshot(snapshot: TaskStatusSnapshot): TaskStatusSnapshot {
+  return {
+    ...snapshot,
+    result: snapshot.result ? { ...snapshot.result } : undefined,
+    error: snapshot.error ? { ...snapshot.error } : undefined,
+    checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined,
+  };
+}
+
+function observationFromSnapshot(snapshot: TaskStatusSnapshot) {
+  const resultProvenance = snapshot.result?.provenance ? sanitizeProvenance(snapshot.result.provenance) : {};
+  return {
+    taskId: snapshot.taskId,
+    kind: snapshot.kind,
+    status: snapshot.status,
+    startedAt: snapshot.startedAt,
+    finishedAt: snapshot.finishedAt,
+    progress: snapshot.progress,
+    ...resultProvenance,
+    error: snapshot.error ? { code: snapshot.error.code, message: snapshot.error.message } : undefined,
+    artifactIds: snapshot.result?.artifactIds ? [...snapshot.result.artifactIds] : undefined,
+    proposalIds: snapshot.result?.proposalIds ? [...snapshot.result.proposalIds] : undefined,
+    checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined,
+    resultType: snapshot.result?.output?.format,
+    provenance: { taskId: snapshot.taskId, taskKind: snapshot.kind, ...resultProvenance },
+  };
+}
+
+function sanitizeProvenance(provenance: Record<string, unknown>): Record<string, unknown> {
+  const safe = { ...provenance };
+  for (const key of ['thinking', 'reasoning', 'chainOfThought', 'cot', 'rawThinking']) delete safe[key];
+  return safe;
+}
+
+function cloneValue<T>(value: T): T {
+  if (value === undefined || value === null || typeof value !== 'object') return value;
+  try {
+    return structuredClone(value);
+  } catch {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+}
