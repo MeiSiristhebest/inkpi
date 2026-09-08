@@ -51,6 +51,34 @@ function makeTask(overrides: Partial<AiTask> = {}): AiTask {
 }
 
 describe('durable task reliability', () => {
+  it('accepts only one concurrent submission for the same task id', async () => {
+    let executions = 0;
+    const registry = new TaskRegistry();
+    registry.register({
+      id: 'duplicate-task-handler',
+      kinds: ['test.duplicate-task'],
+      async execute() {
+        executions += 1;
+        return { output: { format: 'text', text: 'ok' } };
+      },
+    });
+    const router = new TaskRouter({ registry });
+    const task = makeTask({ id: 'duplicate-task', kind: 'test.duplicate-task' });
+
+    const submissions = await Promise.allSettled([
+      Promise.resolve().then(() => router.submit(task)),
+      Promise.resolve().then(() => router.submit(task)),
+    ]);
+
+    expect(submissions.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    expect(submissions.filter(({ status }) => status === 'rejected')).toHaveLength(1);
+    expect(submissions.find(({ status }) => status === 'rejected')).toMatchObject({
+      reason: new Error('Task already exists: duplicate-task'),
+    });
+    await expect(router.wait(task.id)).resolves.toMatchObject({ status: 'completed' });
+    expect(executions).toBe(1);
+  });
+
   it('retries an explicitly retryable failure and records attempts', async () => {
     let attempts = 0;
     const registry = new TaskRegistry();

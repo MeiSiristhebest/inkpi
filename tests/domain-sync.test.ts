@@ -53,4 +53,60 @@ describe('desktop-authoritative domain projection sync', () => {
     await daemon.stop();
     db.close();
   });
+
+  it('rejects out-of-order revisions and then accepts them in order', async () => {
+    const db = new InkDb();
+    const projection = new DomainProjectionStore(db, () => 10);
+    const daemon = new InkPiDaemon({ context: { domainProjection: projection } });
+    const client = new InkRpcClient(new InMemoryTransport(daemon.getRpcServer()));
+    const changeSet = (revision: number, baseRevision: number): DomainChangeSet => {
+      const unsigned = {
+        id: `ordered-${revision}`,
+        workspaceId: 'workspace-order',
+        sourceDeviceId: 'desktop-1',
+        baseRevision,
+        revision,
+        createdAt: revision,
+        changes: [],
+      } satisfies Omit<DomainChangeSet, 'checksum'>;
+      return { ...unsigned, checksum: calculateDomainChangeSetChecksum(unsigned) };
+    };
+
+    expect(await client.pushDomainChangeSet(changeSet(2, 1))).toMatchObject({
+      accepted: false,
+      duplicate: false,
+      revision: 0,
+      reason: 'revision-conflict',
+    });
+    expect(await client.pushDomainChangeSet(changeSet(1, 0))).toMatchObject({ accepted: true, revision: 1 });
+    expect(await client.pushDomainChangeSet(changeSet(2, 1))).toMatchObject({ accepted: true, revision: 2 });
+    expect(await client.pullDomainChangeSets('workspace-order')).toHaveLength(2);
+
+    await client.close();
+    await daemon.stop();
+    db.close();
+  });
+
+  it('rejects a change set with an incorrect checksum', async () => {
+    const db = new InkDb();
+    const projection = new DomainProjectionStore(db);
+    const daemon = new InkPiDaemon({ context: { domainProjection: projection } });
+    const client = new InkRpcClient(new InMemoryTransport(daemon.getRpcServer()));
+    const changeSet: DomainChangeSet = {
+      id: 'bad-checksum',
+      workspaceId: 'workspace-checksum',
+      sourceDeviceId: 'desktop-1',
+      baseRevision: 0,
+      revision: 1,
+      createdAt: 1,
+      changes: [],
+      checksum: '00000000',
+    };
+
+    await expect(client.pushDomainChangeSet(changeSet)).rejects.toThrow('checksum mismatch');
+
+    await client.close();
+    await daemon.stop();
+    db.close();
+  });
 });
