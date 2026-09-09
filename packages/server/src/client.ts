@@ -4,10 +4,15 @@ import type {
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
+  ProposalProjectionSnapshot,
+  ProposalProjectionState,
+  ProposalSyncPushResult,
   RpcNotification,
   RpcRequest,
   RpcResponse,
   TaskCancelResult,
+  TaskExecutionParams,
+  TaskExecutionSnapshot,
   TaskForkParams,
   TaskReplayParams,
   TaskResumeParams,
@@ -17,6 +22,7 @@ import type {
   TaskSteerResult,
   TaskSubmitResult
 } from '@inkpi/protocol';
+import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -321,6 +327,11 @@ export class InkRpcClient {
     return this.request<TaskStatusSnapshot>('task.status', { taskId });
   }
 
+  public getTaskExecution(taskId: string): Promise<TaskExecutionSnapshot> {
+    const params: TaskExecutionParams = { taskId };
+    return this.request<TaskExecutionSnapshot>('task.execution', params);
+  }
+
   public steerTask(taskId: string, input: unknown): Promise<TaskSteerResult> {
     const params: TaskSteerParams = { taskId, input };
     return this.request<TaskSteerResult>('task.steer', params);
@@ -381,6 +392,23 @@ export class InkRpcClient {
     snapshot: DomainProjectionSnapshot
   ): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
     return this.request('domain.sync.restore', { snapshot });
+  }
+
+  public pushProposalState(
+    workspaceId: string,
+    expectedRevision: number,
+    proposal: ProposalProjectionState,
+  ): Promise<ProposalSyncPushResult> {
+    return this.request<ProposalSyncPushResult>('proposal.sync.push', {
+      workspaceId,
+      expectedRevision,
+      proposal,
+      stateHash: calculateProposalProjectionStateHash(proposal),
+    });
+  }
+
+  public snapshotProposals(workspaceId: string): Promise<ProposalProjectionSnapshot> {
+    return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
   }
 
   public saveArtifact(artifact: Artifact): Promise<{ saved: boolean; id: string }> {

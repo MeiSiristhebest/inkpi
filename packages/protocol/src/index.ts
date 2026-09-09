@@ -8,6 +8,7 @@ export * from './pipeline.js';
 export * from './task.js';
 export * from './domain-sync.js';
 export * from './domain-proposal.js';
+export * from './proposal-sync.js';
 export * from './artifact.js';
 export * from './typebox.js';
 export * from './schemas.js';

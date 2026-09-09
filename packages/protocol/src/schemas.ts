@@ -176,7 +176,103 @@ export const StateLedgerSchema = Type.Object({
   foreshadowings: Type.Optional(Type.Array(TrackStateSchema))
 });
 
-// 7. JSON-RPC 2.0 帧 Schemas
+// 7. Durable task execution query Schemas
+export const TaskStatusSchema = Type.Union([
+  Type.Literal('created'),
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('checkpointed'),
+  Type.Literal('waiting-user'),
+  Type.Literal('interrupted'),
+  Type.Literal('completed'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled')
+]);
+
+export const TaskErrorSchema = Type.Object({
+  code: Type.String({ minLength: 1 }),
+  message: Type.String(),
+  retryable: Type.Optional(Type.Boolean()),
+  details: Type.Optional(Type.Any())
+});
+
+export const TaskStatusSnapshotSchema = Type.Object({
+  taskId: IdSchema,
+  kind: Type.String({ minLength: 1 }),
+  status: TaskStatusSchema,
+  progress: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  result: Type.Optional(Type.Any()),
+  error: Type.Optional(TaskErrorSchema),
+  startedAt: Type.Optional(TimestampSchema),
+  finishedAt: Type.Optional(TimestampSchema),
+  executionRunId: Type.Optional(IdSchema),
+  attempts: Type.Optional(Type.Integer({ minimum: 0 })),
+  checkpoint: Type.Optional(
+    Type.Object({
+      step: Type.String(),
+      updatedAt: TimestampSchema
+    })
+  )
+});
+
+export const TaskExecutionParamsSchema = Type.Object({
+  taskId: IdSchema
+});
+
+export const TaskExecutionResumeTokenSchema = Type.Object({
+  taskId: IdSchema,
+  checkpointStep: Type.String(),
+  contextFingerprint: Type.Optional(Type.String()),
+  issuedAt: TimestampSchema
+});
+
+export const TaskExecutionRunSchema = Type.Object({
+  id: IdSchema,
+  taskId: IdSchema,
+  status: TaskStatusSchema,
+  startedAt: Type.Optional(TimestampSchema),
+  finishedAt: Type.Optional(TimestampSchema),
+  attempts: Type.Integer({ minimum: 0 }),
+  updatedAt: TimestampSchema,
+  resumeToken: Type.Optional(TaskExecutionResumeTokenSchema)
+});
+
+export const TaskExecutionStepSchema = Type.Object({
+  id: IdSchema,
+  runId: IdSchema,
+  step: Type.String(),
+  status: TaskStatusSchema,
+  startedAt: Type.Optional(TimestampSchema),
+  finishedAt: Type.Optional(TimestampSchema),
+  error: Type.Optional(TaskErrorSchema)
+});
+
+export const TaskExecutionAttemptSchema = Type.Object({
+  runId: IdSchema,
+  attempt: Type.Integer({ minimum: 0 }),
+  startedAt: TimestampSchema,
+  finishedAt: Type.Optional(TimestampSchema),
+  status: TaskStatusSchema,
+  error: Type.Optional(TaskErrorSchema)
+});
+
+export const TaskExecutionSnapshotSchema = Type.Object({
+  task: Type.Object({
+    id: IdSchema,
+    kind: Type.String({ minLength: 1 }),
+    input: Type.Any()
+  }),
+  snapshot: TaskStatusSnapshotSchema,
+  attempts: Type.Integer({ minimum: 0 }),
+  updatedAt: TimestampSchema,
+  run: Type.Optional(TaskExecutionRunSchema),
+  steps: Type.Optional(Type.Array(TaskExecutionStepSchema)),
+  executionAttempts: Type.Optional(Type.Array(TaskExecutionAttemptSchema)),
+  resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
+  steering: Type.Optional(Type.Array(Type.Any()))
+});
+
+// 8. JSON-RPC 2.0 帧 Schemas
 export const RpcRequestSchema = Type.Object({
   jsonrpc: Type.Literal('2.0'),
   id: Type.Union([Type.String(), Type.Number()]),

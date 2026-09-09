@@ -3,15 +3,20 @@ import type {
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
+  ProposalProjectionSnapshot,
+  ProposalProjectionState,
+  ProposalSyncPushResult,
   RpcNotification,
   RpcRequest,
   RpcResponse,
   TaskCancelResult,
+  TaskExecutionSnapshot,
   TaskResult,
   TaskStatusSnapshot,
   TaskSteerResult,
   TaskSubmitResult,
 } from '@inkpi/protocol';
+import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import { TcpSocketTransport } from './transports/tcp.js';
 import { WebSocketTransport } from './transports/ws.js';
@@ -316,6 +321,10 @@ export class InkRpcClient {
     return this.request<TaskStatusSnapshot>('task.status', { taskId });
   }
 
+  public getTaskExecution(taskId: string): Promise<TaskExecutionSnapshot> {
+    return this.request<TaskExecutionSnapshot>('task.execution', { taskId });
+  }
+
   public steerTask(taskId: string, input: unknown): Promise<TaskSteerResult> {
     return this.request<TaskSteerResult>('task.steer', { taskId, input });
   }
@@ -357,6 +366,23 @@ export class InkRpcClient {
 
   public restoreDomainSnapshot(snapshot: DomainProjectionSnapshot): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
     return this.request('domain.sync.restore', { snapshot });
+  }
+
+  public pushProposalState(
+    workspaceId: string,
+    expectedRevision: number,
+    proposal: ProposalProjectionState,
+  ): Promise<ProposalSyncPushResult> {
+    return this.request<ProposalSyncPushResult>('proposal.sync.push', {
+      workspaceId,
+      expectedRevision,
+      proposal,
+      stateHash: calculateProposalProjectionStateHash(proposal),
+    });
+  }
+
+  public snapshotProposals(workspaceId: string): Promise<ProposalProjectionSnapshot> {
+    return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {

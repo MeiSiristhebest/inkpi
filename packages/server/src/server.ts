@@ -13,6 +13,7 @@ import type { AgentMessage } from '@inkpi/protocol';
 import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { AppendOnlySessionJournal, FtsSearchEngine, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
 import type { DomainProjectionStore } from '@inkpi/storage';
+import type { ProposalProjectionStore } from '@inkpi/storage';
 import type { TaskCheckpointStore } from '@inkpi/agent-core';
 import type { TaskExecutionStore } from '@inkpi/agent-core';
 import type { ContextPipeline } from '@inkpi/agent-core';
@@ -27,6 +28,7 @@ export interface ServerContext {
   agent?: Agent;
   taskRouter?: TaskRouter;
   domainProjection?: DomainProjectionStore;
+  proposalProjection?: ProposalProjectionStore;
   artifactStore?: ArtifactStore;
   checkpointStore?: TaskCheckpointStore;
   executionStore?: TaskExecutionStore;

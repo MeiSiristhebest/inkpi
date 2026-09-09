@@ -165,6 +165,61 @@ export interface TaskStatusSnapshot {
   checkpoint?: { step: string; updatedAt: number };
 }
 
+/** Durable execution metadata exposed by the task.execution RPC. */
+export interface TaskExecutionResumeToken {
+  taskId: string;
+  checkpointStep: string;
+  contextFingerprint?: string;
+  issuedAt: number;
+}
+
+export interface TaskExecutionRun {
+  id: string;
+  taskId: string;
+  status: TaskStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  attempts: number;
+  updatedAt: number;
+  resumeToken?: TaskExecutionResumeToken;
+}
+
+export interface TaskExecutionStep {
+  id: string;
+  runId: string;
+  step: string;
+  status: TaskStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  error?: TaskError;
+}
+
+export interface TaskExecutionAttempt {
+  runId: string;
+  attempt: number;
+  startedAt: number;
+  finishedAt?: number;
+  status: TaskStatus;
+  error?: TaskError;
+}
+
+/**
+ * Full public view returned by TaskRouter.execution.
+ * `snapshot` remains the source of current status/error/checkpoint truth;
+ * the other fields retain durable run, step, attempt, resume, and steering data.
+ */
+export interface TaskExecutionSnapshot {
+  task: AiTask;
+  snapshot: TaskStatusSnapshot;
+  attempts: number;
+  updatedAt: number;
+  run?: TaskExecutionRun;
+  steps?: TaskExecutionStep[];
+  executionAttempts?: TaskExecutionAttempt[];
+  resumeToken?: TaskExecutionResumeToken;
+  steering?: unknown[];
+}
+
 export interface TaskSubmitParams {
   task: AiTask;
 }
@@ -185,6 +240,10 @@ export interface TaskCancelResult {
 }
 
 export interface TaskStatusParams {
+  taskId: string;
+}
+
+export interface TaskExecutionParams {
   taskId: string;
 }
 

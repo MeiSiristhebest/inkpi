@@ -17,7 +17,11 @@ import type {
   DomainSyncRestoreParams,
   DomainSyncSnapshotParams,
   ModelConfig,
+  ProposalSyncPushParams,
+  ProposalSyncSnapshotParams,
   TaskCancelParams,
+  TaskExecutionParams,
+  TaskExecutionSnapshot,
   TaskForkParams,
   TaskReplayParams,
   TaskResumeParams,
@@ -31,6 +35,7 @@ import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
 import { TaskModelHandler } from './task-model-handler.js';
 import { JitContextProvider } from './jit-context-provider.js';
+import type { ProposalProjectionStore } from '@inkpi/storage';
 import type {
   CapabilityRouter,
   ModelCapabilities,
@@ -165,6 +170,14 @@ export class InkPiDaemon {
       return this.withDomainProjection().restoreSnapshot(params.snapshot);
     });
 
+    this.rpcServer.registerMethod('proposal.sync.push', (params: ProposalSyncPushParams) => {
+      return this.withProposalProjection().apply(params);
+    });
+
+    this.rpcServer.registerMethod('proposal.sync.snapshot', (params: ProposalSyncSnapshotParams) => {
+      return this.withProposalProjection().snapshot(params.workspaceId);
+    });
+
     this.rpcServer.registerMethod('artifact.save', async (params: { artifact: Artifact }) => {
       await this.withArtifactStore().save(params.artifact);
       return { saved: true, id: params.artifact.id };
@@ -215,6 +228,11 @@ export class InkPiDaemon {
 
     this.rpcServer.registerMethod('task.status', (params: TaskStatusParams) => {
       return this.taskRouter.status(params.taskId);
+    });
+
+    this.rpcServer.registerMethod('task.execution', async (params: TaskExecutionParams): Promise<TaskExecutionSnapshot> => {
+      await this.taskRouter.ready;
+      return this.taskRouter.execution(params.taskId);
     });
 
     this.rpcServer.registerMethod('task.steer', (params: TaskSteerParams) => {

@@ -196,6 +196,26 @@ CREATE TABLE IF NOT EXISTS domain_projection_cursors (
   updated_at INTEGER NOT NULL
 );
 
+-- Desktop-authoritative proposal review state (daemon-side derived projection)
+CREATE TABLE IF NOT EXISTS proposal_projections (
+  workspace_id TEXT NOT NULL,
+  proposal_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  state_hash TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, proposal_id)
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_projections_workspace
+  ON proposal_projections(workspace_id, revision);
+
+CREATE TABLE IF NOT EXISTS proposal_projection_cursors (
+  workspace_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS task_checkpoints (
   task_id TEXT PRIMARY KEY,
   kind TEXT NOT NULL,

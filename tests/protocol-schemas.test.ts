@@ -3,6 +3,8 @@ import {
   CharacterStateSchema,
   RpcRequestSchema,
   StateLedgerSchema,
+  TaskExecutionParamsSchema,
+  TaskExecutionSnapshotSchema,
   ThinkingLevelSchema,
   Type,
   UsageSchema,
@@ -74,6 +76,68 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
       locations: [{ id: 'loc_1', name: '青阳镇' }]
     };
     expect(Value.Check(StateLedgerSchema, ledger)).toBe(true);
+  });
+
+  it('should validate the durable task.execution query contract', () => {
+    const execution = {
+      task: { id: 'execution-task', kind: 'test.execution', input: {} },
+      snapshot: {
+        taskId: 'execution-task',
+        kind: 'test.execution',
+        status: 'failed',
+        error: { code: 'TASK_FAILED', message: 'attempt failed', retryable: true },
+        executionRunId: 'run:execution-task',
+        attempts: 2,
+        checkpoint: { step: 'draft', updatedAt: 10 }
+      },
+      attempts: 2,
+      updatedAt: 20,
+      run: {
+        id: 'run:execution-task',
+        taskId: 'execution-task',
+        status: 'failed',
+        attempts: 2,
+        updatedAt: 20,
+        resumeToken: {
+          taskId: 'execution-task',
+          checkpointStep: 'draft',
+          contextFingerprint: 'ctx-1',
+          issuedAt: 10
+        }
+      },
+      steps: [
+        {
+          id: 'step:execution-task:2',
+          runId: 'run:execution-task',
+          step: 'draft',
+          status: 'failed',
+          startedAt: 11,
+          finishedAt: 20,
+          error: { code: 'TASK_FAILED', message: 'attempt failed' }
+        }
+      ],
+      executionAttempts: [
+        {
+          runId: 'run:execution-task',
+          attempt: 2,
+          startedAt: 11,
+          finishedAt: 20,
+          status: 'failed',
+          error: { code: 'TASK_FAILED', message: 'attempt failed' }
+        }
+      ],
+      resumeToken: {
+        taskId: 'execution-task',
+        checkpointStep: 'draft',
+        contextFingerprint: 'ctx-1',
+        issuedAt: 10
+      },
+      steering: [{ direction: 'continue' }]
+    };
+
+    expect(Value.Check(TaskExecutionParamsSchema, { taskId: 'execution-task' })).toBe(true);
+    expect(Value.Check(TaskExecutionSnapshotSchema, execution)).toBe(true);
+    expect(Value.Check(TaskExecutionSnapshotSchema, { ...execution, attempts: -1 })).toBe(false);
   });
 
   it('should validate and assert schemas with error details', () => {
