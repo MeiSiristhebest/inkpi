@@ -2,18 +2,34 @@ import type { AiTask } from '@inkpi/protocol';
 import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
 const DEFAULT_MAX_TOKENS = 16_000;
+const DEFAULT_CONTEXT_CACHE_ENTRIES = 64;
 const CHARS_PER_TOKEN = 4;
+
+export interface ContextCacheOptions {
+  /** Context compilation is cached by default; set false or maxEntries to 0 to disable it. */
+  enabled?: boolean;
+  maxEntries?: number;
+}
 
 export interface ContextPipelineOptions {
   maxTokens?: number;
+  cache?: ContextCacheOptions;
 }
 
 export class ContextPipeline {
   private readonly providers = new Map<string, ContextProvider>();
+  private readonly cache = new Map<string, ContextPacket>();
   private readonly maxTokens: number;
+  private readonly cacheEnabled: boolean;
+  private readonly cacheMaxEntries: number;
 
   constructor(options: ContextPipelineOptions = {}) {
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+    this.cacheEnabled = options.cache?.enabled ?? true;
+    const maxEntries = options.cache?.maxEntries ?? DEFAULT_CONTEXT_CACHE_ENTRIES;
+    this.cacheMaxEntries = Number.isFinite(maxEntries)
+      ? Math.max(0, Math.floor(maxEntries))
+      : DEFAULT_CONTEXT_CACHE_ENTRIES;
   }
 
   register(provider: ContextProvider): void {
@@ -22,17 +38,30 @@ export class ContextPipeline {
       throw new Error(`Context provider already registered: ${provider.id}`);
     }
     this.providers.set(provider.id, provider);
+    this.clearCache();
   }
 
   unregister(providerId: string): boolean {
-    return this.providers.delete(providerId);
+    const removed = this.providers.delete(providerId);
+    if (removed) this.clearCache();
+    return removed;
   }
 
   list(): ContextProvider[] {
     return [...this.providers.values()];
   }
 
+  /** Clear compiled packets after an external project or retrieval-index update. */
+  clearCache(): void {
+    this.cache.clear();
+  }
+
   async build(task: AiTask, signal?: AbortSignal): Promise<ContextPacket> {
+    if (signal?.aborted) throw abortError();
+    const cacheKey = this.getCacheKey(task);
+    const cached = this.getCached(cacheKey);
+    if (cached) return cached;
+
     const request: ContextRequest = {
       task,
       signal,
@@ -69,10 +98,51 @@ export class ContextPipeline {
         request.projectRevision
       );
       limitedPacket.metadata = task.contextPolicy?.metadata;
+      this.setCached(cacheKey, limitedPacket);
       return limitedPacket;
     }
     packet.metadata = task.contextPolicy?.metadata;
+    this.setCached(cacheKey, packet);
     return packet;
+  }
+
+  private getCacheKey(task: AiTask): string {
+    return stableSerialize({
+      maxTokens: this.maxTokens,
+      providers: [...this.providers.keys()],
+      task
+    });
+  }
+
+  private getCached(cacheKey: string): ContextPacket | undefined {
+    if (!this.cacheEnabled || this.cacheMaxEntries === 0) return undefined;
+    const packet = this.cache.get(cacheKey);
+    if (!packet) return undefined;
+    this.cache.delete(cacheKey);
+    this.cache.set(cacheKey, packet);
+    return clonePacket(packet);
+  }
+
+  private setCached(cacheKey: string, packet: ContextPacket): void {
+    if (!this.cacheEnabled || this.cacheMaxEntries === 0) return;
+    this.cache.delete(cacheKey);
+    this.cache.set(cacheKey, clonePacket(packet));
+    while (this.cache.size > this.cacheMaxEntries) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest === undefined) break;
+      this.cache.delete(oldest);
+    }
+  }
+}
+
+function clonePacket(packet: ContextPacket): ContextPacket {
+  try {
+    return structuredClone(packet);
+  } catch {
+    return {
+      ...packet,
+      fragments: packet.fragments.map((fragment) => ({ ...fragment }))
+    };
   }
 }
 
