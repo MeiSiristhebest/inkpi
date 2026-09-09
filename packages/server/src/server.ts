@@ -1,6 +1,7 @@
 import * as net from 'node:net';
 import type { Agent } from '@inkpi/agent-core';
 import type { TaskRouter } from '@inkpi/agent-core';
+import type { ProgressiveSkillRuntime } from '@inkpi/agent-core';
 import type { SessionTree } from '@inkpi/agent-core';
 import { SlashCommandRegistry } from '@inkpi/agent-core';
 import type { BranchSummarizer } from '@inkpi/agent-core';
@@ -34,6 +35,7 @@ export interface ServerContext {
   executionStore?: TaskExecutionStore;
   contextPipeline?: ContextPipeline;
   instructionRegistry?: InstructionRegistry;
+  skillRuntime?: ProgressiveSkillRuntime;
   tree?: SessionTree;
   editor?: HeadlessEditorState;
   ghost?: GhostTextManager;

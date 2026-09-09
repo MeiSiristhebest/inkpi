@@ -7,6 +7,8 @@ import {
   ContextPipeline,
   InstructionRegistry,
   TaskRouter,
+  ProgressiveSkillRuntime,
+  type ProgressiveSkillRuntimeOptions,
   type InstructionDefinition,
   type InstructionEntry,
 } from '@inkpi/agent-core';
@@ -16,6 +18,11 @@ import type {
   DomainSyncPushParams,
   DomainSyncRestoreParams,
   DomainSyncSnapshotParams,
+  InstructionListParams,
+  InstructionRegisterParams,
+  InstructionRegisterResult,
+  InstructionRegistrationStatus,
+  InstructionRegistryStatus,
   ModelConfig,
   ProposalSyncPushParams,
   ProposalSyncSnapshotParams,
@@ -28,6 +35,13 @@ import type {
   TaskStatusParams,
   TaskSteerParams,
   TaskSubmitParams,
+  SkillActivateParams,
+  SkillActivationResult,
+  SkillDiscoverResult,
+  SkillLoadParams,
+  SkillLoadResult,
+  SkillResolveQuery,
+  SkillResolveResult,
 } from '@inkpi/protocol';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -51,6 +65,9 @@ export interface DaemonOptions {
   modelRoutes?: readonly ModelRoute[];
   capabilityRouter?: CapabilityRouter;
   instructionRegistry?: InstructionRegistry;
+  skillRuntime?: ProgressiveSkillRuntime;
+  skillSearchDirs?: readonly string[];
+  skillActivators?: ProgressiveSkillRuntimeOptions['skillActivators'];
   context?: Partial<ServerContext>;
 }
 
@@ -80,6 +97,7 @@ export class InkPiDaemon {
   private wsPort: number | null = null;
   private options: DaemonOptions;
   private readonly instructionRegistry: InstructionRegistry;
+  private readonly skillRuntime: ProgressiveSkillRuntime;
   private readonly capabilityRouter?: CapabilityRouter;
 
   constructor(options: DaemonOptions = {}) {
@@ -120,10 +138,30 @@ export class InkPiDaemon {
     } else {
       this.capabilityRouter = options.capabilityRouter;
     }
+    this.skillRuntime = options.skillRuntime ?? new ProgressiveSkillRuntime({
+      searchDirs: options.skillSearchDirs ? [...options.skillSearchDirs] : undefined,
+      extensionHost: options.context?.extensionHost,
+      toolRegistry: this.taskRouter.toolRegistry,
+      taskRegistry: this.taskRouter.registry,
+      contextPipeline: this.taskRouter.contextPipeline,
+      instructionRegistry: this.instructionRegistry,
+      skillActivators: options.skillActivators
+    });
+    if (this.skillRuntime.toolRegistry !== this.taskRouter.toolRegistry) {
+      throw new Error('Daemon skill runtime must use the TaskRouter ToolRegistry');
+    }
+    if (this.skillRuntime.taskRegistry && this.skillRuntime.taskRegistry !== this.taskRouter.registry) {
+      throw new Error('Daemon skill runtime must use the TaskRouter TaskRegistry');
+    }
+    if (this.skillRuntime.contextPipeline && this.skillRuntime.contextPipeline !== this.taskRouter.contextPipeline) {
+      throw new Error('Daemon skill runtime must use the TaskRouter ContextPipeline');
+    }
     this.rpcServer = new InkRpcServer({
       ...options.context,
       taskRouter: this.taskRouter,
       instructionRegistry: this.instructionRegistry,
+      extensionHost: this.skillRuntime.extensionHost,
+      skillRuntime: this.skillRuntime,
     } as ServerContext);
     this.taskRouter.subscribe((event) => {
       this.rpcServer.notify('task.event', event);
@@ -146,6 +184,11 @@ export class InkPiDaemon {
   /** The registry used by the daemon-owned TaskRouter and instruction RPCs. */
   public getInstructionRegistry(): InstructionRegistry {
     return this.instructionRegistry;
+  }
+
+  /** The single ProgressiveSkillRuntime shared with the daemon's registries. */
+  public getSkillRuntime(): ProgressiveSkillRuntime {
+    return this.skillRuntime;
   }
 
   /** 返回守护进程实际监听的 TCP 端口（端口 0 时由操作系统分配）。 */
@@ -197,6 +240,37 @@ export class InkPiDaemon {
       }
     );
 
+    const discoverSkills = (): SkillDiscoverResult => this.skillRuntime.discoverManifests();
+    this.rpcServer.registerMethod('skill.discover', discoverSkills);
+    // A short alias keeps the catalog operation easy to discover for clients.
+    this.rpcServer.registerMethod('skill.list', discoverSkills);
+    this.rpcServer.registerMethod(
+      'skill.resolve',
+      (params: SkillResolveQuery = {}): SkillResolveResult => this.skillRuntime.resolve(params)
+    );
+    this.rpcServer.registerMethod('skill.load', (params: SkillLoadParams): SkillLoadResult => {
+      const skillId = requiredSkillId(params);
+      this.skillRuntime.load(skillId);
+      return {
+        loaded: true,
+        skill: this.skillRuntime.getManifest(skillId),
+        snapshot: this.skillRuntime.getRegistrationSnapshot()
+      };
+    });
+    this.rpcServer.registerMethod('skill.activate', async (params: SkillActivateParams): Promise<SkillActivationResult> => {
+      const skillId = requiredSkillId(params);
+      await this.skillRuntime.activate(skillId);
+      return {
+        activated: true,
+        loaded: true,
+        skill: this.skillRuntime.getManifest(skillId),
+        snapshot: this.skillRuntime.getRegistrationSnapshot()
+      };
+    });
+    const skillStatus = () => this.skillRuntime.getRegistrationSnapshot();
+    this.rpcServer.registerMethod('skill.status', skillStatus);
+    this.rpcServer.registerMethod('skill.snapshot', skillStatus);
+
     this.rpcServer.registerMethod('instruction.register', (params: unknown) => {
       return this.registerInstructions(params);
     });
@@ -214,6 +288,7 @@ export class InkPiDaemon {
         version: this.instructionRegistry.version(),
         count: entries.length,
         instructionIds: entries.map((entry) => entry.id),
+        instructions: this.instructionRegistry.listReferences(),
       } satisfies InstructionRegistryStatus;
     });
 
@@ -495,35 +570,6 @@ export class InkPiDaemon {
   }
 }
 
-interface InstructionListParams {
-  taskKind?: string;
-}
-
-interface InstructionRegistryStatus {
-  ready: boolean;
-  version: string;
-  count: number;
-  instructionIds: string[];
-}
-
-interface InstructionRegistrationStatus {
-  id: string;
-  version: string;
-  status: 'added' | 'updated' | 'unchanged';
-}
-
-interface InstructionRegisterResult {
-  success: true;
-  registered: true;
-  count: number;
-  instructionIds: string[];
-  added: string[];
-  updated: string[];
-  unchanged: string[];
-  results: InstructionRegistrationStatus[];
-  version: string;
-}
-
 function normalizeInstructionDefinitions(params: unknown): InstructionDefinition[] {
   const rawDefinitions = Array.isArray(params)
     ? params
@@ -579,6 +625,10 @@ function requiredString(value: unknown, field: string): string {
     throw new Error(`Instruction ${field} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function requiredSkillId(params: { skillId?: unknown } | null | undefined): string {
+  return requiredString(params?.skillId, 'skillId');
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

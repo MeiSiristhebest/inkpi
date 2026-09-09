@@ -3,6 +3,8 @@ export * from './events.js';
 export * from './storage.js';
 export * from './editor.js';
 export * from './extensions.js';
+export * from './instructions.js';
+export * from './skills.js';
 export * from './rpc.js';
 export * from './pipeline.js';
 export * from './task.js';

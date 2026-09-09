@@ -1,6 +1,6 @@
 import { InstructionRegistry, type TaskHandlerContext } from '@inkpi/agent-core';
 import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
-import type { AgentMessage, AiTask } from '@inkpi/protocol';
+import type { AgentMessage, AiTask, SkillInfo } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
 import { TaskModelHandler } from './task-model-handler.js';
@@ -135,6 +135,49 @@ describe('daemon InstructionRegistry RPC', () => {
     expect(result.provenance).toMatchObject({
       instructionIds: [definition.id],
       instructionVersion: expect.stringMatching(/^instructions-/)
+    });
+  });
+
+  it('exposes process-safe skill metadata through the shared daemon runtime', async () => {
+    const daemon = new InkPiDaemon();
+    daemons.push(daemon);
+    const skill: SkillInfo = {
+      name: 'rpc-skill',
+      description: 'A skill exposed through RPC',
+      filePath: 'rpc-skill.md',
+      frontmatter: {
+        id: 'rpc-skill',
+        version: '2.0.0',
+        activation: 'on-demand',
+        capabilities: ['rpc-test']
+      },
+      promptBody: 'This body must stay in the Runtime process.'
+    };
+    daemon.getSkillRuntime().registerSkill(skill);
+
+    const status = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'skill.status'
+    });
+    expect(status.result).toMatchObject({
+      protocolVersion: 'skill-runtime.v1',
+      skills: [expect.objectContaining({ id: skill.name, version: '2.0.0' })],
+      loadedSkills: [],
+      activatedSkills: []
+    });
+    expect(JSON.stringify(status.result)).not.toContain(skill.promptBody);
+
+    const loaded = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'skill.load',
+      params: { skillId: skill.name }
+    });
+    expect(loaded.result).toMatchObject({
+      loaded: true,
+      skill: expect.objectContaining({ id: skill.name }),
+      snapshot: { loadedSkills: [skill.name] }
     });
   });
 

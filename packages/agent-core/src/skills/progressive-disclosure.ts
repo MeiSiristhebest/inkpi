@@ -2,47 +2,37 @@ import type {
   AgentTool,
   ContextTransformer,
   ExtensionAPI,
+  InstructionEntry,
   SkillInfo,
+  SkillManifest,
+  SkillActivation,
+  SkillRuntimeRegistrationSnapshot,
+  SkillResolveQuery,
   ToolRegistrationDescriptor,
   ToolRegistrationOptions
 } from '@inkpi/protocol';
+import { SKILL_RUNTIME_PROTOCOL_VERSION } from '@inkpi/protocol';
 import type { ContextPipeline } from '../context/index.js';
 import type { ContextProvider } from '../context/types.js';
 import { ExtensionHost } from '../extension-host.js';
+import type { InstructionRegistry } from '../instructions/instruction-registry.js';
 import { type DynamicLoadSummary, DynamicPluginLoader } from '../package-manager/dynamic-loader.js';
 import type { TaskHandler } from '../tasks/task-handler.js';
 import type { TaskRegistry } from '../tasks/task-registry.js';
 import { ToolRegistry } from '../tools.js';
 import { SkillDiscoveryEngine } from './skills.js';
 
+export type {
+  SkillActivation,
+  SkillManifest,
+  SkillRuntimeRegistrationSnapshot,
+  SkillResolveQuery
+} from '@inkpi/protocol';
+
 export interface SkillManifestEntry {
   name: string;
   description: string;
   loaded: boolean;
-}
-
-export type SkillActivation = 'eager' | 'lazy' | 'on-demand';
-
-export interface SkillManifest {
-  id: string;
-  version: string;
-  title: string;
-  description: string;
-  intents?: string[];
-  capabilities?: string[];
-  taskKinds?: string[];
-  tools?: string[];
-  activation: SkillActivation;
-}
-
-/**
- * Serializable registration view for a Desktop/Daemon handshake.
- * Skill prompt bodies and tool executors deliberately stay process-local.
- */
-export interface SkillRuntimeRegistrationSnapshot {
-  skills: SkillManifest[];
-  activatedSkills: string[];
-  tools: ToolRegistrationDescriptor[];
 }
 
 export interface ProgressiveSkillRuntimeOptions {
@@ -51,16 +41,10 @@ export interface ProgressiveSkillRuntimeOptions {
   toolRegistry?: ToolRegistry;
   taskRegistry?: TaskRegistry;
   contextPipeline?: ContextPipeline;
+  instructionRegistry?: InstructionRegistry;
   discovery?: SkillDiscoveryEngine;
   activationAdapter?: LazySkillActivationAdapter;
   skillActivators?: ReadonlyMap<string, SkillActivationSource> | Readonly<Record<string, SkillActivationSource>>;
-}
-
-export interface SkillResolveQuery {
-  intent?: string;
-  capability?: string;
-  taskKind?: string;
-  activation?: SkillActivation;
 }
 
 type SkillRegistrationItems<T> = T | readonly T[];
@@ -77,6 +61,8 @@ export interface SkillRegistration {
   contextProviders?: SkillRegistrationItems<ContextProvider>;
   contextTransformer?: SkillRegistrationItems<ContextTransformer>;
   contextTransformers?: SkillRegistrationItems<ContextTransformer>;
+  instruction?: SkillRegistrationItems<InstructionEntry>;
+  instructions?: SkillRegistrationItems<InstructionEntry>;
 }
 
 export interface SkillActivationContext extends ExtensionAPI {
@@ -89,10 +75,12 @@ export interface SkillActivationContext extends ExtensionAPI {
   readonly toolRegistry: ToolRegistry;
   readonly taskRegistry?: TaskRegistry;
   readonly contextPipeline?: ContextPipeline;
+  readonly instructionRegistry?: InstructionRegistry;
   registerTask(handler: TaskHandler): void;
   registerTool(tool: AgentTool): void;
   registerContext(provider: ContextProvider): void;
   registerContextTransformer(transformer: ContextTransformer): () => void;
+  registerInstruction(instruction: InstructionEntry): void;
   register(registration: SkillRegistration): void;
 }
 
@@ -110,6 +98,7 @@ export interface SkillActivationAdapterOptions {
   toolRegistry: ToolRegistry;
   taskRegistry?: TaskRegistry;
   contextPipeline?: ContextPipeline;
+  instructionRegistry?: InstructionRegistry;
 }
 
 type UndoAction = () => void;
@@ -126,6 +115,7 @@ export class LazySkillActivationAdapter {
   readonly toolRegistry: ToolRegistry;
   readonly taskRegistry?: TaskRegistry;
   readonly contextPipeline?: ContextPipeline;
+  readonly instructionRegistry?: InstructionRegistry;
 
   private readonly activated = new Set<string>();
   private readonly pending = new Map<string, Promise<void>>();
@@ -135,6 +125,7 @@ export class LazySkillActivationAdapter {
     this.toolRegistry = options.toolRegistry;
     this.taskRegistry = options.taskRegistry;
     this.contextPipeline = options.contextPipeline;
+    this.instructionRegistry = options.instructionRegistry;
   }
 
   public async activate(skill: SkillInfo, source?: SkillActivationSource): Promise<void> {
@@ -147,6 +138,7 @@ export class LazySkillActivationAdapter {
       const undo: UndoAction[] = [];
       try {
         const context = this.createContext(skill, undo);
+        this.registerPromptInstruction(skill, undo);
         const registration = typeof source === 'function' ? await source(context) : source;
         this.applyRegistration(skill, registration, undo);
         this.activated.add(skill.name);
@@ -184,11 +176,13 @@ export class LazySkillActivationAdapter {
       toolRegistry: this.toolRegistry,
       taskRegistry: this.taskRegistry,
       contextPipeline: this.contextPipeline,
+      instructionRegistry: this.instructionRegistry,
       registerTask: (handler: TaskHandler) => this.registerTask(skill.name, handler, undo),
       registerTool: (tool: AgentTool) => this.registerTool(tool, undo, skill),
       registerContext: (provider: ContextProvider) => this.registerContext(skill.name, provider, undo),
       registerContextTransformer: (transformer: ContextTransformer) =>
         this.registerContextTransformer(transformer, undo),
+      registerInstruction: (instruction: InstructionEntry) => this.registerInstruction(skill, instruction, undo),
       register: (registration: SkillRegistration) => this.applyRegistration(skill, registration, undo)
     };
     const api = context.api;
@@ -227,6 +221,9 @@ export class LazySkillActivationAdapter {
   private applyRegistration(skill: SkillInfo, registration: SkillActivationResult, undo: UndoAction[]): void {
     if (!registration) return;
 
+    for (const instruction of asItems(registration.instructions ?? registration.instruction)) {
+      this.registerInstruction(skill, instruction, undo);
+    }
     for (const task of asItems(registration.tasks ?? registration.task)) {
       this.registerTask(skill.name, task, undo);
     }
@@ -241,6 +238,57 @@ export class LazySkillActivationAdapter {
     for (const transformer of asItems(registration.contextTransformers ?? registration.contextTransformer)) {
       this.registerContextTransformer(transformer, undo);
     }
+  }
+
+  private registerInstruction(skill: SkillInfo, instruction: InstructionEntry, undo: UndoAction[]): void {
+    if (!this.instructionRegistry) {
+      throw new Error(`Skill '${skill.name}' cannot register an instruction without an InstructionRegistry`);
+    }
+
+    const manifest = toManifest(skill);
+    const enriched: InstructionEntry = {
+      ...instruction,
+      version: instruction.version ?? manifest.version,
+      source: instruction.source ?? `skill:${manifest.id}`,
+      provenance: {
+        source: instruction.provenance?.source ?? 'skill',
+        ...instruction.provenance,
+        skillId: instruction.provenance?.skillId ?? manifest.id,
+        skillVersion: instruction.provenance?.skillVersion ?? manifest.version
+      }
+    };
+    const existing = this.instructionRegistry.list().find((candidate) => candidate.id === enriched.id);
+    if (existing) {
+      if (sameInstruction(existing, enriched)) return;
+      throw new Error(`Instruction already registered with different content: ${enriched.id}`);
+    }
+
+    this.instructionRegistry.register(enriched);
+    undo.push(() => this.instructionRegistry?.unregister(enriched.id));
+  }
+
+  private registerPromptInstruction(skill: SkillInfo, undo: UndoAction[]): void {
+    const content = skill.promptBody.trim();
+    if (!content || !this.instructionRegistry) return;
+
+    const manifest = toManifest(skill);
+    this.registerInstruction(
+      skill,
+      {
+        id: `skill.${manifest.id}`,
+        scope: 'skill',
+        content,
+        version: manifest.version,
+        source: `skill:${manifest.id}`,
+        tags: manifest.taskKinds?.map((taskKind) => `task:${taskKind}`),
+        provenance: {
+          source: 'skill',
+          skillId: manifest.id,
+          skillVersion: manifest.version
+        }
+      },
+      undo
+    );
   }
 
   private registerTask(skillName: string, handler: TaskHandler, undo: UndoAction[]): void {
@@ -346,6 +394,7 @@ export class ProgressiveSkillRuntime {
   readonly contextPipeline?: ContextPipeline;
   readonly pluginLoader: DynamicPluginLoader;
   readonly activationAdapter: LazySkillActivationAdapter;
+  readonly instructionRegistry?: InstructionRegistry;
   private readonly discovery: SkillDiscoveryEngine;
   private readonly skills = new Map<string, SkillInfo>();
   private readonly loaded = new Set<string>();
@@ -358,6 +407,7 @@ export class ProgressiveSkillRuntime {
     this.toolRegistry = options.toolRegistry ?? activationAdapter?.toolRegistry ?? new ToolRegistry();
     this.taskRegistry = options.taskRegistry ?? activationAdapter?.taskRegistry;
     this.contextPipeline = options.contextPipeline ?? activationAdapter?.contextPipeline;
+    this.instructionRegistry = options.instructionRegistry ?? activationAdapter?.instructionRegistry;
     this.pluginLoader = new DynamicPluginLoader(this.extensionHost);
     this.activationAdapter =
       activationAdapter ??
@@ -365,7 +415,8 @@ export class ProgressiveSkillRuntime {
         extensionHost: this.extensionHost,
         toolRegistry: this.toolRegistry,
         taskRegistry: this.taskRegistry,
-        contextPipeline: this.contextPipeline
+        contextPipeline: this.contextPipeline,
+        instructionRegistry: this.instructionRegistry
       });
     this.discovery = options.discovery ?? new SkillDiscoveryEngine(options.searchDirs ?? []);
     addSkillActivators(this.skillActivators, options.skillActivators);
@@ -401,6 +452,14 @@ export class ProgressiveSkillRuntime {
     );
   }
 
+  /** Return a cloned metadata-only manifest for a skill name or manifest id. */
+  getManifest(identifier: string): SkillManifest {
+    const name = this.resolveSkillName(identifier);
+    const skill = name ? this.skills.get(name) ?? this.discovery.getSkill(name) : undefined;
+    if (!skill) throw new Error(`Skill not found: ${identifier}`);
+    return cloneManifest(toManifest(skill));
+  }
+
   registerSkill(skill: SkillInfo, source?: SkillActivationSource): void {
     this.skills.set(skill.name, skill);
     if (source !== undefined) this.skillActivators.set(skill.name, source);
@@ -418,44 +477,72 @@ export class ProgressiveSkillRuntime {
     return this.activationAdapter.listActivated();
   }
 
-  /** Return only process-safe skill and tool metadata for a future RPC adapter. */
+  /** Return only process-safe metadata for a Desktop/Daemon handshake. */
   getRegistrationSnapshot(): SkillRuntimeRegistrationSnapshot {
+    const manifests = this.discoverManifests();
+    const manifestByName = new Map(
+      [...this.skills.entries()].map(([name, skill]) => [name, toManifest(skill)] as const)
+    );
+    const skillId = (name: string): string => manifestByName.get(name)?.id ?? name;
+    const activated = this.activationAdapter.listActivated().map(skillId).sort();
     return {
-      skills: this.discoverManifests().map(cloneManifest),
-      activatedSkills: this.listActivated(),
-      tools: this.toolRegistry.getRegistrations()
+      protocolVersion: SKILL_RUNTIME_PROTOCOL_VERSION,
+      skills: manifests.map(cloneManifest),
+      loadedSkills: [...this.loaded].map(skillId).sort(),
+      activatedSkills: activated,
+      tools: this.toolRegistry.getRegistrations(),
+      tasks: this.taskRegistry?.list().map((handler) => handler.id).sort() ?? [],
+      contextProviders: this.contextPipeline?.list().map((provider) => provider.id).sort() ?? [],
+      extensionHost: {
+        toolNames: this.extensionHost.getTools().map((tool) => tool?.name).filter(isNonEmptyString).sort(),
+        commandNames: this.extensionHost
+          .getCommands()
+          .map((command) => command?.name)
+          .filter(isNonEmptyString)
+          .sort(),
+        shortcutKeys: this.extensionHost
+          .getShortcuts()
+          .map((shortcut) => shortcut?.key)
+          .filter(isNonEmptyString)
+          .sort(),
+        pipelineHookCount: this.extensionHost.getPipelineHooks().length
+      },
+      instructionVersion: this.instructionRegistry?.version(),
+      instructions: this.instructionRegistry?.listReferences()
     };
   }
 
   load(name: string): SkillInfo {
-    const skill = this.discovery.loadSkill(name) || this.skills.get(name);
+    const resolvedName = this.resolveSkillName(name) ?? name;
+    const skill = this.discovery.loadSkill(resolvedName) || this.skills.get(resolvedName);
     if (!skill) throw new Error(`Skill not found: ${name}`);
-    this.skills.set(name, skill);
-    this.loaded.add(name);
+    this.skills.set(resolvedName, skill);
+    this.loaded.add(resolvedName);
     return { ...skill, frontmatter: { ...skill.frontmatter } };
   }
 
   async activate(name: string, source?: SkillActivationSource): Promise<SkillInfo> {
-    if (this.activationAdapter.isActivated(name)) {
-      const skill = this.skills.get(name) ?? this.discovery.getSkill(name);
+    const resolvedName = this.resolveSkillName(name) ?? name;
+    if (this.activationAdapter.isActivated(resolvedName)) {
+      const skill = this.skills.get(resolvedName) ?? this.discovery.getSkill(resolvedName);
       if (!skill) throw new Error(`Skill not found: ${name}`);
       return cloneSkill(skill);
     }
 
-    const pending = this.pendingActivations.get(name);
+    const pending = this.pendingActivations.get(resolvedName);
     if (pending) return pending;
 
     const activation = Promise.resolve().then(async () => {
-      const skill = this.load(name);
-      const registeredSource = source ?? this.skillActivators.get(name) ?? readSkillActivation(skill);
+      const skill = this.load(resolvedName);
+      const registeredSource = source ?? this.skillActivators.get(resolvedName) ?? readSkillActivation(skill);
       await this.activationAdapter.activate(skill, registeredSource);
       return cloneSkill(skill);
     });
 
-    this.pendingActivations.set(name, activation);
+    this.pendingActivations.set(resolvedName, activation);
     void activation.then(
-      () => this.clearPendingActivation(name, activation),
-      () => this.clearPendingActivation(name, activation)
+      () => this.clearPendingActivation(resolvedName, activation),
+      () => this.clearPendingActivation(resolvedName, activation)
     );
     return activation;
   }
@@ -476,6 +563,15 @@ export class ProgressiveSkillRuntime {
 
   getExtensionApi(): ExtensionAPI {
     return this.extensionHost;
+  }
+
+  private resolveSkillName(identifier: string): string | undefined {
+    if (this.skills.has(identifier)) return identifier;
+    if (this.skills.size === 0) this.discover();
+    for (const [name, skill] of this.skills) {
+      if (toManifest(skill).id === identifier) return name;
+    }
+    return this.discovery.getSkill(identifier) ? identifier : undefined;
   }
 
   private clearPendingActivation(name: string, activation: Promise<SkillInfo>): void {
@@ -554,6 +650,22 @@ function readSkillActivation(skill: SkillInfo): SkillActivationSource | undefine
 
 function isSkillActivationSource(value: unknown): value is SkillActivationSource {
   return typeof value === 'function' || isRecord(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function sameInstruction(left: InstructionEntry, right: InstructionEntry): boolean {
+  return left.id === right.id
+    && left.scope === right.scope
+    && left.content === right.content
+    && left.priority === right.priority
+    && left.enabled === right.enabled
+    && left.version === right.version
+    && left.source === right.source
+    && JSON.stringify(left.tags ?? []) === JSON.stringify(right.tags ?? [])
+    && JSON.stringify(left.provenance ?? {}) === JSON.stringify(right.provenance ?? {});
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

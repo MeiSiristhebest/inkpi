@@ -450,7 +450,8 @@ export class TaskRouter {
           executionRunId: record.executionRun.id,
           executionAttempt: record.attempts,
           instructionVersion: instructions.version,
-          instructionIds: instructions.entryIds
+          instructionIds: instructions.entryIds,
+          instructionProvenance: instructions.references ?? instructions.entryIds.map((id) => ({ id }))
         }
       };
       if (status !== 'waiting-user') {

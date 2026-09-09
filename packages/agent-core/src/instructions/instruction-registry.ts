@@ -1,22 +1,18 @@
-export type InstructionScope = 'system' | 'task' | 'skill' | 'extension';
+import type {
+  InstructionDefinition,
+  InstructionEntry,
+  InstructionProvenance,
+  InstructionReference,
+  InstructionScope
+} from '@inkpi/protocol';
 
-export interface InstructionEntry {
-  id: string;
-  scope: InstructionScope;
-  content: string;
-  priority?: number;
-  tags?: string[];
-  enabled?: boolean;
-  version?: string;
-  source?: string;
-}
-
-export interface InstructionDefinition {
-  id: string;
-  version: string;
-  taskKind: string;
-  systemInstruction: string;
-}
+export type {
+  InstructionDefinition,
+  InstructionEntry,
+  InstructionProvenance,
+  InstructionReference,
+  InstructionScope
+} from '@inkpi/protocol';
 
 export interface InstructionQuery {
   scopes?: InstructionScope[];
@@ -29,6 +25,8 @@ export interface ComposedInstructions {
   entryIds: string[];
   truncated: boolean;
   version: string;
+  /** Safe metadata for task-result provenance; instruction content stays in-process. */
+  references?: InstructionReference[];
 }
 
 export class InstructionRegistry {
@@ -49,7 +47,8 @@ export class InstructionRegistry {
       content: definition.systemInstruction,
       version: definition.version,
       source: `task:${definition.taskKind}`,
-      tags: [`task:${definition.taskKind}`]
+      tags: [`task:${definition.taskKind}`],
+      provenance: definition.provenance
     });
   }
 
@@ -69,6 +68,11 @@ export class InstructionRegistry {
     return [...this.entries.values()].map(cloneEntry);
   }
 
+  /** Return metadata-only references suitable for a cross-process status or result. */
+  listReferences(): InstructionReference[] {
+    return [...this.entries.values()].map(toReference);
+  }
+
   compose(query: InstructionQuery = {}): ComposedInstructions {
     const maxCharacters = Math.max(0, query.maxCharacters ?? Number.MAX_SAFE_INTEGER);
     const selected = [...this.entries.values()]
@@ -78,6 +82,7 @@ export class InstructionRegistry {
       .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id));
     const contents: string[] = [];
     const entryIds: string[] = [];
+    const references: InstructionReference[] = [];
     let length = 0;
     let truncated = false;
     for (const entry of selected) {
@@ -90,14 +95,16 @@ export class InstructionRegistry {
       if (entry.content.length > remaining) {
         contents.push(`${separator}${entry.content.slice(0, remaining)}`);
         entryIds.push(entry.id);
+        references.push(toReference(entry));
         truncated = true;
         break;
       }
       contents.push(`${separator}${entry.content}`);
       entryIds.push(entry.id);
+      references.push(toReference(entry));
       length += separator.length + entry.content.length;
     }
-    return { text: contents.join(''), entryIds, truncated, version: this.version() };
+    return { text: contents.join(''), entryIds, truncated, version: this.version(), references };
   }
 
   composeForTask(taskKind: string, maxCharacters?: number): ComposedInstructions {
@@ -116,5 +123,20 @@ export class InstructionRegistry {
 }
 
 function cloneEntry(entry: InstructionEntry): InstructionEntry {
-  return { ...entry, tags: entry.tags ? [...entry.tags] : undefined };
+  return {
+    ...entry,
+    tags: entry.tags ? [...entry.tags] : undefined,
+    provenance: entry.provenance ? { ...entry.provenance } : undefined
+  };
+}
+
+function toReference(entry: InstructionEntry): InstructionReference {
+  return {
+    id: entry.id,
+    scope: entry.scope,
+    version: entry.version,
+    source: entry.source,
+    tags: entry.tags ? [...entry.tags] : undefined,
+    provenance: entry.provenance ? { ...entry.provenance } : undefined
+  };
 }
