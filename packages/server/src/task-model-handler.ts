@@ -38,6 +38,10 @@ export class TaskModelHandler implements TaskHandler {
     this.maxToolSteps = Math.max(0, options.maxToolSteps ?? 8);
   }
 
+  getProviderResponseCache(): ProviderResponseCache {
+    return this.providerResponseCache;
+  }
+
   async execute(context: TaskHandlerContext): Promise<TaskHandlerResult> {
     const startedAt = Date.now();
     const prompt = buildPrompt(context);
@@ -100,6 +104,8 @@ export class TaskModelHandler implements TaskHandler {
         contextSources: context.context.fragments.map((fragment) => fragment.source),
         contextTokenCount: context.context.tokenEstimate,
         projectRevision: context.context.projectRevision,
+        cacheHit: providerCacheHit,
+        providerCacheHit,
         latencyMs: Date.now() - startedAt,
         usage: finalAssistant.usage,
         toolCalls: toolTrace,
