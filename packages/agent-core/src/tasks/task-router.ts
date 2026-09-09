@@ -363,13 +363,13 @@ export class TaskRouter {
     record.snapshot.attempts = record.attempts;
     this.update(record, { status: 'running', startedAt: record.snapshot.startedAt ?? this.now() });
     this.observer?.started?.(record.task);
+    const cacheStatsBefore = this.cacheCoordinator?.stats();
     try {
-      const cacheStatsBefore = this.cacheCoordinator?.stats();
       const context = await this.contextPipeline.build(record.task, record.controller.signal);
       // A provider may finish after cancellation. Do not enter the handler
       // boundary once the task has been cancelled during context collection.
       if (record.controller.signal.aborted) {
-        this.finishCancelled(record);
+        this.finishCancelled(record, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
       }
       this.observer?.contextBuilt?.(
@@ -380,7 +380,7 @@ export class TaskRouter {
       const instructions = this.instructionRegistry.composeForTask(record.task.kind);
       const checkpoint = await this.checkpointStore.load(record.task.id);
       if (record.controller.signal.aborted) {
-        this.finishCancelled(record);
+        this.finishCancelled(record, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
       }
       const handlerResult = await this.executeWithTimeout(
@@ -438,12 +438,12 @@ export class TaskRouter {
       );
       if (isInterrupted(record)) return;
       if (record.controller.signal.aborted) {
-        this.finishCancelled(record);
+        this.finishCancelled(record, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
       }
       const outputError = validateOutput(record.task, handlerResult);
       if (outputError) {
-        this.finishFailed(record, outputError);
+        this.finishFailed(record, outputError, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
       }
       const status = handlerResult.status ?? 'completed';
@@ -472,7 +472,10 @@ export class TaskRouter {
       record.snapshot.finishedAt = this.now();
       this.markExecutionSettled(record, status);
       await this.persist(record);
-      this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+      this.observer?.finished?.(
+        record.task,
+        observationFromSnapshot(record.snapshot, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()))
+      );
       this.emit({
         type: status === 'waiting-user' ? 'waiting-user' : 'completed',
         taskId: record.task.id,
@@ -481,12 +484,13 @@ export class TaskRouter {
       record.resolveCompletion(result);
     } catch (error) {
       if (isInterrupted(record)) return;
+      const cacheStats = cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats());
       if (error instanceof TaskTimeoutError) {
-        this.retryOrFail(record, toTaskError(error));
+        this.retryOrFail(record, toTaskError(error), cacheStats);
       } else if (record.controller.signal.aborted || isAbortError(error)) {
-        this.finishCancelled(record);
+        this.finishCancelled(record, cacheStats);
       } else {
-        this.retryOrFail(record, toTaskError(error));
+        this.retryOrFail(record, toTaskError(error), cacheStats);
       }
     }
   }
@@ -512,7 +516,7 @@ export class TaskRouter {
     }
   }
 
-  private finishCancelled(record: TaskRecord): void {
+  private finishCancelled(record: TaskRecord, cacheStats?: RuntimeCacheStats): void {
     if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
     const result: TaskResult = {
       taskId: record.task.id,
@@ -525,12 +529,12 @@ export class TaskRouter {
     record.snapshot.finishedAt = this.now();
     this.markExecutionSettled(record, 'cancelled', result.error);
     this.persist(record);
-    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot, cacheStats));
     this.emit({ type: 'cancelled', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
     record.resolveCompletion(result);
   }
 
-  private finishFailed(record: TaskRecord, error: TaskError): void {
+  private finishFailed(record: TaskRecord, error: TaskError, cacheStats?: RuntimeCacheStats): void {
     if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
     const result: TaskResult = {
       taskId: record.task.id,
@@ -544,12 +548,12 @@ export class TaskRouter {
     record.snapshot.finishedAt = this.now();
     this.markExecutionSettled(record, 'failed', error);
     this.persist(record);
-    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot, cacheStats));
     this.emit({ type: 'failed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
     record.resolveCompletion(result);
   }
 
-  private retryOrFail(record: TaskRecord, error: TaskError): void {
+  private retryOrFail(record: TaskRecord, error: TaskError, cacheStats?: RuntimeCacheStats): void {
     if (error.retryable && record.attempts < record.maxAttempts) {
       record.controller = new AbortController();
       record.snapshot.status = 'queued';
@@ -565,7 +569,7 @@ export class TaskRouter {
       });
       return;
     }
-    this.finishFailed(record, error);
+    this.finishFailed(record, error, cacheStats);
   }
 
   private update(
@@ -913,7 +917,7 @@ function cloneSnapshot(snapshot: TaskStatusSnapshot): TaskStatusSnapshot {
   };
 }
 
-function observationFromSnapshot(snapshot: TaskStatusSnapshot) {
+function observationFromSnapshot(snapshot: TaskStatusSnapshot, cacheStats?: RuntimeCacheStats) {
   const resultProvenance = snapshot.result?.provenance ? sanitizeProvenance(snapshot.result.provenance) : {};
   return {
     taskId: snapshot.taskId,
@@ -923,12 +927,21 @@ function observationFromSnapshot(snapshot: TaskStatusSnapshot) {
     finishedAt: snapshot.finishedAt,
     progress: snapshot.progress,
     ...resultProvenance,
+    ...(cacheStats ? { cache: cacheStatsRecord(cacheStats) } : {}),
     error: snapshot.error ? { code: snapshot.error.code, message: snapshot.error.message } : undefined,
     artifactIds: snapshot.result?.artifactIds ? [...snapshot.result.artifactIds] : undefined,
     proposalIds: snapshot.result?.proposalIds ? [...snapshot.result.proposalIds] : undefined,
     checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined,
     resultType: snapshot.result?.output?.format,
     provenance: { taskId: snapshot.taskId, taskKind: snapshot.kind, ...resultProvenance }
+  };
+}
+
+function cacheStatsRecord(cacheStats: RuntimeCacheStats): Record<string, unknown> {
+  return {
+    provider: { ...cacheStats.provider },
+    context: { ...cacheStats.context },
+    retrieval: { ...cacheStats.retrieval }
   };
 }
 
