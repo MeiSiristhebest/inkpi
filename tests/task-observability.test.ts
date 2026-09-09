@@ -1,4 +1,4 @@
-import { TaskObservability, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
+import { TaskObservability, TaskRegistry, TaskRouter, type TaskRunObservation } from '@inkpi/agent-core';
 import { describe, expect, it } from 'vitest';
 
 describe('task observability and provenance', () => {
@@ -98,5 +98,85 @@ describe('task observability and provenance', () => {
     expect(observation).not.toHaveProperty('rawThinking');
     expect(JSON.stringify(observation)).not.toContain('must not be observed');
     expect(JSON.stringify(observation)).not.toContain('must not be copied');
+  });
+
+  it('retains and emits only sampled task runs without affecting the task path', async () => {
+    const emitted: TaskRunObservation[] = [];
+    const registry = new TaskRegistry();
+    registry.register({
+      id: 'sampled-observable-handler',
+      kinds: ['test.observable.sampled'],
+      async execute({ reportProgress }) {
+        reportProgress(0.5);
+        return { output: { format: 'text', text: 'ok' } };
+      }
+    });
+    const observer = new TaskObservability({
+      sampleRate: 0.5,
+      random: () => 0.25,
+      onObservation: (observation) => emitted.push(observation)
+    });
+    const router = new TaskRouter({ registry, observer });
+    router.submit({
+      id: 'sampled-observable',
+      kind: 'test.observable.sampled',
+      input: {},
+      outputContract: { format: 'text' }
+    });
+
+    await expect(router.wait('sampled-observable')).resolves.toMatchObject({ status: 'completed' });
+    expect(observer.get('sampled-observable')).toMatchObject({ status: 'completed', progress: 0.5 });
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ taskId: 'sampled-observable', status: 'completed' });
+
+    const unsampled = new TaskObservability({ sampleRate: 0, onObservation: (observation) => emitted.push(observation) });
+    const unsampledRouter = new TaskRouter({ registry, observer: unsampled });
+    unsampledRouter.submit({
+      id: 'unsampled-observable',
+      kind: 'test.observable.sampled',
+      input: {},
+      outputContract: { format: 'text' }
+    });
+    await expect(unsampledRouter.wait('unsampled-observable')).resolves.toMatchObject({ status: 'completed' });
+    expect(unsampled.get('unsampled-observable')).toBeUndefined();
+    expect(emitted).toHaveLength(1);
+  });
+
+  it('sanitizes direct observation sinks before storing or emitting them', () => {
+    const emitted: TaskRunObservation[] = [];
+    const observer = new TaskObservability({
+      now: () => 10,
+      onObservation: (observation) => emitted.push(observation)
+    });
+    const task = { id: 'direct-sanitize', kind: 'test.observable.direct', input: {} };
+    observer.started(task);
+    const unsafe = Object.assign(
+      {
+        taskId: task.id,
+        kind: task.kind,
+        status: 'completed' as const,
+        usage: { inputTokens: 1, reasoning: 'private usage reasoning' },
+        cache: { hit: false, rawThinking: 'private cache reasoning' },
+        provenance: {
+          publicSummary: 'safe',
+          trace: { reasoning: 'private nested reasoning', detail: { chainOfThought: 'private deep reasoning' } },
+          calls: [{ tool: 'fixture', rawThinking: 'private array reasoning' }]
+        }
+      },
+      { rawThinking: 'private top-level reasoning' }
+    ) as TaskRunObservation;
+
+    observer.finished(task, unsafe);
+
+    const observation = observer.get(task.id);
+    expect(observation).toMatchObject({
+      usage: { inputTokens: 1 },
+      cache: { hit: false },
+      provenance: { publicSummary: 'safe', trace: { detail: {} }, calls: [{ tool: 'fixture' }] }
+    });
+    expect(observation).not.toHaveProperty('rawThinking');
+    expect(JSON.stringify(observation)).not.toContain('private');
+    expect(emitted).toHaveLength(1);
+    expect(JSON.stringify(emitted[0])).not.toContain('private');
   });
 });

@@ -34,6 +34,17 @@ export interface TaskRunObservation {
   provenance: Record<string, unknown>;
 }
 
+export interface TaskObservabilityOptions {
+  /** Clock used for observation timestamps and duration calculation. */
+  now?: () => number;
+  /** Fraction of task runs to retain and emit, normalized to the range 0..1. */
+  sampleRate?: number;
+  /** Injectable source for deterministic sampling tests. */
+  random?: () => number;
+  /** Best-effort sink invoked with a sanitized copy of each retained observation. */
+  onObservation?: (observation: TaskRunObservation) => void;
+}
+
 export interface TaskRunObserver {
   started?(task: AiTask): void;
   contextBuilt?(task: AiTask, context: ContextPacket): void;
@@ -43,13 +54,22 @@ export interface TaskRunObserver {
 
 export class TaskObservability implements TaskRunObserver {
   private readonly observations = new Map<string, TaskRunObservation>();
+  private readonly sampleDecisions = new Map<string, boolean>();
   private readonly now: () => number;
+  private readonly sampleRate: number;
+  private readonly random: () => number;
+  private readonly onObservation?: (observation: TaskRunObservation) => void;
 
-  constructor(now: () => number = Date.now) {
-    this.now = now;
+  constructor(options: TaskObservabilityOptions | (() => number) = {}) {
+    const normalized = typeof options === 'function' ? {} : options;
+    this.now = typeof options === 'function' ? options : normalized.now ?? Date.now;
+    this.sampleRate = normalizeSampleRate(normalized.sampleRate);
+    this.random = normalized.random ?? Math.random;
+    this.onObservation = normalized.onObservation;
   }
 
   started(task: AiTask): void {
+    if (!this.shouldSample(task)) return;
     const metadata = task.metadata ?? {};
     this.observations.set(task.id, {
       taskId: task.id,
@@ -77,6 +97,7 @@ export class TaskObservability implements TaskRunObserver {
   }
 
   contextBuilt(task: AiTask, context: ContextPacket): void {
+    if (!this.shouldSample(task)) return;
     const observation = this.require(task.id);
     observation.contextFingerprint = context.fingerprint;
     observation.contextSources = context.fragments.map((fragment) => fragment.source);
@@ -87,31 +108,45 @@ export class TaskObservability implements TaskRunObserver {
   }
 
   progress(task: AiTask, progress: number): void {
+    if (!this.shouldSample(task)) return;
     const observation = this.require(task.id);
     observation.progress = progress;
   }
 
   finished(task: AiTask, observation: TaskRunObservation): void {
+    if (!this.shouldSample(task)) {
+      this.sampleDecisions.delete(task.id);
+      return;
+    }
+    const safeObservation = sanitizeObservation(observation);
     const existing = this.observations.get(task.id) ?? {
       taskId: task.id,
       kind: task.kind,
-      status: observation.status,
+      status: safeObservation.status,
       provenance: { taskId: task.id, taskKind: task.kind }
     };
-    const startedAt = existing.startedAt ?? observation.startedAt;
-    const finishedAt = observation.finishedAt ?? this.now();
+    const startedAt = existing.startedAt ?? safeObservation.startedAt;
+    const finishedAt = safeObservation.finishedAt ?? this.now();
     this.observations.set(task.id, {
       ...existing,
-      ...observation,
+      ...safeObservation,
       startedAt,
       finishedAt,
       durationMs: startedAt === undefined ? undefined : Math.max(0, finishedAt - startedAt),
-      provenance: { ...existing.provenance, ...observation.provenance }
+      provenance: { ...existing.provenance, ...safeObservation.provenance }
     });
     const stored = this.observations.get(task.id);
-    if (stored && observation.resultType === undefined) {
-      stored.resultType = observation.provenance.resultType as string | undefined;
+    if (stored && safeObservation.resultType === undefined) {
+      stored.resultType = safeObservation.provenance.resultType as string | undefined;
     }
+    if (stored && this.onObservation) {
+      try {
+        this.onObservation(cloneObservation(stored));
+      } catch {
+        // Telemetry sinks must not change task success/failure semantics.
+      }
+    }
+    this.sampleDecisions.delete(task.id);
   }
 
   get(taskId: string): TaskRunObservation | undefined {
@@ -123,6 +158,14 @@ export class TaskObservability implements TaskRunObserver {
     return [...this.observations.values()].map(cloneObservation);
   }
 
+  private shouldSample(task: AiTask): boolean {
+    const existing = this.sampleDecisions.get(task.id);
+    if (existing !== undefined) return existing;
+    const sampled = this.random() < this.sampleRate;
+    this.sampleDecisions.set(task.id, sampled);
+    return sampled;
+  }
+
   private require(taskId: string): TaskRunObservation {
     const observation = this.observations.get(taskId);
     if (!observation) throw new Error(`Task observation has not started: ${taskId}`);
@@ -131,5 +174,41 @@ export class TaskObservability implements TaskRunObserver {
 }
 
 function cloneObservation(observation: TaskRunObservation): TaskRunObservation {
-  return { ...observation, provenance: { ...observation.provenance } };
+  return sanitizeObservation(observation);
 }
+
+function sanitizeObservation(observation: TaskRunObservation): TaskRunObservation {
+  return sanitizePublicValue(observation) as TaskRunObservation;
+}
+
+function sanitizePublicValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (seen.has(value)) return '[Circular]';
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return value.map((item) => sanitizePublicValue(item, seen));
+    if (value instanceof Date) return new Date(value.getTime());
+    const safe: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (PRIVATE_REASONING_KEYS.has(key.toLowerCase())) continue;
+      safe[key] = sanitizePublicValue(nestedValue, seen);
+    }
+    return safe;
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function normalizeSampleRate(sampleRate: number | undefined): number {
+  if (sampleRate === undefined || !Number.isFinite(sampleRate)) return 1;
+  return Math.min(1, Math.max(0, sampleRate));
+}
+
+const PRIVATE_REASONING_KEYS = new Set([
+  'thinking',
+  'reasoning',
+  'chainofthought',
+  'cot',
+  'rawthinking',
+  'rawcot'
+]);
