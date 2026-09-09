@@ -178,7 +178,7 @@ export class InkPiDaemon {
       'artifact.list',
       async (params: { taskId?: string; type?: string } = {}) => {
         const store = this.withArtifactStore();
-        if (params.type && store.listByType) return store.listByType(params.type);
+        if (params.type && !params.taskId && store.listByType) return store.listByType(params.type);
         const artifacts = await store.list(params.taskId);
         return params.type ? artifacts.filter((artifact) => artifact.type === params.type) : artifacts;
       }
