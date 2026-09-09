@@ -16,12 +16,23 @@ export interface ContextPipelineOptions {
   cache?: ContextCacheOptions;
 }
 
+export interface ContextPipelineCacheStats {
+  hits: number;
+  misses: number;
+  evictions: number;
+  invalidations: number;
+}
+
 export class ContextPipeline {
   private readonly providers = new Map<string, ContextProvider>();
   private readonly cache = new Map<string, ContextPacket>();
   private readonly maxTokens: number;
   private readonly cacheEnabled: boolean;
   private readonly cacheMaxEntries: number;
+  private cacheHits = 0;
+  private cacheMisses = 0;
+  private cacheEvictions = 0;
+  private cacheInvalidations = 0;
 
   constructor(options: ContextPipelineOptions = {}) {
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -53,7 +64,17 @@ export class ContextPipeline {
 
   /** Clear compiled packets after an external project or retrieval-index update. */
   clearCache(): void {
+    if (this.cache.size > 0) this.cacheInvalidations += this.cache.size;
     this.cache.clear();
+  }
+
+  cacheStats(): ContextPipelineCacheStats {
+    return {
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+      evictions: this.cacheEvictions,
+      invalidations: this.cacheInvalidations
+    };
   }
 
   async build(task: AiTask, signal?: AbortSignal): Promise<ContextPacket> {
@@ -72,7 +93,11 @@ export class ContextPipeline {
     const fragments: ContextFragment[] = [];
     if (task.input.text) {
       fragments.push({
-        id: `task-input:${task.id}`,
+        id: `task-input:${hash(stableSerialize({
+          documentId: task.input.documentId,
+          selection: task.input.selection,
+          text: task.input.text
+        }))}`,
         source: 'task-input',
         kind: 'input',
         text: task.input.text,
@@ -107,17 +132,22 @@ export class ContextPipeline {
   }
 
   private getCacheKey(task: AiTask): string {
+    const { id: _taskId, ...cacheableTask } = task;
     return stableSerialize({
       maxTokens: this.maxTokens,
       providers: [...this.providers.keys()],
-      task
+      task: cacheableTask
     });
   }
 
   private getCached(cacheKey: string): ContextPacket | undefined {
     if (!this.cacheEnabled || this.cacheMaxEntries === 0) return undefined;
     const packet = this.cache.get(cacheKey);
-    if (!packet) return undefined;
+    if (!packet) {
+      this.cacheMisses += 1;
+      return undefined;
+    }
+    this.cacheHits += 1;
     this.cache.delete(cacheKey);
     this.cache.set(cacheKey, packet);
     return clonePacket(packet);
@@ -131,6 +161,7 @@ export class ContextPipeline {
       const oldest = this.cache.keys().next().value;
       if (oldest === undefined) break;
       this.cache.delete(oldest);
+      this.cacheEvictions += 1;
     }
   }
 }
@@ -234,6 +265,15 @@ function stableSerialize(value: unknown): string {
     .sort()
     .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
     .join(',')}}`;
+}
+
+function hash(value: string): string {
+  let result = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    result ^= value.charCodeAt(index);
+    result = Math.imul(result, 0x01000193);
+  }
+  return (result >>> 0).toString(16).padStart(8, '0');
 }
 
 function fingerprint(fragments: ContextFragment[], projectRevision?: number): string {

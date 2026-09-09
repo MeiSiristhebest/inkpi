@@ -4,9 +4,9 @@ import { JitContextProvider } from '@inkpi/server';
 import { FtsSearchEngine, InkDb, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
 import { describe, expect, it, vi } from 'vitest';
 
-function makeTask(revision: number): AiTask {
+function makeTask(revision: number, id = 'context-cache-task'): AiTask {
   return {
-    id: 'context-cache-task',
+    id,
     kind: 'narrative.continuity',
     input: {
       documentId: 'context-current',
@@ -86,7 +86,8 @@ describe('ContextPipeline cache and JIT retrieval integration', () => {
     try {
       const retriever = new JitMemoryRetriever({ repository: repo, ftsEngine: fts });
       const pipeline = new ContextPipeline();
-      pipeline.register(new JitContextProvider(retriever));
+      const provider = new JitContextProvider(retriever);
+      pipeline.register(provider);
 
       const first = await pipeline.build(makeTask(1));
       const firstJit = first.fragments.find((fragment) => fragment.source === 'retrieval.jit');
@@ -109,13 +110,27 @@ describe('ContextPipeline cache and JIT retrieval integration', () => {
           cached.fragments.find((fragment) => fragment.source === 'retrieval.jit')?.data as {
             fullTextMatches: unknown[];
           }
-        ).fullTextMatches.length
+      ).fullTextMatches.length
       ).toBe(1);
+
+      const equivalent = await pipeline.build(makeTask(1, 'context-cache-task-new-id'));
+      expect(search).toHaveBeenCalledTimes(1);
+      expect(equivalent.fingerprint).toBe(cached.fingerprint);
 
       const revised = await pipeline.build(makeTask(2));
       expect(search).toHaveBeenCalledTimes(2);
       expect(revised.projectRevision).toBe(2);
       expect(revised.fingerprint).not.toBe(cached.fingerprint);
+
+      pipeline.clearCache();
+      const retrievalCached = await pipeline.build(makeTask(1, 'retrieval-cache-task-new-id'));
+      expect(search).toHaveBeenCalledTimes(2);
+      expect(retrievalCached.fingerprint).toBe(cached.fingerprint);
+      expect(
+        retrievalCached.fragments.find((fragment) => fragment.source === 'retrieval.jit')?.metadata,
+      ).toMatchObject({ cacheLayer: 'retrieval', cacheHit: true });
+      expect(provider.cacheStats()).toMatchObject({ hits: 1, misses: 2 });
+      expect(pipeline.cacheStats()).toMatchObject({ hits: 2, misses: 3, invalidations: 2 });
     } finally {
       search.mockRestore();
       db.close();
