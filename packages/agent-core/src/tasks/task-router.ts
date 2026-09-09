@@ -8,6 +8,7 @@ import type {
   TaskSubmitResult
 } from '@inkpi/protocol';
 import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
+import type { RuntimeCacheCoordinatorPort } from '../context/cache-contract.js';
 import { ContextPipeline } from '../context/index.js';
 import { InstructionRegistry } from '../instructions/instruction-registry.js';
 import { TaskScheduler } from '../lifecycle/scheduler.js';
@@ -54,6 +55,7 @@ export interface TaskRouterOptions {
   instructionRegistry?: InstructionRegistry;
   toolRegistry?: ToolRegistry;
   scheduler?: TaskScheduler;
+  cacheCoordinator?: RuntimeCacheCoordinatorPort;
   retryDelayMs?: number;
 }
 
@@ -86,6 +88,7 @@ export class TaskRouter {
   private readonly instructionRegistry: InstructionRegistry;
   readonly toolRegistry: ToolRegistry;
   readonly scheduler: TaskScheduler;
+  private readonly cacheCoordinator?: RuntimeCacheCoordinatorPort;
   private readonly retryDelayMs: number;
   private readonly records = new Map<string, TaskRecord>();
   private readonly listeners = new Set<TaskRouterListener>();
@@ -104,6 +107,7 @@ export class TaskRouter {
     this.instructionRegistry = options.instructionRegistry ?? new InstructionRegistry();
     this.toolRegistry = options.toolRegistry ?? new ToolRegistry();
     this.scheduler = options.scheduler ?? new TaskScheduler();
+    this.cacheCoordinator = options.cacheCoordinator;
     this.retryDelayMs = Math.max(0, options.retryDelayMs ?? 0);
     this.ready = this.recoverPersistedRecords();
     // Keep constructor-started recovery from becoming an unhandled rejection while
@@ -367,7 +371,7 @@ export class TaskRouter {
         this.finishCancelled(record);
         return;
       }
-      this.observer?.contextBuilt?.(record.task, context);
+      this.observer?.contextBuilt?.(record.task, context, this.cacheCoordinator?.stats());
       const instructions = this.instructionRegistry.composeForTask(record.task.kind);
       const checkpoint = await this.checkpointStore.load(record.task.id);
       if (record.controller.signal.aborted) {

@@ -6,8 +6,13 @@ import {
   SessionRegistry,
   ContextPipeline,
   InstructionRegistry,
+  RuntimeCacheCoordinator,
   TaskRouter,
+  TaskObservability,
   ProgressiveSkillRuntime,
+  type RuntimeCacheCoordinatorPort,
+  type TaskObservabilityOptions,
+  type TaskRunObserver,
   type ProgressiveSkillRuntimeOptions,
   type InstructionDefinition,
   type InstructionEntry,
@@ -72,6 +77,9 @@ export interface DaemonOptions {
   skillRuntime?: ProgressiveSkillRuntime;
   skillSearchDirs?: readonly string[];
   skillActivators?: ProgressiveSkillRuntimeOptions['skillActivators'];
+  observer?: TaskRunObserver;
+  observability?: TaskObservabilityOptions;
+  cacheCoordinator?: RuntimeCacheCoordinatorPort;
   context?: Partial<ServerContext>;
 }
 
@@ -103,6 +111,8 @@ export class InkPiDaemon {
   private readonly instructionRegistry: InstructionRegistry;
   private readonly skillRuntime: ProgressiveSkillRuntime;
   private readonly capabilityRouter?: CapabilityRouter;
+  private readonly taskObservability: TaskObservability;
+  private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
 
   constructor(options: DaemonOptions = {}) {
     this.options = {
@@ -110,21 +120,28 @@ export class InkPiDaemon {
       host: DEFAULT_RPC_HOST,
       ...options
     };
+    this.cacheCoordinator = options.cacheCoordinator ?? new RuntimeCacheCoordinator();
+    this.taskObservability = new TaskObservability(options.observability);
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
     this.instructionRegistry =
       options.instructionRegistry ?? options.context?.instructionRegistry ?? new InstructionRegistry();
-    const contextPipeline = options.context?.contextPipeline ?? new ContextPipeline();
+    const contextPipeline =
+      options.context?.contextPipeline ?? new ContextPipeline({ cacheCoordinator: this.cacheCoordinator });
     if (
       options.context?.jitRetriever &&
       !contextPipeline.list().some((provider) => provider.id === 'retrieval.jit')
     ) {
-      contextPipeline.register(new JitContextProvider(options.context.jitRetriever));
+      contextPipeline.register(
+        new JitContextProvider(options.context.jitRetriever, { cacheCoordinator: this.cacheCoordinator })
+      );
     }
     this.taskRouter = options.context?.taskRouter ?? new TaskRouter({
       checkpointStore: options.context?.checkpointStore,
       executionStore: options.context?.executionStore,
       contextPipeline,
       instructionRegistry: this.instructionRegistry,
+      observer: options.observer ?? this.taskObservability,
+      cacheCoordinator: this.cacheCoordinator,
     });
     if (
       (options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) &&
@@ -183,6 +200,16 @@ export class InkPiDaemon {
 
   public getTaskRouter(): TaskRouter {
     return this.taskRouter;
+  }
+
+  /** The default task observer used by the daemon-owned TaskRouter. */
+  public getTaskObservability(): TaskObservability {
+    return this.taskObservability;
+  }
+
+  /** Shared metrics bridge for the provider, context, and retrieval caches. */
+  public getCacheCoordinator(): RuntimeCacheCoordinatorPort {
+    return this.cacheCoordinator;
   }
 
   /** The registry used by the daemon-owned TaskRouter and instruction RPCs. */

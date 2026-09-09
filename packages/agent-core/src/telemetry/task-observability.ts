@@ -1,4 +1,5 @@
 import type { AiTask, TaskStatus } from '@inkpi/protocol';
+import type { RuntimeCacheStats } from '../context/cache-contract.js';
 import type { ContextPacket } from '../context/types.js';
 
 export interface TaskRunObservation {
@@ -47,7 +48,7 @@ export interface TaskObservabilityOptions {
 
 export interface TaskRunObserver {
   started?(task: AiTask): void;
-  contextBuilt?(task: AiTask, context: ContextPacket): void;
+  contextBuilt?(task: AiTask, context: ContextPacket, cacheStats?: RuntimeCacheStats): void;
   progress?(task: AiTask, progress: number): void;
   finished?(task: AiTask, observation: TaskRunObservation): void;
 }
@@ -96,13 +97,20 @@ export class TaskObservability implements TaskRunObserver {
     if (typeof metadata.model === 'string') observation.model = metadata.model;
   }
 
-  contextBuilt(task: AiTask, context: ContextPacket): void {
+  contextBuilt(task: AiTask, context: ContextPacket, cacheStats?: RuntimeCacheStats): void {
     if (!this.shouldSample(task)) return;
     const observation = this.require(task.id);
     observation.contextFingerprint = context.fingerprint;
     observation.contextSources = context.fragments.map((fragment) => fragment.source);
     observation.contextTokenCount = context.tokenEstimate;
     observation.projectRevision = task.input.selection?.revision;
+    if (cacheStats) {
+      observation.cache = {
+        provider: { ...cacheStats.provider },
+        context: { ...cacheStats.context },
+        retrieval: { ...cacheStats.retrieval }
+      };
+    }
     observation.provenance.contextFingerprint = context.fingerprint;
     observation.provenance.contextFragmentIds = context.fragments.map((fragment) => fragment.id);
   }
