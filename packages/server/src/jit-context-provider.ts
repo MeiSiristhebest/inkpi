@@ -1,6 +1,9 @@
 import type { ContextFragment, ContextProvider, ContextRequest } from '@inkpi/agent-core';
 import {
   createRuntimeCacheKey,
+  shouldInvalidateCacheEntry,
+  stableSerialize,
+  type CacheInvalidationEvent,
   type RuntimeCacheCoordinatorPort
 } from '@inkpi/agent-core';
 import type { JitContextQuery, JitContextResult } from '@inkpi/protocol';
@@ -28,6 +31,7 @@ export interface JitRetrievalCacheStats {
 interface RetrievalCacheEntry {
   result: JitContextResult;
   expiresAt?: number;
+  projectRevision?: number;
 }
 
 /** Adapts the existing JIT retriever to the generic context pipeline. */
@@ -54,7 +58,9 @@ export class JitContextProvider implements ContextProvider {
     this.cacheTtlMs = options.cache?.ttlMs;
     this.now = options.cache?.now ?? Date.now;
     this.cacheCoordinator = options.cacheCoordinator;
-    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate('retrieval', () => this.clearCache());
+    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate('retrieval', (event) =>
+      this.clearCache(event)
+    );
   }
 
   cacheStats(): JitRetrievalCacheStats {
@@ -66,9 +72,18 @@ export class JitContextProvider implements ContextProvider {
     };
   }
 
-  clearCache(): void {
-    if (this.cache.size > 0) this.cacheInvalidations += this.cache.size;
-    this.cache.clear();
+  clearCache(event?: CacheInvalidationEvent): void {
+    if (!event) {
+      this.cacheInvalidations += this.cache.size;
+      this.cache.clear();
+      return;
+    }
+
+    for (const [key, entry] of this.cache) {
+      if (!shouldInvalidateCacheEntry(entry.projectRevision, event)) continue;
+      this.cache.delete(key);
+      this.cacheInvalidations += 1;
+    }
   }
 
   /** Stop listening to a shared coordinator when the owning Runtime is disposed. */
@@ -93,7 +108,7 @@ export class JitContextProvider implements ContextProvider {
     const cached = this.getCached(cacheKey);
     const cacheHit = cached !== undefined;
     const result = cached ?? (await this.retriever.retrieve(query));
-    if (!cacheHit) this.setCached(cacheKey, result);
+    if (!cacheHit) this.setCached(cacheKey, result, request.projectRevision);
     if (
       !result.l2RecentSummaries.length &&
       !result.l3GlobalLore.length &&
@@ -138,13 +153,14 @@ export class JitContextProvider implements ContextProvider {
     return cloneResult(entry.result);
   }
 
-  private setCached(key: string, result: JitContextResult): void {
+  private setCached(key: string, result: JitContextResult, projectRevision?: number): void {
     if (!this.cacheEnabled || this.cacheMaxEntries === 0) return;
     const now = this.now();
     this.cache.delete(key);
     this.cache.set(key, {
       result: cloneResult(result),
-      expiresAt: this.cacheTtlMs === undefined ? undefined : now + Math.max(0, this.cacheTtlMs)
+      expiresAt: this.cacheTtlMs === undefined ? undefined : now + Math.max(0, this.cacheTtlMs),
+      projectRevision
     });
     while (this.cache.size > this.cacheMaxEntries) {
       const oldest = this.cache.keys().next().value;
@@ -171,7 +187,7 @@ export function createRetrievalCacheKey(
     contextFingerprint: firstString(metadata.contextFingerprint),
     model: firstString(metadata.model, metadata.modelId),
     provider: 'retrieval.jit',
-    identity: { query }
+    identity: { queryFingerprint: hash(stableSerialize(query)) }
   });
 }
 

@@ -93,10 +93,12 @@ describe('Runtime extension and cache boundary contracts', () => {
     } satisfies AiTask;
 
     expect(stableSerialize({ b: 2, a: 1 })).toBe(stableSerialize({ a: 1, b: 2 }));
-    expect(createContextCacheKey(first, ['static', 'retrieval.jit'], 1024)).toBe(
+    const contextKey = createContextCacheKey(first, ['static', 'retrieval.jit'], 1024);
+    expect(contextKey).toBe(
       createContextCacheKey(equivalent, ['static', 'retrieval.jit'], 1024)
     );
-    expect(createContextCacheKey(first, ['static', 'retrieval.jit'], 1024)).not.toBe(
+    expect(contextKey).not.toContain('stable context input');
+    expect(contextKey).not.toBe(
       createContextCacheKey(makeTask(8), ['static', 'retrieval.jit'], 1024)
     );
 
@@ -106,18 +108,18 @@ describe('Runtime extension and cache boundary contracts', () => {
       currentText: 'stable context input',
       activeReferences: ['beacon']
     };
-    expect(
-      createRetrievalCacheKey(query, 7, {
-        purpose: 'contract.test',
-        metadata: { model: 'model-a', skillVersion: 'skill-1', instructionVersion: 'instruction-1' }
-      })
-    ).toBe(
+    const retrievalKey = createRetrievalCacheKey(query, 7, {
+      purpose: 'contract.test',
+      metadata: { model: 'model-a', skillVersion: 'skill-1', instructionVersion: 'instruction-1' }
+    });
+    expect(retrievalKey).toBe(
       createRetrievalCacheKey(query, 7, {
         purpose: 'contract.test',
         metadata: { instructionVersion: 'instruction-1', skillVersion: 'skill-1', model: 'model-a' }
       })
     );
-    expect(createRetrievalCacheKey(query, 7)).not.toBe(createRetrievalCacheKey(query, 8));
+    expect(retrievalKey).not.toContain('stable context input');
+    expect(retrievalKey).not.toBe(createRetrievalCacheKey(query, 8));
   });
 
   it('invalidates context and retrieval caches together and aggregates all three layer metrics', async () => {
@@ -166,6 +168,56 @@ describe('Runtime extension and cache boundary contracts', () => {
       provider: { hits: 1, misses: 1, evictions: 0, invalidations: 1 },
       context: { hits: 1, misses: 3, evictions: 0, invalidations: 1 },
       retrieval: { hits: 1, misses: 2, evictions: 0, invalidations: 1 }
+    });
+
+    pipeline.dispose();
+    provider.dispose();
+  });
+
+  it('invalidates only entries older than the announced revision across context and retrieval', async () => {
+    const coordinator = new RuntimeCacheCoordinator();
+    const contextProvider = {
+      id: 'static',
+      provide: vi.fn(() => [{ id: 'static-fragment', source: 'static', text: 'stable fragment' }])
+    };
+    const retriever = {
+      retrieve: vi.fn(async () => ({
+        l1WorkingMemory: {
+          activeLedger: emptyLedger(),
+          activeReferences: ['beacon'],
+          activeEntities: [],
+          activeAssets: []
+        },
+        l2RecentSummaries: [],
+        l3GlobalLore: [],
+        assembledPromptBlock: ''
+      }))
+    } as unknown as JitMemoryRetriever;
+    const pipeline = new ContextPipeline({ cacheCoordinator: coordinator });
+    const provider = new JitContextProvider(retriever, { cacheCoordinator: coordinator });
+    pipeline.register(contextProvider);
+    pipeline.register(provider);
+
+    await pipeline.build(makeTask(7, 'old-revision'));
+    await pipeline.build(makeTask(9, 'new-revision'));
+
+    coordinator.invalidate({ reason: 'revision', projectRevision: 8 });
+
+    await pipeline.build(makeTask(9, 'new-revision-hit'));
+    await pipeline.build({
+      ...makeTask(9, 'new-revision-retrieval-hit'),
+      contextPolicy: { providerIds: ['static', 'retrieval.jit'], maxTokens: 2048 }
+    });
+    await pipeline.build(makeTask(7, 'old-revision-miss'));
+
+    expect(contextProvider.provide).toHaveBeenCalledTimes(4);
+    expect(retriever.retrieve).toHaveBeenCalledTimes(3);
+    expect(pipeline.cacheStats()).toMatchObject({ hits: 1, misses: 4, invalidations: 1 });
+    expect(provider.cacheStats()).toMatchObject({ hits: 1, misses: 3, invalidations: 1 });
+    expect(coordinator.stats()).toEqual({
+      provider: { hits: 0, misses: 0, evictions: 0, invalidations: 1 },
+      context: { hits: 1, misses: 4, evictions: 0, invalidations: 1 },
+      retrieval: { hits: 1, misses: 3, evictions: 0, invalidations: 1 }
     });
 
     pipeline.dispose();

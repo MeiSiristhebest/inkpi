@@ -1,5 +1,11 @@
 import type { AiTask } from '@inkpi/protocol';
-import { createRuntimeCacheKey, stableSerialize, type RuntimeCacheCoordinatorPort } from './cache-contract.js';
+import {
+  createRuntimeCacheKey,
+  shouldInvalidateCacheEntry,
+  stableSerialize,
+  type CacheInvalidationEvent,
+  type RuntimeCacheCoordinatorPort
+} from './cache-contract.js';
 import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
 const DEFAULT_MAX_TOKENS = 16_000;
@@ -25,9 +31,14 @@ export interface ContextPipelineCacheStats {
   invalidations: number;
 }
 
+interface ContextCacheEntry {
+  packet: ContextPacket;
+  projectRevision?: number;
+}
+
 export class ContextPipeline {
   private readonly providers = new Map<string, ContextProvider>();
-  private readonly cache = new Map<string, ContextPacket>();
+  private readonly cache = new Map<string, ContextCacheEntry>();
   private readonly maxTokens: number;
   private readonly cacheEnabled: boolean;
   private readonly cacheMaxEntries: number;
@@ -46,7 +57,9 @@ export class ContextPipeline {
       ? Math.max(0, Math.floor(maxEntries))
       : DEFAULT_CONTEXT_CACHE_ENTRIES;
     this.cacheCoordinator = options.cacheCoordinator;
-    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate('context', () => this.clearCache());
+    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate('context', (event) =>
+      this.clearCache(event)
+    );
   }
 
   register(provider: ContextProvider): void {
@@ -69,9 +82,18 @@ export class ContextPipeline {
   }
 
   /** Clear compiled packets after an external project or retrieval-index update. */
-  clearCache(): void {
-    if (this.cache.size > 0) this.cacheInvalidations += this.cache.size;
-    this.cache.clear();
+  clearCache(event?: CacheInvalidationEvent): void {
+    if (!event) {
+      this.cacheInvalidations += this.cache.size;
+      this.cache.clear();
+      return;
+    }
+
+    for (const [key, entry] of this.cache) {
+      if (!shouldInvalidateCacheEntry(entry.projectRevision, event)) continue;
+      this.cache.delete(key);
+      this.cacheInvalidations += 1;
+    }
   }
 
   cacheStats(): ContextPipelineCacheStats {
@@ -149,8 +171,8 @@ export class ContextPipeline {
 
   private getCached(cacheKey: string): ContextPacket | undefined {
     if (!this.cacheEnabled || this.cacheMaxEntries === 0) return undefined;
-    const packet = this.cache.get(cacheKey);
-    if (!packet) {
+    const entry = this.cache.get(cacheKey);
+    if (!entry) {
       this.cacheMisses += 1;
       this.cacheCoordinator?.record('context', 'miss');
       return undefined;
@@ -158,14 +180,17 @@ export class ContextPipeline {
     this.cacheHits += 1;
     this.cacheCoordinator?.record('context', 'hit');
     this.cache.delete(cacheKey);
-    this.cache.set(cacheKey, packet);
-    return clonePacket(packet);
+    this.cache.set(cacheKey, entry);
+    return clonePacket(entry.packet);
   }
 
   private setCached(cacheKey: string, packet: ContextPacket): void {
     if (!this.cacheEnabled || this.cacheMaxEntries === 0) return;
     this.cache.delete(cacheKey);
-    this.cache.set(cacheKey, clonePacket(packet));
+    this.cache.set(cacheKey, {
+      packet: clonePacket(packet),
+      projectRevision: packet.projectRevision
+    });
     while (this.cache.size > this.cacheMaxEntries) {
       const oldest = this.cache.keys().next().value;
       if (oldest === undefined) break;
@@ -191,6 +216,8 @@ export function createContextCacheKey(task: AiTask, providerIds: readonly string
   );
   const instructionVersion = firstString(metadata?.instructionVersion, contextMetadata?.instructionVersion);
   const skillVersion = firstString(metadata?.skillVersion, contextMetadata?.skillVersion);
+  const inputFingerprint = hash(stableSerialize(task.input));
+  const intentFingerprint = hash(stableSerialize(task.intent));
   const contextFingerprint =
     firstString(metadata?.contextFingerprint, contextMetadata?.contextFingerprint) ??
     hash(stableSerialize({ input: task.input, intent: task.intent }));
@@ -213,8 +240,8 @@ export function createContextCacheKey(task: AiTask, providerIds: readonly string
         metadata: contextMetadata,
         providerIds: task.contextPolicy?.providerIds
       },
-      intent: task.intent,
-      input: task.input,
+      inputFingerprint,
+      intentFingerprint,
       maxTokens,
       providers: [...providerIds]
     }

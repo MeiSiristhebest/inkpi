@@ -26,6 +26,24 @@ export interface CacheInvalidationEvent {
 export type CacheInvalidationListener = (event: CacheInvalidationEvent) => void;
 
 /**
+ * Decide whether a cache entry is affected by an invalidation event.
+ *
+ * Revision invalidation is monotonic: an entry from an older revision is
+ * stale, while an entry from the announced or a newer revision remains
+ * usable. Entries without a trustworthy revision are invalidated because
+ * their freshness cannot be proven. Manual and registration invalidations
+ * always clear the selected layer.
+ */
+export function shouldInvalidateCacheEntry(
+  entryRevision: number | undefined,
+  event: CacheInvalidationEvent
+): boolean {
+  if (event.reason !== 'revision') return true;
+  if (!Number.isFinite(event.projectRevision)) return true;
+  return !Number.isFinite(entryRevision) || entryRevision! < event.projectRevision!;
+}
+
+/**
  * The minimal bridge between independently hosted cache layers.
  *
  * It carries invalidation and metrics only. It does not own prompt/context
