@@ -13,6 +13,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 type ChildEvent = { type: string; [key: string]: unknown };
 
+const firstPartySkillIds = ['hook', 'promise', 'character-voice', 'timeline-consistency'] as const;
+const firstPartySkillCapabilities: Record<(typeof firstPartySkillIds)[number], string[]> = {
+  hook: ['narrative-hook', 'creative-writing'],
+  promise: ['story-promise', 'continuity-audit'],
+  'character-voice': ['character-voice', 'creative-writing'],
+  'timeline-consistency': ['timeline-consistency', 'continuity-audit']
+};
+
 interface RunningDaemon {
   child: ChildProcess;
   port: number;
@@ -165,7 +173,7 @@ afterEach(async () => {
 });
 
 describe('Runtime Phase 12 cross-process skill contract', () => {
-  it('keeps first-party skill loading lazy and activates its instruction across daemon/client processes', async () => {
+  it('keeps all first-party skills lazy-loadable and activates their instructions across daemon/client processes', async () => {
     const daemon = await startDaemon();
     const client = await InkRpcClient.connectTcp(daemon.port, '127.0.0.1');
 
@@ -173,11 +181,9 @@ describe('Runtime Phase 12 cross-process skill contract', () => {
       const discovered = await client.request<SkillManifest[]>('skill.discover');
       expect(discovered).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            id: 'promise',
-            activation: 'lazy',
-            capabilities: ['story-promise', 'continuity-audit']
-          })
+          ...firstPartySkillIds.map((id) =>
+            expect.objectContaining({ id, capabilities: firstPartySkillCapabilities[id] })
+          )
         ])
       );
       expect(JSON.stringify(discovered)).not.toContain('Track each promise');
@@ -187,50 +193,52 @@ describe('Runtime Phase 12 cross-process skill contract', () => {
       expect(beforeLoad.activatedSkills).toEqual([]);
       expect(beforeLoad.instructions).toEqual([]);
 
-      const loaded = await client.request<SkillLoadResult>('skill.load', { skillId: 'promise' });
-      expect(loaded).toMatchObject({
-        loaded: true,
-        skill: { id: 'promise', version: '1.0.0' },
-        snapshot: { loadedSkills: ['promise'], activatedSkills: [], instructions: [] }
-      });
-      expect(JSON.stringify(loaded)).not.toContain('Track each promise');
+      for (const skillId of firstPartySkillIds) {
+        const loaded = await client.request<SkillLoadResult>('skill.load', { skillId });
+        expect(loaded).toMatchObject({
+          loaded: true,
+          skill: { id: skillId, version: '1.0.0' }
+        });
+        expect(loaded.snapshot.loadedSkills).toContain(skillId);
+        expect(JSON.stringify(loaded)).not.toContain('Track each promise');
 
-      const activated = await client.request<SkillActivationResult>('skill.activate', { skillId: 'promise' });
-      expect(activated).toMatchObject({
-        activated: true,
-        loaded: true,
-        skill: { id: 'promise', version: '1.0.0' },
-        snapshot: {
-          loadedSkills: ['promise'],
-          activatedSkills: ['promise']
-        }
-      });
-      const activatedInstruction = activated.snapshot.instructions?.find((entry) => entry.id === 'skill.promise');
-      expect(activatedInstruction).toBeDefined();
-      expect(activatedInstruction).toMatchObject({
-        id: 'skill.promise',
-        scope: 'skill',
-        version: '1.0.0',
-        source: 'skill:promise',
-        provenance: { skillId: 'promise', skillVersion: '1.0.0' }
-      });
+        const activated = await client.request<SkillActivationResult>('skill.activate', { skillId });
+        expect(activated).toMatchObject({
+          activated: true,
+          loaded: true,
+          skill: { id: skillId, version: '1.0.0' }
+        });
+        expect(activated.snapshot.loadedSkills).toContain(skillId);
+        expect(activated.snapshot.activatedSkills).toContain(skillId);
+        const activatedInstruction = activated.snapshot.instructions?.find((entry) => entry.id === `skill.${skillId}`);
+        expect(activatedInstruction).toBeDefined();
+        expect(activatedInstruction).toMatchObject({
+          id: `skill.${skillId}`,
+          scope: 'skill',
+          version: '1.0.0',
+          source: `skill:${skillId}`,
+          provenance: { skillId, skillVersion: '1.0.0' }
+        });
+      }
 
       const instructionStatus = await client.request<InstructionRegistryStatus>('instruction.status');
       expect(instructionStatus).toMatchObject({
         ready: true,
-        version: 'instructions-1',
-        count: 1,
-        instructionIds: ['skill.promise']
+        version: `instructions-${firstPartySkillIds.length}`,
+        count: firstPartySkillIds.length,
+        instructionIds: firstPartySkillIds.map((skillId) => `skill.${skillId}`)
       });
-      const statusInstruction = instructionStatus.instructions.find((entry) => entry.id === 'skill.promise');
-      expect(statusInstruction).toBeDefined();
-      expect(statusInstruction).toMatchObject({
-        id: 'skill.promise',
-        scope: 'skill',
-        version: '1.0.0',
-        source: 'skill:promise',
-        provenance: { skillId: 'promise', skillVersion: '1.0.0' }
-      });
+      for (const skillId of firstPartySkillIds) {
+        const statusInstruction = instructionStatus.instructions.find((entry) => entry.id === `skill.${skillId}`);
+        expect(statusInstruction).toBeDefined();
+        expect(statusInstruction).toMatchObject({
+          id: `skill.${skillId}`,
+          scope: 'skill',
+          version: '1.0.0',
+          source: `skill:${skillId}`,
+          provenance: { skillId, skillVersion: '1.0.0' }
+        });
+      }
       expect(JSON.stringify(instructionStatus)).not.toContain('Track each promise');
     } finally {
       await client.close();
