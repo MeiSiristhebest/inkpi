@@ -31,13 +31,18 @@ export class TaskRegistry {
   }
 
   resolve(task: AiTask): TaskHandler {
-    const wildcard: TaskHandler[] = [];
     for (const handler of this.handlers.values()) {
       if (handler.kinds?.includes(task.kind)) return handler;
-      if (handler.kinds?.includes('*')) wildcard.push(handler);
+    }
+    // Exact kind registrations are more specific than predicates and
+    // wildcards, regardless of registration order. This lets a product or
+    // extension override the daemon's generic fallback handler safely.
+    for (const handler of this.handlers.values()) {
       if (handler.canHandle?.(task)) return handler;
     }
-    if (wildcard.length > 0) return wildcard[0];
+    for (const handler of this.handlers.values()) {
+      if (handler.kinds?.includes('*')) return handler;
+    }
     throw new TaskHandlerNotFoundError(task.kind);
   }
 }

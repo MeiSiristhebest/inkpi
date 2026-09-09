@@ -1,6 +1,6 @@
+import { ContextPipeline, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
-import { ContextPipeline, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
 
 function task(overrides: Partial<AiTask> = {}): AiTask {
   return {
@@ -8,17 +8,44 @@ function task(overrides: Partial<AiTask> = {}): AiTask {
     kind: 'test.echo',
     input: { text: 'hello' },
     outputContract: { format: 'text' },
-    ...overrides,
+    ...overrides
   };
 }
 
 describe('TaskRegistry and TaskRouter', () => {
+  it('prefers an exact kind handler over an earlier generic fallback', async () => {
+    const registry = new TaskRegistry();
+    let selected = '';
+    registry.register({
+      id: 'generic-fallback',
+      kinds: ['*'],
+      async execute() {
+        selected = 'generic';
+        return { output: { format: 'text', text: 'generic' } };
+      }
+    });
+    registry.register({
+      id: 'exact-handler',
+      kinds: ['test.exact'],
+      async execute() {
+        selected = 'exact';
+        return { output: { format: 'text', text: 'exact' } };
+      }
+    });
+
+    const router = new TaskRouter({ registry });
+    router.submit(task({ id: 'exact-task', kind: 'test.exact' }));
+
+    await expect(router.wait('exact-task')).resolves.toMatchObject({ output: { text: 'exact' } });
+    expect(selected).toBe('exact');
+  });
+
   it('routes an open task kind through the context pipeline and reports progress', async () => {
     const registry = new TaskRegistry();
     const pipeline = new ContextPipeline();
     pipeline.register({
       id: 'project-context',
-      provide: () => [{ id: 'project', source: 'project', text: 'project facts', priority: 10 }],
+      provide: () => [{ id: 'project', source: 'project', text: 'project facts', priority: 10 }]
     });
     let receivedContext = '';
     registry.register({
@@ -28,7 +55,7 @@ describe('TaskRegistry and TaskRouter', () => {
         receivedContext = context.text;
         reportProgress(0.5);
         return { output: { format: 'text', text: context.text.toUpperCase() } };
-      },
+      }
     });
     const events: string[] = [];
     const router = new TaskRouter({ registry, contextPipeline: pipeline });
@@ -44,7 +71,7 @@ describe('TaskRegistry and TaskRouter', () => {
     expect(receivedContext).toBe('hello\n\nproject facts');
     expect(router.status('task-router-test')).toMatchObject({
       status: 'completed',
-      progress: 0.5,
+      progress: 0.5
     });
     expect(events).toEqual(['created', 'queued', 'started', 'progress', 'completed']);
   });
@@ -62,12 +89,10 @@ describe('TaskRegistry and TaskRouter', () => {
       kinds: ['test.empty'],
       async execute() {
         return {};
-      },
+      }
     });
     const contractRouter = new TaskRouter({ registry });
-    contractRouter.submit(
-      task({ id: 'empty-output', kind: 'test.empty', outputContract: { format: 'structured' } }),
-    );
+    contractRouter.submit(task({ id: 'empty-output', kind: 'test.empty', outputContract: { format: 'structured' } }));
     const empty = await contractRouter.wait('empty-output');
     expect(empty).toMatchObject({ status: 'failed', error: { code: 'MISSING_OUTPUT' } });
   });
@@ -84,7 +109,7 @@ describe('TaskRegistry and TaskRouter', () => {
             error.name = 'AbortError';
             reject(error);
           });
-        }),
+        })
     });
     const router = new TaskRouter({ registry });
     router.submit(task({ id: 'cancelled', kind: 'test.blocking' }));
@@ -96,20 +121,50 @@ describe('TaskRegistry and TaskRouter', () => {
     timeoutRegistry.register({
       id: 'slow-handler',
       kinds: ['test.slow'],
-      execute: () => new Promise<never>(() => undefined),
+      execute: () => new Promise<never>(() => undefined)
     });
     const timeoutRouter = new TaskRouter({ registry: timeoutRegistry });
     timeoutRouter.submit(
       task({
         id: 'timed-out',
         kind: 'test.slow',
-        executionPolicy: { timeoutMs: 5 },
-      }),
+        executionPolicy: { timeoutMs: 5 }
+      })
     );
     expect(await timeoutRouter.wait('timed-out')).toMatchObject({
       status: 'failed',
-      error: { code: 'TASK_TIMEOUT' },
+      error: { code: 'TASK_TIMEOUT' }
     });
+  });
+
+  it('does not invoke a handler when cancellation wins during context collection', async () => {
+    const registry = new TaskRegistry();
+    let executed = false;
+    registry.register({
+      id: 'late-context-handler',
+      kinds: ['test.late-context'],
+      async execute() {
+        executed = true;
+        return { output: { format: 'text', text: 'must not run' } };
+      }
+    });
+    let releaseContext!: () => void;
+    const context = new ContextPipeline();
+    context.register({
+      id: 'slow-context',
+      provide: () =>
+        new Promise((resolve) => {
+          releaseContext = () => resolve([{ id: 'late', source: 'test', text: 'late' }]);
+        })
+    });
+    const router = new TaskRouter({ registry, contextPipeline: context });
+    router.submit(task({ id: 'late-context-task', kind: 'test.late-context' }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(router.cancel('late-context-task').cancelled).toBe(true);
+    releaseContext();
+
+    await expect(router.wait('late-context-task')).resolves.toMatchObject({ status: 'cancelled' });
+    expect(executed).toBe(false);
   });
 
   it('accepts public steering input and records it in the durable execution record', async () => {
@@ -119,16 +174,16 @@ describe('TaskRegistry and TaskRouter', () => {
       kinds: ['test.steering'],
       async execute({ consumeSteering }) {
         return { output: { format: 'text', text: JSON.stringify(consumeSteering()) } };
-      },
+      }
     });
     const router = new TaskRouter({ registry });
     router.submit(task({ id: 'steering-task', kind: 'test.steering' }));
     expect(router.steer('steering-task', { direction: 'more tension' })).toEqual({
       taskId: 'steering-task',
-      accepted: true,
+      accepted: true
     });
     await expect(router.wait('steering-task')).resolves.toMatchObject({
-      output: { text: '[{"direction":"more tension"}]' },
+      output: { text: '[{"direction":"more tension"}]' }
     });
     expect(router.execution('steering-task').steering).toEqual([]);
   });

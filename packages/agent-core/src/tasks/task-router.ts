@@ -366,9 +366,19 @@ export class TaskRouter {
     this.observer?.started?.(record.task);
     try {
       const context = await this.contextPipeline.build(record.task, record.controller.signal);
+      // A provider may finish after cancellation. Do not enter the handler
+      // boundary once the task has been cancelled during context collection.
+      if (record.snapshot.status === 'cancelled' || record.controller.signal.aborted) {
+        this.finishCancelled(record);
+        return;
+      }
       this.observer?.contextBuilt?.(record.task, context);
       const instructions = this.instructionRegistry.composeForTask(record.task.kind);
       const checkpoint = await this.checkpointStore.load(record.task.id);
+      if (record.snapshot.status === 'cancelled' || record.controller.signal.aborted) {
+        this.finishCancelled(record);
+        return;
+      }
       const handlerResult = await this.executeWithTimeout(
         record,
         handler.execute({
