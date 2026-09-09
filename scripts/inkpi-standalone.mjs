@@ -20,7 +20,9 @@ import { fileURLToPath } from 'node:url';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
 import { createDaemonPersistence } from '../packages/server/dist/daemon-persistence.js';
+import { createJsonlObservationSink } from '../packages/server/dist/observation-sink.js';
 import { getModelPreset } from '../packages/ai/dist/presets.js';
+import { findModelInCatalog, modelCatalogEntryToCapabilityDeclaration } from '../packages/ai/dist/catalog.js';
 // The standalone harness is the dev/test entrypoint exercised by the integration
 // suite (e.g. `--model mock-test`). Mock providers are NOT silently registered on
 // the production path; we opt into them explicitly here so headless tests can run
@@ -66,15 +68,26 @@ async function main() {
     } catch {
       defaultModel = undefined;
     }
+    const defaultModelCapabilities = defaultModel
+      ? (() => {
+          const catalogEntry = findModelInCatalog(defaultModel.id);
+          return catalogEntry ? modelCatalogEntryToCapabilityDeclaration(catalogEntry) : undefined;
+        })()
+      : undefined;
     const persistence = createDaemonPersistence({ dbPath: stateDbPath });
+    const observationFile = process.env.INKPI_OBSERVABILITY_FILE?.trim();
     let daemon;
     try {
       daemon = new InkPiDaemon({
         port,
         host: '127.0.0.1',
         defaultModel,
+        ...(defaultModelCapabilities ? { defaultModelCapabilities } : {}),
         skillSearchDirs: resolveSkillSearchDirs(),
-        context: persistence.context
+        context: persistence.context,
+        ...(observationFile
+          ? { observability: { onObservation: createJsonlObservationSink(observationFile) } }
+          : {})
       });
       await daemon.start(port, '127.0.0.1');
       await daemon.startWebSocket(wsPort, '127.0.0.1');

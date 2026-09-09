@@ -126,8 +126,8 @@ async function main() {
       const wsPortIdx = args.indexOf('--ws-port');
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
-      const { InkPiDaemon, createDaemonPersistence } = await import('@inkpi/server');
-      const { getModelPreset } = await import('@inkpi/ai');
+      const { InkPiDaemon, createDaemonPersistence, createJsonlObservationSink } = await import('@inkpi/server');
+      const { findModelInCatalog, getModelPreset, modelCatalogEntryToCapabilityDeclaration } = await import('@inkpi/ai');
       const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
       const stateDbPath = stateDbFlag ? readRequiredArg(args, args.indexOf(stateDbFlag), stateDbFlag) : undefined;
       const modelFlag = args.indexOf('--model');
@@ -138,15 +138,26 @@ async function main() {
       } catch {
         defaultModel = undefined;
       }
+      const defaultModelCapabilities = defaultModel
+        ? (() => {
+            const catalogEntry = findModelInCatalog(defaultModel.id);
+            return catalogEntry ? modelCatalogEntryToCapabilityDeclaration(catalogEntry) : undefined;
+          })()
+        : undefined;
       const persistence = createDaemonPersistence({ dbPath: stateDbPath });
+      const observationFile = process.env.INKPI_OBSERVABILITY_FILE?.trim();
       let daemon;
       try {
         daemon = new InkPiDaemon({
           port,
           host: '127.0.0.1',
           defaultModel,
+          ...(defaultModelCapabilities ? { defaultModelCapabilities } : {}),
           skillSearchDirs: resolveSkillSearchDirs(),
-          context: persistence.context
+          context: persistence.context,
+          ...(observationFile
+            ? { observability: { onObservation: createJsonlObservationSink(observationFile) } }
+            : {})
         });
         await daemon.start(port, '127.0.0.1');
         await daemon.startWebSocket(wsPort, '127.0.0.1');
