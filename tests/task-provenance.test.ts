@@ -193,4 +193,57 @@ describe('observability provenance contract', () => {
     }
     expect(JSON.stringify(persisted?.snapshot.result?.provenance)).not.toContain('must not be observed');
   });
+
+  it('removes nested private reasoning before observation and execution persistence', async () => {
+    const task: AiTask = {
+      id: 'nested-raw-cot-task',
+      kind: 'test.nested-raw-cot',
+      input: { text: 'deterministic context' },
+      outputContract: { format: 'text' }
+    };
+    const registry = new TaskRegistry();
+    registry.register({
+      id: 'nested-raw-cot-fixture-handler',
+      kinds: [task.kind],
+      async execute() {
+        return {
+          output: { format: 'text', text: 'safe result' },
+          provenance: {
+            publicSummary: 'safe',
+            trace: {
+              reasoning: 'nested reasoning must not be observed',
+              detail: { chainOfThought: 'deep reasoning must not be observed' }
+            },
+            calls: [{ tool: 'fixture', rawThinking: 'array reasoning must not be observed' }]
+          }
+        };
+      }
+    });
+
+    const observer = new TaskObservability(() => 10);
+    const executionStore = new InMemoryTaskExecutionStore();
+    const router = new TaskRouter({ registry, observer, executionStore, now: () => 10 });
+    router.submit(task);
+    await router.wait(task.id);
+
+    const observation = observer.get(task.id);
+    const persisted = await executionStore.load(task.id);
+    expect(observation?.provenance).toMatchObject({
+      taskId: task.id,
+      taskKind: task.kind,
+      publicSummary: 'safe',
+      trace: { detail: {} },
+      calls: [{ tool: 'fixture' }],
+      executionRunId: 'run:nested-raw-cot-task',
+      executionAttempt: 1,
+      instructionIds: []
+    });
+    expect(persisted?.snapshot.result?.provenance).toMatchObject({
+      publicSummary: 'safe',
+      trace: { detail: {} },
+      calls: [{ tool: 'fixture' }]
+    });
+    expect(JSON.stringify(persisted?.snapshot.result?.provenance)).not.toContain('must not be observed');
+    expect(JSON.stringify(observation)).not.toContain('must not be observed');
+  });
 });
