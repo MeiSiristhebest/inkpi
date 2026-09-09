@@ -569,8 +569,30 @@ export function evaluateSourceMapRanges(input: SourceMapRangeEvaluationInput): S
         actual: segment.editorFrom,
       });
     }
-    if (previous && segment.semanticFrom > previous.semanticTo) coverageGapCount++;
-    if (previous && segment.editorFrom > previous.editorTo) coverageGapCount++;
+    if (previous && segment.semanticFrom > previous.semanticTo) {
+      coverageGapCount++;
+      if (input.requireCoverage) {
+        violations.push({
+          code: 'source-map-semantic-gap',
+          message: 'Required semantic source-map coverage contains an internal gap.',
+          path: `${path}.semanticFrom`,
+          expected: previous.semanticTo,
+          actual: segment.semanticFrom
+        });
+      }
+    }
+    if (previous && segment.editorFrom > previous.editorTo) {
+      coverageGapCount++;
+      if (input.requireCoverage) {
+        violations.push({
+          code: 'source-map-editor-gap',
+          message: 'Required editor source-map coverage contains an internal gap.',
+          path: `${path}.editorFrom`,
+          expected: previous.editorTo,
+          actual: segment.editorFrom
+        });
+      }
+    }
   }
 
   if (input.requireCoverage && input.segments.length === 0 && (semanticLength > 0 || editorLength > 0)) {
