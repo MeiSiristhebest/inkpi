@@ -11,8 +11,13 @@ import {
   createLegacyDefaultModelCapabilities
 } from './model-capability-router.js';
 
-export { CapabilityMismatchError, CapabilityRouter } from './model-capability-router.js';
+export {
+  CapabilityMismatchError,
+  CapabilityRouter,
+  createModelRouteFromCatalog
+} from './model-capability-router.js';
 export type {
+  CatalogModelRouteOptions,
   CapabilityMismatchDetails,
   ModelCapabilities,
   ModelRoute,

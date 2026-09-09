@@ -1,6 +1,16 @@
-import { KNOWN_MODELS, findModelInCatalog, modelCatalogEntryToConfig, type ModelCatalogEntry } from '@inkpi/ai';
+import {
+  KNOWN_MODELS,
+  findModelInCatalog,
+  modelCatalogEntryToCapabilityDeclaration,
+  type ModelCatalogEntry
+} from '@inkpi/ai';
 import type { AiTask, TaskRequirements } from '@inkpi/protocol';
-import { CapabilityMismatchError, CapabilityRouter, type ModelCapabilities, type ModelRoute } from '@inkpi/server';
+import {
+  CapabilityMismatchError,
+  CapabilityRouter,
+  createModelRouteFromCatalog,
+  type ModelRoute
+} from '@inkpi/server';
 import { describe, expect, it } from 'vitest';
 
 const REPRESENTATIVE_MODELS = [
@@ -24,21 +34,7 @@ function makeTask(overrides: Partial<AiTask> = {}): AiTask {
 }
 
 function routeFromCatalog(entry: ModelCatalogEntry): ModelRoute {
-  const capabilities: ModelCapabilities = {
-    network: entry.provider === 'ollama' ? 'offline' : 'required',
-    modalities: entry.supportsVision ? ['text', 'image'] : ['text'],
-    outputFormats: ['text'],
-    reasoning: entry.supportsThinking,
-    toolCalling: entry.supportsTools,
-    contextTokens: entry.contextWindow,
-    maxContextTokens: entry.contextWindow,
-    maxOutputTokens: entry.maxTokens
-  };
-  return {
-    id: entry.id,
-    model: modelCatalogEntryToConfig(entry),
-    capabilities
-  };
+  return createModelRouteFromCatalog(entry);
 }
 
 describe('declared provider capability matrix', () => {
@@ -85,6 +81,59 @@ describe('declared provider capability matrix', () => {
         makeTask({ requirements: { needsReasoning: true, outputFormats: ['text'] } })
       )
     ).toThrow(CapabilityMismatchError);
+  });
+
+  it('uses explicit catalog overrides for structured output and builds a strict contract', () => {
+    const entry: ModelCatalogEntry = {
+      id: 'custom/structured-author',
+      name: 'Structured author',
+      provider: 'custom',
+      contextWindow: 32_000,
+      maxTokens: 4_000,
+      supportsThinking: true,
+      supportsTools: true,
+      supportsVision: false,
+      cost: { inputPerMillionUsd: 0, outputPerMillionUsd: 0 },
+      capabilities: {
+        network: 'optional',
+        outputFormats: ['text', 'structured'],
+        structuredOutput: true,
+        jsonSchema: true
+      }
+    };
+    expect(modelCatalogEntryToCapabilityDeclaration(entry)).toMatchObject({
+      network: 'optional',
+      outputFormats: ['text', 'structured'],
+      structuredOutput: true,
+      jsonSchema: true,
+      tools: true,
+      reasoning: true
+    });
+
+    const route = routeFromCatalog(entry);
+    const selected = new CapabilityRouter([route]).resolve(
+      makeTask({
+        outputContract: { format: 'structured', schemaId: 'story.schema' },
+        requirements: {
+          network: 'optional',
+          outputFormats: ['structured'],
+          needsStructuredOutput: true,
+          needsTools: true,
+          needsReasoning: true
+        }
+      })
+    );
+    expect(selected.id).toBe(entry.id);
+  });
+
+  it('accepts an offline route when network access is optional', () => {
+    const local = findModelInCatalog('ollama/qwen2.5:14b');
+    expect(local).toBeDefined();
+    expect(
+      new CapabilityRouter([routeFromCatalog(local!)]).resolve(
+        makeTask({ requirements: { network: 'optional', outputFormats: ['text'] } })
+      ).id
+    ).toBe(local!.id);
   });
 
   it('does not expose test-only faux models through the production catalog', () => {

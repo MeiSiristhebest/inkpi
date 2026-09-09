@@ -1,5 +1,11 @@
 import type { ToolRegistry } from '@inkpi/agent-core';
-import type { ModelConfig, StreamFn } from '@inkpi/ai';
+import {
+  modelCatalogEntryToCapabilityDeclaration,
+  modelCatalogEntryToConfig,
+  type ModelCatalogEntry,
+  type ModelConfig,
+  type StreamFn
+} from '@inkpi/ai';
 import type { AiTask, OutputContract, OutputFormat, TaskRequirements } from '@inkpi/protocol';
 
 export type ModelNetworkCapability = 'offline' | 'optional' | 'required';
@@ -45,6 +51,54 @@ export interface ModelRoute {
   toolRegistry?: ToolRegistry;
   systemPrompt?: string;
   maxToolSteps?: number;
+}
+
+export interface CatalogModelRouteOptions {
+  id?: string;
+  priority?: number;
+  fallback?: boolean;
+  stream?: StreamFn;
+  toolRegistry?: ToolRegistry;
+  systemPrompt?: string;
+  maxToolSteps?: number;
+  /** Route-local overrides for the catalog's canonical declaration. */
+  capabilities?: Partial<ModelCapabilities>;
+}
+
+/** Build a strict runtime route from the canonical AI model catalog contract. */
+export function createModelRouteFromCatalog(
+  entry: ModelCatalogEntry,
+  options: CatalogModelRouteOptions = {}
+): ModelRoute {
+  const declaration = modelCatalogEntryToCapabilityDeclaration(entry);
+  return {
+    id: options.id ?? entry.id,
+    model: modelCatalogEntryToConfig(entry),
+    capabilities: {
+      capabilities: [...declaration.capabilities],
+      network: declaration.network,
+      modalities: [...declaration.modalities],
+      outputFormats: [...declaration.outputFormats],
+      streaming: declaration.streaming,
+      contextTokens: declaration.contextTokens,
+      maxContextTokens: declaration.contextTokens,
+      maxOutputTokens: declaration.maxOutputTokens,
+      tools: declaration.tools,
+      toolCalling: declaration.tools,
+      reasoning: declaration.reasoning,
+      structuredOutput: declaration.structuredOutput,
+      patchOutput: declaration.patchOutput,
+      jsonSchema: declaration.jsonSchema,
+      promptCaching: declaration.promptCaching,
+      ...(options.capabilities ?? {})
+    },
+    ...(options.priority === undefined ? {} : { priority: options.priority }),
+    ...(options.fallback === undefined ? {} : { fallback: options.fallback }),
+    ...(options.stream === undefined ? {} : { stream: options.stream }),
+    ...(options.toolRegistry === undefined ? {} : { toolRegistry: options.toolRegistry }),
+    ...(options.systemPrompt === undefined ? {} : { systemPrompt: options.systemPrompt }),
+    ...(options.maxToolSteps === undefined ? {} : { maxToolSteps: options.maxToolSteps })
+  };
 }
 
 export interface ResolvedModelRoute extends ModelRoute {
@@ -183,7 +237,28 @@ function normalizeRoute(route: ModelRoute): ResolvedModelRoute {
   ) {
     capabilities.streaming = model.supportsStreaming;
   }
+  validateRouteCapabilities(route.id, capabilities);
   return { ...route, capabilities };
+}
+
+function validateRouteCapabilities(routeId: string, capabilities: ModelCapabilities): void {
+  if (capabilities.network !== undefined && !['offline', 'optional', 'required'].includes(capabilities.network)) {
+    throw new Error(`Invalid network capability for model route '${routeId}'`);
+  }
+  for (const format of capabilities.outputFormats ?? []) {
+    if (!['text', 'structured', 'patch'].includes(format)) {
+      throw new Error(`Invalid output format for model route '${routeId}': ${String(format)}`);
+    }
+  }
+  for (const [name, value] of [
+    ['contextTokens', capabilities.contextTokens],
+    ['maxContextTokens', capabilities.maxContextTokens],
+    ['maxOutputTokens', capabilities.maxOutputTokens]
+  ] as const) {
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
+      throw new Error(`Invalid ${name} for model route '${routeId}'`);
+    }
+  }
 }
 
 function isLocalUrl(url: string | undefined): boolean {
@@ -349,7 +424,9 @@ function namedCapability(capabilities: ModelCapabilities, value: string): boolea
 
 function supportsNetwork(required: ModelNetworkCapability, available: ModelNetworkCapability | undefined): boolean {
   if (required === 'offline') return available === 'offline';
-  if (required === 'optional') return available === 'optional' || available === 'required';
+  if (required === 'optional') {
+    return available === 'offline' || available === 'optional' || available === 'required';
+  }
   return available === 'required';
 }
 

@@ -188,6 +188,24 @@ describe('capability-aware model routing', () => {
     expect(selected.id).toBe('schema-tools');
   });
 
+  it('treats optional network requirements as compatible with offline routes', () => {
+    const selected = new CapabilityRouter([
+      {
+        id: 'offline',
+        model: baseModel,
+        capabilities: { network: 'offline', outputFormats: ['text'] }
+      }
+    ]).resolve({
+      id: 'optional-network',
+      kind: 'test.capability',
+      input: {},
+      outputContract: { format: 'text' },
+      requirements: { network: 'optional' }
+    });
+
+    expect(selected.id).toBe('offline');
+  });
+
   it('keeps omitted default capabilities compatible while explicit declarations stay strict', () => {
     const compatible = new TaskModelHandler({ model: baseModel });
     expect(

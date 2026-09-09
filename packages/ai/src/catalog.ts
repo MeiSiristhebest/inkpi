@@ -1,8 +1,33 @@
-import type { ThinkingLevel } from '@inkpi/protocol';
+import type { OutputFormat, ThinkingLevel } from '@inkpi/protocol';
 import { GENERATED_MODELS } from './models.generated.js';
 import type { ModelConfig, ProviderType } from './types.js';
 
 export type ModelRole = 'planning' | 'drafting' | 'auditing' | 'polishing';
+
+export type ModelNetworkMode = 'offline' | 'optional' | 'required';
+
+/**
+ * Complete, provider-neutral capability declaration used to build runtime
+ * routes. Catalog entries may override these values, but callers should use
+ * modelCatalogEntryToCapabilityDeclaration instead of rebuilding the mapping.
+ */
+export interface ModelCapabilityDeclaration {
+  capabilities: readonly string[];
+  network: ModelNetworkMode;
+  modalities: readonly string[];
+  outputFormats: readonly OutputFormat[];
+  streaming: boolean;
+  contextTokens: number;
+  maxOutputTokens: number;
+  tools: boolean;
+  reasoning: boolean;
+  structuredOutput: boolean;
+  patchOutput: boolean;
+  jsonSchema: boolean;
+  promptCaching: boolean;
+}
+
+export type ModelCapabilityOverrides = Partial<ModelCapabilityDeclaration>;
 
 export interface ModelCatalogEntry {
   id: string;
@@ -24,6 +49,8 @@ export interface ModelCatalogEntry {
     cacheReadPerMillionUsd?: number;
     cacheWritePerMillionUsd?: number;
   };
+  /** Optional explicit overrides for the canonical runtime capability matrix. */
+  capabilities?: ModelCapabilityOverrides;
   description?: string;
   /**
    * Explicit roles this model is recommended for. When present, the catalog
@@ -50,6 +77,87 @@ export const KNOWN_MODELS: ModelCatalogEntry[] = (GENERATED_MODELS as unknown as
 function isTestOnlyModel(model: Pick<ModelCatalogEntry, 'id' | 'provider'>): boolean {
   const id = model.id.toLowerCase();
   return model.provider === 'faux' || id === 'mock-model-v1' || id.startsWith('mock/');
+}
+
+/**
+ * Convert catalog metadata into the one capability contract consumed by the
+ * server route builder. Defaults are conservative: catalog metadata proves
+ * text output, while structured/patch output requires an explicit override.
+ */
+export function modelCatalogEntryToCapabilityDeclaration(entry: ModelCatalogEntry): ModelCapabilityDeclaration {
+  const configured = entry.capabilities ?? {};
+  const declaredFormats: OutputFormat[] = [...new Set<OutputFormat>(configured.outputFormats ?? ['text'])];
+  const structuredOutput =
+    configured.structuredOutput ?? (configured.jsonSchema === true || declaredFormats.includes('structured'));
+  const patchOutput = configured.patchOutput ?? declaredFormats.includes('patch');
+  const outputFormats: OutputFormat[] = [
+    ...new Set([
+      ...declaredFormats,
+      ...(structuredOutput ? (['structured'] as const) : []),
+      ...(patchOutput ? (['patch'] as const) : [])
+    ])
+  ];
+  const declaration: ModelCapabilityDeclaration = {
+    capabilities: [...(configured.capabilities ?? [])],
+    network: configured.network ?? (entry.provider === 'ollama' ? 'offline' : 'required'),
+    modalities: [...new Set(configured.modalities ?? (entry.supportsVision ? ['text', 'image'] : ['text']))],
+    outputFormats,
+    streaming: configured.streaming ?? true,
+    contextTokens: configured.contextTokens ?? entry.contextWindow,
+    maxOutputTokens: configured.maxOutputTokens ?? entry.maxTokens,
+    tools: configured.tools ?? entry.supportsTools,
+    reasoning: configured.reasoning ?? entry.supportsThinking,
+    structuredOutput,
+    patchOutput,
+    jsonSchema: configured.jsonSchema ?? false,
+    promptCaching: configured.promptCaching ?? entry.cost.cacheReadPerMillionUsd !== undefined
+  };
+  validateModelCapabilityDeclaration(declaration);
+  return declaration;
+}
+
+/** Validate a fully resolved catalog capability declaration at the boundary. */
+export function validateModelCapabilityDeclaration(declaration: ModelCapabilityDeclaration): void {
+  if (!['offline', 'optional', 'required'].includes(declaration.network)) {
+    throw new Error(`Invalid model network capability: ${String(declaration.network)}`);
+  }
+  if (declaration.modalities.length === 0 || !declaration.modalities.includes('text')) {
+    throw new Error('Model capability declaration must include the text modality');
+  }
+  if (declaration.outputFormats.length === 0) {
+    throw new Error('Model capability declaration must include at least one output format');
+  }
+  for (const format of declaration.outputFormats) {
+    if (!['text', 'structured', 'patch'].includes(format)) {
+      throw new Error(`Invalid model output format: ${String(format)}`);
+    }
+  }
+  if (declaration.structuredOutput !== declaration.outputFormats.includes('structured')) {
+    throw new Error('Model structuredOutput must agree with outputFormats');
+  }
+  if (declaration.patchOutput !== declaration.outputFormats.includes('patch')) {
+    throw new Error('Model patchOutput must agree with outputFormats');
+  }
+  if (declaration.jsonSchema && !declaration.structuredOutput) {
+    throw new Error('Model jsonSchema support requires structuredOutput support');
+  }
+  for (const [name, value] of [
+    ['contextTokens', declaration.contextTokens],
+    ['maxOutputTokens', declaration.maxOutputTokens]
+  ] as const) {
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`Model ${name} must be greater than zero`);
+  }
+  for (const [name, value] of [
+    ['streaming', declaration.streaming],
+    ['tools', declaration.tools],
+    ['reasoning', declaration.reasoning],
+    ['structuredOutput', declaration.structuredOutput],
+    ['patchOutput', declaration.patchOutput],
+    ['jsonSchema', declaration.jsonSchema],
+    ['promptCaching', declaration.promptCaching]
+  ] as const) {
+    if (typeof value !== 'boolean') throw new Error(`Model ${name} must be boolean`);
+  }
 }
 
 export function getThinkingBudgetForLevel(level: ThinkingLevel | 'minimal' | 'off' | null | undefined): number {
@@ -110,14 +218,15 @@ export function findModelInCatalog(idOrName: string): ModelCatalogEntry | undefi
 }
 
 export function modelCatalogEntryToConfig(entry: ModelCatalogEntry): ModelConfig {
+  const declaration = modelCatalogEntryToCapabilityDeclaration(entry);
   return {
     id: entry.id,
     name: entry.name,
     provider: entry.provider as ProviderType,
-    supportsThinking: entry.supportsThinking,
+    supportsThinking: declaration.reasoning,
     ...(entry.supportsMidConvoEffort !== undefined ? { supportsMidConvoEffort: entry.supportsMidConvoEffort } : {}),
-    maxTokens: entry.maxTokens,
-    supportsPromptCache: Boolean(entry.cost.cacheReadPerMillionUsd !== undefined)
+    maxTokens: declaration.maxOutputTokens,
+    supportsPromptCache: declaration.promptCaching
   };
 }
 
