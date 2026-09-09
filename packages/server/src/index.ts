@@ -9,3 +9,5 @@ export * from './ws-transport.js';
 // server 包作为传输层，从领域核心引入它，形成 server → agent-core 的单向依赖，无环。
 export { SessionRegistry } from '@inkpi/agent-core';
 export type { ManagedSession, SessionCreateOptions, SessionSummary } from '@inkpi/agent-core';
+
+export * from './observation-sink.js';
