@@ -6,7 +6,7 @@
 
 本文件是 Runtime v1 的正式接口基线，但不是最终验收声明。Phase 0–23 中仍有未完成或未验证项，见第 18–19 节。只有所有必需项完成并有测试证据后，才能把状态改为 Final。
 
-本基线的已验证范围仅限当前工作区 `inkpi` 与 `inkpi-desktop` 两个仓库内的单元、架构、RPC、deterministic eval、subjective fixture 和 reliability 测试，以及两个 Desktop↔Daemon real WebSocket child-process 集成用例。完整真实 provider 能力矩阵、五个切片的全量 Desktop↔Daemon 集成、故障注入、App 重启恢复报告和生产指标不属于当前证据范围，不得据此写成已完成。
+本基线的已验证范围仅限当前工作区 `inkpi` 与 `inkpi-desktop` 两个仓库内的单元、架构、RPC、deterministic eval、subjective fixture 和 reliability 测试，以及五个 task factory 的 Desktop↔Daemon real WebSocket child-process 集成用例。真实 provider API 能力矩阵、完整编辑器交互链路、App 重启恢复报告、生产级故障注入和生产指标不属于当前证据范围，不得据此写成已完成。
 
 ## 1. 范围和术语
 
@@ -643,7 +643,7 @@ TaskCheckpointStore 当前是每个 task 保留一个最新 checkpoint，字段�
 - Replay：复制 task，生成新 task id，并记录 replayOf。
 - Fork：复制 task，可带 Partial<AiTask> patch，并记录 forkOf。
 
-TaskScheduler 另提供内存中的队列、优先级、并发上限、dedupe、debounce、timeout、retry 和 progress；它自身没有 durable checkpoint 或 restart recovery。Durable v1 语义以 TaskRouter + TaskCheckpointStore + TaskExecutionStore 为准。`task-reliability.test.ts` 已覆盖 retry、interrupted hydration、shutdown 后 resume、replay/fork、恢复门禁和重复恢复；SQLite store 另有文件重开、checkpoint/execution JSON 损坏显式失败和 daemon stop/start reload 测试。`tests/process-restart-e2e.test.ts` 已通过真实 Node 子进程写入文件 SQLite、SIGKILL、重启并从 interrupted checkpoint resume，覆盖 OS 进程级 checkpoint recovery；App restart、故障注入、CLI 持久化 handler 链路和生产恢复报告仍缺失。
+TaskScheduler 另提供内存中的队列、优先级、并发上限、dedupe、debounce、timeout、retry 和 progress；它自身没有 durable checkpoint 或 restart recovery。Durable v1 语义以 TaskRouter + TaskCheckpointStore + TaskExecutionStore 为准。`task-reliability.test.ts` 已覆盖 retry、interrupted hydration、shutdown 后 resume、replay/fork、恢复门禁和重复恢复；SQLite store 另有文件重开、checkpoint/execution JSON 损坏显式失败和 daemon stop/start reload 测试。`tests/process-restart-e2e.test.ts` 已通过真实 Node 子进程写入文件 SQLite、SIGKILL、重启并从 interrupted checkpoint resume，覆盖 OS 进程级 checkpoint recovery；`tests/fault-injection-recovery.test.ts` 另覆盖一次 checkpoint 写失败重试和 partial workflow downstream failure 后从已有 checkpoint 继续。App restart、生产级故障注入、CLI 持久化 handler 链路和生产恢复报告仍缺失。
 
 ## 14. Skills、Artifacts、Cache、Capability、Instructions
 
@@ -826,20 +826,20 @@ mutation
 | Phase 3–5 task contract/router | protocol task.ts、TaskRegistry、TaskRouter、RPC tests | 本地契约和 task RPC 已有；公开 execution 查询 RPC 仍未纳入 v1 |
 | Phase 6 context pipeline | ContextPipeline、JitContextProvider | 本地 provider/budget/fingerprint 已有；跨进程注册待验证 |
 | Phase 7 creative layer | taskFactories、CreativeIntelligence | 已有本地路径 |
-| Phase 8 five slices | verticalSlices、proposal、task handler tests、desktopDaemonIntegration | 局部；已验证 2 个 real WebSocket child-process 用例（completed、waiting-user）；五个切片全量链路仍待验收 |
+| Phase 8 five slices | verticalSlices、proposal、task handler tests、desktopDaemonIntegration、desktopDaemonVerticalSlices | 五个 task factory 均已有 real WebSocket child-process 用例；GhostText、Proposal Review/CAS、gutter marker、长任务 UI 和全量编辑器链路仍待验收 |
 | Phase 9 projection sync | DomainChangeSet、IndexedDB store、SQLite store、DomainMaterializer | 本地 reducer、幂等、乱序、checksum、snapshot/rebuild 已测；跨设备/跨进程待验证 |
 | Phase 10 Proposal/CAS | DomainProposal、ProposalLedger、Selection Toolbar | 局部；统一持久化/跨端待验证 |
-| Phase 11 durable execution | checkpoint/execution stores、TaskRouter recovery、daemon-rpc-e2e、process-restart-e2e | 本地文件重开、daemon stop/start reload、checkpoint/execution 损坏显式失败和 OS 子进程 crash/resume 已测；App restart/故障注入待验证 |
+| Phase 11 durable execution | checkpoint/execution stores、TaskRouter recovery、daemon-rpc-e2e、process-restart-e2e、fault-injection-recovery | 本地文件重开、daemon stop/start reload、checkpoint/execution 损坏显式失败、OS 子进程 crash/resume 和两类可复现 fault injection 已测；App restart/生产级故障注入待验证 |
 | Phase 12 skills | ProgressiveSkillRuntime、四个 first-party manifest、skill-runtime-integration | metadata-first/lazy-load、共享 registry 注册、回滚、重试和幂等已测；first-party 逐个激活和跨进程生产注册待验证 |
 | Phase 13 artifacts | ArtifactRuntime、IndexedDbArtifactStore、artifact store tests | 本地持久化、深拷贝、lineage、rehydration 已测；Daemon sync/RPC 待验证 |
 | Phase 14 cache | ContextCache、LayeredContextCache、CreativeIntelligence | 本地 provider-response/cache-hit 接入和失效已测；共享三层默认链/跨重启待验证 |
-| Phase 15 capability routing | CapabilityRouter、ModelCapabilities、TaskRouter/CreativeIntelligence | 本地强制选择和 mismatch-before-queue 已测；真实 provider matrix 待验证 |
+| Phase 15 capability routing | CapabilityRouter、ModelCapabilities、TaskRouter/CreativeIntelligence、provider-capability-matrix-gate | 本地强制选择、mismatch-before-queue 和代表性 provider/model 声明矩阵已测；真实 provider API matrix、配置和 fallback 待验证 |
 | Phase 16 instructions | InstructionRegistry、core/pluginInstructions、Desktop adapter | Desktop→Daemon registration、id/version/provenance 和 intent 分离已有本地测试；跨进程生产链路待验证 |
 | Phase 17 scheduler | TaskScheduler、TaskRouter events | 局部；scheduler 本身不 durable |
 | Phase 18 evals | fixtures、EvalRunner、deterministic/subjective evals、evals.yml | deterministic 与 canonical subjective gold-set/pairwise/rubric fixture 已接 CI；真实 provider、人类标注 gold 和完整 benchmark 待补 |
 | Phase 19 observability | observer、provenance sanitizer、task events | task/provider/model/error、raw-CoT 脱敏和 artifact lineage 本地已有；自动 skill 注入、跨层 cache 统计和生产脱敏策略待验证 |
 | Phase 20–21 plugins/legacy | 44 runtime catalog、22 routed plugin、architecture guards | 本地分类、路由和 legacy guard 已有；生产插件注册与兼容面审计待验证 |
-| Phase 22 reliability review | architecture/reliability tests、deterministic/subjective evals、daemon restart/store corruption/process restart tests | 本地已覆盖 offline、network failure、stale proposal、duplicate task、乱序/checksum、checkpoint corruption、model mismatch、invalid structured output、context overflow、cache invalidation、daemon store reload 和 OS 子进程 crash/resume；App restart、系统故障注入和真实 provider 仍待报告 |
+| Phase 22 reliability review | architecture/reliability tests、deterministic/subjective evals、daemon restart/store corruption/process restart/fault injection tests | 本地已覆盖 offline、network failure、stale proposal、duplicate task、乱序/checksum、checkpoint corruption、model mismatch、invalid structured output、context overflow、cache invalidation、daemon store reload、OS 子进程 crash/resume 和 checkpoint/partial workflow fault injection；App restart、生产级系统故障注入和真实 provider 仍待报告 |
 | Phase 23 final freeze | 本文件 | 条件冻结，禁止宣称 Final |
 
 ## 19. Final Freeze Checklist
@@ -851,7 +851,7 @@ mutation
 - [ ] Continue、Rewrite、Continuity Audit、Deep Reasoning、Distillation 五个切片通过 Desktop ↔ Daemon 集成测试；
 - [ ] DomainChangeSet 的 materialized projection reducer、幂等、乱序、checksum、snapshot 和离线恢复通过测试；
 - [ ] Proposal → Review → CAS Commit → Undo 在 IndexedDB 上通过并发测试；
-- [ ] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告（本地 OS 子进程 SIGKILL 与 checkpoint resume 已测，App restart 和故障注入报告仍缺）；
+- [ ] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告（本地 OS 子进程 SIGKILL、checkpoint resume 和两类可复现 fault injection 已测，App restart 与生产级故障注入报告仍缺）；
 - [ ] Context provider registration、budget、fingerprint 和 overflow 行为稳定；
 - [ ] 第一批四个 creative skill 有逐个激活的真实 manifest、lazy loading、ExtensionHost/ToolRegistry 注册测试（通用共享 registry 生命周期已测）；
 - [ ] ArtifactStore、lineage 和导出边界稳定；
