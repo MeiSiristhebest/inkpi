@@ -64,6 +64,7 @@ import type {
   ModelCapabilities,
   ModelRoute,
 } from './model-capability-router.js';
+import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -126,7 +127,18 @@ export class InkPiDaemon {
     this.instructionRegistry =
       options.instructionRegistry ?? options.context?.instructionRegistry ?? new InstructionRegistry();
     const contextPipeline =
-      options.context?.contextPipeline ?? new ContextPipeline({ cacheCoordinator: this.cacheCoordinator });
+      options.context?.taskRouter?.contextPipeline ??
+      options.context?.contextPipeline ??
+      new ContextPipeline({ cacheCoordinator: this.cacheCoordinator });
+    const contextProviders = [
+      ...(options.context?.contextProviders ?? []),
+      ...createSerializedCreativeContextProviders(),
+    ];
+    for (const provider of contextProviders) {
+      if (!contextPipeline.list().some((registered) => registered.id === provider.id)) {
+        contextPipeline.register(provider);
+      }
+    }
     if (
       options.context?.jitRetriever &&
       !contextPipeline.list().some((provider) => provider.id === 'retrieval.jit')
