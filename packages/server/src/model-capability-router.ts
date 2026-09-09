@@ -123,6 +123,23 @@ export class CapabilityRouter {
   }
 
   resolve(task: AiTask): ResolvedModelRoute {
+    const candidates = this.resolveCandidates(task);
+    if (candidates.length > 0) return candidates[0];
+    const requirements = task.requirements ?? {};
+    const evaluations = this.routes.map((route) => ({
+      route,
+      missing: missingCapabilities(requirements, route.capabilities, task.outputContract)
+    }));
+    throw new CapabilityMismatchError({
+      taskId: task.id,
+      requirements,
+      outputContract: task.outputContract,
+      routes: evaluations.map(({ route, missing }) => ({ routeId: route.id, missing }))
+    });
+  }
+
+  /** Return all compatible routes in deterministic failover order. */
+  resolveCandidates(task: AiTask): ResolvedModelRoute[] {
     const requirements = task.requirements ?? {};
     const hasRequirements = Object.values(requirements).some((value) => {
       if (Array.isArray(value)) return value.length > 0;
@@ -138,14 +155,7 @@ export class CapabilityRouter {
       .filter((evaluation) => evaluation.missing.length === 0)
       .map((evaluation) => evaluation.route)
       .sort(compareRoutes);
-
-    if (candidates.length > 0) return candidates[0];
-    throw new CapabilityMismatchError({
-      taskId: task.id,
-      requirements,
-      outputContract: task.outputContract,
-      routes: evaluations.map(({ route, missing }) => ({ routeId: route.id, missing }))
-    });
+    return candidates;
   }
 }
 

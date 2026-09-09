@@ -77,8 +77,32 @@ export class TaskModelHandler implements TaskHandler {
   }
 
   async execute(context: TaskHandlerContext): Promise<TaskHandlerResult> {
-    const route = this.capabilityRouter.resolve(context.task);
-    return this.executeRoute(context, route);
+    const routes = this.capabilityRouter.resolveCandidates(context.task);
+    if (routes.length === 0) {
+      // Preserve the detailed capability mismatch error from the canonical resolver.
+      this.capabilityRouter.resolve(context.task);
+    }
+
+    const attemptedRoutes: string[] = [];
+    let lastError: unknown;
+    for (const route of routes) {
+      attemptedRoutes.push(route.id);
+      try {
+        const result = await this.executeRoute(context, route);
+        if (attemptedRoutes.length === 1) return result;
+        return {
+          ...result,
+          provenance: {
+            ...result.provenance,
+            routeAttempts: attemptedRoutes
+          }
+        };
+      } catch (error) {
+        lastError = error;
+        if (!shouldFailoverToNextRoute(error, context.signal)) throw error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   private async executeRoute(context: TaskHandlerContext, route: ResolvedModelRoute): Promise<TaskHandlerResult> {
@@ -262,6 +286,11 @@ function stripPrivateReasoning(text: string): string {
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/<think>[\s\S]*$/gi, '')
     .trim();
+}
+
+function shouldFailoverToNextRoute(error: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted || !(error instanceof Error)) return false;
+  return (error as Error & { retryable?: boolean }).retryable === true;
 }
 
 function stableSerialize(value: unknown): string {
