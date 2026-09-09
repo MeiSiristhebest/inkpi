@@ -3,6 +3,11 @@ import type {
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
+  Artifact,
+  ArtifactGetParams,
+  ArtifactListParams,
+  ArtifactSaveParams,
+  ArtifactSaveResult,
   ProposalProjectionSnapshot,
   ProposalProjectionState,
   ProposalSyncPushResult,
@@ -383,6 +388,20 @@ export class InkRpcClient {
 
   public snapshotProposals(workspaceId: string): Promise<ProposalProjectionSnapshot> {
     return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
+  }
+
+  public saveArtifact(artifact: Artifact): Promise<ArtifactSaveResult> {
+    const params: ArtifactSaveParams = { artifact };
+    return this.request<ArtifactSaveResult>('artifact.save', { ...params });
+  }
+
+  public getArtifact(id: string): Promise<Artifact | undefined> {
+    const params: ArtifactGetParams = { id };
+    return this.request<Artifact | undefined>('artifact.get', { ...params });
+  }
+
+  public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {
+    return this.request<Artifact[]>('artifact.list', { ...options });
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {

@@ -17,6 +17,25 @@ export interface Artifact {
   updatedAt: number;
 }
 
+/** Wire contracts for the Runtime artifact RPC surface. */
+export interface ArtifactSaveParams {
+  artifact: Artifact;
+}
+
+export interface ArtifactSaveResult {
+  saved: true;
+  id: string;
+}
+
+export interface ArtifactGetParams {
+  id: string;
+}
+
+export interface ArtifactListParams {
+  taskId?: string;
+  type?: string;
+}
+
 /** Storage port shared by Runtime and storage adapters. */
 export interface ArtifactStore {
   save(artifact: Artifact): Promise<void> | void;

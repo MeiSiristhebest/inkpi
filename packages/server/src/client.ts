@@ -1,6 +1,10 @@
 import type {
   AiTask,
   Artifact,
+  ArtifactGetParams,
+  ArtifactListParams,
+  ArtifactSaveParams,
+  ArtifactSaveResult,
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
@@ -411,15 +415,17 @@ export class InkRpcClient {
     return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
   }
 
-  public saveArtifact(artifact: Artifact): Promise<{ saved: boolean; id: string }> {
-    return this.request('artifact.save', { artifact });
+  public saveArtifact(artifact: Artifact): Promise<ArtifactSaveResult> {
+    const params: ArtifactSaveParams = { artifact };
+    return this.request('artifact.save', params);
   }
 
   public getArtifact(id: string): Promise<Artifact | undefined> {
-    return this.request('artifact.get', { id });
+    const params: ArtifactGetParams = { id };
+    return this.request('artifact.get', params);
   }
 
-  public listArtifacts(options: { taskId?: string; type?: string } = {}): Promise<Artifact[]> {
+  public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {
     return this.request('artifact.list', options);
   }
 

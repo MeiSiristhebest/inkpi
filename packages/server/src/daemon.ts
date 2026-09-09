@@ -14,6 +14,10 @@ import {
 } from '@inkpi/agent-core';
 import type {
   Artifact,
+  ArtifactGetParams,
+  ArtifactListParams,
+  ArtifactSaveParams,
+  ArtifactSaveResult,
   DomainSyncPullParams,
   DomainSyncPushParams,
   DomainSyncRestoreParams,
@@ -221,18 +225,18 @@ export class InkPiDaemon {
       return this.withProposalProjection().snapshot(params.workspaceId);
     });
 
-    this.rpcServer.registerMethod('artifact.save', async (params: { artifact: Artifact }) => {
+    this.rpcServer.registerMethod('artifact.save', async (params: ArtifactSaveParams): Promise<ArtifactSaveResult> => {
       await this.withArtifactStore().save(params.artifact);
       return { saved: true, id: params.artifact.id };
     });
 
-    this.rpcServer.registerMethod('artifact.get', (params: { id: string }) => {
+    this.rpcServer.registerMethod('artifact.get', (params: ArtifactGetParams) => {
       return this.withArtifactStore().get(params.id);
     });
 
     this.rpcServer.registerMethod(
       'artifact.list',
-      async (params: { taskId?: string; type?: string } = {}) => {
+      async (params: ArtifactListParams = {}) => {
         const store = this.withArtifactStore();
         if (params.type && !params.taskId && store.listByType) return store.listByType(params.type);
         const artifacts = await store.list(params.taskId);
