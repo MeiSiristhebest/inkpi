@@ -1,4 +1,11 @@
-import type { AgentTool, ContextTransformer, ExtensionAPI, SkillInfo } from '@inkpi/protocol';
+import type {
+  AgentTool,
+  ContextTransformer,
+  ExtensionAPI,
+  SkillInfo,
+  ToolRegistrationDescriptor,
+  ToolRegistrationOptions
+} from '@inkpi/protocol';
 import type { ContextPipeline } from '../context/index.js';
 import type { ContextProvider } from '../context/types.js';
 import { ExtensionHost } from '../extension-host.js';
@@ -26,6 +33,16 @@ export interface SkillManifest {
   taskKinds?: string[];
   tools?: string[];
   activation: SkillActivation;
+}
+
+/**
+ * Serializable registration view for a Desktop/Daemon handshake.
+ * Skill prompt bodies and tool executors deliberately stay process-local.
+ */
+export interface SkillRuntimeRegistrationSnapshot {
+  skills: SkillManifest[];
+  activatedSkills: string[];
+  tools: ToolRegistrationDescriptor[];
 }
 
 export interface ProgressiveSkillRuntimeOptions {
@@ -131,7 +148,7 @@ export class LazySkillActivationAdapter {
       try {
         const context = this.createContext(skill, undo);
         const registration = typeof source === 'function' ? await source(context) : source;
-        this.applyRegistration(skill.name, registration, undo);
+        this.applyRegistration(skill, registration, undo);
         this.activated.add(skill.name);
       } catch (error) {
         this.rollback(undo);
@@ -162,17 +179,17 @@ export class LazySkillActivationAdapter {
   private createContext(skill: SkillInfo, undo: UndoAction[]): SkillActivationContext {
     const context = {
       skill,
-      api: this.createScopedApi(undo),
+      api: this.createScopedApi(skill, undo),
       extensionHost: this.extensionHost,
       toolRegistry: this.toolRegistry,
       taskRegistry: this.taskRegistry,
       contextPipeline: this.contextPipeline,
       registerTask: (handler: TaskHandler) => this.registerTask(skill.name, handler, undo),
-      registerTool: (tool: AgentTool) => this.registerTool(tool, undo),
+      registerTool: (tool: AgentTool) => this.registerTool(tool, undo, skill),
       registerContext: (provider: ContextProvider) => this.registerContext(skill.name, provider, undo),
       registerContextTransformer: (transformer: ContextTransformer) =>
         this.registerContextTransformer(transformer, undo),
-      register: (registration: SkillRegistration) => this.applyRegistration(skill.name, registration, undo)
+      register: (registration: SkillRegistration) => this.applyRegistration(skill, registration, undo)
     };
     const api = context.api;
 
@@ -184,12 +201,12 @@ export class LazySkillActivationAdapter {
     }) as SkillActivationContext;
   }
 
-  private createScopedApi(undo: UndoAction[]): ExtensionAPI {
+  private createScopedApi(skill: SkillInfo, undo: UndoAction[]): ExtensionAPI {
     const adapter = this;
     return new Proxy(this.extensionHost, {
       get(target, property, receiver) {
         if (property === 'registerTool') {
-          return (tool: AgentTool) => adapter.registerTool(tool, undo);
+          return (tool: AgentTool) => adapter.registerTool(tool, undo, skill);
         }
         if (property === 'addContextTransformer') {
           return (transformer: ContextTransformer) => adapter.registerContextTransformer(transformer, undo);
@@ -207,19 +224,19 @@ export class LazySkillActivationAdapter {
     }) as ExtensionAPI;
   }
 
-  private applyRegistration(skillName: string, registration: SkillActivationResult, undo: UndoAction[]): void {
+  private applyRegistration(skill: SkillInfo, registration: SkillActivationResult, undo: UndoAction[]): void {
     if (!registration) return;
 
     for (const task of asItems(registration.tasks ?? registration.task)) {
-      this.registerTask(skillName, task, undo);
+      this.registerTask(skill.name, task, undo);
     }
     for (const tool of asItems(registration.tools ?? registration.tool)) {
-      this.registerTool(tool, undo);
+      this.registerTool(tool, undo, skill);
     }
     for (const provider of asItems(
       registration.contexts ?? registration.contextProviders ?? registration.contextProvider ?? registration.context
     )) {
-      this.registerContext(skillName, provider, undo);
+      this.registerContext(skill.name, provider, undo);
     }
     for (const transformer of asItems(registration.contextTransformers ?? registration.contextTransformer)) {
       this.registerContextTransformer(transformer, undo);
@@ -238,25 +255,30 @@ export class LazySkillActivationAdapter {
     undo.push(() => this.taskRegistry?.unregister(handler.id));
   }
 
-  private registerTool(tool: AgentTool, undo: UndoAction[]): void {
+  private registerTool(tool: AgentTool, undo: UndoAction[], skill?: SkillInfo): void {
     const existingHostTool = this.extensionHost.getTools().find((candidate) => candidate?.name === tool.name);
+    const existingHostRegistration = this.extensionHost.getToolRegistration(tool.name);
     const existingRegistryTool = this.toolRegistry.get(tool.name);
+    const existingRegistryRegistration = this.toolRegistry.getRegistration(tool.name);
     const hostChanged = existingHostTool !== tool;
     const registryChanged = existingRegistryTool !== tool;
+    const registration = skill ? toolRegistrationOptions(skill) : undefined;
 
     if (!hostChanged && !registryChanged) return;
 
-    if (hostChanged) this.extensionHost.registerTool(tool);
+    if (hostChanged) this.extensionHost.registerTool(tool, registration);
     try {
-      if (registryChanged) this.toolRegistry.register(tool);
+      if (registryChanged) this.toolRegistry.register(tool, registration);
     } catch (error) {
-      this.restoreHostTool(tool.name, existingHostTool);
+      this.restoreHostTool(tool.name, existingHostTool, existingHostRegistration);
       throw error;
     }
 
     undo.push(() => {
-      if (registryChanged) this.restoreRegistryTool(tool.name, existingRegistryTool);
-      if (hostChanged) this.restoreHostTool(tool.name, existingHostTool);
+      if (registryChanged) {
+        this.restoreRegistryTool(tool.name, existingRegistryTool, existingRegistryRegistration);
+      }
+      if (hostChanged) this.restoreHostTool(tool.name, existingHostTool, existingHostRegistration);
     });
   }
 
@@ -284,14 +306,18 @@ export class LazySkillActivationAdapter {
     return unregister;
   }
 
-  private restoreHostTool(name: string, tool: any): void {
+  private restoreHostTool(name: string, tool: any, registration?: ToolRegistrationDescriptor): void {
     if (tool === undefined) this.extensionHost.unregisterTool(name);
-    else this.extensionHost.registerTool(tool);
+    else this.extensionHost.registerTool(tool, toToolRegistrationOptions(registration));
   }
 
-  private restoreRegistryTool(name: string, tool: AgentTool | undefined): void {
+  private restoreRegistryTool(
+    name: string,
+    tool: AgentTool | undefined,
+    registration?: ToolRegistrationDescriptor
+  ): void {
     if (tool === undefined) this.toolRegistry.unregister(name);
-    else this.toolRegistry.register(tool);
+    else this.toolRegistry.register(tool, toToolRegistrationOptions(registration));
   }
 
   private rollback(undo: UndoAction[]): void {
@@ -392,6 +418,15 @@ export class ProgressiveSkillRuntime {
     return this.activationAdapter.listActivated();
   }
 
+  /** Return only process-safe skill and tool metadata for a future RPC adapter. */
+  getRegistrationSnapshot(): SkillRuntimeRegistrationSnapshot {
+    return {
+      skills: this.discoverManifests().map(cloneManifest),
+      activatedSkills: this.listActivated(),
+      tools: this.toolRegistry.getRegistrations()
+    };
+  }
+
   load(name: string): SkillInfo {
     const skill = this.discovery.loadSkill(name) || this.skills.get(name);
     if (!skill) throw new Error(`Skill not found: ${name}`);
@@ -432,7 +467,9 @@ export class ProgressiveSkillRuntime {
   async loadExtensions(directory: string): Promise<DynamicLoadSummary> {
     const summary = await this.pluginLoader.loadFromDirectory(directory);
     for (const tool of this.extensionHost.getTools()) {
-      if (!this.toolRegistry.get(tool.name)) this.toolRegistry.register(tool);
+      if (!this.toolRegistry.get(tool.name)) {
+        this.toolRegistry.register(tool, this.extensionHost.getToolRegistration(tool.name));
+      }
     }
     return summary;
   }
@@ -444,6 +481,38 @@ export class ProgressiveSkillRuntime {
   private clearPendingActivation(name: string, activation: Promise<SkillInfo>): void {
     if (this.pendingActivations.get(name) === activation) this.pendingActivations.delete(name);
   }
+}
+
+function toolRegistrationOptions(skill: SkillInfo): ToolRegistrationOptions {
+  const manifest = toManifest(skill);
+  return {
+    source: 'skill',
+    skillId: manifest.id,
+    skillVersion: manifest.version,
+    capabilities: manifest.capabilities
+  };
+}
+
+function toToolRegistrationOptions(
+  registration: ToolRegistrationDescriptor | undefined
+): ToolRegistrationOptions | undefined {
+  if (!registration) return undefined;
+  return {
+    source: registration.source,
+    skillId: registration.skillId,
+    skillVersion: registration.skillVersion,
+    capabilities: registration.capabilities
+  };
+}
+
+function cloneManifest(manifest: SkillManifest): SkillManifest {
+  return {
+    ...manifest,
+    ...(manifest.intents ? { intents: [...manifest.intents] } : {}),
+    ...(manifest.capabilities ? { capabilities: [...manifest.capabilities] } : {}),
+    ...(manifest.taskKinds ? { taskKinds: [...manifest.taskKinds] } : {}),
+    ...(manifest.tools ? { tools: [...manifest.tools] } : {})
+  };
 }
 
 function asItems<T>(value: SkillRegistrationItems<T> | undefined): T[] {
@@ -531,7 +600,8 @@ function asList(value: unknown): string[] | undefined {
       .filter((item): item is string => typeof item === 'string')
       .map((item) => item.trim())
       .filter(Boolean);
-    return items.length > 0 ? items : undefined;
+    const uniqueItems = [...new Set(items)];
+    return uniqueItems.length > 0 ? uniqueItems : undefined;
   }
   if (typeof value === 'string' && value.trim()) {
     const normalized = value.trim().replace(/^\[|\]$/g, '');
@@ -539,7 +609,8 @@ function asList(value: unknown): string[] | undefined {
       .split(',')
       .map((item) => item.trim().replace(/^['"]|['"]$/g, ''))
       .filter(Boolean);
-    return items.length > 0 ? items : undefined;
+    const uniqueItems = [...new Set(items)];
+    return uniqueItems.length > 0 ? uniqueItems : undefined;
   }
   return undefined;
 }

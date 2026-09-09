@@ -282,10 +282,10 @@ export class Agent {
 
     const mergedTools = new ToolRegistry(this.clock);
     for (const t of this.toolRegistry.getAll()) {
-      mergedTools.register(t);
+      mergedTools.register(t, this.toolRegistry.getRegistration(t.name));
     }
     for (const t of this.extensionHost.getTools()) {
-      mergedTools.register(t);
+      mergedTools.register(t, this.extensionHost.getToolRegistration(t.name));
     }
 
     const runPromise = runAgentLoop({

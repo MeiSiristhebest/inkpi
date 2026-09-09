@@ -1,4 +1,5 @@
 import type { AiTask } from '@inkpi/protocol';
+import { createRuntimeCacheKey, stableSerialize, type RuntimeCacheCoordinatorPort } from './cache-contract.js';
 import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
 const DEFAULT_MAX_TOKENS = 16_000;
@@ -14,6 +15,7 @@ export interface ContextCacheOptions {
 export interface ContextPipelineOptions {
   maxTokens?: number;
   cache?: ContextCacheOptions;
+  cacheCoordinator?: RuntimeCacheCoordinatorPort;
 }
 
 export interface ContextPipelineCacheStats {
@@ -33,6 +35,8 @@ export class ContextPipeline {
   private cacheMisses = 0;
   private cacheEvictions = 0;
   private cacheInvalidations = 0;
+  private readonly cacheCoordinator?: RuntimeCacheCoordinatorPort;
+  private cacheInvalidationUnsubscribe?: () => void;
 
   constructor(options: ContextPipelineOptions = {}) {
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -41,6 +45,8 @@ export class ContextPipeline {
     this.cacheMaxEntries = Number.isFinite(maxEntries)
       ? Math.max(0, Math.floor(maxEntries))
       : DEFAULT_CONTEXT_CACHE_ENTRIES;
+    this.cacheCoordinator = options.cacheCoordinator;
+    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate('context', () => this.clearCache());
   }
 
   register(provider: ContextProvider): void {
@@ -75,6 +81,12 @@ export class ContextPipeline {
       evictions: this.cacheEvictions,
       invalidations: this.cacheInvalidations
     };
+  }
+
+  /** Stop listening to a shared coordinator when the owning Runtime is disposed. */
+  dispose(): void {
+    this.cacheInvalidationUnsubscribe?.();
+    this.cacheInvalidationUnsubscribe = undefined;
   }
 
   async build(task: AiTask, signal?: AbortSignal): Promise<ContextPacket> {
@@ -132,12 +144,7 @@ export class ContextPipeline {
   }
 
   private getCacheKey(task: AiTask): string {
-    const { id: _taskId, ...cacheableTask } = task;
-    return stableSerialize({
-      maxTokens: this.maxTokens,
-      providers: [...this.providers.keys()],
-      task: cacheableTask
-    });
+    return createContextCacheKey(task, [...this.providers.keys()], this.maxTokens);
   }
 
   private getCached(cacheKey: string): ContextPacket | undefined {
@@ -145,9 +152,11 @@ export class ContextPipeline {
     const packet = this.cache.get(cacheKey);
     if (!packet) {
       this.cacheMisses += 1;
+      this.cacheCoordinator?.record('context', 'miss');
       return undefined;
     }
     this.cacheHits += 1;
+    this.cacheCoordinator?.record('context', 'hit');
     this.cache.delete(cacheKey);
     this.cache.set(cacheKey, packet);
     return clonePacket(packet);
@@ -162,8 +171,54 @@ export class ContextPipeline {
       if (oldest === undefined) break;
       this.cache.delete(oldest);
       this.cacheEvictions += 1;
+      this.cacheCoordinator?.record('context', 'eviction');
     }
   }
+}
+
+/**
+ * Build the compilation identity without the task id. Stable instruction and
+ * skill versions remain explicit so a registration update cannot reuse an old
+ * compiled packet.
+ */
+export function createContextCacheKey(task: AiTask, providerIds: readonly string[], maxTokens: number): string {
+  const metadata = asRecord(task.metadata);
+  const contextMetadata = asRecord(task.contextPolicy?.metadata);
+  const projectRevision = firstNumber(
+    task.input.selection?.revision,
+    metadata?.projectRevision,
+    contextMetadata?.projectRevision
+  );
+  const instructionVersion = firstString(metadata?.instructionVersion, contextMetadata?.instructionVersion);
+  const skillVersion = firstString(metadata?.skillVersion, contextMetadata?.skillVersion);
+  const contextFingerprint =
+    firstString(metadata?.contextFingerprint, contextMetadata?.contextFingerprint) ??
+    hash(stableSerialize({ input: task.input, intent: task.intent }));
+  const model = firstString(metadata?.model, metadata?.modelId, contextMetadata?.model, contextMetadata?.modelId);
+
+  return createRuntimeCacheKey({
+    layer: 'context',
+    taskKind: task.kind,
+    instructionVersion,
+    skillVersion,
+    projectRevision,
+    contextFingerprint,
+    model,
+    identity: {
+      contextPolicy: {
+        includeProjectState: task.contextPolicy?.includeProjectState,
+        includeSelection: task.contextPolicy?.includeSelection,
+        maxFragments: task.contextPolicy?.maxFragments,
+        maxTokens: task.contextPolicy?.maxTokens,
+        metadata: contextMetadata,
+        providerIds: task.contextPolicy?.providerIds
+      },
+      intent: task.intent,
+      input: task.input,
+      maxTokens,
+      providers: [...providerIds]
+    }
+  });
 }
 
 function clonePacket(packet: ContextPacket): ContextPacket {
@@ -257,16 +312,6 @@ function score(fragment: ContextFragment): number {
   );
 }
 
-function stableSerialize(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? '';
-  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
-    .join(',')}}`;
-}
-
 function hash(value: string): string {
   let result = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
@@ -274,6 +319,20 @@ function hash(value: string): string {
     result = Math.imul(result, 0x01000193);
   }
   return (result >>> 0).toString(16).padStart(8, '0');
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value));
 }
 
 function fingerprint(fragments: ContextFragment[], projectRevision?: number): string {
