@@ -17,6 +17,12 @@ export interface RuntimeCacheStats {
   retrieval: RuntimeCacheLayerStats;
 }
 
+/** Versioned metrics snapshot used when a Runtime is reopened. */
+export interface RuntimeCacheCoordinatorSnapshot {
+  version: 1;
+  stats: RuntimeCacheStats;
+}
+
 export interface CacheInvalidationEvent {
   reason: 'revision' | 'registration' | 'manual';
   projectRevision?: number;
@@ -105,6 +111,36 @@ export class RuntimeCacheCoordinator implements RuntimeCacheCoordinatorPort {
       retrieval: cloneStats(this.counters.get('retrieval')!)
     };
   }
+
+  snapshot(): RuntimeCacheCoordinatorSnapshot {
+    return { version: 1, stats: this.stats() };
+  }
+
+  restore(snapshot: RuntimeCacheCoordinatorSnapshot): void {
+    if (!snapshot || snapshot.version !== 1) {
+      throw new Error('Runtime cache coordinator snapshot version is unsupported');
+    }
+    validateRuntimeCacheStats(snapshot.stats);
+    for (const layer of RUNTIME_CACHE_LAYERS) {
+      const counters = this.counters.get(layer)!;
+      Object.assign(counters, snapshot.stats[layer]);
+    }
+  }
+}
+
+export function validateRuntimeCacheLayerStats(value: unknown): asserts value is RuntimeCacheLayerStats {
+  if (!isRecord(value)) throw new Error('Runtime cache layer stats must be an object');
+  for (const field of ['hits', 'misses', 'evictions', 'invalidations'] as const) {
+    const count = value[field];
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+      throw new Error(`Runtime cache ${field} count must be a non-negative integer`);
+    }
+  }
+}
+
+export function validateRuntimeCacheStats(value: unknown): asserts value is RuntimeCacheStats {
+  if (!isRecord(value)) throw new Error('Runtime cache stats must be an object');
+  for (const layer of RUNTIME_CACHE_LAYERS) validateRuntimeCacheLayerStats(value[layer]);
 }
 
 export interface RuntimeCacheKeyInput {
@@ -187,4 +223,8 @@ function emptyStats(): RuntimeCacheLayerStats {
 
 function cloneStats(stats: RuntimeCacheLayerStats): RuntimeCacheLayerStats {
   return { ...stats };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

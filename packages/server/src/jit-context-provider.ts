@@ -4,7 +4,8 @@ import {
   type RuntimeCacheCoordinatorPort,
   createRuntimeCacheKey,
   shouldInvalidateCacheEntry,
-  stableSerialize
+  stableSerialize,
+  validateRuntimeCacheLayerStats
 } from '@inkpi/agent-core';
 import type { JitContextQuery, JitContextResult } from '@inkpi/protocol';
 import type { JitMemoryRetriever } from '@inkpi/storage';
@@ -26,6 +27,18 @@ export interface JitRetrievalCacheStats {
   misses: number;
   evictions: number;
   invalidations: number;
+}
+
+/** Process-safe snapshot of JIT retrieval entries and their metrics. */
+export interface JitRetrievalCacheSnapshot {
+  version: 1;
+  entries: Array<{
+    key: string;
+    result: JitContextResult;
+    expiresAt?: number;
+    projectRevision?: number;
+  }>;
+  stats: JitRetrievalCacheStats;
 }
 
 interface RetrievalCacheEntry {
@@ -70,6 +83,47 @@ export class JitContextProvider implements ContextProvider {
       evictions: this.cacheEvictions,
       invalidations: this.cacheInvalidations
     };
+  }
+
+  snapshot(): JitRetrievalCacheSnapshot {
+    return {
+      version: 1,
+      entries: [...this.cache].map(([key, entry]) => ({
+        key,
+        result: cloneResult(entry.result),
+        expiresAt: entry.expiresAt,
+        projectRevision: entry.projectRevision
+      })),
+      stats: this.cacheStats()
+    };
+  }
+
+  restore(snapshot: JitRetrievalCacheSnapshot): void {
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries)) {
+      throw new Error('JIT retrieval cache snapshot is unsupported');
+    }
+    validateRuntimeCacheLayerStats(snapshot.stats);
+    const entries = snapshot.entries.map((entry) => validateRetrievalCacheEntry(entry));
+    const duplicateKeys = new Set<string>();
+    for (const entry of entries) {
+      if (duplicateKeys.has(entry.key)) throw new Error(`JIT retrieval cache snapshot repeats key: ${entry.key}`);
+      duplicateKeys.add(entry.key);
+    }
+
+    this.cache.clear();
+    this.cacheHits = snapshot.stats.hits;
+    this.cacheMisses = snapshot.stats.misses;
+    this.cacheEvictions = snapshot.stats.evictions;
+    this.cacheInvalidations = snapshot.stats.invalidations;
+    if (!this.cacheEnabled || this.cacheMaxEntries === 0) return;
+
+    for (const entry of entries.slice(-this.cacheMaxEntries)) {
+      this.cache.set(entry.key, {
+        result: cloneResult(entry.result),
+        expiresAt: entry.expiresAt,
+        projectRevision: entry.projectRevision
+      });
+    }
   }
 
   clearCache(event?: CacheInvalidationEvent): void {
@@ -208,6 +262,38 @@ function cloneResult(result: JitContextResult): JitContextResult {
   }
 }
 
+function validateRetrievalCacheEntry(value: unknown): {
+  key: string;
+  result: JitContextResult;
+  expiresAt?: number;
+  projectRevision?: number;
+} {
+  if (!isRecord(value) || typeof value.key !== 'string' || value.key.length === 0) {
+    throw new Error('JIT retrieval cache snapshot contains an invalid cache key');
+  }
+  if (
+    !isRecord(value.result) ||
+    !isRecord(value.result.l1WorkingMemory) ||
+    !Array.isArray(value.result.l2RecentSummaries) ||
+    !Array.isArray(value.result.l3GlobalLore) ||
+    typeof value.result.assembledPromptBlock !== 'string'
+  ) {
+    throw new Error(`JIT retrieval cache snapshot contains an invalid result for key: ${value.key}`);
+  }
+  if (value.expiresAt !== undefined && !isFiniteNumber(value.expiresAt)) {
+    throw new Error(`JIT retrieval cache snapshot contains an invalid expiry for key: ${value.key}`);
+  }
+  if (value.projectRevision !== undefined && !isFiniteNumber(value.projectRevision)) {
+    throw new Error(`JIT retrieval cache snapshot contains an invalid revision for key: ${value.key}`);
+  }
+  return {
+    key: value.key,
+    result: value.result as unknown as JitContextResult,
+    expiresAt: value.expiresAt as number | undefined,
+    projectRevision: value.projectRevision as number | undefined
+  };
+}
+
 function firstString(...values: unknown[]): string | undefined {
   return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
 }
@@ -218,4 +304,12 @@ function asStringArray(value: unknown): string[] | undefined {
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }

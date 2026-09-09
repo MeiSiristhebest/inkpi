@@ -4,7 +4,8 @@ import {
   type RuntimeCacheCoordinatorPort,
   createRuntimeCacheKey,
   shouldInvalidateCacheEntry,
-  stableSerialize
+  stableSerialize,
+  validateRuntimeCacheLayerStats
 } from './cache-contract.js';
 import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
@@ -29,6 +30,17 @@ export interface ContextPipelineCacheStats {
   misses: number;
   evictions: number;
   invalidations: number;
+}
+
+/** Process-safe snapshot of compiled context packets and their metrics. */
+export interface ContextPipelineSnapshot {
+  version: 1;
+  entries: Array<{
+    key: string;
+    packet: ContextPacket;
+    projectRevision?: number;
+  }>;
+  stats: ContextPipelineCacheStats;
 }
 
 interface ContextCacheEntry {
@@ -103,6 +115,45 @@ export class ContextPipeline {
       evictions: this.cacheEvictions,
       invalidations: this.cacheInvalidations
     };
+  }
+
+  snapshot(): ContextPipelineSnapshot {
+    return {
+      version: 1,
+      entries: [...this.cache].map(([key, entry]) => ({
+        key,
+        packet: clonePacket(entry.packet),
+        projectRevision: entry.projectRevision
+      })),
+      stats: this.cacheStats()
+    };
+  }
+
+  restore(snapshot: ContextPipelineSnapshot): void {
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries)) {
+      throw new Error('Context pipeline snapshot is unsupported');
+    }
+    validateRuntimeCacheLayerStats(snapshot.stats);
+    const entries = snapshot.entries.map((entry) => validateContextCacheEntry(entry));
+    const duplicateKeys = new Set<string>();
+    for (const entry of entries) {
+      if (duplicateKeys.has(entry.key)) throw new Error(`Context pipeline snapshot repeats key: ${entry.key}`);
+      duplicateKeys.add(entry.key);
+    }
+
+    this.cache.clear();
+    this.cacheHits = snapshot.stats.hits;
+    this.cacheMisses = snapshot.stats.misses;
+    this.cacheEvictions = snapshot.stats.evictions;
+    this.cacheInvalidations = snapshot.stats.invalidations;
+    if (!this.cacheEnabled || this.cacheMaxEntries === 0) return;
+
+    for (const entry of entries.slice(-this.cacheMaxEntries)) {
+      this.cache.set(entry.key, {
+        packet: clonePacket(entry.packet),
+        projectRevision: entry.projectRevision
+      });
+    }
   }
 
   /** Stop listening to a shared coordinator when the owning Runtime is disposed. */
@@ -261,6 +312,38 @@ function clonePacket(packet: ContextPacket): ContextPacket {
   }
 }
 
+function validateContextCacheEntry(value: unknown): {
+  key: string;
+  packet: ContextPacket;
+  projectRevision?: number;
+} {
+  if (!isRecord(value) || typeof value.key !== 'string' || value.key.length === 0) {
+    throw new Error('Context pipeline snapshot contains an invalid cache key');
+  }
+  if (
+    !isRecord(value.packet) ||
+    !Array.isArray(value.packet.fragments) ||
+    typeof value.packet.text !== 'string' ||
+    typeof value.packet.tokenEstimate !== 'number' ||
+    !Number.isFinite(value.packet.tokenEstimate) ||
+    typeof value.packet.fingerprint !== 'string' ||
+    typeof value.packet.truncated !== 'boolean' ||
+    !value.packet.fragments.every(
+      (fragment) => isRecord(fragment) && typeof fragment.id === 'string' && typeof fragment.source === 'string'
+    )
+  ) {
+    throw new Error(`Context pipeline snapshot contains an invalid packet for key: ${value.key}`);
+  }
+  if (value.projectRevision !== undefined && !isFiniteNumber(value.projectRevision)) {
+    throw new Error(`Context pipeline snapshot contains an invalid revision for key: ${value.key}`);
+  }
+  return {
+    key: value.key,
+    packet: value.packet as unknown as ContextPacket,
+    projectRevision: value.projectRevision as number | undefined
+  };
+}
+
 function buildPacket(input: ContextFragment[], maxTokens: number, projectRevision?: number): ContextPacket {
   const limit = Math.max(0, Math.floor(maxTokens));
   const unique = new Map<string, ContextFragment>();
@@ -354,6 +437,14 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function firstString(...values: unknown[]): string | undefined {

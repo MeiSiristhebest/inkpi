@@ -6,6 +6,13 @@ import type { ServerContext } from './server.js';
 import { SqliteTaskCheckpointStore } from './task-checkpoint-store.js';
 import { SqliteTaskExecutionStore } from './task-execution-store.js';
 
+export { FileRuntimeCachePersistence } from './runtime-cache-persistence.js';
+export type {
+  FileRuntimeCachePersistenceOptions,
+  RuntimeCachePersistenceSnapshot,
+  RuntimeCachePersistenceTargets
+} from './runtime-cache-persistence.js';
+
 export const DEFAULT_DAEMON_STATE_DB_FILENAME = 'state.sqlite';
 
 export interface DaemonPersistenceOptions {

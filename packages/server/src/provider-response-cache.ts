@@ -1,10 +1,11 @@
-import type { AssistantMessage } from '@inkpi/protocol';
 import {
   type CacheInvalidationEvent,
   type RuntimeCacheCoordinatorPort,
   type RuntimeCacheLayerStats,
-  shouldInvalidateCacheEntry
+  shouldInvalidateCacheEntry,
+  validateRuntimeCacheLayerStats
 } from '@inkpi/agent-core';
+import type { AssistantMessage } from '@inkpi/protocol';
 
 const DEFAULT_MAX_ENTRIES = 128;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
@@ -21,6 +22,18 @@ interface ProviderResponseCacheEntry {
   response: AssistantMessage;
   projectRevision?: number;
   expiresAt: number;
+}
+
+/** Process-safe snapshot of successful provider responses and their metrics. */
+export interface ProviderResponseCacheSnapshot {
+  version: 1;
+  entries: Array<{
+    key: string;
+    response: AssistantMessage;
+    projectRevision?: number;
+    expiresAt: number;
+  }>;
+  stats: RuntimeCacheLayerStats;
 }
 
 /**
@@ -103,6 +116,44 @@ export class ProviderResponseCache {
     return { ...this.counters };
   }
 
+  snapshot(): ProviderResponseCacheSnapshot {
+    return {
+      version: 1,
+      entries: [...this.entries].map(([key, entry]) => ({
+        key,
+        response: cloneAssistantMessage(entry.response),
+        projectRevision: entry.projectRevision,
+        expiresAt: entry.expiresAt
+      })),
+      stats: this.stats()
+    };
+  }
+
+  restore(snapshot: ProviderResponseCacheSnapshot): void {
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries)) {
+      throw new Error('Provider response cache snapshot is unsupported');
+    }
+    validateRuntimeCacheLayerStats(snapshot.stats);
+    const entries = snapshot.entries.map((entry) => validateProviderCacheEntry(entry));
+    const duplicateKeys = new Set<string>();
+    for (const entry of entries) {
+      if (duplicateKeys.has(entry.key)) throw new Error(`Provider response cache snapshot repeats key: ${entry.key}`);
+      duplicateKeys.add(entry.key);
+    }
+
+    this.entries.clear();
+    Object.assign(this.counters, snapshot.stats);
+    if (!this.enabled || this.maxEntries === 0) return;
+
+    for (const entry of entries.slice(-this.maxEntries)) {
+      this.entries.set(entry.key, {
+        response: cloneAssistantMessage(entry.response),
+        projectRevision: entry.projectRevision,
+        expiresAt: entry.expiresAt
+      });
+    }
+  }
+
   dispose(): void {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
@@ -135,4 +186,38 @@ function cloneAssistantMessage(message: AssistantMessage): AssistantMessage {
   } catch {
     return { ...message, content: message.content.map((content) => ({ ...content })) };
   }
+}
+
+function validateProviderCacheEntry(value: unknown): {
+  key: string;
+  response: AssistantMessage;
+  projectRevision?: number;
+  expiresAt: number;
+} {
+  if (!isRecord(value) || typeof value.key !== 'string' || value.key.length === 0) {
+    throw new Error('Provider response cache snapshot contains an invalid cache key');
+  }
+  if (!isRecord(value.response) || value.response.role !== 'assistant' || !Array.isArray(value.response.content)) {
+    throw new Error(`Provider response cache snapshot contains an invalid response for key: ${value.key}`);
+  }
+  if (!isFiniteNumber(value.expiresAt)) {
+    throw new Error(`Provider response cache snapshot contains an invalid expiry for key: ${value.key}`);
+  }
+  if (value.projectRevision !== undefined && !isFiniteNumber(value.projectRevision)) {
+    throw new Error(`Provider response cache snapshot contains an invalid revision for key: ${value.key}`);
+  }
+  return {
+    key: value.key,
+    response: value.response as unknown as AssistantMessage,
+    projectRevision: value.projectRevision as number | undefined,
+    expiresAt: value.expiresAt
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
