@@ -14,6 +14,9 @@
 import { runPrintMode } from '../packages/cli/dist/index.js';
 import { TerminalStudio } from '../packages/tui/dist/studio.js';
 import { runPackageManagerCli } from '../packages/cli/dist/index.js';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
 import { createDaemonPersistence } from '../packages/server/dist/daemon-persistence.js';
@@ -66,7 +69,13 @@ async function main() {
     const persistence = createDaemonPersistence({ dbPath: stateDbPath });
     let daemon;
     try {
-      daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel, context: persistence.context });
+      daemon = new InkPiDaemon({
+        port,
+        host: '127.0.0.1',
+        defaultModel,
+        skillSearchDirs: resolveSkillSearchDirs(),
+        context: persistence.context
+      });
       await daemon.start(port, '127.0.0.1');
       await daemon.startWebSocket(wsPort, '127.0.0.1');
     } catch (error) {
@@ -129,6 +138,16 @@ async function main() {
     const studio = new TerminalStudio();
     console.log(studio.renderFullFrame());
   }
+}
+
+function resolveSkillSearchDirs() {
+  const candidates = [
+    process.env.INKPI_SKILLS_DIR,
+    join(process.cwd(), 'skills'),
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'skills'),
+    join(dirname(process.execPath), 'skills')
+  ];
+  return [...new Set(candidates.filter((candidate) => candidate && existsSync(candidate)))];
 }
 
 main().catch(err => {

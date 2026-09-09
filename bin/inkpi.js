@@ -5,7 +5,8 @@
  */
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as readline from 'node:readline';
 
 const VERSION = '1.0.0';
@@ -140,7 +141,13 @@ async function main() {
       const persistence = createDaemonPersistence({ dbPath: stateDbPath });
       let daemon;
       try {
-        daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel, context: persistence.context });
+        daemon = new InkPiDaemon({
+          port,
+          host: '127.0.0.1',
+          defaultModel,
+          skillSearchDirs: resolveSkillSearchDirs(),
+          context: persistence.context
+        });
         await daemon.start(port, '127.0.0.1');
         await daemon.startWebSocket(wsPort, '127.0.0.1');
       } catch (error) {
@@ -210,6 +217,16 @@ async function main() {
       break;
     }
   }
+}
+
+function resolveSkillSearchDirs() {
+  const candidates = [
+    process.env.INKPI_SKILLS_DIR,
+    join(process.cwd(), 'skills'),
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'skills'),
+    join(dirname(process.execPath), 'skills')
+  ];
+  return [...new Set(candidates.filter((candidate) => candidate && existsSync(candidate)))];
 }
 
 async function startInteractiveStudio(args) {
