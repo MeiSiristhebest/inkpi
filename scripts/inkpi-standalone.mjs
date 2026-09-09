@@ -16,6 +16,7 @@ import { TerminalStudio } from '../packages/tui/dist/studio.js';
 import { runPackageManagerCli } from '../packages/cli/dist/index.js';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
+import { createDaemonPersistence } from '../packages/server/dist/daemon-persistence.js';
 import { getModelPreset } from '../packages/ai/dist/presets.js';
 // The standalone harness is the dev/test entrypoint exercised by the integration
 // suite (e.g. `--model mock-test`). Mock providers are NOT silently registered on
@@ -49,6 +50,10 @@ async function main() {
     const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 8848;
     const wsPortIdx = args.indexOf('--ws-port');
     const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
+    const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
+    const stateDbPath = stateDbFlag
+      ? readRequiredArg(args.indexOf(stateDbFlag), stateDbFlag)
+      : undefined;
 
     const modelIdx = args.indexOf('--model');
     const modelPreset = modelIdx !== -1 ? readRequiredArg(modelIdx, '--model') : process.env.INKPI_MODEL_PRESET || 'creative-pro';
@@ -58,20 +63,35 @@ async function main() {
     } catch {
       defaultModel = undefined;
     }
-    const daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel });
-    await daemon.start(port, '127.0.0.1');
-    await daemon.startWebSocket(wsPort, '127.0.0.1');
+    const persistence = createDaemonPersistence({ dbPath: stateDbPath });
+    let daemon;
+    try {
+      daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel, context: persistence.context });
+      await daemon.start(port, '127.0.0.1');
+      await daemon.startWebSocket(wsPort, '127.0.0.1');
+    } catch (error) {
+      try {
+        await daemon?.stop();
+      } finally {
+        persistence.close();
+      }
+      throw error;
+    }
 
     console.log(`🚀 [InkPi Daemon] Headless JSON-RPC 2.0 core is running:`);
     console.log(`   • TCP       : tcp://127.0.0.1:${port}  (TUI / Node clients)`);
     console.log(`   • WebSocket : ws://127.0.0.1:${wsPort}  (Web clients)`);
     console.log(`📡 Ready to accept connections. Press Ctrl+C to stop.\n`);
 
+    let shuttingDown = false;
     const shutdown = async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       console.log('\n👋 Shutting down InkPi Daemon...');
       try {
         await daemon.stop();
       } finally {
+        persistence.close();
         process.exit(0);
       }
     };

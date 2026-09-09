@@ -32,6 +32,7 @@ OPTIONS:
   -m, --model <id>          Model identifier (e.g. deepseek-chat, gpt-4o, claude-3-5-sonnet)
   --port <number>           TCP port for daemon server (default: 8848)
   --ws-port <number>        WebSocket port for daemon server (default: TCP port + 1)
+  --state-db <path>         SQLite state DB path (or use INKPI_STATE_DB)
   --role <role>             Agent role preset for pipeline
   --json                    Output structured JSON responses
   --chinese                 Enable typography formatting (\u3000\u3000 full-width indents)
@@ -42,6 +43,14 @@ EXAMPLES:
   $ inkpi daemon --port 8848 # Start headless JSON-RPC daemon
   $ inkpi -p "Analyze architectural invariants for state machine"
 `;
+
+function readRequiredArg(args, index, name) {
+  const value = args[index + 1];
+  if (index === -1 || !value || value.startsWith('-')) {
+    throw new Error(`${name} requires a value.`);
+  }
+  return value;
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -116,8 +125,10 @@ async function main() {
       const wsPortIdx = args.indexOf('--ws-port');
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
-      const { InkPiDaemon } = await import('@inkpi/server');
+      const { InkPiDaemon, createDaemonPersistence } = await import('@inkpi/server');
       const { getModelPreset } = await import('@inkpi/ai');
+      const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
+      const stateDbPath = stateDbFlag ? readRequiredArg(args, args.indexOf(stateDbFlag), stateDbFlag) : undefined;
       const modelFlag = args.indexOf('--model');
       const modelPreset = modelFlag !== -1 ? args[modelFlag + 1] : process.env.INKPI_MODEL_PRESET || 'creative-pro';
       let defaultModel;
@@ -126,20 +137,35 @@ async function main() {
       } catch {
         defaultModel = undefined;
       }
-      const daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel });
-      await daemon.start(port, '127.0.0.1');
-      await daemon.startWebSocket(wsPort, '127.0.0.1');
+      const persistence = createDaemonPersistence({ dbPath: stateDbPath });
+      let daemon;
+      try {
+        daemon = new InkPiDaemon({ port, host: '127.0.0.1', defaultModel, context: persistence.context });
+        await daemon.start(port, '127.0.0.1');
+        await daemon.startWebSocket(wsPort, '127.0.0.1');
+      } catch (error) {
+        try {
+          await daemon?.stop();
+        } finally {
+          persistence.close();
+        }
+        throw error;
+      }
 
       console.log(`\n🚀 [InkPi Daemon] Headless JSON-RPC 2.0 core is running:`);
       console.log(`   • TCP       : tcp://127.0.0.1:${port}  (TUI / VS Code / Node clients)`);
       console.log(`   • WebSocket : ws://127.0.0.1:${wsPort}  (Web / Desktop GUI clients)`);
       console.log(`📡 Ready to accept connections from Web / VS Code / TUI clients. Press Ctrl+C to stop.\n`);
 
+      let shuttingDown = false;
       const shutdown = async () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
         console.log('\n👋 Shutting down InkPi Daemon...');
         try {
           await daemon.stop();
         } finally {
+          persistence.close();
           process.exit(0);
         }
       };
