@@ -75,6 +75,7 @@ export class TaskRouter {
   private readonly records = new Map<string, TaskRecord>();
   private readonly listeners = new Set<TaskRouterListener>();
   private persistenceTail: Promise<void> = Promise.resolve();
+  private recoveryPending = true;
   private stopPromise?: Promise<void>;
   private stopping = false;
 
@@ -106,6 +107,9 @@ export class TaskRouter {
 
   submit(task: AiTask): TaskSubmitResult {
     validateTask(task);
+    if (this.recoveryPending) {
+      throw new Error('Task router is recovering; await router.ready before submitting');
+    }
     if (this.records.has(task.id)) throw new Error(`Task already exists: ${task.id}`);
     const controller = new AbortController();
     let resolveCompletion!: (result: TaskResult) => void;
@@ -237,6 +241,21 @@ export class TaskRouter {
     const checkpoint = await this.checkpointStore.load(taskId);
     if (!checkpoint && record.snapshot.status === 'waiting-user') {
       throw new Error(`Task ${taskId} has no checkpoint to resume`);
+    }
+    const expectedCheckpointStep =
+      record.snapshot.checkpoint?.step ??
+      record.resumeToken?.checkpointStep ??
+      record.executionRun.resumeToken?.checkpointStep;
+    if (!checkpoint && expectedCheckpointStep) {
+      throw new Error(`Task ${taskId} has no durable checkpoint to resume`);
+    }
+    if (checkpoint) {
+      if (checkpoint.taskId !== taskId || checkpoint.kind !== record.task.kind) {
+        throw new Error(`Task ${taskId} checkpoint does not match the task being resumed`);
+      }
+      if (expectedCheckpointStep && checkpoint.step !== expectedCheckpointStep) {
+        throw new Error(`Task ${taskId} checkpoint step does not match the execution snapshot`);
+      }
     }
     record.controller = new AbortController();
     record.attempts = 0;
@@ -593,9 +612,18 @@ export class TaskRouter {
   private recoverPersistedRecords(): Promise<void> {
     try {
       const loaded = this.executionStore.list();
-      if (loaded instanceof Promise) return loaded.then((records) => this.finishRecovery(records));
-      return this.finishRecovery(loaded);
+      if (loaded instanceof Promise) {
+        return loaded
+          .then((records) => this.finishRecovery(records))
+          .finally(() => {
+            this.recoveryPending = false;
+          });
+      }
+      const normalized = this.finishRecovery(loaded);
+      this.recoveryPending = false;
+      return normalized;
     } catch (error) {
+      this.recoveryPending = false;
       return Promise.reject(error);
     }
   }
