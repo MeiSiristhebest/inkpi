@@ -196,6 +196,20 @@ CREATE TABLE IF NOT EXISTS domain_projection_cursors (
   updated_at INTEGER NOT NULL
 );
 
+-- Generic domain aggregate projections (derived, rebuildable, no domain schema)
+CREATE TABLE IF NOT EXISTS domain_aggregate_projections (
+  workspace_id TEXT NOT NULL,
+  aggregate_type TEXT NOT NULL,
+  aggregate_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, aggregate_type, aggregate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_domain_aggregate_projections_workspace
+  ON domain_aggregate_projections(workspace_id, aggregate_type, aggregate_id);
+
 -- Desktop-authoritative proposal review state (daemon-side derived projection)
 CREATE TABLE IF NOT EXISTS proposal_projections (
   workspace_id TEXT NOT NULL,

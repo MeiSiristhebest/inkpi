@@ -6,7 +6,7 @@ import type {
   DomainProjectionSnapshot
 } from '@inkpi/protocol';
 import { calculateDomainChangeSetChecksum } from '@inkpi/protocol';
-import { DomainMaterializer } from './domain-materializer.js';
+import { DomainMaterializer, type GenericDomainProjection } from './domain-materializer.js';
 import type { IDb } from './ports.js';
 
 export { DomainMaterializer, DomainMaterializer as DomainProjectionMaterializer } from './domain-materializer.js';
@@ -101,6 +101,18 @@ export class DomainProjectionStore {
       revision: Number(row.revision),
       updatedAt: Number(row.updated_at)
     };
+  }
+
+  public getGenericProjection(
+    workspaceId: string,
+    aggregateType: string,
+    aggregateId: string,
+  ): GenericDomainProjection | undefined {
+    return this.materializer.getGenericProjection(workspaceId, aggregateType, aggregateId);
+  }
+
+  public listGenericProjections(workspaceId: string, aggregateType?: string): GenericDomainProjection[] {
+    return this.materializer.listGenericProjections(workspaceId, aggregateType);
   }
 
   public list(workspaceId: string, afterRevision = 0): DomainChangeSet[] {

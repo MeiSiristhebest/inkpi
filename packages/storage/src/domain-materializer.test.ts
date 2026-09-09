@@ -166,6 +166,11 @@ describe('daemon domain change materializer', () => {
       content_json: JSON.stringify({ type: 'doc' }),
       content_markdown: '正文'
     });
+    expect(projection.getGenericProjection('project-1', 'project', 'project-1')).toMatchObject({
+      aggregateType: 'project',
+      aggregateId: 'project-1',
+      payload: { name: 'InkPi' }
+    });
     db.close();
   });
 
@@ -252,7 +257,7 @@ describe('daemon domain change materializer', () => {
     db.close();
   });
 
-  it('rebuilds derived rows from a restored authoritative snapshot', () => {
+  it('rebuilds generic and specialized derived rows from a restored authoritative snapshot', () => {
     const db = new InkDb();
     const projection = new DomainProjectionStore(db, () => 100);
     const first = makeChangeSet('set-1', 'workspace-1', 0, [
@@ -278,16 +283,31 @@ describe('daemon domain change materializer', () => {
         contentMarkdown: 'content',
         createdAt: 1,
         updatedAt: 1
+      }),
+      change('generic-change', 'story-state', 'state-1', 'upsert', {
+        revision: 1,
+        facts: [{ id: 'fact-1', value: 'stable' }]
       })
     ]);
     projection.apply(first);
     const snapshot = projection.createSnapshot('workspace-1');
+
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')).toMatchObject({
+      payload: { revision: 1, facts: [{ id: 'fact-1', value: 'stable' }] }
+    });
 
     db.prepare('UPDATE workspaces SET title = ? WHERE id = ?').run('corrupt', 'workspace-1');
     db.prepare('DELETE FROM document_snapshots WHERE document_id = ?').run('document-1');
     db.prepare(
       'INSERT INTO folders (id, workspace_id, title, order_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
     ).run('stale-folder', 'workspace-1', 'stale', 99, 1, 1);
+    db.prepare('UPDATE domain_aggregate_projections SET payload_json = ? WHERE aggregate_id = ?').run(
+      '{"corrupt":true}',
+      'state-1'
+    );
+    expect(() => projection.getGenericProjection('workspace-1', 'story-state', 'state-1')).toThrow(
+      'payload hash mismatch'
+    );
 
     projection.restoreSnapshot(snapshot);
     expect(
@@ -296,6 +316,9 @@ describe('daemon domain change materializer', () => {
     expect(count(db, 'document_snapshots')).toBe(1);
     expect(count(db, 'folders')).toBe(1);
     expect(count(db, 'workspaces')).toBe(1);
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')).toMatchObject({
+      payload: { revision: 1, facts: [{ id: 'fact-1', value: 'stable' }] }
+    });
     expect(projection.getCursor('workspace-1')).toMatchObject({ revision: 1, updatedAt: 100 });
 
     db.prepare('UPDATE workspaces SET title = ? WHERE id = ?').run('corrupt-again', 'workspace-1');
@@ -303,10 +326,13 @@ describe('daemon domain change materializer', () => {
     expect(
       (db.prepare('SELECT title FROM workspaces WHERE id = ?').get('workspace-1') as { title: string }).title
     ).toBe('Original');
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')).toMatchObject({
+      payload: { revision: 1, facts: [{ id: 'fact-1', value: 'stable' }] }
+    });
     db.close();
   });
 
-  it('records unknown aggregates without failing or creating derived rows', () => {
+  it('materializes unknown aggregates generically and deletes them idempotently', () => {
     const db = new InkDb();
     const projection = new DomainProjectionStore(db, () => 100);
     const set = makeChangeSet('set-1', 'workspace-1', 0, [
@@ -316,9 +342,48 @@ describe('daemon domain change materializer', () => {
 
     expect(projection.apply(set)).toMatchObject({ accepted: true, duplicate: false, revision: 1 });
     expect(projection.list('workspace-1')).toEqual([set]);
+    expect(projection.getGenericProjection('workspace-1', 'codexEntity', 'entity-1')).toMatchObject({
+      payload: { id: 'entity-1', name: 'Entity' },
+      revision: 1,
+      updatedAt: 1
+    });
+    expect(projection.listGenericProjections('workspace-1', 'codexEntity')).toHaveLength(1);
     expect(count(db, 'workspaces')).toBe(0);
     expect(count(db, 'folders')).toBe(0);
     expect(count(db, 'documents')).toBe(0);
+
+    expect(projection.apply(set)).toMatchObject({ accepted: true, duplicate: true });
+    expect(projection.listGenericProjections('workspace-1')).toHaveLength(1);
+
+    const deleteSet = makeChangeSet('set-2', 'workspace-1', 1, [
+      change('unknown-change-delete', 'codexEntity', 'entity-1', 'delete', undefined, 2, 2)
+    ]);
+    expect(projection.apply(deleteSet)).toMatchObject({ accepted: true, duplicate: false, revision: 2 });
+    expect(projection.getGenericProjection('workspace-1', 'codexEntity', 'entity-1')).toBeUndefined();
+    expect(projection.listGenericProjections('workspace-1')).toHaveLength(0);
+    db.close();
+  });
+
+  it('does not materialize generic rows for rejected revisions or checksums', () => {
+    const db = new InkDb();
+    const projection = new DomainProjectionStore(db, () => 100);
+    const first = makeChangeSet('set-1', 'workspace-1', 0, [
+      change('state-change', 'story-state', 'state-1', 'upsert', { value: 'first' })
+    ]);
+    projection.apply(first);
+
+    const outOfOrder = makeChangeSet('set-3', 'workspace-1', 2, [
+      change('state-change-later', 'story-state', 'state-1', 'upsert', { value: 'later' }, 3, 3)
+    ]);
+    expect(projection.apply(outOfOrder)).toMatchObject({
+      accepted: false,
+      reason: 'revision-conflict',
+      revision: 1
+    });
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')?.payload).toEqual({ value: 'first' });
+
+    expect(() => projection.apply({ ...first, checksum: '00000000' })).toThrow('checksum mismatch');
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')?.payload).toEqual({ value: 'first' });
     db.close();
   });
 });

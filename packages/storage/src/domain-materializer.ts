@@ -3,6 +3,26 @@ import type { IDb } from './ports.js';
 
 type JsonRecord = Record<string, unknown>;
 
+export interface GenericDomainProjection {
+  workspaceId: string;
+  aggregateType: string;
+  aggregateId: string;
+  revision: number;
+  payload: unknown;
+  payloadHash: string;
+  updatedAt: number;
+}
+
+interface GenericDomainProjectionRow {
+  workspace_id: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  revision: number;
+  payload_json: string;
+  payload_hash: string;
+  updated_at: number;
+}
+
 interface WorkspaceRow {
   id: string;
   title: string;
@@ -76,16 +96,58 @@ export class DomainMaterializer {
     });
   }
 
+  public getGenericProjection(
+    workspaceId: string,
+    aggregateType: string,
+    aggregateId: string,
+  ): GenericDomainProjection | undefined {
+    assertGenericProjectionCoordinate(workspaceId, 'workspace');
+    assertGenericProjectionCoordinate(aggregateType, 'aggregate type');
+    assertGenericProjectionCoordinate(aggregateId, 'aggregate id');
+    const row = this.db
+      .prepare(
+        `SELECT workspace_id, aggregate_type, aggregate_id, revision,
+                payload_json, payload_hash, updated_at
+         FROM domain_aggregate_projections
+         WHERE workspace_id = ? AND aggregate_type = ? AND aggregate_id = ?`,
+      )
+      .get(workspaceId, aggregateType, aggregateId) as GenericDomainProjectionRow | undefined;
+    return row ? parseGenericProjection(row) : undefined;
+  }
+
+  public listGenericProjections(workspaceId: string, aggregateType?: string): GenericDomainProjection[] {
+    assertGenericProjectionCoordinate(workspaceId, 'workspace');
+    if (aggregateType !== undefined) assertGenericProjectionCoordinate(aggregateType, 'aggregate type');
+    const rows = (
+      aggregateType === undefined
+        ? this.db.prepare(
+            `SELECT workspace_id, aggregate_type, aggregate_id, revision,
+                    payload_json, payload_hash, updated_at
+             FROM domain_aggregate_projections
+             WHERE workspace_id = ? ORDER BY aggregate_type ASC, aggregate_id ASC`,
+          )
+        : this.db.prepare(
+            `SELECT workspace_id, aggregate_type, aggregate_id, revision,
+                    payload_json, payload_hash, updated_at
+             FROM domain_aggregate_projections
+             WHERE workspace_id = ? AND aggregate_type = ?
+             ORDER BY aggregate_id ASC`,
+          )
+    ).all(...(aggregateType === undefined ? [workspaceId] : [workspaceId, aggregateType])) as GenericDomainProjectionRow[];
+    return rows.map(parseGenericProjection);
+  }
+
   /** @internal Called by DomainProjectionStore inside its existing transaction. */
   public applyInTransaction(workspaceId: string, changes: readonly DomainChange[]): void {
+    this.applyGenericInTransaction(workspaceId, changes);
     for (const change of orderChangesForForeignKeys(changes)) {
       const aggregate = normalizeAggregateType(change.aggregateType);
       if (change.operation === 'upsert') {
         if (aggregate === 'workspace') this.upsertWorkspace(workspaceId, change);
         else if (aggregate === 'folder') this.upsertFolder(workspaceId, change);
         else if (aggregate === 'document') this.upsertDocument(workspaceId, change);
-        // Unknown aggregate types are intentionally ignored. The enclosing
-        // projection still records their change set as authoritative history.
+        // Unknown aggregate types have no specialized schema. Their generic
+        // JSON projection was applied above without runtime interpretation.
       } else if (change.operation === 'delete') {
         if (aggregate === 'workspace') this.deleteWorkspace(change.aggregateId);
         else if (aggregate === 'folder') this.deleteFolder(change.aggregateId);
@@ -96,6 +158,7 @@ export class DomainMaterializer {
 
   /** @internal Called by DomainProjectionStore inside its existing transaction. */
   public rebuildInTransaction(workspaceId: string, changeSets: readonly DomainChangeSet[]): void {
+    this.deleteGenericProjections(workspaceId);
     this.deleteWorkspace(workspaceId);
     const orderedChangeSets = [...changeSets].sort((left, right) => left.revision - right.revision);
     for (const changeSet of orderedChangeSets) {
@@ -104,6 +167,49 @@ export class DomainMaterializer {
       }
       this.applyInTransaction(workspaceId, changeSet.changes);
     }
+  }
+
+  private applyGenericInTransaction(workspaceId: string, changes: readonly DomainChange[]): void {
+    for (const change of changes) {
+      assertGenericProjectionCoordinate(workspaceId, 'workspace');
+      assertGenericProjectionCoordinate(change.aggregateType, 'aggregate type');
+      assertGenericProjectionCoordinate(change.aggregateId, 'aggregate id');
+      if (change.operation === 'upsert') {
+        const payloadJson = serializeProjectionPayload(change.payload);
+        const payloadHash = calculatePayloadHash(payloadJson);
+        this.db
+          .prepare(
+            `INSERT INTO domain_aggregate_projections
+              (workspace_id, aggregate_type, aggregate_id, revision, payload_json, payload_hash, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(workspace_id, aggregate_type, aggregate_id) DO UPDATE SET
+               revision = excluded.revision,
+               payload_json = excluded.payload_json,
+               payload_hash = excluded.payload_hash,
+               updated_at = excluded.updated_at`,
+          )
+          .run(
+            workspaceId,
+            change.aggregateType,
+            change.aggregateId,
+            change.revision,
+            payloadJson,
+            payloadHash,
+            change.occurredAt,
+          );
+      } else if (change.operation === 'delete') {
+        this.db
+          .prepare(
+            `DELETE FROM domain_aggregate_projections
+             WHERE workspace_id = ? AND aggregate_type = ? AND aggregate_id = ?`,
+          )
+          .run(workspaceId, change.aggregateType, change.aggregateId);
+      }
+    }
+  }
+
+  private deleteGenericProjections(workspaceId: string): void {
+    this.db.prepare('DELETE FROM domain_aggregate_projections WHERE workspace_id = ?').run(workspaceId);
   }
 
   private readPersistedChangeSets(workspaceId: string): DomainChangeSet[] {
@@ -469,4 +575,57 @@ function materializationRank(change: DomainChange): number {
   const aggregate = normalizeAggregateType(change.aggregateType);
   const rank = aggregate === 'workspace' ? 0 : aggregate === 'folder' ? 1 : aggregate === 'document' ? 2 : 3;
   return change.operation === 'delete' ? 10 - rank : rank;
+}
+
+function assertGenericProjectionCoordinate(value: string, label: string): void {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Generic domain projection ${label} must be a non-empty string`);
+  }
+}
+
+function serializeProjectionPayload(payload: unknown): string {
+  try {
+    const serialized = JSON.stringify(payload, (_key, value: unknown) => (value === undefined ? null : value));
+    return serialized === undefined ? 'null' : serialized;
+  } catch {
+    throw new Error('Generic domain projection payload must be JSON serializable');
+  }
+}
+
+function parseGenericProjection(row: GenericDomainProjectionRow): GenericDomainProjection {
+  const workspaceId = String(row.workspace_id);
+  const aggregateType = String(row.aggregate_type);
+  const aggregateId = String(row.aggregate_id);
+  assertGenericProjectionCoordinate(workspaceId, 'workspace');
+  assertGenericProjectionCoordinate(aggregateType, 'aggregate type');
+  assertGenericProjectionCoordinate(aggregateId, 'aggregate id');
+  const payloadJson = String(row.payload_json);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(payloadJson);
+  } catch {
+    throw new Error(`Corrupt generic domain projection payload: ${aggregateType}/${aggregateId}`);
+  }
+  const payloadHash = String(row.payload_hash);
+  if (calculatePayloadHash(payloadJson) !== payloadHash) {
+    throw new Error(`Generic domain projection payload hash mismatch: ${aggregateType}/${aggregateId}`);
+  }
+  return {
+    workspaceId,
+    aggregateType,
+    aggregateId,
+    revision: Number(row.revision),
+    payload,
+    payloadHash,
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+function calculatePayloadHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
