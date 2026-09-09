@@ -56,7 +56,7 @@ function hasExited(child: ChildProcess): boolean {
 }
 
 function startDaemon(): Promise<RunningDaemon> {
-  const childEnv = { ...process.env, INKPI_PHASE12_SKILLS_DIR: firstPartySkillsDir };
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, INKPI_PHASE12_SKILLS_DIR: firstPartySkillsDir };
   for (const key of [
     'DEEPSEEK_API_KEY',
     'OPENAI_API_KEY',
