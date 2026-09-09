@@ -8,6 +8,7 @@ export * from './task-checkpoint-store.js';
 export * from './task-execution-store.js';
 export * from './jit-context-provider.js';
 export * from './task-model-handler.js';
+export * from './provider-response-cache.js';
 
 // SessionRegistry 是领域对象，定义在 @inkpi/agent-core（不依赖表现层/传输层）。
 // server 包作为传输层，从领域核心引入它，形成 server → agent-core 的单向依赖，无环。

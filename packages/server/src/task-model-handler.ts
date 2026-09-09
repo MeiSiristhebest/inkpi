@@ -1,6 +1,12 @@
-import type { TaskHandler, TaskHandlerResult } from '@inkpi/agent-core';
-import type { TaskHandlerContext } from '@inkpi/agent-core';
-import type { ToolRegistry } from '@inkpi/agent-core';
+import {
+  createRuntimeCacheKey,
+  type RuntimeCacheCoordinatorPort,
+  stableSerialize,
+  type TaskHandler,
+  type TaskHandlerContext,
+  type TaskHandlerResult,
+  type ToolRegistry
+} from '@inkpi/agent-core';
 import { type ModelConfig, streamAi } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessage, TaskOutput, ToolCallContent } from '@inkpi/protocol';
 import {
@@ -10,6 +16,7 @@ import {
   type ResolvedModelRoute,
   createLegacyDefaultModelCapabilities
 } from './model-capability-router.js';
+import { ProviderResponseCache, type ProviderResponseCacheOptions } from './provider-response-cache.js';
 
 export {
   CapabilityMismatchError,
@@ -33,6 +40,9 @@ export interface TaskModelHandlerOptions {
   routes?: readonly ModelRoute[];
   defaultModelCapabilities?: ModelCapabilities;
   capabilityRouter?: CapabilityRouter;
+  providerResponseCache?: ProviderResponseCache;
+  providerResponseCacheOptions?: Omit<ProviderResponseCacheOptions, 'cacheCoordinator'>;
+  cacheCoordinator?: RuntimeCacheCoordinatorPort;
 }
 
 /**
@@ -47,12 +57,19 @@ export class TaskModelHandler implements TaskHandler {
   private readonly toolRegistry?: ToolRegistry;
   private readonly maxToolSteps: number;
   private readonly capabilityRouter: CapabilityRouter;
+  private readonly providerResponseCache: ProviderResponseCache;
 
   constructor(options: TaskModelHandlerOptions) {
     this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
     this.stream = options.stream ?? streamAi;
     this.toolRegistry = options.toolRegistry;
     this.maxToolSteps = Math.max(0, options.maxToolSteps ?? 8);
+    this.providerResponseCache =
+      options.providerResponseCache ??
+      new ProviderResponseCache({
+        ...options.providerResponseCacheOptions,
+        cacheCoordinator: options.cacheCoordinator
+      });
     this.capabilityRouter =
       options.capabilityRouter ??
       new CapabilityRouter([
@@ -119,10 +136,22 @@ export class TaskModelHandler implements TaskHandler {
     const maxToolSteps = route.maxToolSteps ?? this.maxToolSteps;
     let assistant: AssistantMessage | undefined;
     let toolStep = 0;
+    let providerCacheKey: string | undefined;
+    let providerCacheHit = false;
     while (true) {
       const steering = context.consumeSteering();
       if (steering.length > 0) messages.push(publicSteeringMessage(steering));
-      assistant = await this.collect(messages, context, route);
+      const cacheKey =
+        toolStep === 0 ? createProviderResponseCacheKey(context, route, messages, this.systemPrompt) : undefined;
+      const cached = cacheKey ? this.providerResponseCache.get(cacheKey) : undefined;
+      if (cached) {
+        assistant = cached;
+        providerCacheKey = cacheKey;
+        providerCacheHit = true;
+      } else {
+        assistant = await this.collect(messages, context, route);
+        providerCacheKey = cacheKey;
+      }
       if (assistant.stopReason === 'error' || assistant.errorMessage) {
         const error = new Error(assistant.errorMessage ?? 'Model returned an error');
         (error as Error & { retryable?: boolean }).retryable = true;
@@ -130,6 +159,7 @@ export class TaskModelHandler implements TaskHandler {
       }
       const toolCalls = assistant.content.filter(isToolCall);
       if (toolCalls.length === 0) break;
+      providerCacheKey = undefined;
       if (++toolStep > maxToolSteps) {
         const error = new Error(`Task exceeded the maximum tool steps of ${maxToolSteps}`) as Error & {
           retryable?: boolean;
@@ -164,6 +194,13 @@ export class TaskModelHandler implements TaskHandler {
         .join('')
     );
     const output = parseDeclaredOutput(context.task.outputContract?.format, text);
+    if (
+      providerCacheKey &&
+      !providerCacheHit &&
+      (finalAssistant.stopReason === undefined || finalAssistant.stopReason === 'stop')
+    ) {
+      this.providerResponseCache.set(providerCacheKey, finalAssistant, context.context.projectRevision);
+    }
     context.reportProgress(1);
     return {
       output,
@@ -267,6 +304,70 @@ function buildPrompt(context: TaskHandlerContext): string {
     .join('\n\n');
 }
 
+function createProviderResponseCacheKey(
+  context: TaskHandlerContext,
+  route: ResolvedModelRoute,
+  messages: AgentMessage[],
+  defaultSystemPrompt: string
+): string {
+  const taskMetadata = asRecord(context.task.metadata);
+  const contextMetadata = asRecord(context.task.contextPolicy?.metadata);
+  const skillVersion = firstString(taskMetadata?.skillVersion, contextMetadata?.skillVersion);
+  return createRuntimeCacheKey({
+    layer: 'provider',
+    taskKind: context.task.kind,
+    instructionVersion: context.instructions?.version,
+    skillVersion,
+    projectRevision: context.context.projectRevision ?? context.task.input.selection?.revision,
+    contextFingerprint: context.context.fingerprint,
+    provider: route.model.provider,
+    model: route.model.id,
+    identity: {
+      messages: messages.map(messageIdentity),
+      outputContract: context.task.outputContract,
+      requirements: context.task.requirements,
+      routeId: route.id,
+      systemPrompt: route.systemPrompt ?? defaultSystemPrompt,
+      maxTokens: route.model.maxTokens,
+      thinkingBudget: route.model.thinkingBudget,
+      contextTruncated: context.context.truncated,
+      contextTokenCount: context.context.tokenEstimate
+    }
+  });
+}
+
+function messageIdentity(message: AgentMessage): unknown {
+  if (message.role === 'toolResult') {
+    return {
+      role: message.role,
+      toolCallId: message.toolCallId,
+      toolName: message.toolName,
+      content: message.content,
+      details: message.details,
+      isError: message.isError
+    };
+  }
+  if (message.role === 'assistant') {
+    return {
+      role: message.role,
+      content: message.content,
+      stopReason: message.stopReason,
+      providerThinkingLevel: message.providerThinkingLevel
+    };
+  }
+  return { role: message.role, content: message.content };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
 function parseDeclaredOutput(format: TaskOutput['format'] | undefined, text: string): TaskOutput {
   if (!format || format === 'text') return { format: 'text', text: text.trim() };
   const parsed = parseJson(text);
@@ -296,16 +397,6 @@ function stripPrivateReasoning(text: string): string {
 function shouldFailoverToNextRoute(error: unknown, signal: AbortSignal): boolean {
   if (signal.aborted || !(error instanceof Error)) return false;
   return (error as Error & { retryable?: boolean }).retryable === true;
-}
-
-function stableSerialize(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? '';
-  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
-    .join(',')}}`;
 }
 
 const defaultSystemPrompt = 'You are InkPi creative intelligence. Follow the task output contract exactly.';

@@ -107,6 +107,7 @@ export class InkPiDaemon {
         defaultModelCapabilities: options.defaultModelCapabilities,
         routes: options.modelRoutes,
         capabilityRouter: options.capabilityRouter,
+        cacheCoordinator: this.cacheCoordinator,
       });
       this.capabilityRouter = modelHandler.getCapabilityRouter();
       this.taskRouter.registry.register(modelHandler);
