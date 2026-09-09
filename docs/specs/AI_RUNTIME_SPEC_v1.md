@@ -676,7 +676,7 @@ SkillDiscoveryEngine metadata scan
   → existing ToolRegistry
 ~~~
 
-当前 discovery 使用 Markdown frontmatter 的 metadata，load 才读取 promptBody。第一批四个 manifest 已存在于 `inkpi/skills/hook.md`、`promise.md`、`character-voice.md` 和 `timeline-consistency.md`；`tests/skills-instructions.test.ts` 覆盖 metadata-first discovery、lazy body loading、按 capability/task kind resolve 和 instruction composition；`tests/skill-runtime-integration.test.ts` 覆盖共享 ExtensionHost、ToolRegistry、TaskRegistry、ContextPipeline 的注册、失败回滚、重试和并发幂等。实际 first-party skill 逐个激活、Desktop 生产环境中的跨进程注册和 CI 验收仍未证明。
+当前 discovery 使用 Markdown frontmatter 的 metadata，load 才读取 promptBody。第一批四个 manifest 已存在于 `inkpi/skills/hook.md`、`promise.md`、`character-voice.md` 和 `timeline-consistency.md`；`tests/skills-instructions.test.ts` 覆盖 metadata-first discovery、lazy body loading、按 capability/task kind resolve 和 instruction composition；`tests/skill-runtime-integration.test.ts` 覆盖共享 ExtensionHost、ToolRegistry、TaskRegistry、ContextPipeline 的注册、失败回滚、重试和并发幂等；`tests/first-party-skill-activation.test.ts` 已逐个加载真实 manifest 并验证激活回滚/重试/幂等。Desktop 生产环境中的跨进程注册和 CI 验收仍未证明。
 
 ### 14.2 Artifacts
 
@@ -710,9 +710,9 @@ Artifact 是 Runtime semantic object；JSON/Markdown 只是导出格式。当前
 
 当前有三层：context、semantic、provider。ContextCacheKey 可包含 taskKind、contextFingerprint、projectRevision、model/modelId、instructionVersion、skillVersion、providerId 和 layer。实现提供 TTL、LRU 淘汰和 hits/misses/evictions。
 
-Desktop 的 `daemonAiAssistant` 已把 `runTask` 路由到 CreativeIntelligence；ContextCache 已接入 provider-response 路径。cache key 包含 task kind、context/intent fingerprint、project revision、instruction/skill version、route provider/model 和 layer，cache hit 会复用结果并补齐 artifact。Desktop 的 `contextCache.test.ts` 和 `creativeIntelligence.test.ts` 覆盖 TTL、LRU、hit/miss、revision/instruction/skill/model/provider 失效和 cache-hit artifact rehydration。
+Desktop 的 `daemonAiAssistant` 已把 `runTask` 路由到 CreativeIntelligence；ContextCache 已接入 provider-response 路径。cache key 包含 task kind、context/intent fingerprint、project revision、instruction/skill version、route provider/model 和 layer，cache hit 会复用结果并补齐 artifact。Desktop 的 `contextCache.test.ts` 和 `creativeIntelligence.test.ts` 覆盖 TTL、LRU、hit/miss、revision/instruction/skill/model/provider 失效和 cache-hit artifact rehydration。Runtime `ContextPipeline` 另有默认编译缓存，按 task/provider/revision 稳定序列化并深拷贝结果，`context-cache-pipeline-integration.test.ts` 通过真实 JIT/SQLite retrieval 验证命中和 revision 失效。
 
-ContextPipeline/retrieval 的共享三层默认调用链、跨重启策略和真实命中率仍待接入或测量，不能把本地 cache 接入写成全链路完成。
+ContextPipeline/retrieval 与 Desktop provider-response 的共享三层默认调用链、跨重启策略和真实命中率仍待接入或测量，不能把本地 cache 接入写成全链路完成。
 
 ### 14.4 Capability Routing
 
@@ -824,22 +824,22 @@ mutation
 | Phase 1 canonical content | SemanticDocument、SourceMap、projection tests | 本地路径已有；复杂编辑器事务映射待扩展 |
 | Phase 2 story model | StoryState、Provenance、StoryContext tests | 局部；持久化/完整提取待验证 |
 | Phase 3–5 task contract/router | protocol task.ts、TaskRegistry、TaskRouter、RPC tests | 本地契约和 task RPC 已有；公开 execution 查询 RPC 仍未纳入 v1 |
-| Phase 6 context pipeline | ContextPipeline、JitContextProvider | 本地 provider/budget/fingerprint 已有；跨进程注册待验证 |
+| Phase 6 context pipeline | ContextPipeline、JitContextProvider、context-cache-pipeline-integration | 本地 provider/budget/fingerprint、默认编译缓存和真实 JIT/SQLite retrieval 已有；跨进程注册待验证 |
 | Phase 7 creative layer | taskFactories、CreativeIntelligence | 已有本地路径 |
-| Phase 8 five slices | verticalSlices、proposal、task handler tests、desktopDaemonIntegration、desktopDaemonVerticalSlices | 五个 task factory 均已有 real WebSocket child-process 用例；GhostText、Proposal Review/CAS、gutter marker、长任务 UI 和全量编辑器链路仍待验收 |
+| Phase 8 five slices | verticalSlices、proposal、task handler tests、desktopDaemonIntegration、desktopDaemonVerticalSlices、Desktop editor-ai-chain integration | 五个 task factory 均已有 real WebSocket child-process 用例；GhostText→Proposal Review/CAS 的 headless 编辑器链路已有用例；gutter marker、长任务 UI 和全量编辑器链路仍待验收 |
 | Phase 9 projection sync | DomainChangeSet、IndexedDB store、SQLite store、DomainMaterializer | 本地 reducer、幂等、乱序、checksum、snapshot/rebuild 已测；跨设备/跨进程待验证 |
 | Phase 10 Proposal/CAS | DomainProposal、ProposalLedger、Selection Toolbar | 局部；统一持久化/跨端待验证 |
 | Phase 11 durable execution | checkpoint/execution stores、TaskRouter recovery、daemon-rpc-e2e、process-restart-e2e、fault-injection-recovery | 本地文件重开、daemon stop/start reload、checkpoint/execution 损坏显式失败、OS 子进程 crash/resume 和两类可复现 fault injection 已测；App restart/生产级故障注入待验证 |
-| Phase 12 skills | ProgressiveSkillRuntime、四个 first-party manifest、skill-runtime-integration | metadata-first/lazy-load、共享 registry 注册、回滚、重试和幂等已测；first-party 逐个激活和跨进程生产注册待验证 |
+| Phase 12 skills | ProgressiveSkillRuntime、四个 first-party manifest、skill-runtime-integration、first-party-skill-activation | 四个真实 manifest 已逐个覆盖 metadata-first/lazy-load、共享 registry 注册、回滚、重试和幂等；跨进程生产注册待验证 |
 | Phase 13 artifacts | ArtifactRuntime、IndexedDbArtifactStore、artifact store tests | 本地持久化、深拷贝、lineage、rehydration 已测；Daemon sync/RPC 待验证 |
-| Phase 14 cache | ContextCache、LayeredContextCache、CreativeIntelligence | 本地 provider-response/cache-hit 接入和失效已测；共享三层默认链/跨重启待验证 |
-| Phase 15 capability routing | CapabilityRouter、ModelCapabilities、TaskRouter/CreativeIntelligence、provider-capability-matrix-gate | 本地强制选择、mismatch-before-queue 和代表性 provider/model 声明矩阵已测；真实 provider API matrix、配置和 fallback 待验证 |
+| Phase 14 cache | ContextPipeline compile cache、ContextCache、LayeredContextCache、CreativeIntelligence | Runtime ContextPipeline 已接入带 revision/provider key 的编译缓存，并通过真实 JIT/SQLite retrieval 验证；Desktop provider-response cache 和共享三层默认链/跨重启仍待验证 |
+| Phase 15 capability routing | CapabilityRouter、ModelCapabilities、TaskRouter/CreativeIntelligence、provider-capability-matrix-gate、provider-route-fallback | 本地强制选择、mismatch-before-queue、代表性 provider/model 声明矩阵和 retryable provider failover 已测；真实 provider API matrix 和生产配置仍待验证 |
 | Phase 16 instructions | InstructionRegistry、core/pluginInstructions、Desktop adapter | Desktop→Daemon registration、id/version/provenance 和 intent 分离已有本地测试；跨进程生产链路待验证 |
 | Phase 17 scheduler | TaskScheduler、TaskRouter events | 局部；scheduler 本身不 durable |
 | Phase 18 evals | fixtures、EvalRunner、deterministic/subjective evals、evals.yml | deterministic 与 canonical subjective gold-set/pairwise/rubric fixture 已接 CI；真实 provider、人类标注 gold 和完整 benchmark 待补 |
 | Phase 19 observability | observer、provenance sanitizer、task events | task/provider/model/error、raw-CoT 脱敏和 artifact lineage 本地已有；自动 skill 注入、跨层 cache 统计和生产脱敏策略待验证 |
 | Phase 20–21 plugins/legacy | 44 runtime catalog、22 routed plugin、architecture guards | 本地分类、路由和 legacy guard 已有；生产插件注册与兼容面审计待验证 |
-| Phase 22 reliability review | architecture/reliability tests、deterministic/subjective evals、daemon restart/store corruption/process restart/fault injection tests | 本地已覆盖 offline、network failure、stale proposal、duplicate task、乱序/checksum、checkpoint corruption、model mismatch、invalid structured output、context overflow、cache invalidation、daemon store reload、OS 子进程 crash/resume 和 checkpoint/partial workflow fault injection；App restart、生产级系统故障注入和真实 provider 仍待报告 |
+| Phase 22 reliability review | architecture/reliability tests、deterministic/subjective evals、daemon restart/store corruption/process restart/fault injection tests、Desktop editor-ai-chain integration | 本地已覆盖 offline、network failure、stale proposal、duplicate task、乱序/checksum、checkpoint corruption、model mismatch、model-unavailable failover、invalid structured output、context overflow、cache invalidation、daemon store reload、OS 子进程 crash/resume、checkpoint/partial workflow fault injection 和 GhostText/Proposal/CAS 链路；App restart、生产级系统故障注入和真实 provider 仍待报告 |
 | Phase 23 final freeze | 本文件 | 条件冻结，禁止宣称 Final |
 
 ## 19. Final Freeze Checklist
