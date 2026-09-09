@@ -9,6 +9,8 @@ export * from './task-execution-store.js';
 export * from './task-scheduler-persistence.js';
 export * from './daemon-persistence.js';
 export * from './jit-context-provider.js';
+export * from './serialized-creative-context-provider.js';
+export type { ContextProvider } from '@inkpi/agent-core';
 export * from './task-model-handler.js';
 export * from './provider-response-cache.js';
 
