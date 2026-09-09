@@ -20,10 +20,13 @@ import { InkPiDaemon } from '../packages/server/dist/daemon.js';
 // suite (e.g. `--model mock-test`). Mock providers are NOT silently registered on
 // the production path; we opt into them explicitly here so headless tests can run
 // without real API keys. Real models are unaffected.
-import { installTestDoubles } from '../packages/ai/dist/test-fixtures.js';
-installTestDoubles();
-
 const args = process.argv.slice(2);
+const explicitModelIndex = args.indexOf('--model');
+const explicitModel = explicitModelIndex === -1 ? undefined : args[explicitModelIndex + 1];
+if (explicitModel === 'mock-test') {
+  const { installTestDoubles } = await import('../packages/ai/dist/test-fixtures.js');
+  installTestDoubles();
+}
 
 function readRequiredArg(index, name) {
   const value = args[index + 1];
