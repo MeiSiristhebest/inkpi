@@ -21,26 +21,38 @@ describe('InkPiDaemon observability defaults', () => {
     });
 
     try {
-      daemon.getTaskRouter().submit({
-        id: 'daemon-observability-task',
-        kind: 'test.daemon.observability',
-        input: {},
-        outputContract: { format: 'text' }
-      });
-      await expect(daemon.getTaskRouter().wait('daemon-observability-task')).resolves.toMatchObject({
-        status: 'completed'
-      });
+      const submitTask = (id: string) => {
+        daemon.getTaskRouter().submit({
+          id,
+          kind: 'test.daemon.observability',
+          input: {},
+          outputContract: { format: 'text' }
+        });
+        return daemon.getTaskRouter().wait(id);
+      };
+      await expect(submitTask('daemon-observability-task-miss')).resolves.toMatchObject({ status: 'completed' });
+      await expect(submitTask('daemon-observability-task-hit')).resolves.toMatchObject({ status: 'completed' });
 
-      expect(daemon.getTaskObservability().get('daemon-observability-task')).toMatchObject({
-        taskId: 'daemon-observability-task',
+      expect(daemon.getTaskObservability().get('daemon-observability-task-miss')).toMatchObject({
+        taskId: 'daemon-observability-task-miss',
         status: 'completed',
         cache: {
           context: { misses: 1 }
         }
       });
-      expect(daemon.getCacheCoordinator().stats().context.misses).toBe(1);
-      expect(emitted).toHaveLength(1);
-      expect(emitted[0]).toMatchObject({ taskId: 'daemon-observability-task', status: 'completed' });
+      expect(daemon.getTaskObservability().get('daemon-observability-task-hit')).toMatchObject({
+        taskId: 'daemon-observability-task-hit',
+        status: 'completed',
+        cache: {
+          context: { hits: 1, misses: 0 }
+        }
+      });
+      expect(daemon.getCacheCoordinator().stats().context).toMatchObject({ hits: 1, misses: 1 });
+      expect(emitted).toHaveLength(2);
+      expect(emitted.map((observation) => observation.taskId)).toEqual([
+        'daemon-observability-task-miss',
+        'daemon-observability-task-hit'
+      ]);
     } finally {
       await daemon.stop();
     }

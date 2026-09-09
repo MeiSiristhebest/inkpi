@@ -8,7 +8,7 @@ import type {
   TaskSubmitResult
 } from '@inkpi/protocol';
 import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
-import type { RuntimeCacheCoordinatorPort } from '../context/cache-contract.js';
+import type { RuntimeCacheCoordinatorPort, RuntimeCacheStats } from '../context/cache-contract.js';
 import { ContextPipeline } from '../context/index.js';
 import { InstructionRegistry } from '../instructions/instruction-registry.js';
 import { TaskScheduler } from '../lifecycle/scheduler.js';
@@ -364,6 +364,7 @@ export class TaskRouter {
     this.update(record, { status: 'running', startedAt: record.snapshot.startedAt ?? this.now() });
     this.observer?.started?.(record.task);
     try {
+      const cacheStatsBefore = this.cacheCoordinator?.stats();
       const context = await this.contextPipeline.build(record.task, record.controller.signal);
       // A provider may finish after cancellation. Do not enter the handler
       // boundary once the task has been cancelled during context collection.
@@ -371,7 +372,11 @@ export class TaskRouter {
         this.finishCancelled(record);
         return;
       }
-      this.observer?.contextBuilt?.(record.task, context, this.cacheCoordinator?.stats());
+      this.observer?.contextBuilt?.(
+        record.task,
+        context,
+        cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats())
+      );
       const instructions = this.instructionRegistry.composeForTask(record.task.kind);
       const checkpoint = await this.checkpointStore.load(record.task.id);
       if (record.controller.signal.aborted) {
@@ -875,6 +880,28 @@ function executionPriority(task: AiTask): number {
 
 function interruptionError(message: string): TaskError {
   return { code: 'TASK_INTERRUPTED', message, retryable: true };
+}
+
+function cacheStatsDelta(before?: RuntimeCacheStats, after?: RuntimeCacheStats): RuntimeCacheStats | undefined {
+  if (!after) return undefined;
+  if (!before) return after;
+  return {
+    provider: cacheLayerStatsDelta(before.provider, after.provider),
+    context: cacheLayerStatsDelta(before.context, after.context),
+    retrieval: cacheLayerStatsDelta(before.retrieval, after.retrieval)
+  };
+}
+
+function cacheLayerStatsDelta(
+  before: RuntimeCacheStats['provider'],
+  after: RuntimeCacheStats['provider']
+): RuntimeCacheStats['provider'] {
+  return {
+    hits: Math.max(0, after.hits - before.hits),
+    misses: Math.max(0, after.misses - before.misses),
+    evictions: Math.max(0, after.evictions - before.evictions),
+    invalidations: Math.max(0, after.invalidations - before.invalidations)
+  };
 }
 
 function cloneSnapshot(snapshot: TaskStatusSnapshot): TaskStatusSnapshot {
