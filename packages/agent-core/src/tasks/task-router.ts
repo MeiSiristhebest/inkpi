@@ -10,6 +10,7 @@ import type {
 import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
 import { ContextPipeline } from '../context/index.js';
 import { InstructionRegistry } from '../instructions/instruction-registry.js';
+import { TaskScheduler } from '../lifecycle/scheduler.js';
 import type { TaskRunObserver } from '../telemetry/task-observability.js';
 import { ToolRegistry } from '../tools.js';
 import { InMemoryTaskCheckpointStore, type TaskCheckpointStore } from './checkpoints.js';
@@ -52,6 +53,7 @@ export interface TaskRouterOptions {
   executionStore?: TaskExecutionStore;
   instructionRegistry?: InstructionRegistry;
   toolRegistry?: ToolRegistry;
+  scheduler?: TaskScheduler;
   retryDelayMs?: number;
 }
 
@@ -68,6 +70,8 @@ interface TaskRecord {
   executionAttempts: ExecutionAttempt[];
   resumeToken?: ResumeToken;
   steering: unknown[];
+  scheduled?: { id: string; cancel: () => boolean };
+  scheduleSequence: number;
 }
 
 export class TaskRouter {
@@ -81,6 +85,7 @@ export class TaskRouter {
   private readonly executionStore: TaskExecutionStore;
   private readonly instructionRegistry: InstructionRegistry;
   readonly toolRegistry: ToolRegistry;
+  readonly scheduler: TaskScheduler;
   private readonly retryDelayMs: number;
   private readonly records = new Map<string, TaskRecord>();
   private readonly listeners = new Set<TaskRouterListener>();
@@ -98,6 +103,7 @@ export class TaskRouter {
     this.executionStore = options.executionStore ?? new InMemoryTaskExecutionStore();
     this.instructionRegistry = options.instructionRegistry ?? new InstructionRegistry();
     this.toolRegistry = options.toolRegistry ?? new ToolRegistry();
+    this.scheduler = options.scheduler ?? new TaskScheduler();
     this.retryDelayMs = Math.max(0, options.retryDelayMs ?? 0);
     this.ready = this.recoverPersistedRecords();
     // Keep constructor-started recovery from becoming an unhandled rejection while
@@ -152,26 +158,14 @@ export class TaskRouter {
       executionRun,
       executionSteps: [],
       executionAttempts: [],
-      steering: []
+      steering: [],
+      scheduleSequence: 0
     };
     this.records.set(task.id, record);
     const persistence = this.persist(record);
     this.emit({ type: 'created', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
     this.emit({ type: 'queued', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
-    queueMicrotask(() => {
-      void Promise.all([this.ready, persistence]).then(
-        () => this.execute(record),
-        (error) => {
-          if (this.records.get(task.id) === record) {
-            this.finishFailed(record, {
-              code: 'TASK_RECOVERY_FAILED',
-              message: error instanceof Error ? error.message : String(error),
-              retryable: true
-            });
-          }
-        }
-      );
-    });
+    this.queueExecution(record, persistence);
     return { taskId: task.id, status: snapshot.status };
   }
 
@@ -182,6 +176,7 @@ export class TaskRouter {
       return { taskId, cancelled: false, status: record.snapshot.status };
     }
     record.controller.abort();
+    this.unschedule(record);
     this.finishCancelled(record);
     return {
       taskId,
@@ -285,7 +280,7 @@ export class TaskRouter {
     record.resolveCompletion = resolveCompletion;
     await this.persist(record);
     this.emit({ type: 'queued', taskId, snapshot: cloneSnapshot(record.snapshot) });
-    queueMicrotask(() => void this.execute(record));
+    this.queueExecution(record);
     return { taskId, status: 'queued' };
   }
 
@@ -553,14 +548,10 @@ export class TaskRouter {
       this.markExecutionRetrying(record, error);
       const persistence = this.persist(record);
       this.emit({ type: 'queued', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
-      const schedule = () => {
-        if (!isTerminal(record.snapshot.status) && !isInterrupted(record) && !record.controller.signal.aborted) {
-          void this.execute(record);
-        }
-      };
       void persistence.then(() => {
-        if (this.retryDelayMs > 0) setTimeout(schedule, this.retryDelayMs);
-        else queueMicrotask(schedule);
+        const queue = () => this.queueExecution(record);
+        if (this.retryDelayMs > 0) setTimeout(queue, this.retryDelayMs);
+        else queueMicrotask(queue);
       });
       return;
     }
@@ -581,6 +572,7 @@ export class TaskRouter {
 
   private finishInterrupted(record: TaskRecord): void {
     if (isTerminal(record.snapshot.status)) return;
+    this.unschedule(record);
     record.controller.abort();
     record.snapshot.status = 'interrupted';
     record.snapshot.error = interruptionError('Task was interrupted by runtime shutdown; resume it to continue');
@@ -625,6 +617,64 @@ export class TaskRouter {
       step.finishedAt = updatedAt;
       step.error = error;
     }
+  }
+
+  private queueExecution(record: TaskRecord, waitFor: Promise<void> = Promise.resolve()): void {
+    queueMicrotask(() => {
+      void Promise.all([this.ready, waitFor]).then(
+        () => this.scheduleExecution(record),
+        (error) => {
+          if (this.records.get(record.task.id) === record) {
+            this.finishFailed(record, {
+              code: 'TASK_RECOVERY_FAILED',
+              message: error instanceof Error ? error.message : String(error),
+              retryable: true
+            });
+          }
+        }
+      );
+    });
+  }
+
+  private scheduleExecution(record: TaskRecord): void {
+    if (
+      record.scheduled ||
+      isTerminal(record.snapshot.status) ||
+      isInterrupted(record) ||
+      this.stopping ||
+      record.controller.signal.aborted
+    ) {
+      return;
+    }
+    const scheduleId = `task:${record.task.id}:execution:${record.scheduleSequence++}`;
+    try {
+      const scheduled = this.scheduler.schedule({
+        id: scheduleId,
+        mode: executionMode(record.task),
+        priority: executionPriority(record.task),
+        run: async () => {
+          if (record.scheduled?.id !== scheduleId) return;
+          // A running attempt is cancelled through the durable task controller;
+          // retain the scheduler slot until execute() unwinds.
+          record.scheduled = undefined;
+          await this.execute(record);
+        }
+      });
+      record.scheduled = { id: scheduleId, cancel: scheduled.cancel };
+      void scheduled.promise.catch(() => undefined);
+    } catch (error) {
+      this.finishFailed(record, {
+        code: 'TASK_SCHEDULER_FAILED',
+        message: error instanceof Error ? error.message : String(error),
+        retryable: true
+      });
+    }
+  }
+
+  private unschedule(record: TaskRecord): void {
+    const scheduled = record.scheduled;
+    record.scheduled = undefined;
+    scheduled?.cancel();
   }
 
   private recoverPersistedRecords(): Promise<void> {
@@ -689,7 +739,8 @@ export class TaskRouter {
       executionSteps: stored.steps ? cloneValue(stored.steps) : [],
       executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
       resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
-      steering: stored.steering ? cloneValue(stored.steering) : []
+      steering: stored.steering ? cloneValue(stored.steering) : [],
+      scheduleSequence: 0
     };
     snapshot.executionRunId = record.executionRun.id;
     snapshot.attempts = stored.attempts;
@@ -803,6 +854,18 @@ function isInterrupted(record: TaskRecord): boolean {
 
 function isCancelled(record: TaskRecord): boolean {
   return record.snapshot.status === 'cancelled' || record.controller.signal.aborted;
+}
+
+function executionMode(task: AiTask): 'interactive' | 'foreground' | 'background' | 'batch' {
+  return task.executionPolicy?.mode ?? task.executionPolicy?.scheduling ?? 'foreground';
+}
+
+function executionPriority(task: AiTask): number {
+  const priority = task.executionPolicy?.priority;
+  if (typeof priority === 'number') return priority;
+  if (priority === 'high') return 100;
+  if (priority === 'low') return -100;
+  return 0;
 }
 
 function interruptionError(message: string): TaskError {

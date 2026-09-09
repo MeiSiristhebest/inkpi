@@ -1,4 +1,4 @@
-import { ContextPipeline, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
+import { ContextPipeline, TaskRegistry, TaskRouter, TaskScheduler } from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -186,5 +186,59 @@ describe('TaskRegistry and TaskRouter', () => {
       output: { text: '[{"direction":"more tension"}]' }
     });
     expect(router.execution('steering-task').steering).toEqual([]);
+  });
+
+  it('applies task scheduling mode and priority through the router', async () => {
+    const registry = new TaskRegistry();
+    const order: string[] = [];
+    let releaseBlocking!: () => void;
+    registry.register({
+      id: 'scheduled-handler',
+      kinds: ['test.scheduled'],
+      execute: ({ task }) => {
+        order.push(task.id);
+        if (task.id === 'blocking') {
+          return new Promise((resolve) => {
+            releaseBlocking = () => resolve({ output: { format: 'text', text: 'blocking' } });
+          });
+        }
+        return Promise.resolve({ output: { format: 'text', text: task.id } });
+      }
+    });
+    const router = new TaskRouter({
+      registry,
+      scheduler: new TaskScheduler({ maxForeground: 1 })
+    });
+
+    router.submit(
+      task({
+        id: 'blocking',
+        kind: 'test.scheduled',
+        executionPolicy: { mode: 'foreground' }
+      })
+    );
+    router.submit(
+      task({
+        id: 'low',
+        kind: 'test.scheduled',
+        executionPolicy: { mode: 'foreground', priority: 'low' }
+      })
+    );
+    router.submit(
+      task({
+        id: 'high',
+        kind: 'test.scheduled',
+        executionPolicy: { mode: 'foreground', priority: 'high' }
+      })
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(order).toEqual(['blocking']);
+    expect(router.status('low').status).toBe('queued');
+    expect(router.status('high').status).toBe('queued');
+
+    releaseBlocking();
+    await Promise.all([router.wait('blocking'), router.wait('low'), router.wait('high')]);
+    expect(order).toEqual(['blocking', 'high', 'low']);
   });
 });
