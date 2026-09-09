@@ -1,16 +1,11 @@
 import {
   KNOWN_MODELS,
+  type ModelCatalogEntry,
   findModelInCatalog,
-  modelCatalogEntryToCapabilityDeclaration,
-  type ModelCatalogEntry
+  modelCatalogEntryToCapabilityDeclaration
 } from '@inkpi/ai';
 import type { AiTask, TaskRequirements } from '@inkpi/protocol';
-import {
-  CapabilityMismatchError,
-  CapabilityRouter,
-  createModelRouteFromCatalog,
-  type ModelRoute
-} from '@inkpi/server';
+import { CapabilityMismatchError, CapabilityRouter, type ModelRoute, createModelRouteFromCatalog } from '@inkpi/server';
 import { describe, expect, it } from 'vitest';
 
 const REPRESENTATIVE_MODELS = [

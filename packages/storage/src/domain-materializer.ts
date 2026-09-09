@@ -99,7 +99,7 @@ export class DomainMaterializer {
   public getGenericProjection(
     workspaceId: string,
     aggregateType: string,
-    aggregateId: string,
+    aggregateId: string
   ): GenericDomainProjection | undefined {
     assertGenericProjectionCoordinate(workspaceId, 'workspace');
     assertGenericProjectionCoordinate(aggregateType, 'aggregate type');
@@ -109,7 +109,7 @@ export class DomainMaterializer {
         `SELECT workspace_id, aggregate_type, aggregate_id, revision,
                 payload_json, payload_hash, updated_at
          FROM domain_aggregate_projections
-         WHERE workspace_id = ? AND aggregate_type = ? AND aggregate_id = ?`,
+         WHERE workspace_id = ? AND aggregate_type = ? AND aggregate_id = ?`
       )
       .get(workspaceId, aggregateType, aggregateId) as GenericDomainProjectionRow | undefined;
     return row ? parseGenericProjection(row) : undefined;
@@ -124,16 +124,18 @@ export class DomainMaterializer {
             `SELECT workspace_id, aggregate_type, aggregate_id, revision,
                     payload_json, payload_hash, updated_at
              FROM domain_aggregate_projections
-             WHERE workspace_id = ? ORDER BY aggregate_type ASC, aggregate_id ASC`,
+             WHERE workspace_id = ? ORDER BY aggregate_type ASC, aggregate_id ASC`
           )
         : this.db.prepare(
             `SELECT workspace_id, aggregate_type, aggregate_id, revision,
                     payload_json, payload_hash, updated_at
              FROM domain_aggregate_projections
              WHERE workspace_id = ? AND aggregate_type = ?
-             ORDER BY aggregate_id ASC`,
+             ORDER BY aggregate_id ASC`
           )
-    ).all(...(aggregateType === undefined ? [workspaceId] : [workspaceId, aggregateType])) as GenericDomainProjectionRow[];
+    ).all(
+      ...(aggregateType === undefined ? [workspaceId] : [workspaceId, aggregateType])
+    ) as GenericDomainProjectionRow[];
     return rows.map(parseGenericProjection);
   }
 
@@ -186,7 +188,7 @@ export class DomainMaterializer {
                revision = excluded.revision,
                payload_json = excluded.payload_json,
                payload_hash = excluded.payload_hash,
-               updated_at = excluded.updated_at`,
+               updated_at = excluded.updated_at`
           )
           .run(
             workspaceId,
@@ -195,13 +197,13 @@ export class DomainMaterializer {
             change.revision,
             payloadJson,
             payloadHash,
-            change.occurredAt,
+            change.occurredAt
           );
       } else if (change.operation === 'delete') {
         this.db
           .prepare(
             `DELETE FROM domain_aggregate_projections
-             WHERE workspace_id = ? AND aggregate_type = ? AND aggregate_id = ?`,
+             WHERE workspace_id = ? AND aggregate_type = ? AND aggregate_id = ?`
           )
           .run(workspaceId, change.aggregateType, change.aggregateId);
       }
@@ -617,7 +619,7 @@ function parseGenericProjection(row: GenericDomainProjectionRow): GenericDomainP
     revision: Number(row.revision),
     payload,
     payloadHash,
-    updatedAt: Number(row.updated_at),
+    updatedAt: Number(row.updated_at)
   };
 }
 

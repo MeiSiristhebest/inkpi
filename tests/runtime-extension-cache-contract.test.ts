@@ -8,7 +8,7 @@ import {
   stableSerialize
 } from '@inkpi/agent-core';
 import type { AgentTool, AiTask, SkillInfo } from '@inkpi/protocol';
-import { createRetrievalCacheKey, JitContextProvider } from '@inkpi/server';
+import { JitContextProvider, createRetrievalCacheKey } from '@inkpi/server';
 import type { JitMemoryRetriever } from '@inkpi/storage';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -94,13 +94,9 @@ describe('Runtime extension and cache boundary contracts', () => {
 
     expect(stableSerialize({ b: 2, a: 1 })).toBe(stableSerialize({ a: 1, b: 2 }));
     const contextKey = createContextCacheKey(first, ['static', 'retrieval.jit'], 1024);
-    expect(contextKey).toBe(
-      createContextCacheKey(equivalent, ['static', 'retrieval.jit'], 1024)
-    );
+    expect(contextKey).toBe(createContextCacheKey(equivalent, ['static', 'retrieval.jit'], 1024));
     expect(contextKey).not.toContain('stable context input');
-    expect(contextKey).not.toBe(
-      createContextCacheKey(makeTask(8), ['static', 'retrieval.jit'], 1024)
-    );
+    expect(contextKey).not.toBe(createContextCacheKey(makeTask(8), ['static', 'retrieval.jit'], 1024));
 
     const query = {
       workspaceId: 'contract-workspace',

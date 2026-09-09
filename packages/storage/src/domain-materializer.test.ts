@@ -380,10 +380,14 @@ describe('daemon domain change materializer', () => {
       reason: 'revision-conflict',
       revision: 1
     });
-    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')?.payload).toEqual({ value: 'first' });
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')?.payload).toEqual({
+      value: 'first'
+    });
 
     expect(() => projection.apply({ ...first, checksum: '00000000' })).toThrow('checksum mismatch');
-    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')?.payload).toEqual({ value: 'first' });
+    expect(projection.getGenericProjection('workspace-1', 'story-state', 'state-1')?.payload).toEqual({
+      value: 'first'
+    });
     db.close();
   });
 });

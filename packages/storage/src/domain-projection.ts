@@ -106,7 +106,7 @@ export class DomainProjectionStore {
   public getGenericProjection(
     workspaceId: string,
     aggregateType: string,
-    aggregateId: string,
+    aggregateId: string
   ): GenericDomainProjection | undefined {
     return this.materializer.getGenericProjection(workspaceId, aggregateType, aggregateId);
   }

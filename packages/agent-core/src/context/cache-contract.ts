@@ -34,10 +34,7 @@ export type CacheInvalidationListener = (event: CacheInvalidationEvent) => void;
  * their freshness cannot be proven. Manual and registration invalidations
  * always clear the selected layer.
  */
-export function shouldInvalidateCacheEntry(
-  entryRevision: number | undefined,
-  event: CacheInvalidationEvent
-): boolean {
+export function shouldInvalidateCacheEntry(entryRevision: number | undefined, event: CacheInvalidationEvent): boolean {
   if (event.reason !== 'revision') return true;
   if (!Number.isFinite(event.projectRevision)) return true;
   return !Number.isFinite(entryRevision) || entryRevision! < event.projectRevision!;
@@ -154,8 +151,8 @@ function serializeStable(value: unknown, seen: WeakSet<object>): string {
       return value ? 'true' : 'false';
     case 'number':
       if (Number.isNaN(value)) return 'number:NaN';
-      if (value === Infinity) return 'number:Infinity';
-      if (value === -Infinity) return 'number:-Infinity';
+      if (value === Number.POSITIVE_INFINITY) return 'number:Infinity';
+      if (value === Number.NEGATIVE_INFINITY) return 'number:-Infinity';
       if (Object.is(value, -0)) return 'number:-0';
       return JSON.stringify(value);
     case 'bigint':

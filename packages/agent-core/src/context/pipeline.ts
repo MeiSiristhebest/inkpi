@@ -1,10 +1,10 @@
 import type { AiTask } from '@inkpi/protocol';
 import {
+  type CacheInvalidationEvent,
+  type RuntimeCacheCoordinatorPort,
   createRuntimeCacheKey,
   shouldInvalidateCacheEntry,
-  stableSerialize,
-  type CacheInvalidationEvent,
-  type RuntimeCacheCoordinatorPort
+  stableSerialize
 } from './cache-contract.js';
 import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
@@ -127,11 +127,13 @@ export class ContextPipeline {
     const fragments: ContextFragment[] = [];
     if (task.input.text) {
       fragments.push({
-        id: `task-input:${hash(stableSerialize({
-          documentId: task.input.documentId,
-          selection: task.input.selection,
-          text: task.input.text
-        }))}`,
+        id: `task-input:${hash(
+          stableSerialize({
+            documentId: task.input.documentId,
+            selection: task.input.selection,
+            text: task.input.text
+          })
+        )}`,
         source: 'task-input',
         kind: 'input',
         text: task.input.text,

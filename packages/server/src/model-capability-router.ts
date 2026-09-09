@@ -1,10 +1,10 @@
 import type { ToolRegistry } from '@inkpi/agent-core';
 import {
-  modelCatalogEntryToCapabilityDeclaration,
-  modelCatalogEntryToConfig,
   type ModelCatalogEntry,
   type ModelConfig,
-  type StreamFn
+  type StreamFn,
+  modelCatalogEntryToCapabilityDeclaration,
+  modelCatalogEntryToConfig
 } from '@inkpi/ai';
 import type { AiTask, OutputContract, OutputFormat, TaskRequirements } from '@inkpi/protocol';
 

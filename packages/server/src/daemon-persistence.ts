@@ -1,12 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import {
-  DomainProjectionStore,
-  InkDb,
-  ProposalProjectionStore,
-  SqliteArtifactStore,
-} from '@inkpi/storage';
+import { DomainProjectionStore, InkDb, ProposalProjectionStore, SqliteArtifactStore } from '@inkpi/storage';
 import type { ServerContext } from './server.js';
 import { SqliteTaskCheckpointStore } from './task-checkpoint-store.js';
 import { SqliteTaskExecutionStore } from './task-execution-store.js';
@@ -45,10 +40,10 @@ export function resolveDaemonDbPath(options: DaemonPersistenceOptions = {}): str
   const platform = options.platform ?? process.platform;
   const applicationDataRoot =
     platform === 'win32'
-      ? nonEmpty(env.APPDATA) ?? nonEmpty(env.LOCALAPPDATA) ?? join(homeDir, 'AppData', 'Roaming')
+      ? (nonEmpty(env.APPDATA) ?? nonEmpty(env.LOCALAPPDATA) ?? join(homeDir, 'AppData', 'Roaming'))
       : platform === 'darwin'
         ? join(homeDir, 'Library', 'Application Support')
-        : nonEmpty(env.XDG_DATA_HOME) ?? join(homeDir, '.local', 'share');
+        : (nonEmpty(env.XDG_DATA_HOME) ?? join(homeDir, '.local', 'share'));
 
   return join(applicationDataRoot, 'inkpi', DEFAULT_DAEMON_STATE_DB_FILENAME);
 }
@@ -71,13 +66,13 @@ export function createDaemonPersistence(options: DaemonPersistenceOptions = {}):
       proposalProjection: new ProposalProjectionStore(db),
       artifactStore: new SqliteArtifactStore(db),
       checkpointStore: new SqliteTaskCheckpointStore(db),
-      executionStore: new SqliteTaskExecutionStore(db),
+      executionStore: new SqliteTaskExecutionStore(db)
     },
     close: () => {
       if (closed) return;
       closed = true;
       db.close();
-    },
+    }
   };
 }
 

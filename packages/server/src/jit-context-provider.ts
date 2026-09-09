@@ -1,10 +1,10 @@
 import type { ContextFragment, ContextProvider, ContextRequest } from '@inkpi/agent-core';
 import {
+  type CacheInvalidationEvent,
+  type RuntimeCacheCoordinatorPort,
   createRuntimeCacheKey,
   shouldInvalidateCacheEntry,
-  stableSerialize,
-  type CacheInvalidationEvent,
-  type RuntimeCacheCoordinatorPort
+  stableSerialize
 } from '@inkpi/agent-core';
 import type { JitContextQuery, JitContextResult } from '@inkpi/protocol';
 import type { JitMemoryRetriever } from '@inkpi/storage';
@@ -102,7 +102,7 @@ export class JitContextProvider implements ContextProvider {
       currentText: request.task.input.text,
       activeReferences: asStringArray(values.activeReferences),
       maxSummaryDocuments: asNumber(values.maxSummaryDocuments),
-      maxFtsResults: asNumber(values.maxFtsResults),
+      maxFtsResults: asNumber(values.maxFtsResults)
     };
     const cacheKey = createRetrievalCacheKey(query, request.projectRevision, request);
     const cached = this.getCached(cacheKey);
@@ -124,11 +124,11 @@ export class JitContextProvider implements ContextProvider {
         data: {
           workingMemory: result.l1WorkingMemory,
           recentSummaries: result.l2RecentSummaries,
-          fullTextMatches: result.l3GlobalLore,
+          fullTextMatches: result.l3GlobalLore
         },
         priority: 500,
         metadata: { cacheLayer: 'retrieval', cacheHit }
-      },
+      }
     ];
   }
 

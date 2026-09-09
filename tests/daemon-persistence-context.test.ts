@@ -3,19 +3,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Artifact } from '@inkpi/protocol';
 import {
-  createDaemonPersistence,
   InMemoryTransport,
   InkPiDaemon,
   InkRpcClient,
-  resolveDaemonDbPath,
   SqliteTaskCheckpointStore,
   SqliteTaskExecutionStore,
+  createDaemonPersistence,
+  resolveDaemonDbPath
 } from '@inkpi/server';
-import {
-  DomainProjectionStore,
-  ProposalProjectionStore,
-  SqliteArtifactStore,
-} from '@inkpi/storage';
+import { DomainProjectionStore, ProposalProjectionStore, SqliteArtifactStore } from '@inkpi/storage';
 import { describe, expect, it } from 'vitest';
 
 describe('daemon persistent SQLite context', () => {
@@ -29,25 +25,25 @@ describe('daemon persistent SQLite context', () => {
         dbPath: explicitPath,
         env: { INKPI_STATE_DB: environmentPath },
         platform: 'linux',
-        homeDir,
-      }),
+        homeDir
+      })
     ).toBe(explicitPath);
     expect(
       resolveDaemonDbPath({
         env: { INKPI_STATE_DB: environmentPath },
         platform: 'linux',
-        homeDir,
-      }),
+        homeDir
+      })
     ).toBe(environmentPath);
-    expect(
-      resolveDaemonDbPath({ env: {}, platform: 'linux', homeDir }),
-    ).toBe(join(homeDir, '.local', 'share', 'inkpi', 'state.sqlite'));
-    expect(
-      resolveDaemonDbPath({ env: { APPDATA: 'C:\\AppData' }, platform: 'win32', homeDir }),
-    ).toBe(join('C:\\AppData', 'inkpi', 'state.sqlite'));
-    expect(
-      resolveDaemonDbPath({ env: {}, platform: 'darwin', homeDir }),
-    ).toBe(join(homeDir, 'Library', 'Application Support', 'inkpi', 'state.sqlite'));
+    expect(resolveDaemonDbPath({ env: {}, platform: 'linux', homeDir })).toBe(
+      join(homeDir, '.local', 'share', 'inkpi', 'state.sqlite')
+    );
+    expect(resolveDaemonDbPath({ env: { APPDATA: 'C:\\AppData' }, platform: 'win32', homeDir })).toBe(
+      join('C:\\AppData', 'inkpi', 'state.sqlite')
+    );
+    expect(resolveDaemonDbPath({ env: {}, platform: 'darwin', homeDir })).toBe(
+      join(homeDir, 'Library', 'Application Support', 'inkpi', 'state.sqlite')
+    );
   });
 
   it('creates one SQLite context with all durable stores and creates parent directories', () => {
@@ -81,7 +77,7 @@ describe('daemon persistent SQLite context', () => {
       content: { value: 'durable' },
       provenance: { taskId: 'task:persistent-context' },
       createdAt: 1,
-      updatedAt: 1,
+      updatedAt: 1
     };
 
     const first = createDaemonPersistence({ dbPath });
