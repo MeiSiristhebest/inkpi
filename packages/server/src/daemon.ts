@@ -191,6 +191,9 @@ export class InkPiDaemon {
 
   public async start(port = this.options.port, host = this.options.host): Promise<this> {
     if (this.running) return this;
+    // Do not expose a listener until persisted task records have been
+    // recovered and their interruption state is durable.
+    await this.taskRouter.ready;
     this.startTime = Date.now();
     this.tcpServer = await this.rpcServer.listenTcp(port!, host!);
     this.running = true;

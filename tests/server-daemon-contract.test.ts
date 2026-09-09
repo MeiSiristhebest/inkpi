@@ -1,5 +1,40 @@
-import { InkPiDaemon } from '@inkpi/server';
+import type { TaskExecutionRecord, TaskExecutionStore } from '@inkpi/agent-core';
+import type { AiTask } from '@inkpi/protocol';
+import { InkPiDaemon, InkRpcClient } from '@inkpi/server';
 import { afterEach, describe, expect, it } from 'vitest';
+
+class DelayedExecutionStore implements TaskExecutionStore {
+  private readonly recoveryGate: Promise<void>;
+  private release!: () => void;
+  private persisted?: TaskExecutionRecord;
+
+  constructor(private readonly record: TaskExecutionRecord) {
+    this.recoveryGate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+  }
+
+  releaseRecovery(): void {
+    this.release();
+  }
+
+  save(record: TaskExecutionRecord): void {
+    this.persisted = record;
+  }
+
+  load(taskId: string): TaskExecutionRecord | undefined {
+    return this.persisted?.task.id === taskId ? this.persisted : undefined;
+  }
+
+  async list(): Promise<TaskExecutionRecord[]> {
+    await this.recoveryGate;
+    return [this.record];
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // ---------------------------------------------------------------------------
 // @inkpi/server 的遗留 InkPiDaemon 契约。
@@ -89,5 +124,44 @@ describe('@inkpi/server InkPiDaemon contract', () => {
     await d.stop();
     await expect(d.stop()).resolves.toBeUndefined();
     daemon = null; // 已手动停止，避免 afterEach 重复操作
+  });
+
+  it('waits for durable execution recovery before exposing the TCP listener', async () => {
+    const task: AiTask = {
+      id: 'startup-recovery-task',
+      kind: 'test.startup-recovery',
+      input: { payload: { value: 1 } }
+    };
+    const executionStore = new DelayedExecutionStore({
+      task,
+      snapshot: { taskId: task.id, kind: task.kind, status: 'running', attempts: 1 },
+      attempts: 1,
+      updatedAt: 1
+    });
+    const d = new InkPiDaemon({ host: '127.0.0.1', context: { executionStore } });
+    daemon = d;
+    const start = d.start(0, '127.0.0.1');
+    let client: InkRpcClient | undefined;
+
+    try {
+      await delay(25);
+      expect(d.getStatus().running).toBe(false);
+
+      executionStore.releaseRecovery();
+      await start;
+      expect(d.getStatus().running).toBe(true);
+
+      client = await InkRpcClient.connectTcp(d.getPort(), '127.0.0.1');
+      await expect(client.request('task.status', { taskId: task.id })).resolves.toMatchObject({
+        taskId: task.id,
+        status: 'interrupted'
+      });
+    } finally {
+      executionStore.releaseRecovery();
+      await start.catch(() => undefined);
+      await client?.close();
+      await d.stop();
+      daemon = null;
+    }
   });
 });
