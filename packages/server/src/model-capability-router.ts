@@ -238,20 +238,15 @@ export class CapabilityRouter {
   /** Return all compatible routes in deterministic failover order. */
   resolveCandidates(task: AiTask): ResolvedModelRoute[] {
     const requirements = task.requirements ?? {};
-    const hasRequirements = Object.values(requirements).some((value) => {
-      if (Array.isArray(value)) return value.length > 0;
-      return value !== undefined && value !== false;
-    });
     const evaluations = this.routes.map((route) => ({
       route,
       missing: missingCapabilities(requirements, route.capabilities, task.outputContract)
     }));
     const matching = evaluations.filter((evaluation) => evaluation.missing.length === 0);
-    const fallbackCandidates = matching.filter((evaluation) => evaluation.route.fallback === true);
-    const candidates = (hasRequirements || fallbackCandidates.length === 0 ? matching : fallbackCandidates)
-      .filter((evaluation) => evaluation.missing.length === 0)
-      .map((evaluation) => evaluation.route)
-      .sort(compareRoutes);
+    // A fallback is a last resort, not a preferred route when a task happens
+    // to have no explicit requirements. Keep all compatible primary routes in
+    // the candidate set so compareRoutes can place fallback routes last.
+    const candidates = matching.map((evaluation) => evaluation.route).sort(compareRoutes);
     return candidates;
   }
 }
@@ -392,12 +387,7 @@ function missingCapabilities(
 ): string[] {
   const missing: string[] = [];
   addMissingCapabilities(missing, requirements.capabilities, capabilities);
-  addMissingValues(
-    missing,
-    'tool',
-    requirements.tools,
-    capabilities.tools ?? capabilities.supportsTools ?? capabilities.toolCalling
-  );
+  addMissingValues(missing, 'tool', requirements.tools, declaredToolCapability(capabilities));
   addMissingValues(missing, 'modality', requirements.modalities, capabilities.modalities);
 
   if (requirements.network && !supportsNetwork(requirements.network, capabilities.network)) {
@@ -423,7 +413,7 @@ function missingCapabilities(
     missing.push('streaming');
   }
 
-  const tools = capabilities.tools ?? capabilities.supportsTools ?? capabilities.toolCalling;
+  const tools = declaredToolCapability(capabilities);
   if (requirements.needsTools === true && !supportsTools(tools)) missing.push('tools');
 
   const reasoning = capabilities.reasoning ?? capabilities.supportsReasoning;
@@ -500,6 +490,15 @@ function addMissingValues(
 
 function supportsTools(tools: readonly string[] | boolean | undefined): boolean {
   return tools === true || (Array.isArray(tools) && tools.length > 0);
+}
+
+function declaredToolCapability(capabilities: ModelCapabilities): readonly string[] | boolean | undefined {
+  if (capabilities.tools !== undefined) {
+    if (capabilities.tools === true) return true;
+    if (capabilities.toolCalling === true) return true;
+    return capabilities.tools;
+  }
+  return capabilities.supportsTools ?? capabilities.toolCalling;
 }
 
 function supportsStructuredOutput(capabilities: ModelCapabilities): boolean {

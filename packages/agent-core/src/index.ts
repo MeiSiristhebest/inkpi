@@ -22,6 +22,8 @@ export * from './telemetry/index.js';
 export * from './pipeline/index.js';
 export * from './context/index.js';
 export * from './tasks/index.js';
+export * from './proposals/index.js';
+export * from './artifacts/index.js';
 export * from './instructions/index.js';
 export * from './lifecycle/index.js';
 export * from './branch-what-if.js';

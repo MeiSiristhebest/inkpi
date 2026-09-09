@@ -368,14 +368,14 @@ export class TaskRouter {
       const context = await this.contextPipeline.build(record.task, record.controller.signal);
       // A provider may finish after cancellation. Do not enter the handler
       // boundary once the task has been cancelled during context collection.
-      if (record.snapshot.status === 'cancelled' || record.controller.signal.aborted) {
+      if (record.controller.signal.aborted) {
         this.finishCancelled(record);
         return;
       }
       this.observer?.contextBuilt?.(record.task, context);
       const instructions = this.instructionRegistry.composeForTask(record.task.kind);
       const checkpoint = await this.checkpointStore.load(record.task.id);
-      if (record.snapshot.status === 'cancelled' || record.controller.signal.aborted) {
+      if (record.controller.signal.aborted) {
         this.finishCancelled(record);
         return;
       }
@@ -801,6 +801,10 @@ function isInterrupted(record: TaskRecord): boolean {
   return record.snapshot.status === 'interrupted';
 }
 
+function isCancelled(record: TaskRecord): boolean {
+  return record.snapshot.status === 'cancelled' || record.controller.signal.aborted;
+}
+
 function interruptionError(message: string): TaskError {
   return { code: 'TASK_INTERRUPTED', message, retryable: true };
 }
@@ -834,9 +838,17 @@ function observationFromSnapshot(snapshot: TaskStatusSnapshot) {
 }
 
 function sanitizeProvenance(provenance: Record<string, unknown>): Record<string, unknown> {
-  const safe = { ...provenance };
-  for (const key of ['thinking', 'reasoning', 'chainOfThought', 'cot', 'rawThinking']) delete safe[key];
-  return safe;
+  const privateReasoningKeys = new Set(['thinking', 'reasoning', 'chainOfThought', 'cot', 'rawThinking']);
+  const sanitize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sanitize);
+    if (value === null || typeof value !== 'object') return value;
+    const safe: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (!privateReasoningKeys.has(key)) safe[key] = sanitize(nestedValue);
+    }
+    return safe;
+  };
+  return sanitize(provenance) as Record<string, unknown>;
 }
 
 function cloneValue<T>(value: T): T {

@@ -218,6 +218,33 @@ describe('capability-aware model routing', () => {
     }
   });
 
+  it('ranks compatible primary routes ahead of fallback routes without explicit requirements', () => {
+    const router = new CapabilityRouter([
+      { id: 'fallback', model: baseModel, fallback: true, capabilities: { outputFormats: ['text'] } },
+      {
+        id: 'primary',
+        model: { ...baseModel, id: 'primary-model' },
+        capabilities: { outputFormats: ['text'] }
+      }
+    ]);
+    expect(router.resolve({ id: 'no-requirements', kind: 'test.capability', input: {} }).id).toBe('primary');
+  });
+
+  it('treats explicit toolCalling support as satisfying tool requirements', () => {
+    const router = new CapabilityRouter([
+      { id: 'tools', model: baseModel, capabilities: { toolCalling: true, outputFormats: ['text'] } }
+    ]);
+    expect(
+      router.resolve({
+        id: 'tool-requirement',
+        kind: 'test.capability',
+        input: {},
+        outputContract: { format: 'text' },
+        requirements: { needsTools: true, tools: ['lookup'] }
+      }).id
+    ).toBe('tools');
+  });
+
   it('accepts the Phase 15 capability aliases and validates a contract schema', () => {
     const selected = new CapabilityRouter([
       {

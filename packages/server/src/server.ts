@@ -8,7 +8,7 @@ import type { WorkflowCoordinator } from '@inkpi/agent-core';
 import type { TelemetryCollector } from '@inkpi/agent-core';
 import type { ExtensionHost } from '@inkpi/agent-core';
 import type { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
-import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
+import type { ArtifactStore, RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
 import type { AgentMessage } from '@inkpi/protocol';
 import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { AppendOnlySessionJournal, FtsSearchEngine, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
@@ -27,6 +27,7 @@ export interface ServerContext {
   agent?: Agent;
   taskRouter?: TaskRouter;
   domainProjection?: DomainProjectionStore;
+  artifactStore?: ArtifactStore;
   checkpointStore?: TaskCheckpointStore;
   executionStore?: TaskExecutionStore;
   contextPipeline?: ContextPipeline;

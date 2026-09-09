@@ -220,4 +220,19 @@ CREATE TABLE IF NOT EXISTS task_executions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_updated_at ON task_executions(updated_at);
+
+-- Runtime semantic artifacts (derived from task results; never authoritative domain state)
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  task_id TEXT,
+  version INTEGER NOT NULL,
+  content_json TEXT NOT NULL,
+  provenance_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  artifact_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type, created_at);
 `;

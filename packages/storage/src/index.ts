@@ -10,3 +10,4 @@ export * from './lanes.js';
 export * from './journal.js';
 export * from './jit-memory.js';
 export * from './domain-projection.js';
+export * from './artifact-store.js';

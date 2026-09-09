@@ -11,6 +11,7 @@ import {
   type InstructionEntry,
 } from '@inkpi/agent-core';
 import type {
+  Artifact,
   DomainSyncPullParams,
   DomainSyncPushParams,
   DomainSyncRestoreParams,
@@ -163,6 +164,25 @@ export class InkPiDaemon {
     this.rpcServer.registerMethod('domain.sync.restore', (params: DomainSyncRestoreParams) => {
       return this.withDomainProjection().restoreSnapshot(params.snapshot);
     });
+
+    this.rpcServer.registerMethod('artifact.save', async (params: { artifact: Artifact }) => {
+      await this.withArtifactStore().save(params.artifact);
+      return { saved: true, id: params.artifact.id };
+    });
+
+    this.rpcServer.registerMethod('artifact.get', (params: { id: string }) => {
+      return this.withArtifactStore().get(params.id);
+    });
+
+    this.rpcServer.registerMethod(
+      'artifact.list',
+      async (params: { taskId?: string; type?: string } = {}) => {
+        const store = this.withArtifactStore();
+        if (params.type && store.listByType) return store.listByType(params.type);
+        const artifacts = await store.list(params.taskId);
+        return params.type ? artifacts.filter((artifact) => artifact.type === params.type) : artifacts;
+      }
+    );
 
     this.rpcServer.registerMethod('instruction.register', (params: unknown) => {
       return this.registerInstructions(params);
@@ -342,6 +362,12 @@ export class InkPiDaemon {
     const projection = (this.options.context as ServerContext | undefined)?.domainProjection;
     if (!projection) throw new Error('Domain projection storage is not configured');
     return projection;
+  }
+
+  private withArtifactStore() {
+    const store = (this.options.context as ServerContext | undefined)?.artifactStore;
+    if (!store) throw new Error('Artifact storage is not configured');
+    return store;
   }
 
   private registerInstructions(params: unknown): InstructionRegisterResult {

@@ -25,10 +25,17 @@ export class DomainProjectionStore {
     validateChangeSet(changeSet);
     return this.db.transaction(() => {
       const existing = this.db
-        .prepare('SELECT id, revision, checksum FROM domain_change_sets WHERE id = ?')
-        .get(changeSet.id) as { id: string; revision: number; checksum: string } | undefined;
+        .prepare('SELECT id, workspace_id, source_device_id, revision, checksum FROM domain_change_sets WHERE id = ?')
+        .get(changeSet.id) as
+        | { id: string; workspace_id: string; source_device_id: string; revision: number; checksum: string }
+        | undefined;
       if (existing) {
-        if (existing.checksum !== changeSet.checksum || Number(existing.revision) !== changeSet.revision) {
+        if (
+          existing.workspace_id !== changeSet.workspaceId ||
+          existing.source_device_id !== changeSet.sourceDeviceId ||
+          existing.checksum !== changeSet.checksum ||
+          Number(existing.revision) !== changeSet.revision
+        ) {
           throw new Error(`Domain change set id collision: ${changeSet.id}`);
         }
         return {
@@ -229,8 +236,12 @@ function validateSnapshot(snapshot: DomainProjectionSnapshot): void {
   }
   if (!Array.isArray(snapshot.changeSets)) throw new Error('Domain projection snapshot is missing change sets');
   let expected = 1;
+  const changeSetIds = new Set<string>();
   for (const changeSet of snapshot.changeSets) {
     validateChangeSet(changeSet);
+    if (changeSetIds.has(changeSet.id))
+      throw new Error(`Domain projection snapshot repeats change set: ${changeSet.id}`);
+    changeSetIds.add(changeSet.id);
     if (
       changeSet.workspaceId !== snapshot.workspaceId ||
       changeSet.revision !== expected ||

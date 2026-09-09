@@ -1,5 +1,6 @@
 import type {
   AiTask,
+  Artifact,
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
@@ -14,7 +15,7 @@ import type {
   TaskStatusSnapshot,
   TaskSteerParams,
   TaskSteerResult,
-  TaskSubmitResult,
+  TaskSubmitResult
 } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
@@ -376,8 +377,22 @@ export class InkRpcClient {
     return this.request<DomainProjectionSnapshot>('domain.sync.snapshot', { workspaceId });
   }
 
-  public restoreDomainSnapshot(snapshot: DomainProjectionSnapshot): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
+  public restoreDomainSnapshot(
+    snapshot: DomainProjectionSnapshot
+  ): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
     return this.request('domain.sync.restore', { snapshot });
+  }
+
+  public saveArtifact(artifact: Artifact): Promise<{ saved: boolean; id: string }> {
+    return this.request('artifact.save', { artifact });
+  }
+
+  public getArtifact(id: string): Promise<Artifact | undefined> {
+    return this.request('artifact.get', { id });
+  }
+
+  public listArtifacts(options: { taskId?: string; type?: string } = {}): Promise<Artifact[]> {
+    return this.request('artifact.list', options);
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {
