@@ -382,6 +382,12 @@ export class InkPiDaemon {
     return projection;
   }
 
+  private withProposalProjection(): ProposalProjectionStore {
+    const projection = (this.options.context as ServerContext | undefined)?.proposalProjection;
+    if (!projection) throw new Error('Proposal projection storage is not configured');
+    return projection;
+  }
+
   private withArtifactStore() {
     const store = (this.options.context as ServerContext | undefined)?.artifactStore;
     if (!store) throw new Error('Artifact storage is not configured');
