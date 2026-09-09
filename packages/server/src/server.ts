@@ -18,6 +18,7 @@ import type { ProposalProjectionStore } from '@inkpi/storage';
 import type { TaskCheckpointStore } from '@inkpi/agent-core';
 import type { TaskExecutionStore } from '@inkpi/agent-core';
 import type { ContextPipeline } from '@inkpi/agent-core';
+import type { ContextProvider } from '@inkpi/agent-core';
 import type { InstructionRegistry } from '@inkpi/agent-core';
 import { BUILTIN_RPC_METHODS, type RpcMethodHandler } from './builtin-methods.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -34,6 +35,8 @@ export interface ServerContext {
   checkpointStore?: TaskCheckpointStore;
   executionStore?: TaskExecutionStore;
   contextPipeline?: ContextPipeline;
+  /** Host-owned providers registered into the Daemon's shared pipeline. */
+  contextProviders?: readonly ContextProvider[];
   instructionRegistry?: InstructionRegistry;
   skillRuntime?: ProgressiveSkillRuntime;
   tree?: SessionTree;
