@@ -1,6 +1,7 @@
 import type { AiTask, TaskStatus } from '@inkpi/protocol';
 import type { RuntimeCacheStats } from '../context/cache-contract.js';
 import type { ContextPacket } from '../context/types.js';
+import { stripPrivateReasoningText } from './private-data.js';
 
 export interface TaskRunObservation {
   taskId: string;
@@ -190,6 +191,7 @@ function sanitizeObservation(observation: TaskRunObservation): TaskRunObservatio
 }
 
 function sanitizePublicValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === 'string') return stripPrivateReasoningText(value);
   if (value === null || typeof value !== 'object') return value;
   if (seen.has(value)) return '[Circular]';
   seen.add(value);
@@ -198,13 +200,17 @@ function sanitizePublicValue(value: unknown, seen = new WeakSet<object>()): unkn
     if (value instanceof Date) return new Date(value.getTime());
     const safe: Record<string, unknown> = {};
     for (const [key, nestedValue] of Object.entries(value)) {
-      if (PRIVATE_REASONING_KEYS.has(key.toLowerCase())) continue;
+      if (PRIVATE_REASONING_KEYS.has(normalizePrivateKey(key))) continue;
       safe[key] = sanitizePublicValue(nestedValue, seen);
     }
     return safe;
   } finally {
     seen.delete(value);
   }
+}
+
+function normalizePrivateKey(key: string): string {
+  return key.replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
 
 function normalizeSampleRate(sampleRate: number | undefined): number {
@@ -215,6 +221,7 @@ function normalizeSampleRate(sampleRate: number | undefined): number {
 const PRIVATE_REASONING_KEYS = new Set([
   'thinking',
   'reasoning',
+  'reasoningcontent',
   'chainofthought',
   'cot',
   'rawthinking',

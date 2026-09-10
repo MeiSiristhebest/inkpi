@@ -179,4 +179,34 @@ describe('task observability and provenance', () => {
     expect(emitted).toHaveLength(1);
     expect(JSON.stringify(emitted[0])).not.toContain('private');
   });
+
+  it('removes formatted private reasoning from direct observation values', () => {
+    const observer = new TaskObservability({ now: () => 10 });
+    const task = { id: 'formatted-private-data', kind: 'test.observable.direct', input: {} };
+
+    observer.started(task);
+    observer.finished(task, {
+      taskId: task.id,
+      kind: task.kind,
+      status: 'completed',
+      provenance: {
+        publicSummary: 'safe',
+        answer: 'before <think>hidden chain</think> after',
+        nested: {
+          chain_of_thought: 'must not persist',
+          REASONING_CONTENT: 'must not persist',
+        },
+      },
+    });
+
+    expect(observer.get(task.id)).toMatchObject({
+      provenance: {
+        publicSummary: 'safe',
+        answer: 'before  after',
+        nested: {},
+      },
+    });
+    expect(JSON.stringify(observer.get(task.id))).not.toContain('hidden chain');
+    expect(JSON.stringify(observer.get(task.id))).not.toContain('must not persist');
+  });
 });
