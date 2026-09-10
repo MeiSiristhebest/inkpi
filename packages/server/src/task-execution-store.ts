@@ -1,4 +1,4 @@
-import type { TaskExecutionRecord, TaskExecutionStore } from '@inkpi/agent-core';
+import { type TaskExecutionRecord, type TaskExecutionStore, sanitizePrivateData } from '@inkpi/agent-core';
 import type { IDb } from '@inkpi/storage';
 
 /** SQLite-backed task records used to recover interrupted runs after daemon restart. */
@@ -26,12 +26,12 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
       .run(
         record.task.id,
         JSON.stringify(record.task),
-        JSON.stringify(record.snapshot),
+        JSON.stringify(sanitizePrivateData(record.snapshot)),
         record.attempts,
         record.updatedAt,
         record.run ? JSON.stringify(record.run) : null,
-        record.steps ? JSON.stringify(record.steps) : null,
-        record.executionAttempts ? JSON.stringify(record.executionAttempts) : null,
+        record.steps ? JSON.stringify(sanitizePrivateData(record.steps)) : null,
+        record.executionAttempts ? JSON.stringify(sanitizePrivateData(record.executionAttempts)) : null,
         record.resumeToken ? JSON.stringify(record.resumeToken) : null,
         record.steering ? JSON.stringify(record.steering) : null,
       );

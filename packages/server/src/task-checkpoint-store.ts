@@ -1,4 +1,4 @@
-import type { TaskCheckpoint, TaskCheckpointStore } from '@inkpi/agent-core';
+import { type TaskCheckpoint, type TaskCheckpointStore, sanitizePrivateData } from '@inkpi/agent-core';
 import type { IDb } from '@inkpi/storage';
 
 /** SQLite-backed checkpoints for daemon restart and crash recovery. */
@@ -22,7 +22,7 @@ export class SqliteTaskCheckpointStore implements TaskCheckpointStore {
         checkpoint.taskId,
         checkpoint.kind,
         checkpoint.step,
-        JSON.stringify(checkpoint.data),
+        JSON.stringify(sanitizePrivateData(checkpoint.data)),
         checkpoint.contextFingerprint ?? null,
         checkpoint.updatedAt,
       );
