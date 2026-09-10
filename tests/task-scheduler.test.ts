@@ -93,7 +93,9 @@ describe('task scheduler lifecycle', () => {
   it('retries explicitly retryable work and emits a retrying event', async () => {
     const scheduler = new TaskScheduler();
     const events: string[] = [];
-    scheduler.subscribe((event) => events.push(event.type));
+    scheduler.subscribe((event) => {
+      events.push(event.type);
+    });
     let attempts = 0;
     const work = scheduler.schedule({
       id: 'retryable',
