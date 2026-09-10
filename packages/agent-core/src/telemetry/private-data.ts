@@ -23,8 +23,16 @@ export function sanitizePrivateData<T>(value: T): T {
   return sanitize(value) as T;
 }
 
+export function stripPrivateReasoningText(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/gi, '')
+    .trim();
+}
+
 function sanitize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitize);
+  if (typeof value === 'string') return stripPrivateReasoningText(value);
   if (value === null || typeof value !== 'object') return value;
 
   const safe: Record<string, unknown> = {};
