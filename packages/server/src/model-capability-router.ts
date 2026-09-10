@@ -10,6 +10,39 @@ import type { AiTask, OutputContract, OutputFormat, TaskRequirements } from '@in
 
 export type ModelNetworkCapability = 'offline' | 'optional' | 'required';
 
+export type ModelRouteAvailability = 'available' | 'degraded' | 'unavailable';
+export type ModelRouteHealth = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+
+/** Runtime facts supplied by the provider registry or an application health monitor. */
+export interface ModelRouteRuntimeState {
+  availability?: ModelRouteAvailability;
+  health?: ModelRouteHealth;
+  quota?: {
+    remaining?: number;
+    limit?: number;
+  };
+  /** Optional live ranking measurements; they override route metadata for one resolution. */
+  quality?: number;
+  latencyMs?: number;
+  costUsd?: number;
+  userPreference?: number;
+}
+
+/** Deterministic policy metadata. Higher quality/preference and lower latency/cost win. */
+export interface ModelRouteRanking {
+  quality?: number;
+  latencyMs?: number;
+  costUsd?: number;
+  userPreference?: number;
+}
+
+export interface CapabilityRouterOptions {
+  /** A snapshot of state keyed by route id. The map/object is read on every resolve. */
+  routeStates?: ReadonlyMap<string, ModelRouteRuntimeState> | Readonly<Record<string, ModelRouteRuntimeState>>;
+  /** Dynamic state injection. It is evaluated once per route for each resolution. */
+  getRouteState?: (route: ResolvedModelRoute, task: AiTask) => ModelRouteRuntimeState | undefined;
+}
+
 /** Capabilities declared by an injected model route. */
 export interface ModelCapabilities {
   capabilities?: readonly string[];
@@ -46,6 +79,7 @@ export interface ModelRoute {
   capabilities?: ModelCapabilities;
   /** Higher values sort first. Fallback routes always sort after non-fallback routes. */
   priority?: number;
+  ranking?: ModelRouteRanking;
   fallback?: boolean;
   stream?: StreamFn;
   toolRegistry?: ToolRegistry;
@@ -61,6 +95,7 @@ export interface CatalogModelRouteOptions {
   toolRegistry?: ToolRegistry;
   systemPrompt?: string;
   maxToolSteps?: number;
+  ranking?: ModelRouteRanking;
   /** Route-local overrides for the catalog's canonical declaration. */
   capabilities?: Partial<ModelCapabilities>;
 }
@@ -93,6 +128,7 @@ export function createModelRouteFromCatalog(
       ...(options.capabilities ?? {})
     },
     ...(options.priority === undefined ? {} : { priority: options.priority }),
+    ...(options.ranking === undefined ? {} : { ranking: { ...options.ranking } }),
     ...(options.fallback === undefined ? {} : { fallback: options.fallback }),
     ...(options.stream === undefined ? {} : { stream: options.stream }),
     ...(options.toolRegistry === undefined ? {} : { toolRegistry: options.toolRegistry }),
@@ -162,11 +198,18 @@ export class CapabilityMismatchError extends Error {
 }
 
 /** Deterministic capability filter and route sorter for model-backed tasks. */
+const routeOptions = new WeakMap<CapabilityRouter, CapabilityRouterOptions>();
+
 export class CapabilityRouter {
   private readonly routes: ResolvedModelRoute[];
 
-  constructor(routes: readonly ModelRoute[] = []) {
+  constructor(routes: readonly ModelRoute[] = [], options: CapabilityRouterOptions = {}) {
     this.routes = routes.map((route) => normalizeRoute(route));
+    routeOptions.set(this, options);
+    // Keep the original public methods intact while routing new instances
+    // through the injected runtime-state evaluator.
+    this.resolve = (task) => resolveWithRuntimeState(this, task);
+    this.resolveCandidates = (task) => resolveCandidatesWithRuntimeState(this, task);
   }
 
   list(): ResolvedModelRoute[] {
@@ -238,6 +281,7 @@ function normalizeRoute(route: ModelRoute): ResolvedModelRoute {
     capabilities.streaming = model.supportsStreaming;
   }
   validateRouteCapabilities(route.id, capabilities);
+  validateRouteRanking(route.id, route.ranking);
   return { ...route, capabilities };
 }
 
@@ -259,6 +303,82 @@ function validateRouteCapabilities(routeId: string, capabilities: ModelCapabilit
       throw new Error(`Invalid ${name} for model route '${routeId}'`);
     }
   }
+}
+
+function validateRouteRanking(routeId: string, ranking: ModelRouteRanking | undefined): void {
+  if (!ranking) return;
+  for (const [name, value] of [
+    ['quality', ranking.quality],
+    ['latencyMs', ranking.latencyMs],
+    ['costUsd', ranking.costUsd],
+    ['userPreference', ranking.userPreference]
+  ] as const) {
+    if (value !== undefined && !Number.isFinite(value)) {
+      throw new Error(`Invalid ${name} ranking for model route '${routeId}'`);
+    }
+    if (value !== undefined && (name === 'latencyMs' || name === 'costUsd') && value < 0) {
+      throw new Error(`Invalid ${name} ranking for model route '${routeId}'`);
+    }
+  }
+}
+
+function validateRuntimeState(routeId: string, state: ModelRouteRuntimeState): void {
+  if (state.availability !== undefined && !['available', 'degraded', 'unavailable'].includes(state.availability)) {
+    throw new Error(`Invalid availability state for model route '${routeId}'`);
+  }
+  if (state.health !== undefined && !['healthy', 'degraded', 'unhealthy', 'unknown'].includes(state.health)) {
+    throw new Error(`Invalid health state for model route '${routeId}'`);
+  }
+  for (const [name, value] of [
+    ['quota.remaining', state.quota?.remaining],
+    ['quota.limit', state.quota?.limit],
+    ['quality', state.quality],
+    ['latencyMs', state.latencyMs],
+    ['costUsd', state.costUsd],
+    ['userPreference', state.userPreference]
+  ] as const) {
+    if (value !== undefined && !Number.isFinite(value)) {
+      throw new Error(`Invalid ${name} runtime state for model route '${routeId}'`);
+    }
+  }
+  if (state.quota?.remaining !== undefined && state.quota.remaining < 0) {
+    throw new Error(`Invalid quota.remaining runtime state for model route '${routeId}'`);
+  }
+  if (state.quota?.limit !== undefined && state.quota.limit < 0) {
+    throw new Error(`Invalid quota.limit runtime state for model route '${routeId}'`);
+  }
+  if (state.latencyMs !== undefined && state.latencyMs < 0) {
+    throw new Error(`Invalid latencyMs runtime state for model route '${routeId}'`);
+  }
+  if (state.costUsd !== undefined && state.costUsd < 0) {
+    throw new Error(`Invalid costUsd runtime state for model route '${routeId}'`);
+  }
+}
+
+function readConfiguredRouteState(
+  routeStates: CapabilityRouterOptions['routeStates'],
+  routeId: string
+): ModelRouteRuntimeState | undefined {
+  if (!routeStates) return undefined;
+  if (typeof (routeStates as ReadonlyMap<string, ModelRouteRuntimeState>).get === 'function') {
+    return (routeStates as ReadonlyMap<string, ModelRouteRuntimeState>).get(routeId);
+  }
+  return (routeStates as Readonly<Record<string, ModelRouteRuntimeState>>)[routeId];
+}
+
+function missingRuntimeState(state: ModelRouteRuntimeState | undefined): string[] {
+  if (!state) return [];
+  const missing: string[] = [];
+  if (state.availability === 'unavailable') missing.push('availability:available');
+  if (state.health === 'unhealthy') missing.push('health:healthy');
+  if (
+    state.quota &&
+    ((state.quota.remaining !== undefined && state.quota.remaining <= 0) ||
+      (state.quota.remaining === undefined && state.quota.limit !== undefined && state.quota.limit <= 0))
+  ) {
+    missing.push('quota:available');
+  }
+  return missing;
 }
 
 function isLocalUrl(url: string | undefined): boolean {
@@ -439,4 +559,136 @@ function compareRoutes(left: ResolvedModelRoute, right: ResolvedModelRoute): num
   const provider = left.model.provider.localeCompare(right.model.provider);
   if (provider !== 0) return provider;
   return left.model.id.localeCompare(right.model.id);
+}
+
+interface EvaluatedRoute {
+  route: ResolvedModelRoute;
+  state?: ModelRouteRuntimeState;
+  missing: string[];
+}
+
+function resolveWithRuntimeState(router: CapabilityRouter, task: AiTask): ResolvedModelRoute {
+  const candidates = resolveCandidatesWithRuntimeState(router, task);
+  if (candidates.length > 0) return candidates[0];
+  const requirements = task.requirements ?? {};
+  const evaluations = evaluateRoutes(router, task);
+  throw new CapabilityMismatchError({
+    taskId: task.id,
+    requirements,
+    outputContract: task.outputContract,
+    routes: evaluations.map(({ route, missing }) => ({ routeId: route.id, missing }))
+  });
+}
+
+function resolveCandidatesWithRuntimeState(router: CapabilityRouter, task: AiTask): ResolvedModelRoute[] {
+  return evaluateRoutes(router, task)
+    .filter((evaluation) => evaluation.missing.length === 0)
+    .sort((left, right) => compareEvaluatedRoutes(left, right))
+    .map((evaluation) => evaluation.route);
+}
+
+function evaluateRoutes(router: CapabilityRouter, task: AiTask): EvaluatedRoute[] {
+  const requirements = task.requirements ?? {};
+  return router.list().map((route) => {
+    const state = getInjectedRouteState(router, route, task);
+    return {
+      route,
+      state,
+      missing: [
+        ...missingCapabilities(requirements, route.capabilities, task.outputContract),
+        ...missingRuntimeState(state)
+      ].sort()
+    };
+  });
+}
+
+function getInjectedRouteState(
+  router: CapabilityRouter,
+  route: ResolvedModelRoute,
+  task: AiTask
+): ModelRouteRuntimeState | undefined {
+  const options = routeOptions.get(router) ?? {};
+  const configured = readConfiguredRouteState(options.routeStates, route.id);
+  const injected = options.getRouteState?.(route, task);
+  if (configured === undefined && injected === undefined) return undefined;
+  const state = { ...configured, ...injected };
+  validateRuntimeState(route.id, state);
+  return state;
+}
+
+function compareEvaluatedRoutes(left: EvaluatedRoute, right: EvaluatedRoute): number {
+  const availability = compareAvailability(left.state?.availability, right.state?.availability);
+  if (availability !== 0) return availability;
+
+  const health = compareHealth(left.state?.health, right.state?.health);
+  if (health !== 0) return health;
+
+  const quota = compareDescending(
+    left.state?.quota?.remaining ?? Number.POSITIVE_INFINITY,
+    right.state?.quota?.remaining ?? Number.POSITIVE_INFINITY
+  );
+  if (quota !== 0) return quota;
+
+  // Preserve the existing fallback and explicit priority semantics before the
+  // finer-grained policy fields are used as tie breakers.
+  if (left.route.fallback !== right.route.fallback) return left.route.fallback ? 1 : -1;
+  const priority = compareDescending(left.route.priority ?? 0, right.route.priority ?? 0);
+  if (priority !== 0) return priority;
+
+  const leftRanking = effectiveRanking(left.route, left.state);
+  const rightRanking = effectiveRanking(right.route, right.state);
+  const userPreference = compareDescending(leftRanking.userPreference, rightRanking.userPreference);
+  if (userPreference !== 0) return userPreference;
+  const quality = compareDescending(leftRanking.quality, rightRanking.quality);
+  if (quality !== 0) return quality;
+  const latency = compareAscending(leftRanking.latencyMs, rightRanking.latencyMs);
+  if (latency !== 0) return latency;
+  const cost = compareAscending(leftRanking.costUsd, rightRanking.costUsd);
+  if (cost !== 0) return cost;
+
+  const id = compareStrings(left.route.id, right.route.id);
+  if (id !== 0) return id;
+  const provider = compareStrings(left.route.model.provider, right.route.model.provider);
+  if (provider !== 0) return provider;
+  return compareStrings(left.route.model.id, right.route.model.id);
+}
+
+function effectiveRanking(
+  route: ResolvedModelRoute,
+  state: ModelRouteRuntimeState | undefined
+): Required<ModelRouteRanking> {
+  return {
+    quality: state?.quality ?? route.ranking?.quality ?? 0,
+    latencyMs: state?.latencyMs ?? route.ranking?.latencyMs ?? Number.POSITIVE_INFINITY,
+    costUsd: state?.costUsd ?? route.ranking?.costUsd ?? Number.POSITIVE_INFINITY,
+    userPreference: state?.userPreference ?? route.ranking?.userPreference ?? 0
+  };
+}
+
+function compareAvailability(
+  left: ModelRouteAvailability | undefined,
+  right: ModelRouteAvailability | undefined
+): number {
+  const rank: Record<ModelRouteAvailability, number> = { available: 0, degraded: 1, unavailable: 2 };
+  return compareAscending(rank[left ?? 'available'], rank[right ?? 'available']);
+}
+
+function compareHealth(left: ModelRouteHealth | undefined, right: ModelRouteHealth | undefined): number {
+  const rank: Record<ModelRouteHealth, number> = { healthy: 0, degraded: 1, unknown: 2, unhealthy: 3 };
+  return compareAscending(rank[left ?? 'healthy'], rank[right ?? 'healthy']);
+}
+
+function compareAscending(left: number, right: number): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function compareDescending(left: number, right: number): number {
+  if (left === right) return 0;
+  return left > right ? -1 : 1;
+}
+
+function compareStrings(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }

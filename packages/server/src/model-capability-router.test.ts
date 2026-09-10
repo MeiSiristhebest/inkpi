@@ -2,7 +2,12 @@ import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
 import type { AiTask } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
-import { CapabilityMismatchError, CapabilityRouter, type ModelRoute } from './model-capability-router.js';
+import {
+  CapabilityMismatchError,
+  CapabilityRouter,
+  type ModelRoute,
+  type ModelRouteRuntimeState
+} from './model-capability-router.js';
 import { TaskModelHandler } from './task-model-handler.js';
 
 const baseModel: ModelConfig = {
@@ -108,6 +113,61 @@ describe('capability-aware model routing', () => {
     );
 
     expect(selected.id).toBe('a-full');
+  });
+
+  it('filters injected availability, health, and quota state and refreshes it per resolve', () => {
+    const routes: ModelRoute[] = ['ready', 'degraded', 'unhealthy', 'unavailable', 'exhausted'].map((id) => ({
+      id,
+      model: { ...baseModel, id },
+      capabilities: { outputFormats: ['text'] }
+    }));
+    const states = new Map<string, ModelRouteRuntimeState>([
+      ['ready', { availability: 'available', health: 'healthy', quota: { remaining: 10 } }],
+      ['degraded', { availability: 'degraded', health: 'degraded', quota: { remaining: 5 } }],
+      ['unhealthy', { availability: 'available', health: 'unhealthy', quota: { remaining: 10 } }],
+      ['unavailable', { availability: 'unavailable', health: 'healthy', quota: { remaining: 10 } }],
+      ['exhausted', { availability: 'available', health: 'healthy', quota: { remaining: 0 } }]
+    ]);
+    const router = new CapabilityRouter(routes, { routeStates: states });
+    const textTask = task({ outputContract: { format: 'text' } });
+
+    expect(router.resolveCandidates(textTask).map((route) => route.id)).toEqual(['ready', 'degraded']);
+
+    states.set('ready', { availability: 'unavailable', health: 'healthy', quota: { remaining: 10 } });
+    expect(router.resolve(textTask).id).toBe('degraded');
+
+    states.set('degraded', { availability: 'unavailable', health: 'degraded', quota: { remaining: 5 } });
+    expect(() => router.resolve(textTask)).toThrow(CapabilityMismatchError);
+  });
+
+  it('deterministically ranks preference, quality, latency, and cost after capability filtering', () => {
+    const route = (id: string, ranking: ModelRoute['ranking']): ModelRoute => ({
+      id,
+      model: { ...baseModel, id },
+      capabilities: { outputFormats: ['text'] },
+      ranking
+    });
+    const routes = [
+      route('slow', { userPreference: 1, quality: 0.8, latencyMs: 100, costUsd: 0.01 }),
+      route('fast', { userPreference: 1, quality: 0.8, latencyMs: 10, costUsd: 0.8 }),
+      route('cheap', { userPreference: 1, quality: 0.8, latencyMs: 10, costUsd: 0.1 }),
+      route('quality', { userPreference: 1, quality: 0.9, latencyMs: 1_000, costUsd: 2 }),
+      route('preferred', { userPreference: 2, quality: 0.1, latencyMs: 1_000, costUsd: 2 }),
+      route('tie-b', { userPreference: 0, quality: 0.7, latencyMs: 20, costUsd: 0.2 }),
+      route('tie-a', { userPreference: 0, quality: 0.7, latencyMs: 20, costUsd: 0.2 })
+    ];
+    const router = new CapabilityRouter(routes);
+    const textTask = task({ outputContract: { format: 'text' } });
+
+    expect(router.resolveCandidates(textTask).map((candidate) => candidate.id)).toEqual([
+      'preferred',
+      'quality',
+      'cheap',
+      'fast',
+      'slow',
+      'tie-a',
+      'tie-b'
+    ]);
   });
 
   it('keeps the default model as an explicit fallback and rejects mismatches', () => {
