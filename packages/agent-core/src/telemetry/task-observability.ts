@@ -104,7 +104,8 @@ export class TaskObservability implements TaskRunObserver {
     observation.contextFingerprint = context.fingerprint;
     observation.contextSources = context.fragments.map((fragment) => fragment.source);
     observation.contextTokenCount = context.tokenEstimate;
-    observation.projectRevision = task.input.selection?.revision;
+    observation.projectRevision =
+      context.projectRevision ?? task.input.selection?.revision ?? readProjectRevision(task.metadata);
     if (cacheStats) {
       observation.cache = {
         provider: { ...cacheStats.provider },
@@ -180,6 +181,11 @@ export class TaskObservability implements TaskRunObserver {
     if (!observation) throw new Error(`Task observation has not started: ${taskId}`);
     return observation;
   }
+}
+
+function readProjectRevision(metadata: Record<string, unknown> | undefined): number | undefined {
+  const revision = metadata?.projectRevision;
+  return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : undefined;
 }
 
 function cloneObservation(observation: TaskRunObservation): TaskRunObservation {

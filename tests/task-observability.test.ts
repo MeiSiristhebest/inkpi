@@ -242,4 +242,26 @@ describe('task observability and provenance', () => {
       skillVersions: { hook: '1.2.0', promise: '2.0.0' }
     });
   });
+
+  it('uses the compiled context revision before task fallbacks', () => {
+    const observer = new TaskObservability({ now: () => 10 });
+    const task = {
+      id: 'context-revision-precedence',
+      kind: 'test.observable.direct',
+      input: { selection: { documentId: 'doc', from: 0, to: 1, revision: 3 } },
+      metadata: { projectRevision: 2 }
+    };
+
+    observer.started(task);
+    observer.contextBuilt(task, {
+      fragments: [],
+      text: '',
+      tokenEstimate: 0,
+      fingerprint: 'context-revision',
+      truncated: false,
+      projectRevision: 7
+    });
+
+    expect(observer.get(task.id)?.projectRevision).toBe(7);
+  });
 });
