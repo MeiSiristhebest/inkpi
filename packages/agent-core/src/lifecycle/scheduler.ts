@@ -20,6 +20,20 @@ export interface ScheduledHandle<T> {
   cancel: () => boolean;
 }
 
+export interface ScheduledTaskState {
+  id: string;
+  mode: ScheduledMode;
+  status: ScheduledStatus;
+  snapshot: ScheduledSnapshot;
+  attempts: number;
+  readyAt: number;
+}
+
+export interface TaskSchedulerPersistence {
+  load(id: string): ScheduledTaskState | undefined | Promise<ScheduledTaskState | undefined>;
+  save(state: ScheduledTaskState): void | Promise<void>;
+}
+
 export interface ScheduledWork<T> {
   id: string;
   mode: ScheduledMode;
@@ -69,6 +83,7 @@ export interface TaskSchedulerOptions {
   maxForeground?: number;
   maxBackground?: number;
   now?: () => number;
+  persistence?: TaskSchedulerPersistence;
 }
 
 interface ScheduledRecord<T> {
@@ -90,13 +105,16 @@ export class TaskScheduler {
   private readonly maxForeground: number;
   private readonly maxBackground: number;
   private readonly now: () => number;
+  private readonly persistence?: TaskSchedulerPersistence;
   private readonly listeners = new Set<(event: SchedulerEvent) => void | Promise<void>>();
+  private persistenceTail: Promise<void> = Promise.resolve();
   private state: LifecycleState = 'idle';
 
   constructor(options: TaskSchedulerOptions = {}) {
     this.maxForeground = Math.max(1, options.maxForeground ?? 1);
     this.maxBackground = Math.max(1, options.maxBackground ?? 2);
     this.now = options.now ?? Date.now;
+    this.persistence = options.persistence;
   }
 
   lifecycle(): LifecycleState {
@@ -148,15 +166,10 @@ export class TaskScheduler {
       generation: 0
     };
     this.records.set(work.id, record);
+    this.persist(record);
     this.emit({ type: 'created', snapshot: this.status(work.id) });
     this.emit({ type: 'queued', snapshot: this.status(work.id) });
-    if (record.readyAt > this.now()) {
-      record.readyTimer = setTimeout(() => {
-        record.readyTimer = undefined;
-        this.pump();
-      }, record.readyAt - this.now());
-    }
-    queueMicrotask(() => this.pump());
+    this.arm(record);
     return this.handle<T>(record);
   }
 
@@ -188,11 +201,13 @@ export class TaskScheduler {
     if (!record.snapshot.checkpoint) return false;
     record.generation += 1;
     record.controller.abort();
+    const resolveWaiting = record.resolve;
     record.snapshot.status = 'waiting-user';
     record.snapshot.error = undefined;
     record.snapshot.finishedAt = this.now();
+    this.persist(record);
     this.emit({ type: 'waiting_user', snapshot: this.status(id) });
-    record.resolve(undefined);
+    resolveWaiting(undefined);
     this.pump();
     return true;
   }
@@ -211,6 +226,7 @@ export class TaskScheduler {
     record.snapshot.status = 'interrupted';
     record.snapshot.error = interruptedError();
     record.snapshot.finishedAt = this.now();
+    this.persist(record);
     this.emit({ type: 'interrupted', snapshot: this.status(id) });
     resolveInterrupted(undefined);
     this.pump();
@@ -258,9 +274,70 @@ export class TaskScheduler {
     record.snapshot.error = undefined;
     record.readyAt = this.now();
     if (this.state === 'idle') this.state = 'running';
+    this.persist(record);
     this.emit({ type: 'queued', snapshot: this.status(id) });
-    queueMicrotask(() => this.pump());
+    this.arm(record);
     return this.handle(record) as ScheduledHandle<T>;
+  }
+
+  /** Rehydrates one recoverable task from the configured persistence boundary. */
+  async rehydrate<T>(work: ScheduledWork<T>): Promise<ScheduledHandle<T> | undefined> {
+    const persistence = this.persistence;
+    if (!persistence) throw new Error('Task scheduler persistence is not configured');
+    if (this.state === 'stopping' || this.state === 'stopped') throw new Error('Task scheduler is stopping');
+    if (!work.id.trim()) throw new Error(`Scheduled task id is unavailable: ${work.id}`);
+    if (this.records.has(work.id)) throw new Error(`Scheduled task id is unavailable: ${work.id}`);
+
+    const stored = await persistence.load(work.id);
+    if (!stored) return undefined;
+    if (stored.id !== work.id || stored.snapshot.id !== work.id) {
+      throw new Error(`Persisted scheduled task does not match: ${work.id}`);
+    }
+    if (stored.mode !== work.mode || stored.snapshot.mode !== work.mode) {
+      throw new Error(`Persisted scheduled task mode does not match: ${work.id}`);
+    }
+    if (stored.status === 'completed' || stored.status === 'failed' || stored.status === 'cancelled') {
+      return undefined;
+    }
+
+    const snapshot = cloneSnapshot(stored.snapshot);
+    snapshot.status = stored.status;
+    let interruptedOnRecovery = false;
+    if (stored.status === 'running') {
+      snapshot.status = 'interrupted';
+      snapshot.error = interruptedError('Scheduled task was interrupted before scheduler recovery');
+      snapshot.finishedAt = this.now();
+      interruptedOnRecovery = true;
+    }
+
+    let resolve!: (value: unknown | undefined) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<unknown | undefined>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    if (snapshot.status === 'interrupted' || snapshot.status === 'waiting-user') resolve(undefined);
+    const record: ScheduledRecord<unknown> = {
+      work,
+      controller: new AbortController(),
+      snapshot,
+      promise,
+      resolve: resolve as (value: unknown) => void,
+      reject,
+      attempts: Math.max(0, stored.attempts),
+      readyAt: Number.isFinite(stored.readyAt) ? stored.readyAt : this.now(),
+      generation: 0
+    };
+    record.snapshot.attempts ??= record.attempts;
+    this.records.set(work.id, record);
+    if (this.state === 'idle') this.state = 'running';
+    if (snapshot.status === 'queued') {
+      this.emit({ type: 'queued', snapshot: this.status(work.id) });
+      this.arm(record);
+    } else if (interruptedOnRecovery) {
+      this.persist(record);
+    }
+    return this.handle<T>(record);
   }
 
   status(id: string): ScheduledSnapshot {
@@ -280,7 +357,12 @@ export class TaskScheduler {
       }
     }
     await Promise.allSettled([...this.records.values()].map((record) => record.promise));
+    await this.flush();
     this.state = 'stopped';
+  }
+
+  async flush(): Promise<void> {
+    await this.persistenceTail;
   }
 
   private handle<T>(record: ScheduledRecord<unknown>): ScheduledHandle<T> {
@@ -288,6 +370,26 @@ export class TaskScheduler {
       promise: record.promise as Promise<T | undefined>,
       cancel: () => this.cancel(record.work.id)
     };
+  }
+
+  private arm(record: ScheduledRecord<unknown>): void {
+    const delay = record.readyAt - this.now();
+    if (delay > 0) {
+      record.readyTimer = setTimeout(() => {
+        record.readyTimer = undefined;
+        this.pump();
+      }, delay);
+    }
+    queueMicrotask(() => this.pump());
+  }
+
+  private persist(record: ScheduledRecord<unknown>): void {
+    const persistence = this.persistence;
+    if (!persistence) return;
+    const state = toScheduledTaskState(record);
+    const write = this.persistenceTail.catch(() => undefined).then(() => persistence.save(state));
+    this.persistenceTail = write;
+    void write.catch(() => undefined);
   }
 
   private pump(): void {
@@ -326,6 +428,7 @@ export class TaskScheduler {
     record.snapshot.startedAt = record.snapshot.startedAt ?? this.now();
     record.attempts += 1;
     record.snapshot.attempts = record.attempts;
+    this.persist(record);
     this.emit({ type: 'started', snapshot: this.status(record.work.id) });
     try {
       const operation = record.work.run(
@@ -348,6 +451,7 @@ export class TaskScheduler {
       }
       record.snapshot.status = 'completed';
       record.snapshot.finishedAt = this.now();
+      this.persist(record);
       this.emit({ type: 'completed', snapshot: this.status(record.work.id) });
       record.resolve(value);
     } catch (error) {
@@ -357,6 +461,7 @@ export class TaskScheduler {
         record.generation += 1;
         record.snapshot.status = 'queued';
         record.readyAt = Number.MAX_SAFE_INTEGER;
+        this.persist(record);
         this.emit({ type: 'retrying', snapshot: this.status(record.work.id) });
         const schedule = () => {
           if (record.snapshot.status !== 'queued') return;
@@ -372,6 +477,7 @@ export class TaskScheduler {
         record.snapshot.status = 'failed';
         record.snapshot.error = error instanceof Error ? error : new Error(String(error));
         record.snapshot.finishedAt = this.now();
+        this.persist(record);
         this.emit({ type: 'failed', snapshot: this.status(record.work.id) });
         record.reject(error);
       }
@@ -393,6 +499,7 @@ export class TaskScheduler {
     const normalized = normalizeCheckpoint(checkpoint, this.now);
     if (!normalized) return false;
     record.snapshot.checkpoint = normalized;
+    this.persist(record);
     this.emit({ type: 'checkpointed', snapshot: this.status(record.work.id) });
     return true;
   }
@@ -427,6 +534,7 @@ export class TaskScheduler {
     if (record.readyTimer) clearTimeout(record.readyTimer);
     record.snapshot.status = 'cancelled';
     record.snapshot.finishedAt = this.now();
+    this.persist(record);
     this.emit({ type: 'cancelled', snapshot: this.status(record.work.id) });
     record.resolve(undefined);
     this.pump();
@@ -464,8 +572,25 @@ function cloneCheckpoint(checkpoint: ScheduledCheckpoint): ScheduledCheckpoint {
   };
 }
 
-function interruptedError(): Error {
-  const error = new Error('Scheduled task was interrupted; resume it to continue');
+function cloneSnapshot(snapshot: ScheduledSnapshot): ScheduledSnapshot {
+  const copy = { ...snapshot };
+  if (snapshot.checkpoint) copy.checkpoint = cloneCheckpoint(snapshot.checkpoint);
+  return copy;
+}
+
+function toScheduledTaskState(record: ScheduledRecord<unknown>): ScheduledTaskState {
+  return {
+    id: record.work.id,
+    mode: record.work.mode,
+    status: record.snapshot.status,
+    snapshot: cloneSnapshot(record.snapshot),
+    attempts: record.attempts,
+    readyAt: record.readyAt
+  };
+}
+
+function interruptedError(message = 'Scheduled task was interrupted; resume it to continue'): Error {
+  const error = new Error(message);
   error.name = 'TaskInterruptedError';
   return error;
 }
