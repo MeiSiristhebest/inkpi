@@ -72,6 +72,7 @@ interface TaskRecord {
   executionAttempts: ExecutionAttempt[];
   resumeToken?: ResumeToken;
   steering: unknown[];
+  persistenceFailed?: boolean;
   scheduled?: { id: string; cancel: () => boolean };
   scheduleSequence: number;
 }
@@ -773,8 +774,37 @@ export class TaskRouter {
 
   private persist(record: TaskRecord): Promise<void> {
     const persisted = this.persistedRecord(record);
-    this.persistenceTail = this.persistenceTail.then(() => this.executionStore.save(persisted)).catch(() => undefined);
-    return this.persistenceTail;
+    const write = this.persistenceTail.then(() => this.executionStore.save(persisted));
+    void write.catch((error) => this.finishPersistenceFailure(record, error));
+    this.persistenceTail = write.catch(() => undefined);
+    return write;
+  }
+
+  private finishPersistenceFailure(record: TaskRecord, error: unknown): void {
+    if (record.persistenceFailed) return;
+    record.persistenceFailed = true;
+    const taskError: TaskError = {
+      code: 'TASK_PERSISTENCE_FAILED',
+      message:
+        error instanceof Error
+          ? `Durable task state could not be saved: ${error.message}`
+          : 'Durable task state could not be saved',
+      retryable: true
+    };
+    const result: TaskResult = {
+      taskId: record.task.id,
+      kind: record.task.kind,
+      status: 'failed',
+      error: taskError
+    };
+    record.snapshot.status = 'failed';
+    record.snapshot.error = taskError;
+    record.snapshot.result = result;
+    record.snapshot.finishedAt = this.now();
+    this.markExecutionSettled(record, 'failed', taskError);
+    this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot));
+    this.emit({ type: 'failed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
+    record.resolveCompletion(result);
   }
 
   private persistedRecord(record: TaskRecord): TaskExecutionRecord {
