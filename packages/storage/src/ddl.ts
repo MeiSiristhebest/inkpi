@@ -221,6 +221,20 @@ CREATE TABLE IF NOT EXISTS task_executions (
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_updated_at ON task_executions(updated_at);
 
+-- Scheduler queue state (durable orchestration metadata; task execution data
+-- remains in task_executions and is the source for rebuilding work handlers).
+CREATE TABLE IF NOT EXISTS task_schedules (
+  id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  ready_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_schedules_ready
+  ON task_schedules(status, ready_at);
+
 -- Runtime semantic artifacts (derived from task results; never authoritative domain state)
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
