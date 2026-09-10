@@ -63,3 +63,9 @@ jobs:
 
       - name: Run Deterministic Evals & Provenance Contracts
         run: pnpm run test:evals
+
+      - name: Run Phase 18 long-context benchmarks
+        run: pnpm exec vitest run packages/evals/src/benchmarks/long-context.test.ts
+
+      - name: Typecheck evals package
+        run: pnpm --filter @inkpi/evals run build
