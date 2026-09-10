@@ -209,4 +209,37 @@ describe('task observability and provenance', () => {
     expect(JSON.stringify(observer.get(task.id))).not.toContain('hidden chain');
     expect(JSON.stringify(observer.get(task.id))).not.toContain('must not persist');
   });
+
+  it('derives skill ids and versions from instruction provenance', () => {
+    const observer = new TaskObservability({ now: () => 10 });
+    const task = { id: 'skill-provenance', kind: 'test.observable.direct', input: {} };
+
+    observer.started(task);
+    observer.finished(task, {
+      taskId: task.id,
+      kind: task.kind,
+      status: 'completed',
+      provenance: {
+        instructionProvenance: [
+          {
+            id: 'instruction-hook',
+            provenance: { source: 'skill:hook', skillId: 'hook', skillVersion: '1.2.0' }
+          },
+          {
+            id: 'instruction-system',
+            provenance: { source: 'system' }
+          },
+          {
+            id: 'instruction-promise',
+            provenance: { source: 'skill:promise', skillId: 'promise', skillVersion: '2.0.0' }
+          }
+        ]
+      }
+    });
+
+    expect(observer.get(task.id)).toMatchObject({
+      skillIds: ['hook', 'promise'],
+      skillVersions: { hook: '1.2.0', promise: '2.0.0' }
+    });
+  });
 });

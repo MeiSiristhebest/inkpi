@@ -127,7 +127,7 @@ export class TaskObservability implements TaskRunObserver {
       this.sampleDecisions.delete(task.id);
       return;
     }
-    const safeObservation = sanitizeObservation(observation);
+    const safeObservation = withInstructionSkillProvenance(sanitizeObservation(observation));
     const existing = this.observations.get(task.id) ?? {
       taskId: task.id,
       kind: task.kind,
@@ -188,6 +188,31 @@ function cloneObservation(observation: TaskRunObservation): TaskRunObservation {
 
 function sanitizeObservation(observation: TaskRunObservation): TaskRunObservation {
   return sanitizePublicValue(observation) as TaskRunObservation;
+}
+
+function withInstructionSkillProvenance(observation: TaskRunObservation): TaskRunObservation {
+  const references = observation.provenance.instructionProvenance;
+  if (!Array.isArray(references)) return observation;
+
+  const skillIds = new Set(observation.skillIds ?? []);
+  const skillVersions: Record<string, string> = { ...(observation.skillVersions ?? {}) };
+  for (const reference of references) {
+    if (!reference || typeof reference !== 'object') continue;
+    const provenance = (reference as { provenance?: unknown }).provenance;
+    if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) continue;
+    const skillId = (provenance as { skillId?: unknown }).skillId;
+    if (typeof skillId !== 'string' || !skillId.trim()) continue;
+    skillIds.add(skillId);
+    const skillVersion = (provenance as { skillVersion?: unknown }).skillVersion;
+    if (typeof skillVersion === 'string' && skillVersion.trim()) skillVersions[skillId] = skillVersion;
+  }
+
+  if (skillIds.size === 0) return observation;
+  return {
+    ...observation,
+    skillIds: [...skillIds].sort(),
+    skillVersions: Object.keys(skillVersions).length > 0 ? skillVersions : undefined
+  };
 }
 
 function sanitizePublicValue(value: unknown, seen = new WeakSet<object>()): unknown {
