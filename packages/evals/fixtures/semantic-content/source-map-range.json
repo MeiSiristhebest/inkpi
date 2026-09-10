@@ -1,0 +1,19 @@
+{
+  "id": "source-map-range",
+  "editorText": "<p>她推开门。</p>",
+  "semanticText": "她推开门。",
+  "segments": [
+    { "blockId": "paragraph-1", "semanticFrom": 0, "semanticTo": 5, "editorFrom": 3, "editorTo": 8 }
+  ],
+  "ranges": [
+    {
+      "editor": { "from": 3, "to": 8 },
+      "semantic": { "from": 0, "to": 5 }
+    }
+  ],
+  "mutatedRange": {
+    "editor": { "from": 3, "to": 99 },
+    "semantic": { "from": 0, "to": 5 }
+  },
+  "expected": "error"
+}

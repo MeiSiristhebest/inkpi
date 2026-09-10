@@ -1,0 +1,17 @@
+{
+  "id": "invalid-state-transition",
+  "initial": { "林舟": "alive" },
+  "allowedTransitions": {
+    "林舟": {
+      "alive": ["injured", "dead"],
+      "injured": ["dead"],
+      "dead": []
+    }
+  },
+  "terminalStates": { "林舟": ["dead"] },
+  "transitions": [
+    { "entity": "林舟", "from": "alive", "to": "injured", "chapter": 2 },
+    { "entity": "林舟", "from": "injured", "to": "alive", "event": "revive", "chapter": 3 }
+  ],
+  "expected": "error"
+}

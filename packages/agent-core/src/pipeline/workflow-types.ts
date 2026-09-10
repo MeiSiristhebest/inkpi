@@ -12,8 +12,8 @@ import type {
   WorkflowEventListener,
   WorkflowStageConfig
 } from '@inkpi/protocol';
-import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import type { Clock } from '../ports/index.js';
+import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import type { RoleRegistry } from './roles.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
 

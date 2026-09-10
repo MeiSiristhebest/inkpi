@@ -46,6 +46,28 @@ export interface AgentTool<TParams = any> {
   ): Promise<ToolResult>;
 }
 
+/**
+ * Serializable metadata attached to a Runtime tool registration.
+ *
+ * The executable function stays inside the Runtime process. Only this
+ * descriptor is safe to expose through a Desktop/Daemon boundary.
+ */
+export interface ToolRegistrationOptions {
+  readonly source?: string;
+  readonly skillId?: string;
+  readonly skillVersion?: string;
+  readonly capabilities?: readonly string[];
+}
+
+/** Cross-process description of a registered tool; it intentionally has no execute function. */
+export interface ToolRegistrationDescriptor {
+  readonly name: string;
+  readonly source: string;
+  readonly skillId?: string;
+  readonly skillVersion?: string;
+  readonly capabilities: readonly string[];
+}
+
 export type CommandHandler = (args: string, context?: unknown) => Promise<any> | any;
 
 export interface SlashCommand {
@@ -176,7 +198,7 @@ export interface ExtensionEventBus {
 
 /** 工具注册表：增删查 Agent Tool */
 export interface ExtensionToolRegistry {
-  registerTool(tool: AgentTool | any): void;
+  registerTool(tool: AgentTool | any, options?: ToolRegistrationOptions): void;
   unregisterTool(name: string): boolean;
   getTools(): AgentTool[] | any[];
 }

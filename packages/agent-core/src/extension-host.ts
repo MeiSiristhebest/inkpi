@@ -10,9 +10,12 @@ import type {
   PipelineHooks,
   SelectListOptions,
   ShortcutHandler,
+  ToolRegistrationDescriptor,
+  ToolRegistrationOptions,
   UIDelegate
 } from '@inkpi/protocol';
 import { consoleLogger } from './ports/index.js';
+import { createToolRegistrationDescriptor } from './tools.js';
 
 export interface CommandDefinition {
   name: string;
@@ -31,6 +34,7 @@ export class ExtensionHost implements ExtensionAPI {
   private commands = new Map<string, any>();
   private shortcuts = new Map<string, any>();
   private tools = new Map<string, any>();
+  private toolRegistrations = new Map<string, ToolRegistrationDescriptor>();
   private transformers: ContextTransformer[] = [];
   private pipelineHooks: PipelineHooks[] = [];
   private toolHooks: Array<{
@@ -93,19 +97,38 @@ export class ExtensionHost implements ExtensionAPI {
   // -------------------------------------------------------------
   // 工具注册 (Dynamic Tools)
   // -------------------------------------------------------------
-  public registerTool(tool: any): () => void {
+  public registerTool(tool: any, options: ToolRegistrationOptions = {}): () => void {
+    const descriptor = createToolRegistrationDescriptor(tool, options);
     this.tools.set(tool.name, tool);
+    this.toolRegistrations.set(tool.name, descriptor);
     return () => {
-      this.tools.delete(tool.name);
+      if (this.tools.get(tool.name) === tool) this.unregisterTool(tool.name);
     };
   }
 
   public unregisterTool(name: string): boolean {
-    return this.tools.delete(name);
+    const removed = this.tools.delete(name);
+    this.toolRegistrations.delete(name);
+    return removed;
   }
 
   public getTools(): any[] {
     return Array.from(this.tools.values());
+  }
+
+  /** Returns serializable metadata for Desktop/Daemon registration handshakes. */
+  public getToolRegistrations(): ToolRegistrationDescriptor[] {
+    return Array.from(this.toolRegistrations.values()).map((registration) => ({
+      ...registration,
+      capabilities: [...registration.capabilities]
+    }));
+  }
+
+  public getToolRegistration(name: string): ToolRegistrationDescriptor | undefined {
+    const registration = this.toolRegistrations.get(name);
+    return registration
+      ? { ...registration, capabilities: [...registration.capabilities] }
+      : undefined;
   }
 
   // -------------------------------------------------------------
@@ -314,6 +337,7 @@ export class ExtensionHost implements ExtensionAPI {
     this.commands.clear();
     this.shortcuts.clear();
     this.tools.clear();
+    this.toolRegistrations.clear();
     this.transformers = [];
     this.pipelineHooks = [];
     this.toolHooks = [];

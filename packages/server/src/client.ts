@@ -1,4 +1,35 @@
-import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
+import type {
+  AiTask,
+  Artifact,
+  ArtifactGetParams,
+  ArtifactListParams,
+  ArtifactSaveParams,
+  ArtifactSaveResult,
+  CacheInvalidateParams,
+  CacheInvalidateResult,
+  CacheStatus,
+  DomainChangeSet,
+  DomainProjectionApplyResult,
+  DomainProjectionSnapshot,
+  ProposalProjectionSnapshot,
+  ProposalProjectionState,
+  ProposalSyncPushResult,
+  RpcNotification,
+  RpcRequest,
+  RpcResponse,
+  TaskCancelResult,
+  TaskExecutionParams,
+  TaskExecutionSnapshot,
+  TaskForkParams,
+  TaskReplayParams,
+  TaskResumeParams,
+  TaskResult,
+  TaskStatusSnapshot,
+  TaskSteerParams,
+  TaskSteerResult,
+  TaskSubmitResult
+} from '@inkpi/protocol';
+import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -289,6 +320,124 @@ export class InkRpcClient {
 
   public exportOpenTelemetry() {
     return this.request<string>('telemetry.exportOtel');
+  }
+
+  public submitTask(task: AiTask): Promise<TaskSubmitResult> {
+    return this.request<TaskSubmitResult>('task.submit', { task });
+  }
+
+  public cancelTask(taskId: string): Promise<TaskCancelResult> {
+    return this.request<TaskCancelResult>('task.cancel', { taskId });
+  }
+
+  public getTaskStatus(taskId: string): Promise<TaskStatusSnapshot> {
+    return this.request<TaskStatusSnapshot>('task.status', { taskId });
+  }
+
+  public getTaskExecution(taskId: string): Promise<TaskExecutionSnapshot> {
+    const params: TaskExecutionParams = { taskId };
+    return this.request<TaskExecutionSnapshot>('task.execution', params);
+  }
+
+  public getCacheStatus(): Promise<CacheStatus> {
+    return this.request<CacheStatus>('cache.status');
+  }
+
+  public invalidateCache(params: CacheInvalidateParams): Promise<CacheInvalidateResult> {
+    return this.request<CacheInvalidateResult>('cache.invalidate', params);
+  }
+
+  public steerTask(taskId: string, input: unknown): Promise<TaskSteerResult> {
+    const params: TaskSteerParams = { taskId, input };
+    return this.request<TaskSteerResult>('task.steer', params);
+  }
+
+  public resumeTask(taskId: string): Promise<TaskSubmitResult> {
+    const params: TaskResumeParams = { taskId };
+    return this.request<TaskSubmitResult>('task.resume', params);
+  }
+
+  public replayTask(taskId: string, replayTaskId?: string): Promise<TaskSubmitResult> {
+    const params: TaskReplayParams = { taskId, replayTaskId };
+    return this.request<TaskSubmitResult>('task.replay', params);
+  }
+
+  public forkTask(taskId: string, forkTaskId: string, patch?: Partial<AiTask>): Promise<TaskSubmitResult> {
+    const params: TaskForkParams = { taskId, forkTaskId, patch };
+    return this.request<TaskSubmitResult>('task.fork', params);
+  }
+
+  public waitForTask(taskId: string): Promise<TaskResult> {
+    return new Promise((resolve, reject) => {
+      const off = this.on('task.event', (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
+        if (event.taskId !== taskId) return;
+        const status = event.snapshot.status;
+        if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(status)) return;
+        off();
+        if (event.snapshot.result) resolve(event.snapshot.result);
+        else reject(new Error(`Task ${taskId} ended without a result`));
+      });
+      void this.getTaskStatus(taskId)
+        .then((snapshot) => {
+          if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(snapshot.status)) return;
+          off();
+          if (snapshot.result) resolve(snapshot.result);
+          else reject(new Error(`Task ${taskId} ended without a result`));
+        })
+        .catch((error) => {
+          off();
+          reject(error);
+        });
+    });
+  }
+
+  public pushDomainChangeSet(changeSet: DomainChangeSet): Promise<DomainProjectionApplyResult> {
+    return this.request<DomainProjectionApplyResult>('domain.sync.push', { changeSet });
+  }
+
+  public pullDomainChangeSets(workspaceId: string, afterRevision = 0): Promise<DomainChangeSet[]> {
+    return this.request<DomainChangeSet[]>('domain.sync.pull', { workspaceId, afterRevision });
+  }
+
+  public snapshotDomain(workspaceId: string): Promise<DomainProjectionSnapshot> {
+    return this.request<DomainProjectionSnapshot>('domain.sync.snapshot', { workspaceId });
+  }
+
+  public restoreDomainSnapshot(
+    snapshot: DomainProjectionSnapshot
+  ): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
+    return this.request('domain.sync.restore', { snapshot });
+  }
+
+  public pushProposalState(
+    workspaceId: string,
+    expectedRevision: number,
+    proposal: ProposalProjectionState,
+  ): Promise<ProposalSyncPushResult> {
+    return this.request<ProposalSyncPushResult>('proposal.sync.push', {
+      workspaceId,
+      expectedRevision,
+      proposal,
+      stateHash: calculateProposalProjectionStateHash(proposal),
+    });
+  }
+
+  public snapshotProposals(workspaceId: string): Promise<ProposalProjectionSnapshot> {
+    return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
+  }
+
+  public saveArtifact(artifact: Artifact): Promise<ArtifactSaveResult> {
+    const params: ArtifactSaveParams = { artifact };
+    return this.request('artifact.save', params);
+  }
+
+  public getArtifact(id: string): Promise<Artifact | undefined> {
+    const params: ArtifactGetParams = { id };
+    return this.request('artifact.get', params);
+  }
+
+  public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {
+    return this.request('artifact.list', options);
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {

@@ -1,0 +1,1 @@
+{"id":"continuity-dead-character","facts":[{"entity":"林舟","status":"dead"}],"event":{"entity":"林舟","action":"returns"},"expected":"error"}

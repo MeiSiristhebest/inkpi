@@ -174,4 +174,113 @@ CREATE TABLE IF NOT EXISTS session_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_session_entries_lookup ON session_entries(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_session_entries_parent ON session_entries(parent_id);
+
+-- 14. Desktop authoritative domain change sets (daemon-side derived projection)
+CREATE TABLE IF NOT EXISTS domain_change_sets (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_device_id TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  revision INTEGER NOT NULL,
+  changes_json TEXT NOT NULL,
+  checksum TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  UNIQUE(workspace_id, source_device_id, revision)
+);
+CREATE INDEX IF NOT EXISTS idx_domain_change_sets_workspace
+  ON domain_change_sets(workspace_id, revision);
+
+CREATE TABLE IF NOT EXISTS domain_projection_cursors (
+  workspace_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Generic domain aggregate projections (derived, rebuildable, no domain schema)
+CREATE TABLE IF NOT EXISTS domain_aggregate_projections (
+  workspace_id TEXT NOT NULL,
+  aggregate_type TEXT NOT NULL,
+  aggregate_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, aggregate_type, aggregate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_domain_aggregate_projections_workspace
+  ON domain_aggregate_projections(workspace_id, aggregate_type, aggregate_id);
+
+-- Desktop-authoritative proposal review state (daemon-side derived projection)
+CREATE TABLE IF NOT EXISTS proposal_projections (
+  workspace_id TEXT NOT NULL,
+  proposal_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  state_hash TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, proposal_id)
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_projections_workspace
+  ON proposal_projections(workspace_id, revision);
+
+CREATE TABLE IF NOT EXISTS proposal_projection_cursors (
+  workspace_id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+  task_id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  step TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  context_fingerprint TEXT,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_updated_at ON task_checkpoints(updated_at);
+
+CREATE TABLE IF NOT EXISTS task_executions (
+  task_id TEXT PRIMARY KEY,
+  task_json TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  run_json TEXT,
+  steps_json TEXT,
+  execution_attempts_json TEXT,
+  resume_token_json TEXT,
+  steering_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_executions_updated_at ON task_executions(updated_at);
+
+-- Scheduler queue state (durable orchestration metadata; task execution data
+-- remains in task_executions and is the source for rebuilding work handlers).
+CREATE TABLE IF NOT EXISTS task_schedules (
+  id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  ready_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_schedules_ready
+  ON task_schedules(status, ready_at);
+
+-- Runtime semantic artifacts (derived from task results; never authoritative domain state)
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  task_id TEXT,
+  version INTEGER NOT NULL,
+  content_json TEXT NOT NULL,
+  provenance_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  artifact_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type, created_at);
 `;

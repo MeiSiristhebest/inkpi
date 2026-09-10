@@ -1,0 +1,17 @@
+{
+  "id": "long-context-100",
+  "chapterCount": 100,
+  "maxTokens": 2048,
+  "anchorChapters": [1, 50, 100],
+  "entityCount": 100,
+  "foreshadowingCount": 100,
+  "checkpoint": {
+    "totalChapters": 100,
+    "completedChapters": 99,
+    "nextChapter": 100
+  },
+  "expected": {
+    "anchorRecall": 1,
+    "pruningWithinBudget": true
+  }
+}

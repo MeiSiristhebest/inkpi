@@ -1,4 +1,27 @@
-import type { RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
+import type {
+  AiTask,
+  DomainChangeSet,
+  DomainProjectionApplyResult,
+  DomainProjectionSnapshot,
+  Artifact,
+  ArtifactGetParams,
+  ArtifactListParams,
+  ArtifactSaveParams,
+  ArtifactSaveResult,
+  ProposalProjectionSnapshot,
+  ProposalProjectionState,
+  ProposalSyncPushResult,
+  RpcNotification,
+  RpcRequest,
+  RpcResponse,
+  TaskCancelResult,
+  TaskExecutionSnapshot,
+  TaskResult,
+  TaskStatusSnapshot,
+  TaskSteerResult,
+  TaskSubmitResult,
+} from '@inkpi/protocol';
+import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import { TcpSocketTransport } from './transports/tcp.js';
 import { WebSocketTransport } from './transports/ws.js';
@@ -289,6 +312,96 @@ export class InkRpcClient {
 
   public exportOpenTelemetry() {
     return this.request<string>('telemetry.exportOtel');
+  }
+
+  public submitTask(task: AiTask): Promise<TaskSubmitResult> {
+    return this.request<TaskSubmitResult>('task.submit', { task });
+  }
+
+  public cancelTask(taskId: string): Promise<TaskCancelResult> {
+    return this.request<TaskCancelResult>('task.cancel', { taskId });
+  }
+
+  public getTaskStatus(taskId: string): Promise<TaskStatusSnapshot> {
+    return this.request<TaskStatusSnapshot>('task.status', { taskId });
+  }
+
+  public getTaskExecution(taskId: string): Promise<TaskExecutionSnapshot> {
+    return this.request<TaskExecutionSnapshot>('task.execution', { taskId });
+  }
+
+  public steerTask(taskId: string, input: unknown): Promise<TaskSteerResult> {
+    return this.request<TaskSteerResult>('task.steer', { taskId, input });
+  }
+
+  public waitForTask(taskId: string): Promise<TaskResult> {
+    return new Promise((resolve, reject) => {
+      const off = this.on('task.event', (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
+        if (event.taskId !== taskId) return;
+        if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(event.snapshot.status)) return;
+        off();
+        if (event.snapshot.result) resolve(event.snapshot.result);
+        else reject(new Error(`Task ${taskId} ended without a result`));
+      });
+      void this.getTaskStatus(taskId)
+        .then((snapshot) => {
+          if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(snapshot.status)) return;
+          off();
+          if (snapshot.result) resolve(snapshot.result);
+          else reject(new Error(`Task ${taskId} ended without a result`));
+        })
+        .catch((error) => {
+          off();
+          reject(error);
+        });
+    });
+  }
+
+  public pushDomainChangeSet(changeSet: DomainChangeSet): Promise<DomainProjectionApplyResult> {
+    return this.request<DomainProjectionApplyResult>('domain.sync.push', { changeSet });
+  }
+
+  public pullDomainChangeSets(workspaceId: string, afterRevision = 0): Promise<DomainChangeSet[]> {
+    return this.request<DomainChangeSet[]>('domain.sync.pull', { workspaceId, afterRevision });
+  }
+
+  public snapshotDomain(workspaceId: string): Promise<DomainProjectionSnapshot> {
+    return this.request<DomainProjectionSnapshot>('domain.sync.snapshot', { workspaceId });
+  }
+
+  public restoreDomainSnapshot(snapshot: DomainProjectionSnapshot): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
+    return this.request('domain.sync.restore', { snapshot });
+  }
+
+  public pushProposalState(
+    workspaceId: string,
+    expectedRevision: number,
+    proposal: ProposalProjectionState,
+  ): Promise<ProposalSyncPushResult> {
+    return this.request<ProposalSyncPushResult>('proposal.sync.push', {
+      workspaceId,
+      expectedRevision,
+      proposal,
+      stateHash: calculateProposalProjectionStateHash(proposal),
+    });
+  }
+
+  public snapshotProposals(workspaceId: string): Promise<ProposalProjectionSnapshot> {
+    return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
+  }
+
+  public saveArtifact(artifact: Artifact): Promise<ArtifactSaveResult> {
+    const params: ArtifactSaveParams = { artifact };
+    return this.request<ArtifactSaveResult>('artifact.save', { ...params });
+  }
+
+  public getArtifact(id: string): Promise<Artifact | undefined> {
+    const params: ArtifactGetParams = { id };
+    return this.request<Artifact | undefined>('artifact.get', { ...params });
+  }
+
+  public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {
+    return this.request<Artifact[]>('artifact.list', { ...options });
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {

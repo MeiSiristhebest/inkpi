@@ -14,16 +14,26 @@
 import { runPrintMode } from '../packages/cli/dist/index.js';
 import { TerminalStudio } from '../packages/tui/dist/studio.js';
 import { runPackageManagerCli } from '../packages/cli/dist/index.js';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
+import { createDaemonPersistence } from '../packages/server/dist/daemon-persistence.js';
+import { createJsonlObservationSink } from '../packages/server/dist/observation-sink.js';
+import { getModelPreset } from '../packages/ai/dist/presets.js';
+import { findModelInCatalog, modelCatalogEntryToCapabilityDeclaration } from '../packages/ai/dist/catalog.js';
 // The standalone harness is the dev/test entrypoint exercised by the integration
 // suite (e.g. `--model mock-test`). Mock providers are NOT silently registered on
 // the production path; we opt into them explicitly here so headless tests can run
 // without real API keys. Real models are unaffected.
-import { installTestDoubles } from '../packages/ai/dist/test-fixtures.js';
-installTestDoubles();
-
 const args = process.argv.slice(2);
+const explicitModelIndex = args.indexOf('--model');
+const explicitModel = explicitModelIndex === -1 ? undefined : args[explicitModelIndex + 1];
+if (explicitModel === 'mock-test') {
+  const { installTestDoubles } = await import('../packages/ai/dist/test-fixtures.js');
+  installTestDoubles();
+}
 
 function readRequiredArg(index, name) {
   const value = args[index + 1];
@@ -48,21 +58,65 @@ async function main() {
     const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 8848;
     const wsPortIdx = args.indexOf('--ws-port');
     const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
+    const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
+    const stateDbPath = stateDbFlag
+      ? readRequiredArg(args.indexOf(stateDbFlag), stateDbFlag)
+      : undefined;
 
-    const daemon = new InkPiDaemon({ port, host: '127.0.0.1' });
-    await daemon.start(port, '127.0.0.1');
-    await daemon.startWebSocket(wsPort, '127.0.0.1');
+    const modelIdx = args.indexOf('--model');
+    const modelPreset = modelIdx !== -1 ? readRequiredArg(modelIdx, '--model') : process.env.INKPI_MODEL_PRESET || 'creative-pro';
+    let defaultModel;
+    try {
+      defaultModel = getModelPreset(modelPreset);
+    } catch {
+      defaultModel = undefined;
+    }
+    const defaultModelCapabilities = defaultModel
+      ? (() => {
+          const catalogEntry = findModelInCatalog(defaultModel.id);
+          return catalogEntry ? modelCatalogEntryToCapabilityDeclaration(catalogEntry) : undefined;
+        })()
+      : undefined;
+    const persistence = createDaemonPersistence({ dbPath: stateDbPath });
+    const observationFile = process.env.INKPI_OBSERVABILITY_FILE?.trim();
+    let daemon;
+    try {
+      daemon = new InkPiDaemon({
+        port,
+        host: '127.0.0.1',
+        defaultModel,
+        ...(defaultModelCapabilities ? { defaultModelCapabilities } : {}),
+        skillSearchDirs: resolveSkillSearchDirs(),
+        context: persistence.context,
+        ...(observationFile
+          ? { observability: { onObservation: createJsonlObservationSink(observationFile) } }
+          : {})
+      });
+      await daemon.start(port, '127.0.0.1');
+      await daemon.startWebSocket(wsPort, '127.0.0.1');
+    } catch (error) {
+      try {
+        await daemon?.stop();
+      } finally {
+        persistence.close();
+      }
+      throw error;
+    }
 
     console.log(`🚀 [InkPi Daemon] Headless JSON-RPC 2.0 core is running:`);
     console.log(`   • TCP       : tcp://127.0.0.1:${port}  (TUI / Node clients)`);
     console.log(`   • WebSocket : ws://127.0.0.1:${wsPort}  (Web clients)`);
     console.log(`📡 Ready to accept connections. Press Ctrl+C to stop.\n`);
 
+    let shuttingDown = false;
     const shutdown = async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       console.log('\n👋 Shutting down InkPi Daemon...');
       try {
         await daemon.stop();
       } finally {
+        persistence.close();
         process.exit(0);
       }
     };
@@ -100,6 +154,16 @@ async function main() {
     const studio = new TerminalStudio();
     console.log(studio.renderFullFrame());
   }
+}
+
+function resolveSkillSearchDirs() {
+  const candidates = [
+    process.env.INKPI_SKILLS_DIR,
+    join(process.cwd(), 'skills'),
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'skills'),
+    join(dirname(process.execPath), 'skills')
+  ];
+  return [...new Set(candidates.filter((candidate) => candidate && existsSync(candidate)))];
 }
 
 main().catch(err => {

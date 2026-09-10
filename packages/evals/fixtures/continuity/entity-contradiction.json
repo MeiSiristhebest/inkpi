@@ -1,0 +1,12 @@
+{
+  "id": "entity-contradiction",
+  "facts": [
+    { "entity": "林舟", "status": "dead", "chapter": 8 },
+    { "entity": "苏棠", "status": "injured", "chapter": 9 }
+  ],
+  "claims": [
+    { "entity": "林舟", "action": "returns", "chapter": 12 },
+    { "entity": "苏棠", "status": "healthy", "chapter": 10 }
+  ],
+  "expected": "error"
+}

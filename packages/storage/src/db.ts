@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { calculateDomainChangeSetChecksum, type DomainChangeSet } from '@inkpi/protocol';
 import { STORAGE_SCHEMA_DDL } from './ddl.js';
 import type { IDb, PreparedStatement } from './ports.js';
 
@@ -17,6 +18,12 @@ export class InkDb implements IDb {
     // Keep databases created by older versions readable while adding the
     // metadata required for guarded lane fast-forward merges.
     this.ensureColumn('lanes', 'parent_lane_id', 'TEXT');
+    this.ensureColumn('domain_change_sets', 'checksum', "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn('task_executions', 'run_json', 'TEXT');
+    this.ensureColumn('task_executions', 'steps_json', 'TEXT');
+    this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
+    this.ensureColumn('task_executions', 'resume_token_json', 'TEXT');
+    this.ensureColumn('task_executions', 'steering_json', 'TEXT');
     const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
     const addedBaseDelta = this.ensureColumn('branch_tips', 'base_delta_id', 'INTEGER NOT NULL DEFAULT 0');
     if (addedBaseSnapshot || addedBaseDelta) {
@@ -28,13 +35,39 @@ export class InkDb implements IDb {
             base_delta_id = last_delta_id
       `);
     }
+    this.backfillDomainChangeSetChecksums();
   }
 
-  private ensureColumn(table: 'lanes' | 'branch_tips', column: string, definition: string): boolean {
+  private ensureColumn(
+    table: 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions',
+    column: string,
+    definition: string,
+  ): boolean {
     const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (columns.some((entry) => entry.name === column)) return false;
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     return true;
+  }
+
+  private backfillDomainChangeSetChecksums(): void {
+    const rows = this.db
+      .prepare('SELECT id, workspace_id, source_device_id, base_revision, revision, changes_json, created_at, checksum FROM domain_change_sets')
+      .all() as Array<Record<string, unknown>>;
+    const update = this.db.prepare('UPDATE domain_change_sets SET checksum = ? WHERE id = ?');
+    for (const row of rows) {
+      const existing = String(row.checksum ?? '');
+      if (existing) continue;
+      const changeSet = {
+        id: String(row.id),
+        workspaceId: String(row.workspace_id),
+        sourceDeviceId: String(row.source_device_id),
+        baseRevision: Number(row.base_revision),
+        revision: Number(row.revision),
+        changes: JSON.parse(String(row.changes_json)),
+        createdAt: Number(row.created_at),
+      } as Omit<DomainChangeSet, 'checksum'>;
+      update.run(calculateDomainChangeSetChecksum(changeSet), changeSet.id);
+    }
   }
 
   public exec(sql: string): void {

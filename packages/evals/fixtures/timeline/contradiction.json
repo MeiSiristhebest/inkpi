@@ -1,0 +1,1 @@
+{"id":"timeline-contradiction","events":[{"id":"e1","at":10},{"id":"e2","at":5,"dependsOn":"e1"}],"expected":"error"}

@@ -1,0 +1,20 @@
+{
+  "id": "critical-facts-mutation",
+  "baseline": {
+    "facts": [{ "entity": "林舟", "status": "alive" }],
+    "claims": [{ "entity": "林舟", "status": "alive" }]
+  },
+  "mutated": {
+    "facts": [{ "entity": "林舟", "status": "alive" }],
+    "claims": [{ "entity": "林舟", "status": "dead" }]
+  },
+  "repaired": {
+    "facts": [{ "entity": "林舟", "status": "alive" }],
+    "claims": [{ "entity": "林舟", "status": "alive" }]
+  },
+  "expected": {
+    "baselineDetected": false,
+    "mutationDetected": true,
+    "repairedDetected": false
+  }
+}

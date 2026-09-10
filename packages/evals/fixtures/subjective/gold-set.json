@@ -1,0 +1,153 @@
+{
+  "id": "phase-18-subjective-gold",
+  "threshold": 85,
+  "cases": [
+    {
+      "id": "hook-strong",
+      "task": "hook",
+      "input": "开篇需要在三秒内建立危机、张力和好奇心。",
+      "candidate": {
+        "id": "hook-strong-v1",
+        "format": "text",
+        "text": "警报在午夜响起，倒计时只剩三秒，而她手里的钥匙属于已经死去的哥哥。",
+        "labels": ["clear", "tension", "curiosity"],
+        "rubricScores": {
+          "clarity": 92,
+          "tension": 94,
+          "curiosity": 96
+        }
+      },
+      "gold": {
+        "expectedScore": 94,
+        "expectedFormat": "text",
+        "requiredPhrases": ["倒计时", "死去"],
+        "forbiddenPhrases": ["天气很好"],
+        "requiredLabels": ["tension", "curiosity"],
+        "expectedRubricScores": {
+          "clarity": 92,
+          "tension": 94,
+          "curiosity": 96
+        },
+        "rubric": {
+          "id": "hook-rubric",
+          "threshold": 85,
+          "criteria": [
+            { "id": "clarity", "weight": 1, "minScore": 80, "required": true },
+            { "id": "tension", "weight": 1, "minScore": 80, "required": true },
+            { "id": "curiosity", "weight": 1, "minScore": 80, "required": true }
+          ]
+        }
+      }
+    },
+    {
+      "id": "style-controlled",
+      "task": "style",
+      "input": "保持简洁、克制的叙述风格。",
+      "candidate": {
+        "id": "style-controlled-v1",
+        "format": "text",
+        "text": "她合上门，先听见雨声，才听见自己急促的呼吸。整条走廊保持着冷静、克制的沉默。",
+        "labels": ["controlled", "concrete"],
+        "rubricScores": {
+          "vocabulary": 89,
+          "pacing": 91,
+          "imagery": 90
+        }
+      },
+      "gold": {
+        "expectedScore": 90,
+        "expectedFormat": "text",
+        "requiredPhrases": ["冷静、克制"],
+        "forbiddenPhrases": ["浮夸的形容词"],
+        "requiredLabels": ["controlled"],
+        "expectedRubricScores": {
+          "vocabulary": 89,
+          "pacing": 91,
+          "imagery": 90
+        },
+        "rubric": {
+          "id": "style-rubric",
+          "threshold": 85,
+          "criteria": [
+            { "id": "vocabulary", "weight": 1, "minScore": 80, "required": true },
+            { "id": "pacing", "weight": 1, "minScore": 80, "required": true },
+            { "id": "imagery", "weight": 1, "minScore": 80, "required": true }
+          ]
+        }
+      }
+    },
+    {
+      "id": "voice-uncertain",
+      "task": "voice",
+      "input": "角色应保持谨慎、带有明确的不确定性。",
+      "candidate": {
+        "id": "voice-uncertain-v1",
+        "format": "text",
+        "text": "林舟没有立刻回答。他把那句话在心里重复了一遍，仍不确定门后等着他的究竟是谁。",
+        "labels": ["cautious", "uncertain"],
+        "rubricScores": {
+          "vocabulary": 90,
+          "goals": 92,
+          "uncertainty": 88
+        }
+      },
+      "gold": {
+        "expectedScore": 90,
+        "expectedFormat": "text",
+        "requiredPhrases": ["不确定"],
+        "requiredLabels": ["uncertain"],
+        "expectedRubricScores": {
+          "vocabulary": 90,
+          "goals": 92,
+          "uncertainty": 88
+        },
+        "rubric": {
+          "id": "voice-rubric",
+          "threshold": 85,
+          "criteria": [
+            { "id": "vocabulary", "weight": 1, "minScore": 80, "required": true },
+            { "id": "goals", "weight": 1, "minScore": 80, "required": true },
+            { "id": "uncertainty", "weight": 1, "minScore": 80, "required": true }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rewrite-preserves-intent",
+      "task": "rewrite",
+      "input": "改写时保留事实、语气和可读性。",
+      "candidate": {
+        "id": "rewrite-preserves-intent-v1",
+        "format": "patch",
+        "text": "她没有打开那封信，只把它压在灯下，等到天亮再做决定。",
+        "labels": ["faithful", "readable"],
+        "rubricScores": {
+          "fidelity": 94,
+          "clarity": 88,
+          "voice": 92
+        }
+      },
+      "gold": {
+        "expectedScore": 91,
+        "expectedFormat": "patch",
+        "requiredPhrases": ["等到天亮"],
+        "forbiddenPhrases": ["改变事实"],
+        "requiredLabels": ["faithful", "readable"],
+        "expectedRubricScores": {
+          "fidelity": 94,
+          "clarity": 88,
+          "voice": 92
+        },
+        "rubric": {
+          "id": "rewrite-rubric",
+          "threshold": 85,
+          "criteria": [
+            { "id": "fidelity", "weight": 1, "minScore": 85, "required": true },
+            { "id": "clarity", "weight": 1, "minScore": 80, "required": true },
+            { "id": "voice", "weight": 1, "minScore": 80, "required": true }
+          ]
+        }
+      }
+    }
+  ]
+}

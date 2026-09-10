@@ -1,0 +1,71 @@
+name: Evals & Provenance Contracts
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "packages/evals/**"
+      - "tests/evals-runner.test.ts"
+      - "tests/task-evals.test.ts"
+      - "tests/task-observability.test.ts"
+      - "tests/task-provenance.test.ts"
+      - "tests/subjective-evals.test.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vitest.config.ts"
+      - ".github/workflows/evals.yml"
+  pull_request:
+    branches: [master, main]
+    paths:
+      - "packages/evals/**"
+      - "tests/evals-runner.test.ts"
+      - "tests/task-evals.test.ts"
+      - "tests/task-observability.test.ts"
+      - "tests/task-provenance.test.ts"
+      - "tests/subjective-evals.test.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vitest.config.ts"
+      - ".github/workflows/evals.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evals:
+    name: Deterministic Evals & Provenance Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack & Setup pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.5 --activate
+
+      - name: Setup Node.js 22.x with pnpm Cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Run Deterministic Evals & Provenance Contracts
+        run: pnpm run test:evals
+
+      - name: Run Phase 18 long-context benchmarks
+        run: pnpm exec vitest run packages/evals/src/benchmarks/long-context.test.ts
+
+      - name: Typecheck evals package
+        run: pnpm --filter @inkpi/evals run build

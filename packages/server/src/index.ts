@@ -4,8 +4,19 @@ export * from './client.js';
 export * from './transport.js';
 export * from './tcp-transport.js';
 export * from './ws-transport.js';
+export * from './task-checkpoint-store.js';
+export * from './task-execution-store.js';
+export * from './task-scheduler-persistence.js';
+export * from './daemon-persistence.js';
+export * from './jit-context-provider.js';
+export * from './serialized-creative-context-provider.js';
+export type { ContextProvider } from '@inkpi/agent-core';
+export * from './task-model-handler.js';
+export * from './provider-response-cache.js';
 
 // SessionRegistry 是领域对象，定义在 @inkpi/agent-core（不依赖表现层/传输层）。
 // server 包作为传输层，从领域核心引入它，形成 server → agent-core 的单向依赖，无环。
 export { SessionRegistry } from '@inkpi/agent-core';
 export type { ManagedSession, SessionCreateOptions, SessionSummary } from '@inkpi/agent-core';
+
+export * from './observation-sink.js';

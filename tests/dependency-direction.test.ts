@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const AGENT_CORE_SRC = path.resolve(__dirname, '../packages/agent-core/src');
+const CONTEXT_SRC = path.resolve(__dirname, '../packages/agent-core/src/context');
 
 /** 领域核心不得依赖的模块（评审 §4 点名的三类 + 事件驱动的 ws）。 */
 const FORBIDDEN: ReadonlyArray<{ pattern: RegExp; label: string }> = [
@@ -143,4 +144,22 @@ describe('依赖方向守卫：agent-core 不得依赖表现层 / 基础设施 /
     expect(detected.has('@inkpi/storage')).toBe(true);
     expect(detected.has('ws')).toBe(true);
   });
+
+  it('context boundary rejects forbidden dependencies in a real scoped scan', () => {
+    const violations = collectViolationsFor(CONTEXT_SRC);
+    expect(violations).toEqual(new Map());
+  });
 });
+
+function collectViolationsFor(root: string): Map<string, string[]> {
+  const violations = new Map<string, string[]>();
+  for (const file of listSourceFiles(root)) {
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    const hits = new Set<string>();
+    for (const spec of extractSpecifiers(fs.readFileSync(file, 'utf8'))) {
+      for (const { pattern } of FORBIDDEN) if (pattern.test(spec)) hits.add(spec);
+    }
+    if (hits.size > 0) violations.set(rel, [...hits].sort());
+  }
+  return violations;
+}
