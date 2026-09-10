@@ -129,7 +129,7 @@ describe('daemon InstructionRegistry RPC', () => {
     const result = await daemon.getTaskRouter().wait('instruction-task');
     const prompt = String(seen[0][0].content);
 
-    expect(prompt).toContain(`Stable task instruction:\n${definition.systemInstruction}`);
+    expect(prompt).toContain(`Stable skill instruction:\n${definition.systemInstruction}`);
     expect(prompt).not.toContain('Dynamic metadata must not be appended.');
     expect(prompt.match(/Use the stable demo instruction\./g)).toHaveLength(1);
     expect(result.provenance).toMatchObject({
@@ -175,7 +175,7 @@ describe('daemon InstructionRegistry RPC', () => {
     await handler.execute(context);
 
     const prompt = String(seen[0][0].content);
-    expect(prompt).toContain(`Stable task instruction:\n${definition.systemInstruction}`);
+    expect(prompt).toContain(`Stable skill instruction:\n${definition.systemInstruction}`);
     expect(prompt).toContain('User intent:\n保持冷峻语气');
   });
 
@@ -206,7 +206,7 @@ describe('daemon InstructionRegistry RPC', () => {
     await handler.execute(context);
 
     expect(String(seen[0][0].content)).toContain(
-      'Legacy instruction (unregistered task fallback): Dynamic metadata must not be appended.'
+      'Legacy skill instruction fallback:\nDynamic metadata must not be appended.'
     );
   });
 });
