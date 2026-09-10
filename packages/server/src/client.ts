@@ -5,6 +5,9 @@ import type {
   ArtifactListParams,
   ArtifactSaveParams,
   ArtifactSaveResult,
+  CacheInvalidateParams,
+  CacheInvalidateResult,
+  CacheStatus,
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
@@ -334,6 +337,14 @@ export class InkRpcClient {
   public getTaskExecution(taskId: string): Promise<TaskExecutionSnapshot> {
     const params: TaskExecutionParams = { taskId };
     return this.request<TaskExecutionSnapshot>('task.execution', params);
+  }
+
+  public getCacheStatus(): Promise<CacheStatus> {
+    return this.request<CacheStatus>('cache.status');
+  }
+
+  public invalidateCache(params: CacheInvalidateParams): Promise<CacheInvalidateResult> {
+    return this.request<CacheInvalidateResult>('cache.invalidate', params);
   }
 
   public steerTask(taskId: string, input: unknown): Promise<TaskSteerResult> {

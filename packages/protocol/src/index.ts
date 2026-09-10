@@ -12,6 +12,7 @@ export * from './domain-sync.js';
 export * from './domain-proposal.js';
 export * from './proposal-sync.js';
 export * from './artifact.js';
+export * from './cache.js';
 export * from './typebox.js';
 export * from './schemas.js';
 export * from './validation.js';

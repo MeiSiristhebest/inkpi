@@ -23,6 +23,10 @@ import type {
   ArtifactListParams,
   ArtifactSaveParams,
   ArtifactSaveResult,
+  CacheInvalidateParams,
+  CacheInvalidateResult,
+  CacheLayer,
+  CacheStatus,
   DomainSyncPullParams,
   DomainSyncPushParams,
   DomainSyncRestoreParams,
@@ -353,6 +357,19 @@ export class InkPiDaemon {
       return this.taskRouter.execution(params.taskId);
     });
 
+    this.rpcServer.registerMethod('cache.status', (): CacheStatus => ({
+      version: 1,
+      stats: this.cacheCoordinator.stats(),
+    }));
+
+    this.rpcServer.registerMethod('cache.invalidate', (params: unknown): CacheInvalidateResult => {
+      this.cacheCoordinator.invalidate(normalizeCacheInvalidation(params));
+      return {
+        accepted: true,
+        status: { version: 1, stats: this.cacheCoordinator.stats() },
+      };
+    });
+
     this.rpcServer.registerMethod('task.steer', (params: TaskSteerParams) => {
       return this.taskRouter.steer(params.taskId, params.input);
     });
@@ -672,6 +689,43 @@ function requiredString(value: unknown, field: string): string {
 
 function requiredSkillId(params: { skillId?: unknown } | null | undefined): string {
   return requiredString(params?.skillId, 'skillId');
+}
+
+function normalizeCacheInvalidation(params: unknown): CacheInvalidateParams {
+  if (!isRecord(params)) throw new Error('cache.invalidate requires an object');
+  if (params.reason !== 'manual' && params.reason !== 'revision') {
+    throw new Error('cache.invalidate reason must be manual or revision');
+  }
+  if (
+    params.projectRevision !== undefined &&
+    (typeof params.projectRevision !== 'number' ||
+      !Number.isSafeInteger(params.projectRevision) ||
+      params.projectRevision < 0)
+  ) {
+    throw new Error('cache.invalidate projectRevision must be a non-negative integer');
+  }
+  if (params.reason === 'revision' && params.projectRevision === undefined) {
+    throw new Error('cache.invalidate revision requires projectRevision');
+  }
+  const layers = params.layers === undefined ? undefined : normalizeCacheLayers(params.layers);
+  return {
+    reason: params.reason,
+    ...(params.projectRevision === undefined ? {} : { projectRevision: params.projectRevision }),
+    ...(layers === undefined ? {} : { layers })
+  };
+}
+
+function normalizeCacheLayers(value: unknown): CacheLayer[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('cache.invalidate layers must be a non-empty array');
+  }
+  const layers = [...new Set(value)];
+  if (
+    !layers.every((layer): layer is CacheLayer => layer === 'provider' || layer === 'context' || layer === 'retrieval')
+  ) {
+    throw new Error('cache.invalidate contains an unknown layer');
+  }
+  return layers;
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
