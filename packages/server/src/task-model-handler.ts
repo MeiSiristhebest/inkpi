@@ -280,7 +280,7 @@ function publicSteeringMessage(inputs: unknown[]): AgentMessage {
 }
 
 function buildPrompt(context: TaskHandlerContext): string {
-  const payload = context.task.input.payload;
+  const payload = withoutCompiledContext(context.task.input.payload);
   const stableInstruction = context.instructions?.entryIds.length ? context.instructions.text.trim() : '';
   // Backward compatibility only: metadata instruction is accepted for tasks
   // that have no matching InstructionRegistry entry. Registered tasks never
@@ -289,19 +289,63 @@ function buildPrompt(context: TaskHandlerContext): string {
     !stableInstruction && typeof context.task.metadata?.instruction === 'string'
       ? context.task.metadata.instruction
       : '';
-  const userIntent = context.task.intent?.trim() ?? '';
+  const fragments = context.context.fragments;
+  const projectContext = renderFragments(fragments.filter(isStableProjectContext));
+  const retrievedContext = renderFragments(fragments.filter((fragment) => !isStableProjectContext(fragment) && !isCurrentScene(fragment)));
+  const currentScene = renderFragments(fragments.filter(isCurrentScene));
+  const fallbackContext = fragments.length === 0 ? context.context.text : '';
+  const taskDetails = payload === undefined ? '' : stableSerialize(payload);
+  const checkpoint = context.checkpoint
+    ? stableSerialize(context.checkpoint.data)
+    : '';
   return [
-    `Task kind: ${context.task.kind}`,
-    fallbackInstruction ? `Legacy instruction (unregistered task fallback): ${fallbackInstruction}` : '',
-    stableInstruction ? `Stable task instruction:\n${stableInstruction}` : '',
-    userIntent ? `User intent:\n${userIntent}` : '',
-    'Return only the declared output format. Do not describe hidden reasoning.',
-    `Context:\n${context.context.text}`,
-    payload === undefined ? '' : `Task payload:\n${stableSerialize(payload)}`,
-    context.checkpoint ? `Resume checkpoint:\n${stableSerialize(context.checkpoint.data)}` : ''
+    `Runtime instruction:\nTask kind: ${context.task.kind}\nReturn only the declared output format. Do not describe hidden reasoning.`,
+    stableInstruction ? `Stable skill instruction:\n${stableInstruction}` : '',
+    fallbackInstruction ? `Legacy skill instruction fallback:\n${fallbackInstruction}` : '',
+    projectContext ? `Stable project context:\n${projectContext}` : '',
+    retrievedContext || fallbackContext ? `Retrieved context:\n${retrievedContext || fallbackContext}` : '',
+    currentScene ? `Current scene / selection:\n${currentScene}` : '',
+    taskDetails ? `Task details:\n${taskDetails}` : '',
+    checkpoint ? `Resume checkpoint:\n${checkpoint}` : '',
+    context.task.intent?.trim() ? `User intent:\n${context.task.intent.trim()}` : ''
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+function withoutCompiledContext(payload: unknown): unknown {
+  const record = asRecord(payload);
+  if (!record || !Object.prototype.hasOwnProperty.call(record, 'context')) return payload;
+  const copy = { ...record };
+  delete copy.context;
+  return Object.keys(copy).length > 0 ? copy : undefined;
+}
+
+function isStableProjectContext(fragment: TaskHandlerContext['context']['fragments'][number]): boolean {
+  return fragment.source === 'creative.story' || fragment.metadata?.contextRole === 'project';
+}
+
+function isCurrentScene(fragment: TaskHandlerContext['context']['fragments'][number]): boolean {
+  return (
+    fragment.source === 'task-input' ||
+    fragment.source === 'creative.document' ||
+    fragment.source === 'creative.scene' ||
+    fragment.metadata?.contextRole === 'scene' ||
+    fragment.metadata?.contextRole === 'selection'
+  );
+}
+
+function renderFragments(fragments: TaskHandlerContext['context']['fragments']): string {
+  return fragments
+    .map((fragment) => fragment.text ?? renderFragmentValue(fragment.data ?? fragment.content))
+    .filter((value) => value.length > 0)
+    .join('\n\n');
+}
+
+function renderFragmentValue(value: unknown): string {
+  if (value === undefined) return '';
+  if (typeof value === 'string') return value;
+  return stableSerialize(value);
 }
 
 function createProviderResponseCacheKey(
