@@ -173,4 +173,39 @@ describe('TaskScheduler persistence boundary', () => {
     await firstScheduler.stop();
     await secondScheduler.stop();
   });
+
+  it('passes a checkpoint through when a queued retry is rehydrated', async () => {
+    const persistence = new MemoryTaskSchedulerPersistence();
+    const id = 'queued-checkpoint';
+    persistence.seed({
+      id,
+      mode: 'background',
+      status: 'queued',
+      snapshot: {
+        id,
+        mode: 'background',
+        status: 'queued',
+        attempts: 1,
+        checkpoint: { step: 'chapter-9', data: { offset: 24 }, updatedAt: 100 }
+      },
+      attempts: 1,
+      readyAt: Date.now()
+    });
+
+    let seenCheckpoint: { step: string; data?: unknown } | undefined;
+    const scheduler = new TaskScheduler({ persistence });
+    const restored = await scheduler.rehydrate({
+      id,
+      mode: 'background',
+      run: async (_signal, _reportProgress, _reportCheckpoint, resumeFrom) => {
+        seenCheckpoint = resumeFrom;
+        return 'resumed';
+      }
+    });
+
+    expect(restored).toBeDefined();
+    await expect(restored?.promise).resolves.toBe('resumed');
+    expect(seenCheckpoint).toEqual({ step: 'chapter-9', data: { offset: 24 }, updatedAt: 100 });
+    await scheduler.stop();
+  });
 });

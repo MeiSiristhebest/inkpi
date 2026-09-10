@@ -328,6 +328,13 @@ export class TaskScheduler {
       readyAt: Number.isFinite(stored.readyAt) ? stored.readyAt : this.now(),
       generation: 0
     };
+    // A queued record may have been persisted after reaching a checkpoint
+    // (for example while waiting for a retry delay). Preserve that checkpoint
+    // when the scheduler is rebuilt so the first post-restart attempt resumes
+    // from the durable boundary instead of starting from the beginning.
+    if (snapshot.status === 'queued' && snapshot.checkpoint) {
+      record.resumeFrom = cloneCheckpoint(snapshot.checkpoint);
+    }
     record.snapshot.attempts ??= record.attempts;
     this.records.set(work.id, record);
     if (this.state === 'idle') this.state = 'running';
