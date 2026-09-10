@@ -182,7 +182,8 @@ function emptyStats(): RuntimeCacheLayerStats {
 }
 
 function cloneAssistantMessage(message: AssistantMessage): AssistantMessage {
-  const content = message.content
+  const sanitized = sanitizePrivateData(message);
+  const content = sanitized.content
     .filter((item) => item.type !== 'thinking')
     .map((item) =>
       item.type === 'toolCall'
@@ -192,9 +193,9 @@ function cloneAssistantMessage(message: AssistantMessage): AssistantMessage {
           : { ...item }
     );
   try {
-    return structuredClone({ ...message, content });
+    return structuredClone({ ...sanitized, content });
   } catch {
-    return { ...message, content };
+    return { ...sanitized, content };
   }
 }
 
