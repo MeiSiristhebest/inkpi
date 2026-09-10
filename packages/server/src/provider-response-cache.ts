@@ -2,6 +2,7 @@ import {
   type CacheInvalidationEvent,
   type RuntimeCacheCoordinatorPort,
   type RuntimeCacheLayerStats,
+  sanitizePrivateData,
   shouldInvalidateCacheEntry,
   validateRuntimeCacheLayerStats
 } from '@inkpi/agent-core';
@@ -181,10 +182,19 @@ function emptyStats(): RuntimeCacheLayerStats {
 }
 
 function cloneAssistantMessage(message: AssistantMessage): AssistantMessage {
+  const content = message.content
+    .filter((item) => item.type !== 'thinking')
+    .map((item) =>
+      item.type === 'toolCall'
+        ? { ...item, arguments: sanitizePrivateData(item.arguments) }
+        : item.type === 'text'
+          ? { ...item, text: sanitizePrivateData(item.text) }
+          : { ...item }
+    );
   try {
-    return structuredClone(message);
+    return structuredClone({ ...message, content });
   } catch {
-    return { ...message, content: message.content.map((content) => ({ ...content })) };
+    return { ...message, content };
   }
 }
 

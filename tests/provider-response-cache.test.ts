@@ -104,6 +104,27 @@ describe('Runtime provider response cache', () => {
     expect(streamCalls).toBe(2);
     expect(handler.getProviderResponseCache().stats()).toMatchObject({ hits: 0, misses: 2 });
   });
+
+  it('does not retain thinking content in cache snapshots', async () => {
+    const handler = new TaskModelHandler({
+      model,
+      stream: () => {
+        const result = new AssistantEventStream();
+        queueMicrotask(() => {
+          result.push({ type: 'thinking_delta', thinkingDelta: 'private reasoning must not persist' });
+          result.push({ type: 'text_delta', textDelta: '<think>hidden text</think>safe cached answer' });
+          result.end();
+        });
+        return result;
+      }
+    });
+
+    await handler.execute(context({ id: 'thinking-cache' }));
+    const snapshot = handler.getProviderResponseCache().snapshot();
+
+    expect(snapshot.entries[0]?.response.content).toEqual([{ type: 'text', text: 'safe cached answer' }]);
+    expect(JSON.stringify(snapshot)).not.toContain('private reasoning must not persist');
+  });
 });
 
 function context(options: {
