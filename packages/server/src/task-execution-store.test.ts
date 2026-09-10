@@ -59,4 +59,47 @@ describe('SqliteTaskExecutionStore', () => {
       "Corrupt task execution 'bad-execution' (run_json); refusing to recover"
     );
   });
+
+  it('removes private reasoning aliases from durable errors and provenance', () => {
+    const db = new InkDb();
+    dbs.push(db);
+    const task = { id: 'execution-private-data', kind: 'test.execution', input: {} } as AiTask;
+    const error = {
+      code: 'TASK_FAILED',
+      message: 'failed',
+      details: { safe: true, rawCoT: 'must not persist', nested: { THINKING: 'must not persist' } }
+    };
+    const record: TaskExecutionRecord = {
+      task,
+      snapshot: {
+        taskId: task.id,
+        kind: task.kind,
+        status: 'failed',
+        error,
+        result: {
+          taskId: task.id,
+          kind: task.kind,
+          status: 'failed',
+          error,
+          provenance: { reasoning: 'must not persist' }
+        }
+      },
+      attempts: 1,
+      updatedAt: 1,
+      steps: [{ id: 'step:1', runId: 'run:1', step: 'draft', status: 'failed', error }],
+      executionAttempts: [{ runId: 'run:1', attempt: 1, startedAt: 1, status: 'failed', error }]
+    };
+    const store = new SqliteTaskExecutionStore(db);
+    store.save(record);
+
+    const loaded = store.load(task.id);
+    expect(loaded?.snapshot.error?.details).toEqual({ safe: true, nested: {} });
+    expect(loaded?.snapshot.result?.provenance).toEqual({});
+    expect(loaded?.steps?.[0]?.error?.details).toEqual({ safe: true, nested: {} });
+    expect(loaded?.executionAttempts?.[0]?.error?.details).toEqual({ safe: true, nested: {} });
+    const row = db
+      .prepare('SELECT snapshot_json, steps_json, execution_attempts_json FROM task_executions WHERE task_id = ?')
+      .get(task.id) as { snapshot_json: string; steps_json: string; execution_attempts_json: string };
+    expect(`${row.snapshot_json}${row.steps_json}${row.execution_attempts_json}`).not.toContain('must not persist');
+  });
 });

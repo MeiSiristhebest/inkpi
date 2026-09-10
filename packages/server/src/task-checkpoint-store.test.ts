@@ -43,4 +43,27 @@ describe('SqliteTaskCheckpointStore', () => {
       "Corrupt task checkpoint for 'bad-checkpoint' (data_json); refusing to resume"
     );
   });
+
+  it('removes private reasoning aliases before writing checkpoint JSON', () => {
+    const db = new InkDb();
+    dbs.push(db);
+    const store = new SqliteTaskCheckpointStore(db);
+    store.save({
+      taskId: 'checkpoint-private-data',
+      kind: 'test.checkpoint',
+      step: 'draft',
+      data: {
+        safe: 'keep',
+        RAW_COT: 'must not persist',
+        nested: { reasoningContent: 'must not persist' }
+      },
+      updatedAt: 1
+    });
+
+    expect(store.load('checkpoint-private-data')?.data).toEqual({ safe: 'keep', nested: {} });
+    const row = db
+      .prepare('SELECT data_json FROM task_checkpoints WHERE task_id = ?')
+      .get('checkpoint-private-data') as { data_json: string };
+    expect(row.data_json).not.toContain('must not persist');
+  });
 });
