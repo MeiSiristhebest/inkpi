@@ -13,9 +13,10 @@ import {
   type RuntimeCacheCoordinatorPort,
   type TaskObservabilityOptions,
   type TaskRunObserver,
+  type TaskSchedulerPersistence,
   type ProgressiveSkillRuntimeOptions,
   type InstructionDefinition,
-  type InstructionEntry,
+  type InstructionEntry
 } from '@inkpi/agent-core';
 import type {
   Artifact,
@@ -54,7 +55,7 @@ import type {
   SkillLoadParams,
   SkillLoadResult,
   SkillResolveQuery,
-  SkillResolveResult,
+  SkillResolveResult
 } from '@inkpi/protocol';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -63,12 +64,10 @@ import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
 import { TaskModelHandler } from './task-model-handler.js';
 import { JitContextProvider } from './jit-context-provider.js';
 import type { ProposalProjectionStore } from '@inkpi/storage';
-import type {
-  CapabilityRouter,
-  ModelCapabilities,
-  ModelRoute,
-} from './model-capability-router.js';
+import type { CapabilityRouter, ModelCapabilities, ModelRoute } from './model-capability-router.js';
 import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
+import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
+import type { RuntimeCachePersistence } from './daemon-cache-persistence.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -85,8 +84,12 @@ export interface DaemonOptions {
   observer?: TaskRunObserver;
   observability?: TaskObservabilityOptions;
   cacheCoordinator?: RuntimeCacheCoordinatorPort;
+  /** Optional explicit cache lifecycle adapter. Disabled when omitted. */
+  cachePersistence?: RuntimeCachePersistence;
   context?: Partial<ServerContext>;
 }
+
+export type { DaemonRuntimeCachePersistenceTargets, RuntimeCachePersistence } from './daemon-cache-persistence.js';
 
 export interface DaemonStatus {
   running: boolean;
@@ -118,6 +121,7 @@ export class InkPiDaemon {
   private readonly capabilityRouter?: CapabilityRouter;
   private readonly taskObservability: TaskObservability;
   private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
+  private cachePersistenceRestored = false;
 
   constructor(options: DaemonOptions = {}) {
     this.options = {
@@ -136,29 +140,29 @@ export class InkPiDaemon {
       new ContextPipeline({ cacheCoordinator: this.cacheCoordinator });
     const contextProviders = [
       ...(options.context?.contextProviders ?? []),
-      ...createSerializedCreativeContextProviders(),
+      ...createSerializedCreativeContextProviders()
     ];
     for (const provider of contextProviders) {
       if (!contextPipeline.list().some((registered) => registered.id === provider.id)) {
         contextPipeline.register(provider);
       }
     }
-    if (
-      options.context?.jitRetriever &&
-      !contextPipeline.list().some((provider) => provider.id === 'retrieval.jit')
-    ) {
+    if (options.context?.jitRetriever && !contextPipeline.list().some((provider) => provider.id === 'retrieval.jit')) {
       contextPipeline.register(
         new JitContextProvider(options.context.jitRetriever, { cacheCoordinator: this.cacheCoordinator })
       );
     }
-    this.taskRouter = options.context?.taskRouter ?? new TaskRouter({
-      checkpointStore: options.context?.checkpointStore,
-      executionStore: options.context?.executionStore,
-      contextPipeline,
-      instructionRegistry: this.instructionRegistry,
-      observer: options.observer ?? this.taskObservability,
-      cacheCoordinator: this.cacheCoordinator,
-    });
+    this.taskRouter =
+      options.context?.taskRouter ??
+      new TaskRouter({
+        checkpointStore: options.context?.checkpointStore,
+        executionStore: options.context?.executionStore,
+        schedulerPersistence: options.context?.schedulerPersistence,
+        contextPipeline,
+        instructionRegistry: this.instructionRegistry,
+        observer: options.observer ?? this.taskObservability,
+        cacheCoordinator: this.cacheCoordinator
+      });
     if (
       (options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) &&
       !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')
@@ -168,22 +172,24 @@ export class InkPiDaemon {
         defaultModelCapabilities: options.defaultModelCapabilities,
         routes: options.modelRoutes,
         capabilityRouter: options.capabilityRouter,
-        cacheCoordinator: this.cacheCoordinator,
+        cacheCoordinator: this.cacheCoordinator
       });
       this.capabilityRouter = modelHandler.getCapabilityRouter();
       this.taskRouter.registry.register(modelHandler);
     } else {
       this.capabilityRouter = options.capabilityRouter;
     }
-    this.skillRuntime = options.skillRuntime ?? new ProgressiveSkillRuntime({
-      searchDirs: options.skillSearchDirs ? [...options.skillSearchDirs] : undefined,
-      extensionHost: options.context?.extensionHost,
-      toolRegistry: this.taskRouter.toolRegistry,
-      taskRegistry: this.taskRouter.registry,
-      contextPipeline: this.taskRouter.contextPipeline,
-      instructionRegistry: this.instructionRegistry,
-      skillActivators: options.skillActivators
-    });
+    this.skillRuntime =
+      options.skillRuntime ??
+      new ProgressiveSkillRuntime({
+        searchDirs: options.skillSearchDirs ? [...options.skillSearchDirs] : undefined,
+        extensionHost: options.context?.extensionHost,
+        toolRegistry: this.taskRouter.toolRegistry,
+        taskRegistry: this.taskRouter.registry,
+        contextPipeline: this.taskRouter.contextPipeline,
+        instructionRegistry: this.instructionRegistry,
+        skillActivators: options.skillActivators
+      });
     if (this.skillRuntime.toolRegistry !== this.taskRouter.toolRegistry) {
       throw new Error('Daemon skill runtime must use the TaskRouter ToolRegistry');
     }
@@ -198,7 +204,7 @@ export class InkPiDaemon {
       taskRouter: this.taskRouter,
       instructionRegistry: this.instructionRegistry,
       extensionHost: this.skillRuntime.extensionHost,
-      skillRuntime: this.skillRuntime,
+      skillRuntime: this.skillRuntime
     } as ServerContext);
     this.taskRouter.subscribe((event) => {
       this.rpcServer.notify('task.event', event);
@@ -277,15 +283,12 @@ export class InkPiDaemon {
       return this.withArtifactStore().get(params.id);
     });
 
-    this.rpcServer.registerMethod(
-      'artifact.list',
-      async (params: ArtifactListParams = {}) => {
-        const store = this.withArtifactStore();
-        if (params.type && !params.taskId && store.listByType) return store.listByType(params.type);
-        const artifacts = await store.list(params.taskId);
-        return params.type ? artifacts.filter((artifact) => artifact.type === params.type) : artifacts;
-      }
-    );
+    this.rpcServer.registerMethod('artifact.list', async (params: ArtifactListParams = {}) => {
+      const store = this.withArtifactStore();
+      if (params.type && !params.taskId && store.listByType) return store.listByType(params.type);
+      const artifacts = await store.list(params.taskId);
+      return params.type ? artifacts.filter((artifact) => artifact.type === params.type) : artifacts;
+    });
 
     const discoverSkills = (): SkillDiscoverResult => this.skillRuntime.discoverManifests();
     this.rpcServer.registerMethod('skill.discover', discoverSkills);
@@ -304,16 +307,19 @@ export class InkPiDaemon {
         snapshot: this.skillRuntime.getRegistrationSnapshot()
       };
     });
-    this.rpcServer.registerMethod('skill.activate', async (params: SkillActivateParams): Promise<SkillActivationResult> => {
-      const skillId = requiredSkillId(params);
-      await this.skillRuntime.activate(skillId);
-      return {
-        activated: true,
-        loaded: true,
-        skill: this.skillRuntime.getManifest(skillId),
-        snapshot: this.skillRuntime.getRegistrationSnapshot()
-      };
-    });
+    this.rpcServer.registerMethod(
+      'skill.activate',
+      async (params: SkillActivateParams): Promise<SkillActivationResult> => {
+        const skillId = requiredSkillId(params);
+        await this.skillRuntime.activate(skillId);
+        return {
+          activated: true,
+          loaded: true,
+          skill: this.skillRuntime.getManifest(skillId),
+          snapshot: this.skillRuntime.getRegistrationSnapshot()
+        };
+      }
+    );
     const skillStatus = () => this.skillRuntime.getRegistrationSnapshot();
     this.rpcServer.registerMethod('skill.status', skillStatus);
     this.rpcServer.registerMethod('skill.snapshot', skillStatus);
@@ -335,7 +341,7 @@ export class InkPiDaemon {
         version: this.instructionRegistry.version(),
         count: entries.length,
         instructionIds: entries.map((entry) => entry.id),
-        instructions: this.instructionRegistry.listReferences(),
+        instructions: this.instructionRegistry.listReferences()
       } satisfies InstructionRegistryStatus;
     });
 
@@ -566,12 +572,13 @@ export class InkPiDaemon {
       updated,
       unchanged,
       results,
-      version: this.instructionRegistry.version(),
+      version: this.instructionRegistry.version()
     };
   }
 
   public async start(port = this.options.port, host = this.options.host): Promise<this> {
     if (this.running) return this;
+    await this.restorePersistedCaches();
     // Do not expose a listener until persisted task records have been
     // recovered and their interruption state is durable.
     await this.taskRouter.ready;
@@ -615,10 +622,26 @@ export class InkPiDaemon {
     }
     this.running = false;
     await this.taskRouter.stop();
+    await this.savePersistedCaches();
     this.sessionManager.clear();
     await this.rpcServer.close();
     this.tcpServer = null;
     this.wsPort = null;
+  }
+
+  private async restorePersistedCaches(): Promise<void> {
+    if (!this.options.cachePersistence || this.cachePersistenceRestored) return;
+    await this.options.cachePersistence.restore(
+      resolveDaemonCachePersistenceTargets(this.cacheCoordinator, this.taskRouter)
+    );
+    this.cachePersistenceRestored = true;
+  }
+
+  private async savePersistedCaches(): Promise<void> {
+    if (!this.options.cachePersistence) return;
+    await this.options.cachePersistence.save(
+      resolveDaemonCachePersistenceTargets(this.cacheCoordinator, this.taskRouter)
+    );
   }
 
   public getStatus(): DaemonStatus {
@@ -654,9 +677,8 @@ function normalizeInstructionDefinition(raw: unknown): InstructionDefinition {
   const id = requiredString(raw.id, 'id');
   const version = requiredString(raw.version, 'version');
   const systemInstruction = requiredString(raw.systemInstruction, 'systemInstruction');
-  const taskKind = typeof raw.taskKind === 'string' && raw.taskKind.trim().length > 0
-    ? raw.taskKind.trim()
-    : inferTaskKind(id);
+  const taskKind =
+    typeof raw.taskKind === 'string' && raw.taskKind.trim().length > 0 ? raw.taskKind.trim() : inferTaskKind(id);
   return { id, version, taskKind, systemInstruction };
 }
 
@@ -667,15 +689,17 @@ function instructionEntry(definition: InstructionDefinition): InstructionEntry {
     content: definition.systemInstruction,
     version: definition.version,
     source: `task:${definition.taskKind}`,
-    tags: [`task:${definition.taskKind}`],
+    tags: [`task:${definition.taskKind}`]
   };
 }
 
 function sameInstruction(left: InstructionEntry, right: InstructionEntry): boolean {
-  return left.scope === right.scope
-    && left.content === right.content
-    && left.version === right.version
-    && right.tags?.every((tag) => left.tags?.includes(tag)) === true;
+  return (
+    left.scope === right.scope &&
+    left.content === right.content &&
+    left.version === right.version &&
+    right.tags?.every((tag) => left.tags?.includes(tag)) === true
+  );
 }
 
 function inferTaskKind(id: string): string {

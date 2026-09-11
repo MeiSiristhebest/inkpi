@@ -1,4 +1,9 @@
-import { type TaskExecutionRecord, type TaskExecutionStore, sanitizePrivateData } from '@inkpi/agent-core';
+import {
+  type TaskCheckpoint,
+  type TaskExecutionRecord,
+  type TaskExecutionStore,
+  sanitizePrivateData
+} from '@inkpi/agent-core';
 import type { IDb } from '@inkpi/storage';
 
 /** SQLite-backed task records used to recover interrupted runs after daemon restart. */
@@ -35,6 +40,33 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
         record.resumeToken ? JSON.stringify(record.resumeToken) : null,
         record.steering ? JSON.stringify(record.steering) : null
       );
+  }
+
+  /** Persist a checkpoint and its execution snapshot in one SQLite transaction. */
+  saveCheckpointAndExecution(checkpoint: TaskCheckpoint, record: TaskExecutionRecord): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO task_checkpoints
+            (task_id, kind, step, data_json, context_fingerprint, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(task_id) DO UPDATE SET
+             kind = excluded.kind,
+             step = excluded.step,
+             data_json = excluded.data_json,
+             context_fingerprint = excluded.context_fingerprint,
+             updated_at = excluded.updated_at`
+        )
+        .run(
+          checkpoint.taskId,
+          checkpoint.kind,
+          checkpoint.step,
+          JSON.stringify(sanitizePrivateData(checkpoint.data)),
+          checkpoint.contextFingerprint ?? null,
+          checkpoint.updatedAt
+        );
+      this.save(record);
+    });
   }
 
   load(taskId: string): TaskExecutionRecord | undefined {

@@ -412,13 +412,13 @@ export class InkRpcClient {
   public pushProposalState(
     workspaceId: string,
     expectedRevision: number,
-    proposal: ProposalProjectionState,
+    proposal: ProposalProjectionState
   ): Promise<ProposalSyncPushResult> {
     return this.request<ProposalSyncPushResult>('proposal.sync.push', {
       workspaceId,
       expectedRevision,
       proposal,
-      stateHash: calculateProposalProjectionStateHash(proposal),
+      stateHash: calculateProposalProjectionStateHash(proposal)
     });
   }
 

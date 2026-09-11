@@ -11,10 +11,11 @@ import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
 import type { RuntimeCacheCoordinatorPort, RuntimeCacheStats } from '../context/cache-contract.js';
 import { ContextPipeline } from '../context/index.js';
 import { InstructionRegistry } from '../instructions/instruction-registry.js';
-import { TaskScheduler } from '../lifecycle/scheduler.js';
+import { TaskScheduler, type TaskSchedulerPersistence } from '../lifecycle/scheduler.js';
+import { sanitizePrivateData } from '../telemetry/private-data.js';
 import type { TaskRunObserver } from '../telemetry/task-observability.js';
 import { ToolRegistry } from '../tools.js';
-import { InMemoryTaskCheckpointStore, type TaskCheckpointStore } from './checkpoints.js';
+import { InMemoryTaskCheckpointStore, type TaskCheckpoint, type TaskCheckpointStore } from './checkpoints.js';
 import {
   type ExecutionAttempt,
   type ExecutionRun,
@@ -55,6 +56,7 @@ export interface TaskRouterOptions {
   instructionRegistry?: InstructionRegistry;
   toolRegistry?: ToolRegistry;
   scheduler?: TaskScheduler;
+  schedulerPersistence?: TaskSchedulerPersistence;
   cacheCoordinator?: RuntimeCacheCoordinatorPort;
   retryDelayMs?: number;
 }
@@ -77,6 +79,10 @@ interface TaskRecord {
   scheduleSequence: number;
 }
 
+interface AtomicTaskStateStore {
+  saveCheckpointAndExecution(checkpoint: TaskCheckpoint, execution: TaskExecutionRecord): void | Promise<void>;
+}
+
 export class TaskRouter {
   readonly registry: TaskRegistry;
   readonly contextPipeline: ContextPipeline;
@@ -88,7 +94,8 @@ export class TaskRouter {
   private readonly executionStore: TaskExecutionStore;
   private readonly instructionRegistry: InstructionRegistry;
   readonly toolRegistry: ToolRegistry;
-  readonly scheduler: TaskScheduler;
+  scheduler: TaskScheduler;
+  private readonly schedulerFactory?: () => TaskScheduler;
   private readonly cacheCoordinator?: RuntimeCacheCoordinatorPort;
   private readonly retryDelayMs: number;
   private readonly records = new Map<string, TaskRecord>();
@@ -107,7 +114,15 @@ export class TaskRouter {
     this.executionStore = options.executionStore ?? new InMemoryTaskExecutionStore();
     this.instructionRegistry = options.instructionRegistry ?? new InstructionRegistry();
     this.toolRegistry = options.toolRegistry ?? new ToolRegistry();
-    this.scheduler = options.scheduler ?? new TaskScheduler();
+    this.scheduler =
+      options.scheduler ??
+      new TaskScheduler({
+        now: this.now,
+        persistence: options.schedulerPersistence
+      });
+    this.schedulerFactory = options.scheduler
+      ? undefined
+      : () => new TaskScheduler({ now: this.now, persistence: options.schedulerPersistence });
     this.cacheCoordinator = options.cacheCoordinator;
     this.retryDelayMs = Math.max(0, options.retryDelayMs ?? 0);
     this.ready = this.recoverPersistedRecords();
@@ -244,6 +259,7 @@ export class TaskRouter {
   async resume(taskId: string): Promise<TaskSubmitResult> {
     await this.ready;
     if (this.stopPromise) await this.stopPromise;
+    this.ensureSchedulerAvailable();
     const record = this.getRecord(taskId);
     if (!['waiting-user', 'failed', 'cancelled', 'interrupted'].includes(record.snapshot.status)) {
       throw new Error(`Task ${taskId} cannot be resumed from ${record.snapshot.status}`);
@@ -319,6 +335,7 @@ export class TaskRouter {
       // execution record as resumable even for tasks that allow cancellation.
       this.finishInterrupted(record);
     }
+    await this.scheduler.stop();
     await this.persistenceTail;
   }
 
@@ -405,14 +422,14 @@ export class TaskRouter {
           },
           checkpoint,
           saveCheckpoint: async (step, data) => {
-            await this.checkpointStore.save({
+            const nextCheckpoint: TaskCheckpoint = {
               taskId: record.task.id,
               kind: record.task.kind,
               step,
-              data,
+              data: sanitizePrivateData(data),
               contextFingerprint: context.fingerprint,
               updatedAt: this.now()
-            });
+            };
             const checkpointUpdatedAt = this.now();
             const resumeToken: ResumeToken = {
               taskId: record.task.id,
@@ -420,10 +437,26 @@ export class TaskRouter {
               contextFingerprint: context.fingerprint,
               issuedAt: checkpointUpdatedAt
             };
+            const atomicStore = this.executionStore as TaskExecutionStore & Partial<AtomicTaskStateStore>;
+            const previousResumeToken = record.resumeToken;
+            const previousRunResumeToken = record.executionRun.resumeToken;
+            const previousCheckpoint = record.snapshot.checkpoint;
             record.executionRun.resumeToken = resumeToken;
             record.resumeToken = resumeToken;
-            record.snapshot.checkpoint = { step, updatedAt: this.now() };
-            this.persist(record);
+            record.snapshot.checkpoint = { step, updatedAt: nextCheckpoint.updatedAt };
+            try {
+              if (atomicStore.saveCheckpointAndExecution) {
+                await atomicStore.saveCheckpointAndExecution(nextCheckpoint, this.persistedRecord(record));
+              } else {
+                await this.checkpointStore.save(nextCheckpoint);
+                await this.persist(record);
+              }
+            } catch (error) {
+              record.resumeToken = previousResumeToken;
+              record.executionRun.resumeToken = previousRunResumeToken;
+              record.snapshot.checkpoint = previousCheckpoint;
+              throw error;
+            }
             if (record.snapshot.status === 'running') {
               this.update(record, { status: 'checkpointed' }, 'checkpointed');
               this.update(record, { status: 'running' }, 'started');
@@ -537,17 +570,18 @@ export class TaskRouter {
 
   private finishFailed(record: TaskRecord, error: TaskError, cacheStats?: RuntimeCacheStats): void {
     if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
+    const safeError = sanitizeTaskError(error);
     const result: TaskResult = {
       taskId: record.task.id,
       kind: record.task.kind,
       status: 'failed',
-      error
+      error: safeError
     };
     record.snapshot.status = 'failed';
-    record.snapshot.error = error;
+    record.snapshot.error = safeError;
     record.snapshot.result = result;
     record.snapshot.finishedAt = this.now();
-    this.markExecutionSettled(record, 'failed', error);
+    this.markExecutionSettled(record, 'failed', safeError);
     this.persist(record);
     this.observer?.finished?.(record.task, observationFromSnapshot(record.snapshot, cacheStats));
     this.emit({ type: 'failed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
@@ -661,6 +695,7 @@ export class TaskRouter {
     ) {
       return;
     }
+    this.ensureSchedulerAvailable();
     const scheduleId = `task:${record.task.id}:execution:${record.scheduleSequence++}`;
     try {
       const scheduled = this.scheduler.schedule({
@@ -690,6 +725,12 @@ export class TaskRouter {
     const scheduled = record.scheduled;
     record.scheduled = undefined;
     scheduled?.cancel();
+  }
+
+  private ensureSchedulerAvailable(): void {
+    if (this.scheduler.lifecycle() !== 'stopped') return;
+    if (!this.schedulerFactory) throw new Error('Task router scheduler cannot restart after it stops');
+    this.scheduler = this.schedulerFactory();
   }
 
   private recoverPersistedRecords(): Promise<void> {
@@ -818,8 +859,14 @@ export class TaskRouter {
       attempts: record.attempts,
       updatedAt,
       run: cloneValue(record.executionRun),
-      steps: cloneValue(record.executionSteps),
-      executionAttempts: cloneValue(record.executionAttempts),
+      steps: record.executionSteps.map((step) => ({
+        ...cloneValue(step),
+        error: step.error ? sanitizeTaskError(step.error) : undefined
+      })),
+      executionAttempts: record.executionAttempts.map((attempt) => ({
+        ...cloneValue(attempt),
+        error: attempt.error ? sanitizeTaskError(attempt.error) : undefined
+      })),
       resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
       steering: cloneValue(record.steering)
     };
@@ -874,14 +921,18 @@ function toTaskError(error: unknown): TaskError {
   }
   if (error instanceof Error) {
     const metadata = error as Error & { retryable?: boolean; details?: unknown };
-    return {
+    return sanitizeTaskError({
       code: 'TASK_FAILED',
       message: error.message,
       retryable: metadata.retryable,
       details: metadata.details
-    };
+    });
   }
   return { code: 'TASK_FAILED', message: String(error) };
+}
+
+function sanitizeTaskError(error: TaskError): TaskError {
+  return error.details === undefined ? { ...error } : { ...error, details: sanitizePrivateData(error.details) };
 }
 
 function isAbortError(error: unknown): boolean {
@@ -939,10 +990,17 @@ function cacheLayerStatsDelta(
 }
 
 function cloneSnapshot(snapshot: TaskStatusSnapshot): TaskStatusSnapshot {
+  const result = snapshot.result
+    ? {
+        ...snapshot.result,
+        error: snapshot.result.error ? sanitizeTaskError(snapshot.result.error) : undefined,
+        provenance: snapshot.result.provenance ? sanitizePrivateData(snapshot.result.provenance) : undefined
+      }
+    : undefined;
   return {
     ...snapshot,
-    result: snapshot.result ? { ...snapshot.result } : undefined,
-    error: snapshot.error ? { ...snapshot.error } : undefined,
+    result,
+    error: snapshot.error ? sanitizeTaskError(snapshot.error) : undefined,
     checkpoint: snapshot.checkpoint ? { ...snapshot.checkpoint } : undefined
   };
 }
@@ -976,17 +1034,7 @@ function cacheStatsRecord(cacheStats: RuntimeCacheStats): Record<string, unknown
 }
 
 function sanitizeProvenance(provenance: Record<string, unknown>): Record<string, unknown> {
-  const privateReasoningKeys = new Set(['thinking', 'reasoning', 'chainOfThought', 'cot', 'rawThinking']);
-  const sanitize = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(sanitize);
-    if (value === null || typeof value !== 'object') return value;
-    const safe: Record<string, unknown> = {};
-    for (const [key, nestedValue] of Object.entries(value)) {
-      if (!privateReasoningKeys.has(key)) safe[key] = sanitize(nestedValue);
-    }
-    return safe;
-  };
-  return sanitize(provenance) as Record<string, unknown>;
+  return sanitizePrivateData(provenance);
 }
 
 function cloneValue<T>(value: T): T {

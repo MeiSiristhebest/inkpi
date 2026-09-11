@@ -88,6 +88,7 @@ async function main() {
         ...(defaultModelCapabilities ? { defaultModelCapabilities } : {}),
         skillSearchDirs: resolveSkillSearchDirs(),
         context: persistence.context,
+        ...(persistence.cachePersistence ? { cachePersistence: persistence.cachePersistence } : {}),
         ...(observationFile
           ? { observability: { onObservation: createJsonlObservationSink(observationFile) } }
           : {})

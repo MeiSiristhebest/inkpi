@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Artifact } from '@inkpi/protocol';
 import {
+  FileRuntimeCachePersistence,
   InMemoryTransport,
   InkPiDaemon,
   InkRpcClient,
   SqliteTaskCheckpointStore,
   SqliteTaskExecutionStore,
+  SqliteTaskSchedulerPersistence,
   createDaemonPersistence,
   resolveDaemonDbPath
 } from '@inkpi/server';
@@ -60,9 +62,36 @@ describe('daemon persistent SQLite context', () => {
       expect(persistence.context.artifactStore).toBeInstanceOf(SqliteArtifactStore);
       expect(persistence.context.checkpointStore).toBeInstanceOf(SqliteTaskCheckpointStore);
       expect(persistence.context.executionStore).toBeInstanceOf(SqliteTaskExecutionStore);
+      expect(persistence.context.schedulerPersistence).toBeInstanceOf(SqliteTaskSchedulerPersistence);
+      expect(persistence.context.jitRetriever).toBeDefined();
+      expect(persistence.cachePersistence).toBeInstanceOf(FileRuntimeCachePersistence);
       expect(() => persistence.close()).not.toThrow();
       expect(() => persistence.close()).not.toThrow();
     } finally {
+      persistence.close();
+    }
+  });
+
+  it('wires the cache lifecycle into a production-shaped daemon context', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'inkpi-persistence-cache-'));
+    const dbPath = join(root, 'state.sqlite');
+    const persistence = createDaemonPersistence({ dbPath });
+    const daemon = new InkPiDaemon({
+      context: persistence.context,
+      cachePersistence: persistence.cachePersistence,
+      defaultModel: {
+        id: 'persistence-cache-model',
+        name: 'Persistence cache model',
+        provider: 'faux'
+      }
+    });
+
+    try {
+      await daemon.start(0, '127.0.0.1');
+      await daemon.stop();
+      expect(existsSync(`${dbPath}.cache.json`)).toBe(true);
+    } finally {
+      await daemon.stop();
       persistence.close();
     }
   });

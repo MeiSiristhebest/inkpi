@@ -1,4 +1,4 @@
-import type { TaskExecutionRecord } from '@inkpi/agent-core';
+import type { TaskCheckpoint, TaskExecutionRecord } from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { InkDb } from '@inkpi/storage';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -101,5 +101,45 @@ describe('SqliteTaskExecutionStore', () => {
       .prepare('SELECT snapshot_json, steps_json, execution_attempts_json FROM task_executions WHERE task_id = ?')
       .get(task.id) as { snapshot_json: string; steps_json: string; execution_attempts_json: string };
     expect(`${row.snapshot_json}${row.steps_json}${row.execution_attempts_json}`).not.toContain('must not persist');
+  });
+
+  it('commits checkpoint and execution state atomically', () => {
+    const db = new InkDb();
+    dbs.push(db);
+    const task = { id: 'execution-atomic', kind: 'test.execution', input: {} } as AiTask;
+    const checkpoint: TaskCheckpoint = {
+      taskId: task.id,
+      kind: task.kind,
+      step: 'draft',
+      data: { offset: 2 },
+      updatedAt: 3
+    };
+    const record = {
+      task,
+      snapshot: { taskId: task.id, kind: task.kind, status: 'running', attempts: 1 },
+      attempts: 1,
+      updatedAt: 3
+    } as TaskExecutionRecord;
+    const store = new SqliteTaskExecutionStore(db);
+
+    store.saveCheckpointAndExecution(checkpoint, record);
+
+    expect(store.load(task.id)).toEqual(record);
+    expect(db.prepare('SELECT task_id, step FROM task_checkpoints WHERE task_id = ?').get(task.id)).toEqual({
+      task_id: task.id,
+      step: 'draft'
+    });
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const brokenTask = { ...task, id: 'execution-atomic-rollback', input: cyclic } as AiTask;
+    expect(() =>
+      store.saveCheckpointAndExecution(
+        { ...checkpoint, taskId: brokenTask.id },
+        { ...record, task: brokenTask, snapshot: { ...record.snapshot, taskId: brokenTask.id } }
+      )
+    ).toThrow('Converting circular structure to JSON');
+    expect(db.prepare('SELECT task_id FROM task_checkpoints WHERE task_id = ?').get(brokenTask.id)).toBeUndefined();
+    expect(store.load(brokenTask.id)).toBeUndefined();
   });
 });

@@ -71,7 +71,12 @@ export class FileRuntimeCachePersistence {
       throw new Error('Runtime cache snapshot could not be serialized', { cause: error });
     }
     this.fileSystem.mkdirSync(dirname(this.filePath), { recursive: true });
-    this.fileSystem.writeFileSync(this.filePath, serialized);
+    // A crash must leave either the previous complete snapshot or the new
+    // complete snapshot visible. The leftover temp file is intentionally
+    // ignored on the next load.
+    const temporaryPath = `${this.filePath}.tmp`;
+    this.fileSystem.writeFileSync(temporaryPath, serialized);
+    this.fileSystem.renameSync(temporaryPath, this.filePath);
     return snapshot;
   }
 

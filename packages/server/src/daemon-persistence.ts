@@ -1,10 +1,20 @@
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DomainProjectionStore, InkDb, ProposalProjectionStore, SqliteArtifactStore } from '@inkpi/storage';
+import {
+  DomainProjectionStore,
+  FtsSearchEngine,
+  InkDb,
+  InkRepository,
+  JitMemoryRetriever,
+  ProposalProjectionStore,
+  SqliteArtifactStore
+} from '@inkpi/storage';
+import { FileRuntimeCachePersistence } from './runtime-cache-persistence.js';
 import type { ServerContext } from './server.js';
 import { SqliteTaskCheckpointStore } from './task-checkpoint-store.js';
 import { SqliteTaskExecutionStore } from './task-execution-store.js';
+import { SqliteTaskSchedulerPersistence } from './task-scheduler-persistence.js';
 
 export { FileRuntimeCachePersistence } from './runtime-cache-persistence.js';
 export type {
@@ -24,13 +34,22 @@ export interface DaemonPersistenceOptions {
 
 export type PersistentDaemonContext = Pick<
   ServerContext,
-  'domainProjection' | 'proposalProjection' | 'artifactStore' | 'checkpointStore' | 'executionStore'
+  | 'domainProjection'
+  | 'proposalProjection'
+  | 'artifactStore'
+  | 'checkpointStore'
+  | 'executionStore'
+  | 'schedulerPersistence'
+  | 'storage'
+  | 'fts'
+  | 'jitRetriever'
 >;
 
 export interface DaemonPersistence {
   readonly db: InkDb;
   readonly dbPath: string;
   readonly context: PersistentDaemonContext;
+  readonly cachePersistence?: FileRuntimeCachePersistence;
   close(): void;
 }
 
@@ -63,6 +82,11 @@ export function createDaemonPersistence(options: DaemonPersistenceOptions = {}):
   const dbPath = resolveDaemonDbPath(options);
   ensureParentDirectory(dbPath);
   const db = new InkDb(dbPath);
+  const storage = new InkRepository(db);
+  const fts = new FtsSearchEngine(db);
+  const jitRetriever = new JitMemoryRetriever({ repository: storage, ftsEngine: fts });
+  const cachePersistence =
+    dbPath === ':memory:' ? undefined : new FileRuntimeCachePersistence({ filePath: `${dbPath}.cache.json` });
   let closed = false;
 
   return {
@@ -73,8 +97,13 @@ export function createDaemonPersistence(options: DaemonPersistenceOptions = {}):
       proposalProjection: new ProposalProjectionStore(db),
       artifactStore: new SqliteArtifactStore(db),
       checkpointStore: new SqliteTaskCheckpointStore(db),
-      executionStore: new SqliteTaskExecutionStore(db)
+      executionStore: new SqliteTaskExecutionStore(db),
+      schedulerPersistence: new SqliteTaskSchedulerPersistence(db),
+      storage,
+      fts,
+      jitRetriever
     },
+    cachePersistence,
     close: () => {
       if (closed) return;
       closed = true;

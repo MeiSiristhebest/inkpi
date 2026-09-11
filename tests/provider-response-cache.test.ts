@@ -1,9 +1,9 @@
-import { AssistantEventStream } from '@inkpi/ai';
 import type { TaskHandlerContext } from '@inkpi/agent-core';
 import { RuntimeCacheCoordinator, ToolRegistry } from '@inkpi/agent-core';
+import { AssistantEventStream } from '@inkpi/ai';
 import type { AiTask, ModelConfig } from '@inkpi/protocol';
-import { describe, expect, it } from 'vitest';
 import { TaskModelHandler } from '@inkpi/server';
+import { describe, expect, it } from 'vitest';
 
 const model: ModelConfig = {
   id: 'cache-model',
@@ -132,16 +132,18 @@ function context(options: {
   revision?: number;
   task?: AiTask;
 }): TaskHandlerContext {
-  const task = options.task ?? {
-    id: options.id,
-    kind: 'cache.text',
-    input: {
-      text: 'same input',
-      selection: { documentId: 'document-1', from: 0, to: 4, revision: options.revision ?? 3 }
-    },
-    outputContract: { format: 'text' },
-    metadata: { skillVersion: 'skill-1' }
-  } satisfies AiTask;
+  const task =
+    options.task ??
+    ({
+      id: options.id,
+      kind: 'cache.text',
+      input: {
+        text: 'same input',
+        selection: { documentId: 'document-1', from: 0, to: 4, revision: options.revision ?? 3 }
+      },
+      outputContract: { format: 'text' },
+      metadata: { skillVersion: 'skill-1' }
+    } satisfies AiTask);
   return {
     task,
     context: {

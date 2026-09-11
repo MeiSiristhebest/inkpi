@@ -1,4 +1,10 @@
-import { InMemoryTaskExecutionStore, TaskObservability, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
+import {
+  InMemoryTaskCheckpointStore,
+  InMemoryTaskExecutionStore,
+  TaskObservability,
+  TaskRegistry,
+  TaskRouter
+} from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -245,5 +251,50 @@ describe('observability provenance contract', () => {
     });
     expect(JSON.stringify(persisted?.snapshot.result?.provenance)).not.toContain('must not be observed');
     expect(JSON.stringify(observation)).not.toContain('must not be observed');
+  });
+
+  it('redacts private reasoning aliases from checkpoints and task errors', async () => {
+    const task: AiTask = {
+      id: 'error-details-raw-cot-task',
+      kind: 'test.error-details-raw-cot',
+      input: { text: 'deterministic context' }
+    };
+    const registry = new TaskRegistry();
+    registry.register({
+      id: 'error-details-raw-cot-fixture-handler',
+      kinds: [task.kind],
+      async execute({ saveCheckpoint }) {
+        await saveCheckpoint('draft', {
+          safe: 'checkpoint value',
+          rawCoT: 'checkpoint reasoning must not persist',
+          nested: { REASONING_CONTENT: 'nested reasoning must not persist' }
+        });
+        const error = new Error('fixture failed') as Error & { details?: unknown; retryable?: boolean };
+        error.retryable = false;
+        error.details = {
+          safe: 'error value',
+          RawThinking: 'error reasoning must not persist',
+          nested: { cHaIn_Of_ThOuGhT: 'deep reasoning must not persist' }
+        };
+        throw error;
+      }
+    });
+
+    const checkpoints = new InMemoryTaskCheckpointStore();
+    const executionStore = new InMemoryTaskExecutionStore();
+    const router = new TaskRouter({ registry, checkpointStore: checkpoints, executionStore });
+    router.submit(task);
+    await router.wait(task.id);
+
+    const checkpoint = await checkpoints.load(task.id);
+    expect(checkpoint?.data).toEqual({ safe: 'checkpoint value', nested: {} });
+    expect(JSON.stringify(checkpoint)).not.toContain('must not persist');
+
+    const persisted = await executionStore.load(task.id);
+    expect(persisted?.snapshot.error?.details).toEqual({ safe: 'error value', nested: {} });
+    expect(persisted?.snapshot.result?.error?.details).toEqual({ safe: 'error value', nested: {} });
+    expect(persisted?.steps?.[0]?.error?.details).toEqual({ safe: 'error value', nested: {} });
+    expect(persisted?.executionAttempts?.[0]?.error?.details).toEqual({ safe: 'error value', nested: {} });
+    expect(JSON.stringify(persisted)).not.toContain('must not persist');
   });
 });
