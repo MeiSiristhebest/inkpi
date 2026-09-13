@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   type LongContextFixtureDefinition,
   createLongContextBenchmarkChapters,
+  measureLongContextCache,
+  measureLongContextRetrievalRecall,
   runLongContextDeterministicBenchmark,
   runLongContextDeterministicBenchmarkSuite
 } from './long-context.js';
@@ -43,13 +45,23 @@ describe('Phase 18 deterministic long-context benchmarks', () => {
       misses: 2,
       hitRate: 0.5,
       hitRatePercent: 50,
-      entryCount: 2
+      entryCount: 2,
+      invalidLookupCount: 0
     });
     expect(report.metrics.distillation).toMatchObject({
       checkpointValid: true,
       recoveryAttempted: true,
       recoveredChapter: fixture.checkpoint.nextChapter,
       recoveryMatchesCheckpoint: true
+    });
+    expect(report.gates).toMatchObject({
+      passed: true,
+      checks: {
+        pruningWithinBudget: true,
+        retrievalRecall: true,
+        cacheHitRate: true,
+        distillationRecovery: true
+      }
     });
   });
 
@@ -69,7 +81,10 @@ describe('Phase 18 deterministic long-context benchmarks', () => {
         allPruningWithinBudget: true,
         minimumRetrievalRecall: 1,
         averageCacheHitRate: 0.5,
-        allDistillationRecoveriesMatch: true
+        minimumCacheHitRate: 0.5,
+        allCacheHitRatesMeetGate: true,
+        allDistillationRecoveriesMatch: true,
+        allGatesPass: true
       }
     });
     expect(first.reports.map((report) => report.fingerprint)).toEqual(
@@ -90,6 +105,7 @@ describe('Phase 18 deterministic long-context benchmarks', () => {
       recoveredChapter: undefined,
       recoveryMatchesCheckpoint: false
     });
+    expect(report.gates.checks.distillationRecovery).toBe(false);
     expect(report.violations.map((violation) => violation.code)).toContain('distillation-checkpoint-invalid');
   });
 
@@ -99,6 +115,72 @@ describe('Phase 18 deterministic long-context benchmarks', () => {
 
     expect(report.passed).toBe(false);
     expect(report.metrics.retrieval.recall).toBe(0);
+    expect(report.gates.checks.retrievalRecall).toBe(false);
     expect(report.violations.map((violation) => violation.code)).toContain('retrieval-recall-low');
+  });
+
+  it('calculates recall from unique anchors and accepts only deterministic cache observations', () => {
+    expect(measureLongContextRetrievalRecall([1, 1, 2], [2], [1, 2, 3])).toMatchObject({
+      requestedAnchorCount: 2,
+      retainedAnchorCount: 1,
+      missingAnchorCount: 0,
+      recall: 0.5,
+      recallPercent: 50
+    });
+    expect(measureLongContextRetrievalRecall([1, 9], [1], [1, 2])).toMatchObject({
+      requestedAnchorCount: 2,
+      retainedAnchorCount: 1,
+      missingAnchorCount: 1,
+      recall: 0.5
+    });
+
+    expect(
+      measureLongContextCache(
+        [
+          { key: 'context:a', hit: false },
+          { key: 'context:a', hit: true },
+          { key: 'retrieval:b', hit: false }
+        ],
+        'deterministic-observation'
+      )
+    ).toMatchObject({
+      source: 'deterministic-observation',
+      lookups: 3,
+      hits: 1,
+      misses: 2,
+      hitRate: 1 / 3,
+      entryCount: 2,
+      invalidLookupCount: 0
+    });
+  });
+
+  it('gates injected cache and recovery observations without invoking a provider', () => {
+    const fixture = structuredClone(fixtures[0]);
+    const report = runLongContextDeterministicBenchmark(
+      fixture,
+      createLongContextBenchmarkChapters(fixture.chapterCount),
+      {
+        cacheLookups: [
+          { key: 'context:a', hit: false },
+          { key: 'context:b', hit: false }
+        ],
+        recovery: {
+          attempted: true,
+          recoveredChapter: fixture.checkpoint.nextChapter - 1
+        }
+      }
+    );
+
+    expect(report.mode).toBe('fixture-only');
+    expect(report.providerCalls).toBe(0);
+    expect(report.modelCalls).toBe(0);
+    expect(report.passed).toBe(false);
+    expect(report.metrics.cache.source).toBe('deterministic-observation');
+    expect(report.metrics.cache.hitRate).toBe(0);
+    expect(report.metrics.distillation.recoveryMatchesCheckpoint).toBe(false);
+    expect(report.gates.checks).toMatchObject({ cacheHitRate: false, distillationRecovery: false });
+    expect(report.violations.map((violation) => violation.code)).toEqual(
+      expect.arrayContaining(['cache-hit-rate-low', 'distillation-recovery-mismatch'])
+    );
   });
 });

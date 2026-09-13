@@ -82,6 +82,25 @@ describe('subjective rubric evaluator', () => {
       expect.arrayContaining(['rubric-empty', 'rubric-weight-empty', 'rubric-score-below-threshold'])
     );
   });
+
+  it('covers required thresholds, missing scores, and rubric score fallbacks', () => {
+    const report = evaluateSubjectiveRubric({
+      rubric: {
+        criterionThreshold: 75,
+        criteria: [{ id: 'required-fallback', required: true }, { id: 'missing-score' }, { id: 'invalid-score' }]
+      },
+      rubricScores: {
+        'required-fallback': 75,
+        'invalid-score': Number.NaN
+      }
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.metrics.scoredCriterionCount).toBe(1);
+    expect(report.violations.map((violation) => violation.code)).toEqual(
+      expect.arrayContaining(['criterion-score-missing', 'criterion-score-invalid'])
+    );
+  });
 });
 
 describe('subjective gold-set evaluator', () => {
@@ -168,6 +187,54 @@ describe('subjective gold-set evaluator', () => {
     expect(invalidScore.score).toBe(0);
     expect(invalidScore.violations.map((violation) => violation.code)).toEqual(
       expect.arrayContaining(['candidate-score-invalid', 'expected-score-invalid', 'score-contract-failed'])
+    );
+  });
+
+  it('covers score, text, label, format, and rubric fallbacks', () => {
+    const missingScore = evaluateSubjectiveGoldCase({
+      id: ' ',
+      candidate: { outputFormat: 'markdown', rubricScores: {} },
+      gold: {
+        threshold: 101,
+        requiredPhrases: ['required'],
+        forbiddenPhrases: ['forbidden'],
+        requiredLabels: ['required'],
+        forbiddenLabels: ['forbidden'],
+        expectedRubricScores: { clarity: 80 }
+      }
+    });
+    expect(missingScore.passed).toBe(false);
+    expect(missingScore.candidateId).toBe('candidate');
+    expect(missingScore.violations.map((violation) => violation.code)).toEqual(
+      expect.arrayContaining([
+        'gold-threshold-invalid',
+        'candidate-score-missing',
+        'required-phrase-missing',
+        'required-label-missing',
+        'rubric-score-mismatch'
+      ])
+    );
+
+    const bounded = evaluateSubjectiveGoldCase({
+      id: 'bounded',
+      candidate: { score: 90 },
+      gold: { minScore: 80, maxScore: 100 }
+    });
+    expect(bounded.passed).toBe(true);
+    expect(bounded.checks.minScore?.passed).toBe(true);
+    expect(bounded.checks.maxScore?.passed).toBe(true);
+
+    const failedRubric = evaluateSubjectiveGoldCase({
+      id: 'failed-rubric',
+      candidate: { rubricScores: { clarity: 70 } },
+      gold: {
+        rubric: { criteria: [{ id: 'clarity', required: true, minScore: 80 }] },
+        expectedRubricScores: { clarity: 80 }
+      }
+    });
+    expect(failedRubric.passed).toBe(false);
+    expect(failedRubric.violations.map((violation) => violation.code)).toEqual(
+      expect.arrayContaining(['rubric-failed', 'rubric-score-mismatch'])
     );
   });
 
@@ -268,5 +335,26 @@ describe('subjective pairwise evaluator', () => {
     const empty = evaluateSubjectivePairwise({ id: 'empty', comparisons: [] });
     expect(empty.passed).toBe(false);
     expect(empty.violations.map((violation) => violation.code)).toContain('pairwise-empty');
+  });
+
+  it('derives right and tie preferences and validates object references', () => {
+    const report = evaluateSubjectivePairwise({
+      candidates: [{ id: 'left', score: 80 }, { id: 'right', score: 90 }, { id: 'tie', score: 90 }, { id: 'unscored' }],
+      comparisons: [
+        { left: 'left', right: 'right', expectedPreference: 'right' },
+        { left: 'right', right: 'tie', expectedPreference: 'tie' },
+        {
+          left: { id: 'object', score: 70 },
+          right: 'unscored',
+          expectedPreference: 'object',
+          observedPreference: 'object'
+        },
+        { left: '', right: 'right', expectedPreference: 'right' }
+      ]
+    });
+
+    expect(report.comparisons[0]).toMatchObject({ observedPreference: 'right', passed: true });
+    expect(report.comparisons[1]).toMatchObject({ observedPreference: 'tie', passed: true });
+    expect(report.violations.map((violation) => violation.code)).toContain('pairwise-candidate-invalid');
   });
 });

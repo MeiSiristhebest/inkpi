@@ -12,6 +12,8 @@
   },
   "expected": {
     "anchorRecall": 1,
-    "pruningWithinBudget": true
+    "pruningWithinBudget": true,
+    "minimumCacheHitRate": 0.5,
+    "requireDistillationRecovery": true
   }
 }

@@ -148,6 +148,80 @@
           ]
         }
       }
+    },
+    {
+      "id": "commercial-tension-choice",
+      "task": "commercial-tension",
+      "input": "在有限篇幅内同时建立欲望、风险和必须立刻作出的选择。",
+      "candidate": {
+        "id": "commercial-tension-choice-v1",
+        "format": "text",
+        "text": "她必须选择：拿走那笔钱，弟弟就会获救；也可以报警，但天亮前他一定会死。她把手伸向了电话。",
+        "labels": ["stakes", "choice", "urgency"],
+        "rubricScores": {
+          "stakes": 88,
+          "choice": 90,
+          "urgency": 87
+        }
+      },
+      "gold": {
+        "expectedScore": 88,
+        "expectedFormat": "text",
+        "requiredPhrases": ["天亮前", "选择"],
+        "forbiddenPhrases": ["没有任何代价"],
+        "requiredLabels": ["stakes", "choice"],
+        "expectedRubricScores": {
+          "stakes": 88,
+          "choice": 90,
+          "urgency": 87
+        },
+        "rubric": {
+          "id": "commercial-tension-rubric",
+          "threshold": 85,
+          "criteria": [
+            { "id": "stakes", "weight": 1, "minScore": 80, "required": true },
+            { "id": "choice", "weight": 1, "minScore": 80, "required": true },
+            { "id": "urgency", "weight": 1, "minScore": 80, "required": true }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rewrite-quality-controlled",
+      "task": "rewrite-quality",
+      "input": "改写需要提升节奏和画面，同时不改变原始事实。",
+      "candidate": {
+        "id": "rewrite-quality-controlled-v1",
+        "format": "patch",
+        "text": "她把信折好，塞回抽屉，直到门外的脚步声停下，才拿起钥匙。",
+        "labels": ["faithful", "clear", "rhythmic"],
+        "rubricScores": {
+          "fidelity": 90,
+          "clarity": 88,
+          "pacing": 89
+        }
+      },
+      "gold": {
+        "expectedScore": 89,
+        "expectedFormat": "patch",
+        "requiredPhrases": ["脚步声", "钥匙"],
+        "forbiddenPhrases": ["改变事实"],
+        "requiredLabels": ["faithful", "clear"],
+        "expectedRubricScores": {
+          "fidelity": 90,
+          "clarity": 88,
+          "pacing": 89
+        },
+        "rubric": {
+          "id": "rewrite-quality-rubric",
+          "threshold": 85,
+          "criteria": [
+            { "id": "fidelity", "weight": 2, "minScore": 85, "required": true },
+            { "id": "clarity", "weight": 1, "minScore": 80, "required": true },
+            { "id": "pacing", "weight": 1, "minScore": 80, "required": true }
+          ]
+        }
+      }
     }
   ]
 }

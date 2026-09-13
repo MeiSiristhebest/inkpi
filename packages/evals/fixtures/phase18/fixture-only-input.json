@@ -1,0 +1,41 @@
+{
+  "id": "phase18-fixture-only-input",
+  "mode": "fixture-only",
+  "goldSet": {
+    "id": "fixture-only-gold-set",
+    "cases": [
+      {
+        "id": "hook-fixture",
+        "task": "hook",
+        "candidate": { "id": "candidate-a", "score": 90 },
+        "gold": {
+          "expectedScore": 90,
+          "rubric": {
+            "id": "hook-fixture-rubric",
+            "threshold": 85,
+            "criteria": ["tension"]
+          }
+        }
+      }
+    ]
+  },
+  "pairwise": {
+    "id": "fixture-only-pairwise",
+    "candidates": [
+      { "id": "candidate-a", "score": 90 },
+      { "id": "candidate-b", "score": 80 }
+    ],
+    "comparisons": [
+      {
+        "id": "a-over-b",
+        "left": "candidate-a",
+        "right": "candidate-b",
+        "expectedPreference": "candidate-a"
+      }
+    ]
+  },
+  "benchmarks": [
+    { "id": "fixture-long-context-100", "mode": "fixture-only", "chapterCount": 100 },
+    { "id": "fixture-long-context-300", "mode": "fixture-only", "chapterCount": 300 }
+  ]
+}

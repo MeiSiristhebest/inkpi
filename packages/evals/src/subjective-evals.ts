@@ -1,4 +1,11 @@
-export type SubjectiveTask = 'hook' | 'style' | 'voice' | 'rewrite' | (string & {});
+export type SubjectiveTask =
+  | 'hook'
+  | 'style'
+  | 'voice'
+  | 'commercial-tension'
+  | 'rewrite'
+  | 'rewrite-quality'
+  | (string & {});
 
 export type SubjectivePreference = 'tie' | (string & {});
 
@@ -151,6 +158,12 @@ export interface SubjectivePairwiseSet {
   threshold?: number;
   candidates?: readonly SubjectiveCandidate[];
   comparisons: readonly SubjectivePairwiseComparison[];
+  /**
+   * Human-labelled gold sets must provide an observed preference explicitly.
+   * When false/omitted, deterministic score-derived preferences remain
+   * available for fixture-only evaluation.
+   */
+  requireExplicitObservedPreference?: boolean;
 }
 
 export interface SubjectivePairwiseComparisonReport {
@@ -1023,18 +1036,28 @@ export function evaluateSubjectivePairwise(input: SubjectivePairwiseSet): Subjec
       right
     );
     if (observed === undefined) {
-      const leftScore = averageCandidateScore(leftCandidate);
-      const rightScore = averageCandidateScore(rightCandidate);
-      if (leftScore !== undefined && rightScore !== undefined) {
-        observed = leftScore === rightScore ? 'tie' : leftScore > rightScore ? left : right;
-      } else {
+      if (input.requireExplicitObservedPreference) {
         addViolation(
           violations,
-          'observed-preference-missing',
-          `Comparison '${comparison.id}' needs an observed preference or deterministic candidate scores.`,
+          'observed-preference-required',
+          `Comparison '${comparison.id}' requires an explicit observed preference for human-labelled evaluation.`,
           `${path}.observedPreference`,
           'left id, right id, or tie'
         );
+      } else {
+        const leftScore = averageCandidateScore(leftCandidate);
+        const rightScore = averageCandidateScore(rightCandidate);
+        if (leftScore !== undefined && rightScore !== undefined) {
+          observed = leftScore === rightScore ? 'tie' : leftScore > rightScore ? left : right;
+        } else {
+          addViolation(
+            violations,
+            'observed-preference-missing',
+            `Comparison '${comparison.id}' needs an observed preference or deterministic candidate scores.`,
+            `${path}.observedPreference`,
+            'left id, right id, or tie'
+          );
+        }
       }
     }
     const validIds = left.length > 0 && right.length > 0 && left !== right;

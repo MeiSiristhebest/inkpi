@@ -1,5 +1,6 @@
 export * from './benchmarks/entity-consistency.js';
 export * from './benchmarks/foreshadowing-payoff.js';
+export * from './benchmarks/long-context.js';
 export * from './benchmarks/typography-compliance.js';
 export * from './runner.js';
 export * from './novel-runner.js';
@@ -8,3 +9,6 @@ export * from './task-fixtures.js';
 export * from './deterministic-evals.js';
 export * from './fixtures.js';
 export * from './subjective-evals.js';
+export * from './human-gold.js';
+export * from './real-provider-acceptance.js';
+export * from './phase18-acceptance.js';
