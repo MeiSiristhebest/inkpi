@@ -218,6 +218,45 @@ describe('first-party Runtime plugin registration', () => {
     );
   });
 
+  it('queues structured first-party workflows with an explicit OpenAI-compatible route', async () => {
+    const daemon = new InkPiDaemon({
+      modelRoutes: [
+        {
+          id: 'openai-compatible-text-only',
+          model: {
+            id: 'openai-compatible-model',
+            name: 'OpenAI-compatible model',
+            provider: 'openai'
+          },
+          capabilities: { outputFormats: ['text'] }
+        }
+      ]
+    });
+    daemons.push(daemon);
+    await daemon.getTaskRouter().ready;
+
+    const workflow = task('first-party-openai-compatible-workflow', 'plugin.storyboard-gen.workflow', {
+      chapterId: 'chapter-openai-compatible',
+      chapterTitle: 'The Gate',
+      chapterText: 'The hero enters.\nThe rival waits.',
+      context: { protagonist: 'Hero', antagonist: 'Rival' }
+    });
+    const response = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 'first-party-openai-compatible-submit',
+      method: 'task.submit',
+      params: { task: workflow }
+    });
+
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({ taskId: workflow.id, status: 'queued' });
+    await expect(daemon.getTaskRouter().wait(workflow.id)).resolves.toMatchObject({
+      status: 'completed',
+      output: { format: 'structured', data: { frames: expect.any(Array) } },
+      provenance: { pluginId: 'storyboard-gen', runtimeClass: 'workflow' }
+    });
+  });
+
   it('is idempotent and only disposes registrations created by the caller', () => {
     const toolRegistry = new ToolRegistry();
     const taskRegistry = new TaskRegistry();

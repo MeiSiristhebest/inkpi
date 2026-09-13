@@ -384,7 +384,10 @@ export class InkPiDaemon {
     });
 
     this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
-      this.capabilityRouter?.resolve(params.task);
+      const handler = this.taskRouter.registry.resolve(params.task);
+      if (handler.id === 'runtime.model') {
+        this.capabilityRouter?.resolve(params.task);
+      }
       return this.taskRouter.submit(params.task);
     });
 
