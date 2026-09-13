@@ -479,14 +479,14 @@ export function applyCompatToOpenAiPayload(
   // 1. maxTokens 字段名称映射
   if (compat?.maxTokensField === 'max_completion_tokens') {
     payload.max_completion_tokens = maxTokens;
-    delete payload.max_tokens;
+    Reflect.deleteProperty(payload, 'max_tokens');
   } else {
     payload.max_tokens = maxTokens;
   }
 
   // 2. stream_options.include_usage 控制
   if (compat?.supportsUsageInStreaming === false) {
-    delete payload.stream_options;
+    Reflect.deleteProperty(payload, 'stream_options');
   }
 
   // 3. 思考/推理参数方言转换与安全钳位
@@ -495,29 +495,27 @@ export function applyCompatToOpenAiPayload(
 
   if (model.supportsThinking || (thinkingBudget && thinkingBudget > 0)) {
     const clampedBudget = clampThinkingBudget(maxTokens, thinkingBudget);
-    switch (thinkingFormat) {
-      case 'qwen-bool':
-        payload.enable_thinking = true;
-        break;
-      case 'deepseek':
-        payload.thinking = { type: 'enabled' };
-        break;
-      case 'openrouter':
-        payload.reasoning = { effort: 'high' };
-        break;
-      case 'custom-field':
-        if (compat?.thinkingCustomField) {
-          payload[compat.thinkingCustomField] = clampedBudget;
-        }
-        break;
-      case 'disabled':
-        // 显式不发送思考参数
-        break;
-      case 'openai':
-      default:
-        // OpenAI 标准 reasoning_effort
-        payload.reasoning_effort = 'high';
-        break;
+    if (thinkingFormat !== 'disabled') {
+      switch (thinkingFormat) {
+        case 'qwen-bool':
+          payload.enable_thinking = true;
+          break;
+        case 'deepseek':
+          payload.thinking = { type: 'enabled' };
+          break;
+        case 'openrouter':
+          payload.reasoning = { effort: 'high' };
+          break;
+        case 'custom-field':
+          if (compat?.thinkingCustomField) {
+            payload[compat.thinkingCustomField] = clampedBudget;
+          }
+          break;
+        default:
+          // OpenAI 标准 reasoning_effort
+          payload.reasoning_effort = 'high';
+          break;
+      }
     }
   }
 
@@ -603,7 +601,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         let healed = false;
         // 1. 遇到不认识 stream_options 的老旧网关或 vLLM，剔除后重试
         if (errorText.toLowerCase().includes('stream_options') && payload.stream_options) {
-          delete payload.stream_options;
+          Reflect.deleteProperty(payload, 'stream_options');
           healed = true;
         }
         // 2. 遇到不认识 thinking / reasoning 字段的非标模型，剔除后重试
@@ -614,7 +612,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         }
         // 3. 遇到不认识 tools 字段的纯文本端点，剔除 tools 后重试
         if (errorText.toLowerCase().includes('tools') && payload.tools) {
-          delete payload.tools;
+          Reflect.deleteProperty(payload, 'tools');
           healed = true;
         }
 

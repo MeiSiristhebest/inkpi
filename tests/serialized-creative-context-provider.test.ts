@@ -15,7 +15,17 @@ import { createModelRouteFromCatalog, InkPiDaemon } from '@inkpi/server';
 
 const entry = findModelInCatalog('deepseek/deepseek-r1');
 if (!entry) throw new Error('deepseek catalog route is required for the provider test');
-const stream = () => {
+const stream = (_model, messages) => {
+  const prompt = messages
+    .filter((message) => message.role === 'user')
+    .map((message) => (typeof message.content === 'string' ? message.content : JSON.stringify(message.content)))
+    .join('\n');
+  for (const marker of ['完整章节正文', '作者事实', '当前段落']) {
+    if (!prompt.includes(marker)) throw new Error('compiled CreativeContext is missing: ' + marker);
+  }
+  if (prompt.includes('"storyContext"')) {
+    throw new Error('raw serialized CreativeContext envelope leaked into the model prompt');
+  }
   const result = new AssistantEventStream();
   queueMicrotask(() => {
     result.push({ type: 'text_delta', textDelta: 'serialized context accepted' });
@@ -167,10 +177,26 @@ describe('serialized CreativeContext provider boundary', () => {
         result: {
           output: { format: 'text', text: 'serialized context accepted' },
           provenance: {
-            contextSources: expect.arrayContaining(['creative.document', 'creative.story'])
+            contextSources: expect.arrayContaining(['creative.document', 'creative.story']),
+            selectedRoute: 'deepseek/deepseek-r1',
+            selectedProvider: 'deepseek',
+            selectedModel: 'deepseek/deepseek-r1',
+            provider: 'deepseek',
+            model: 'deepseek/deepseek-r1'
           }
         }
       });
+
+      const mismatchTask = {
+        ...task,
+        id: 'serialized-creative-context-capability-mismatch',
+        requirements: {
+          ...task.requirements,
+          modalities: ['image']
+        }
+      } satisfies AiTask;
+      await expect(client.request('task.submit', { task: mismatchTask })).rejects.toThrow(/Capability mismatch/);
+      await expect(client.request('task.status', { taskId: mismatchTask.id })).rejects.toThrow(/Unknown task/);
     } finally {
       await client.close();
       await stopDaemon(daemon.child);

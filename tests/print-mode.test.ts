@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { runPrintMode } from '@inkpi/cli';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('InkPi Print Mode (Non-interactive batch mode)', () => {
   const tmpOut = path.join(os.tmpdir(), 'inkpi-tmp-print-test.txt');
@@ -157,6 +157,26 @@ describe('InkPi Print Mode (Non-interactive batch mode)', () => {
       json: true
     });
     expect(res.success).toBe(true);
+  });
+
+  it('should support quiet mode for callers that sanitize provider output themselves', async () => {
+    const stdoutWrite = vi.spyOn(process.stdout, 'write');
+    const stderrWrite = vi.spyOn(process.stderr, 'write');
+    try {
+      const res = await runPrintMode({
+        prompt: 'quiet output test',
+        model: 'mock-test',
+        json: true,
+        quiet: true
+      });
+
+      expect(res.success).toBe(true);
+      expect(stdoutWrite).not.toHaveBeenCalled();
+      expect(stderrWrite).not.toHaveBeenCalled();
+    } finally {
+      stdoutWrite.mockRestore();
+      stderrWrite.mockRestore();
+    }
   });
 
   it('should throw error when no model and no API key is provided outside test env', async () => {

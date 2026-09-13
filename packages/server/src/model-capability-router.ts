@@ -506,7 +506,7 @@ function supportsStructuredOutput(capabilities: ModelCapabilities): boolean {
     capabilities.structuredOutput === true ||
     capabilities.supportsStructuredOutput === true ||
     capabilities.jsonSchema === true ||
-    Array.isArray(capabilities.jsonSchema) ||
+    (Array.isArray(capabilities.jsonSchema) && capabilities.jsonSchema.length > 0) ||
     (capabilities.schemaIds?.length ?? 0) > 0
   );
 }
@@ -530,9 +530,17 @@ function supportsSchema(schemaId: string, capabilities: ModelCapabilities): bool
 }
 
 function namedCapability(capabilities: ModelCapabilities, value: string): boolean {
+  const toolCapability = declaredToolCapability(capabilities);
+  const imageInput =
+    capabilities.modalities?.includes('image') === true || capabilities.modalities?.includes('vision') === true;
   const flags: Record<string, boolean | undefined> = {
-    toolCalling: capabilities.toolCalling ?? capabilities.tools === true,
+    toolCalling: capabilities.toolCalling ?? supportsTools(toolCapability),
+    tools: supportsTools(toolCapability),
     jsonSchema: supportsStructuredOutput(capabilities),
+    structuredOutput: supportsStructuredOutput(capabilities),
+    patchOutput: supportsPatchOutput(capabilities),
+    imageInput,
+    vision: imageInput,
     parallelToolCalling: capabilities.parallelToolCalling,
     promptCaching: capabilities.promptCaching,
     reasoning: capabilities.reasoning ?? capabilities.supportsReasoning,

@@ -1,5 +1,6 @@
 import type { ContextProvider } from '@inkpi/agent-core';
 import { stableSerialize } from '@inkpi/agent-core';
+import { type SerializedCreativeContext, isSerializedCreativeContext } from './serialized-creative-context-schema.js';
 
 /**
  * The Desktop compiler sends a JSON-safe CreativeContext inside task.input.payload.
@@ -63,12 +64,10 @@ export function createSerializedCreativeContextProviders(): readonly ContextProv
   ];
 }
 
-function getCreativeContext(payload: unknown): Record<string, unknown> | undefined {
+function getCreativeContext(payload: unknown): SerializedCreativeContext | undefined {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
   const context = (payload as Record<string, unknown>).context;
-  return context !== null && typeof context === 'object' && !Array.isArray(context)
-    ? (context as Record<string, unknown>)
-    : undefined;
+  return isSerializedCreativeContext(context) ? context : undefined;
 }
 
 function hash(value: string): string {

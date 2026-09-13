@@ -1,4 +1,3 @@
-import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import { getHttpClient } from './http-client.js';
 
@@ -57,12 +56,10 @@ export async function startOAuthLoginFlow(
   }
 
   return new Promise<OAuthTokenResult>((resolve, reject) => {
-    let serverInstance: Server | undefined;
+    const serverInstance = createServer();
 
     const cleanup = () => {
-      if (serverInstance) {
-        serverInstance.close();
-      }
+      serverInstance.close();
     };
 
     if (options.signal) {
@@ -72,7 +69,7 @@ export async function startOAuthLoginFlow(
       });
     }
 
-    const server = createServer(async (req, res) => {
+    serverInstance.on('request', async (req, res) => {
       try {
         if (!req.url?.startsWith(redirectPath)) {
           res.writeHead(404);
@@ -153,7 +150,6 @@ export async function startOAuthLoginFlow(
       }
     });
 
-    serverInstance = server;
-    server.listen(port);
+    serverInstance.listen(port);
   });
 }

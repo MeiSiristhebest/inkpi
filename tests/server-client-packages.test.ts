@@ -5,6 +5,7 @@ import {
   RemoteStreamTransport,
   WebSocketTransport
 } from '@inkpi/client';
+import type { AiTask } from '@inkpi/protocol';
 import { InkPiDaemon, InkRpcServer, SessionRegistry } from '@inkpi/server';
 import { MemorySessionBackend } from '@inkpi/session-backends';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -181,7 +182,10 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
     typedServer.registerMethod('ghost.dismiss', () => ({ success: true }));
     typedServer.registerMethod('storage.queryMemory', () => []);
     typedServer.registerMethod('storage.searchFts', () => []);
-    typedServer.registerMethod('pipeline.run', () => ({ success: true, result: {} }));
+    typedServer.registerMethod('task.submit', (params: { task: AiTask }) => ({
+      taskId: params.task.id,
+      status: 'queued'
+    }));
     typedServer.registerMethod('telemetry.getMetrics', () => ({ ttftMs: 10 }));
     typedServer.registerMethod('telemetry.exportOtel', () => '{}');
 
@@ -200,7 +204,12 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
     await expect(typedClient.dismissGhostText()).resolves.toBeDefined();
     await expect(typedClient.queryMemory('q')).resolves.toBeDefined();
     await expect(typedClient.searchFts('q')).resolves.toBeDefined();
-    await expect(typedClient.triggerWorkflow('w')).resolves.toBeDefined();
+    await expect(
+      typedClient.submitTask({ id: 'typed-task', kind: 'creative.test', input: { text: 'w' } })
+    ).resolves.toEqual({
+      taskId: 'typed-task',
+      status: 'queued'
+    });
     await expect(typedClient.getTelemetry()).resolves.toBeDefined();
     await expect(typedClient.exportOpenTelemetry()).resolves.toBe('{}');
 

@@ -3,7 +3,14 @@
  */
 
 import * as fs from 'node:fs';
-import { Agent, REAL_CLOCK, TelemetryCollector, WorkflowCoordinator } from '@inkpi/agent-core';
+import {
+  Agent,
+  REAL_CLOCK,
+  TaskRegistry,
+  TaskRouter,
+  TelemetryCollector,
+  WorkflowCoordinator
+} from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
 
 import type { ModelConfig } from '@inkpi/ai';
@@ -41,6 +48,8 @@ export interface PrintModeOptions {
   json?: boolean;
   /** 是否开启逐行 NDJSON 实时事件流输出（面向 Desktop / 子进程实时打字） */
   stream?: boolean;
+  /** Suppress terminal output when the caller owns response sanitization. */
+  quiet?: boolean;
   output?: string;
   systemPrompt?: string;
   /** Explicit workflow adapter for batch execution; no domain stages are implied. */
@@ -111,58 +120,103 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       if (!options.workflow) {
         throw new Error(
           'Print workflow mode requires an explicit workflow configuration. ' +
-            'Use a custom workflow or call WorkflowCoordinator.runPipeline() for the legacy narrative pipeline.'
+            'Register an explicit workflow and run it through the Runtime Task Router.'
         );
       }
       const telemetry = new TelemetryCollector(REAL_CLOCK);
-      const coordinator = new WorkflowCoordinator({
-        telemetry,
-        model: options.modelConfig || (options.model ? getModelPreset(options.model) : undefined),
-        ...options.workflow
+      const workflow = options.workflow;
+      const registry = new TaskRegistry();
+      const taskRouter = new TaskRouter({ registry });
+      const taskId = `cli-workflow-${Date.now()}`;
+      const finalStageId = workflow.finalStageId || workflow.stages[workflow.stages.length - 1]?.id;
+
+      registry.register({
+        id: 'cli.explicit-workflow',
+        kinds: ['cli.explicit-workflow'],
+        execute: async ({ signal }) => {
+          const coordinator = new WorkflowCoordinator({
+            telemetry,
+            model: options.modelConfig || (options.model ? getModelPreset(options.model) : undefined),
+            ...workflow,
+            signal
+          });
+          const workflowResult = await coordinator.runWorkflow({
+            ...workflow.initialContext,
+            userPrompt: options.prompt
+          });
+          return {
+            output: {
+              format: 'structured',
+              data: { finalStageId, stageOutputs: workflowResult.stageOutputs }
+            }
+          };
+        }
       });
-      const workflowResult = await coordinator.runWorkflow({
-        ...options.workflow.initialContext,
-        userPrompt: options.prompt
-      });
-      const finalStageId =
-        options.workflow.finalStageId || options.workflow.stages[options.workflow.stages.length - 1]?.id;
-      const finalContent = finalStageId ? workflowResult.stageOutputs[finalStageId] || '' : '';
-      if (!finalContent) {
-        throw new Error('Print workflow completed without output from its final stage.');
+
+      try {
+        await taskRouter.ready;
+        taskRouter.submit({
+          id: taskId,
+          kind: 'cli.explicit-workflow',
+          input: { text: options.prompt },
+          intent: options.prompt,
+          executionPolicy: { strategy: 'workflow', mode: 'batch', cancellable: true },
+          outputContract: { format: 'structured' }
+        });
+        const taskResult = await taskRouter.wait(taskId);
+        if (taskResult.status !== 'completed') {
+          throw new Error(taskResult.error?.message || 'Print workflow did not complete.');
+        }
+        if (!taskResult.output || taskResult.output.format !== 'structured') {
+          throw new Error('Print workflow returned an invalid task result.');
+        }
+        const workflowOutput = taskResult.output.data as {
+          finalStageId?: string;
+          stageOutputs?: Record<string, string>;
+        };
+        const finalContent =
+          workflowOutput.finalStageId && workflowOutput.stageOutputs
+            ? workflowOutput.stageOutputs[workflowOutput.finalStageId] || ''
+            : '';
+        if (!finalContent) {
+          throw new Error('Print workflow completed without output from its final stage.');
+        }
+        const durationMs = Date.now() - startTime;
+
+        if (options.output) {
+          fs.writeFileSync(options.output, finalContent, 'utf8');
+        }
+
+        const spans = telemetry.getSpans();
+        let totalInputTokens = 0;
+        let totalOutputTokens = 0;
+        for (const s of spans) {
+          if (s.inputTokens) totalInputTokens += s.inputTokens;
+          if (s.outputTokens) totalOutputTokens += s.outputTokens;
+        }
+
+        const result: PrintModeResult = {
+          success: true,
+          content: finalContent,
+          role: 'pipeline',
+          usage: {
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            totalTokens: totalInputTokens + totalOutputTokens
+          },
+          durationMs
+        };
+
+        if (!options.quiet && options.json) {
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        } else if (!options.quiet) {
+          process.stdout.write(`${finalContent}\n`);
+        }
+
+        return result;
+      } finally {
+        await taskRouter.stop();
       }
-      const durationMs = Date.now() - startTime;
-
-      if (options.output) {
-        fs.writeFileSync(options.output, finalContent, 'utf8');
-      }
-
-      const spans = telemetry.getSpans();
-      let totalInputTokens = 0;
-      let totalOutputTokens = 0;
-      for (const s of spans) {
-        if (s.inputTokens) totalInputTokens += s.inputTokens;
-        if (s.outputTokens) totalOutputTokens += s.outputTokens;
-      }
-
-      const result: PrintModeResult = {
-        success: true,
-        content: finalContent,
-        role: 'pipeline',
-        usage: {
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          totalTokens: totalInputTokens + totalOutputTokens
-        },
-        durationMs
-      };
-
-      if (options.json) {
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      } else {
-        process.stdout.write(`${finalContent}\n`);
-      }
-
-      return result;
     }
 
     let modelObj: any;
@@ -187,13 +241,13 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
 
     agent.subscribe((event) => {
       // 如果开启了 --json --stream 模式，实时刷出单行 NDJSON 帧给 Desktop / 上游管道
-      if (options.json && options.stream) {
+      if (!options.quiet && options.json && options.stream) {
         process.stdout.write(`${JSON.stringify({ type: 'event', event })}\n`);
       }
 
       if (event.type === 'message_update') {
         const ev = (event as any).assistantMessageEvent;
-        if (ev && !options.json) {
+        if (ev && !options.json && !options.quiet) {
           if (ev.type === 'thinking_delta' && ev.thinkingDelta) {
             process.stdout.write(`\x1b[36m${ev.thinkingDelta}\x1b[0m`);
             hasStreamedToStdout = true;
@@ -251,11 +305,11 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       fs.writeFileSync(options.output, result.content, 'utf8');
     }
 
-    if (options.json) {
+    if (!options.quiet && options.json) {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    } else if (hasStreamedToStdout) {
+    } else if (!options.quiet && hasStreamedToStdout) {
       process.stdout.write('\n');
-    } else {
+    } else if (!options.quiet) {
       process.stdout.write(`${result.content}\n`);
     }
 
@@ -270,9 +324,9 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
       error: err.message || String(err)
     };
 
-    if (options.json) {
+    if (!options.quiet && options.json) {
       process.stdout.write(`${JSON.stringify(errorResult, null, 2)}\n`);
-    } else {
+    } else if (!options.quiet) {
       process.stderr.write(`❌ [InkPi Print Error] ${errorResult.error}\n`);
     }
 

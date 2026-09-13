@@ -1,13 +1,13 @@
+import { Agent } from '@inkpi/agent-core';
 import {
+  type AnthropicWireMessage,
   anthropicProvider,
   convertMessagesToAnthropic,
   fauxProvider,
   getModelPreset,
   insertThinkingLevelMessages,
-  mapThinkingLevelToEffort,
-  type AnthropicWireMessage
+  mapThinkingLevelToEffort
 } from '@inkpi/ai';
-import { Agent } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
