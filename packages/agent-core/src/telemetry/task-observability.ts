@@ -1,12 +1,13 @@
 import type { AiTask, TaskStatus } from '@inkpi/protocol';
 import type { RuntimeCacheStats } from '../context/cache-contract.js';
 import type { ContextPacket } from '../context/types.js';
-import { stripPrivateReasoningText } from './private-data.js';
+import { sanitizeTelemetryData } from './private-data.js';
 
 export interface TaskRunObservation {
   taskId: string;
   kind: string;
   executionRunId?: string;
+  attempt?: number;
   status: TaskStatus;
   startedAt?: number;
   finishedAt?: number;
@@ -32,7 +33,7 @@ export interface TaskRunObservation {
   proposalIds?: string[];
   checkpointIds?: string[];
   checkpoint?: { step: string; updatedAt: number };
-  error?: { code?: string; message?: string };
+  error?: { code?: string; message?: string; retryable?: boolean };
   provenance: Record<string, unknown>;
 }
 
@@ -45,6 +46,23 @@ export interface TaskObservabilityOptions {
   random?: () => number;
   /** Best-effort sink invoked with a sanitized copy of each retained observation. */
   onObservation?: (observation: TaskRunObservation) => void;
+  /** Safe health signal emitted when an observation sink fails. It contains no observation data. */
+  onObservationError?: (signal: TaskObservationErrorSignal) => void;
+}
+
+export interface TaskObservationErrorSignal {
+  type: 'observation_sink_error';
+  code: 'OBSERVATION_SINK_ERROR';
+  at: number;
+  consecutiveFailures: number;
+}
+
+export interface TaskObservabilityHealth {
+  healthy: boolean;
+  emitted: number;
+  sinkErrors: number;
+  consecutiveSinkErrors: number;
+  lastErrorAt?: number;
 }
 
 export interface TaskRunObserver {
@@ -61,6 +79,11 @@ export class TaskObservability implements TaskRunObserver {
   private readonly sampleRate: number;
   private readonly random: () => number;
   private readonly onObservation?: (observation: TaskRunObservation) => void;
+  private readonly onObservationError?: (signal: TaskObservationErrorSignal) => void;
+  private emitted = 0;
+  private sinkErrors = 0;
+  private consecutiveSinkErrors = 0;
+  private lastErrorAt?: number;
 
   constructor(options: TaskObservabilityOptions | (() => number) = {}) {
     const normalized = typeof options === 'function' ? {} : options;
@@ -68,6 +91,7 @@ export class TaskObservability implements TaskRunObserver {
     this.sampleRate = normalizeSampleRate(normalized.sampleRate);
     this.random = normalized.random ?? Math.random;
     this.onObservation = normalized.onObservation;
+    this.onObservationError = normalized.onObservationError;
   }
 
   started(task: AiTask): void {
@@ -152,11 +176,37 @@ export class TaskObservability implements TaskRunObserver {
     if (stored && this.onObservation) {
       try {
         this.onObservation(cloneObservation(stored));
+        this.emitted += 1;
+        this.consecutiveSinkErrors = 0;
       } catch {
         // Telemetry sinks must not change task success/failure semantics.
+        this.sinkErrors += 1;
+        this.consecutiveSinkErrors += 1;
+        const errorAt = safeNow(this.now);
+        this.lastErrorAt = errorAt;
+        try {
+          this.onObservationError?.({
+            type: 'observation_sink_error',
+            code: 'OBSERVATION_SINK_ERROR',
+            at: errorAt,
+            consecutiveFailures: this.consecutiveSinkErrors
+          });
+        } catch {
+          // Health callbacks are best effort as well.
+        }
       }
     }
     this.sampleDecisions.delete(task.id);
+  }
+
+  getHealth(): TaskObservabilityHealth {
+    return {
+      healthy: this.consecutiveSinkErrors === 0,
+      emitted: this.emitted,
+      sinkErrors: this.sinkErrors,
+      consecutiveSinkErrors: this.consecutiveSinkErrors,
+      lastErrorAt: this.lastErrorAt
+    };
   }
 
   get(taskId: string): TaskRunObservation | undefined {
@@ -193,7 +243,7 @@ function cloneObservation(observation: TaskRunObservation): TaskRunObservation {
 }
 
 function sanitizeObservation(observation: TaskRunObservation): TaskRunObservation {
-  return sanitizePublicValue(observation) as TaskRunObservation;
+  return sanitizeTelemetryData(observation);
 }
 
 function withInstructionSkillProvenance(observation: TaskRunObservation): TaskRunObservation {
@@ -221,50 +271,16 @@ function withInstructionSkillProvenance(observation: TaskRunObservation): TaskRu
   };
 }
 
-function sanitizePublicValue(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (typeof value === 'string') return stripPrivateReasoningText(value);
-  if (value === null || typeof value !== 'object') return value;
-  if (seen.has(value)) return '[Circular]';
-  seen.add(value);
-  try {
-    if (Array.isArray(value)) return value.map((item) => sanitizePublicValue(item, seen));
-    if (value instanceof Date) return new Date(value.getTime());
-    const safe: Record<string, unknown> = {};
-    for (const [key, nestedValue] of Object.entries(value)) {
-      if (PRIVATE_REASONING_KEYS.has(normalizePrivateKey(key))) continue;
-      safe[key] = sanitizePublicValue(nestedValue, seen);
-    }
-    return safe;
-  } finally {
-    seen.delete(value);
-  }
-}
-
-function normalizePrivateKey(key: string): string {
-  return key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-}
-
 function normalizeSampleRate(sampleRate: number | undefined): number {
   if (sampleRate === undefined || !Number.isFinite(sampleRate)) return 1;
   return Math.min(1, Math.max(0, sampleRate));
 }
 
-const PRIVATE_REASONING_KEYS = new Set([
-  'analysis',
-  'thinking',
-  'reasoning',
-  'reasoningcontent',
-  'chainofthought',
-  'cot',
-  'deliberation',
-  'deliberationcontent',
-  'hiddenthought',
-  'hiddenthoughts',
-  'internalreasoning',
-  'scratchpad',
-  'think',
-  'thought',
-  'thoughts',
-  'rawthinking',
-  'rawcot'
-]);
+function safeNow(now: () => number): number {
+  try {
+    const value = now();
+    return Number.isFinite(value) ? value : Date.now();
+  } catch {
+    return Date.now();
+  }
+}

@@ -7,6 +7,7 @@ import type {
   Usage
 } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
+import { sanitizeTelemetryData } from './private-data.js';
 
 /**
  * OpenTelemetry 规范全链路可观测性度量收集器。
@@ -35,6 +36,12 @@ function toOtelHexId(source: string, length: number): string {
   return hex.padEnd(length, '0').slice(0, length);
 }
 
+export interface TelemetryCollectorHealth {
+  healthy: boolean;
+  eventListenerErrors: number;
+  lastErrorAt?: number;
+}
+
 export class TelemetryCollector {
   private clock: Clock;
   private startTime = 0;
@@ -47,6 +54,8 @@ export class TelemetryCollector {
   private spans: TelemetrySpan[] = [];
   private activeSpans = new Map<string, TelemetrySpan>();
   private eventListeners: Array<(event: TelemetryEvent) => void> = [];
+  private eventListenerErrors = 0;
+  private lastErrorAt?: number;
 
   // Creative Interaction Metrics
   private ghostMetrics = {
@@ -102,8 +111,14 @@ export class TelemetryCollector {
   }
 
   private emitEvent(event: TelemetryEvent): void {
-    for (const listener of this.eventListeners) {
-      listener(event);
+    for (const listener of [...this.eventListeners]) {
+      try {
+        listener(event);
+      } catch {
+        // A metrics consumer must not change the runtime operation that emitted the event.
+        this.eventListenerErrors += 1;
+        this.lastErrorAt = this.clock();
+      }
     }
   }
 
@@ -174,7 +189,7 @@ export class TelemetryCollector {
     this.branchMetrics.rollbackCount += 1;
     this.emitEvent({
       type: 'branch_rollback',
-      branchId,
+      branchId: sanitizeTelemetryData(branchId),
       depth,
       timestamp: this.clock()
     });
@@ -188,8 +203,8 @@ export class TelemetryCollector {
     this.invariantMetrics.conflictRules.add(rule);
     this.emitEvent({
       type: 'invariant_conflict',
-      rule,
-      details,
+      rule: sanitizeTelemetryData(rule),
+      details: details === undefined ? undefined : sanitizeTelemetryData(details),
       timestamp: this.clock()
     });
   }
@@ -232,11 +247,11 @@ export class TelemetryCollector {
   public startSpan(name: string, stage?: string, role?: string, attributes?: Record<string, unknown>): TelemetrySpan {
     const span: TelemetrySpan = {
       id: this.idGenerator ? this.idGenerator() : `span_${this.clock()}_${(this.clock() % 100000).toString(36)}`,
-      name,
-      stage,
-      role,
+      name: sanitizeTelemetryData(name),
+      stage: stage === undefined ? undefined : sanitizeTelemetryData(stage),
+      role: role === undefined ? undefined : sanitizeTelemetryData(role),
       startTime: this.clock(),
-      attributes: attributes || {}
+      attributes: sanitizeTelemetryData(attributes || {})
     };
     this.activeSpans.set(span.id, span);
     return span;
@@ -266,7 +281,7 @@ export class TelemetryCollector {
     }
 
     if (error && span.attributes) {
-      span.attributes.error = error;
+      span.attributes.error = sanitizeTelemetryData(error);
     }
 
     this.spans.push(span);
@@ -275,7 +290,15 @@ export class TelemetryCollector {
   }
 
   public getSpans(): TelemetrySpan[] {
-    return [...this.spans];
+    return this.spans.map((span) => sanitizeTelemetryData(span));
+  }
+
+  public getHealth(): TelemetryCollectorHealth {
+    return {
+      healthy: this.eventListenerErrors === 0,
+      eventListenerErrors: this.eventListenerErrors,
+      lastErrorAt: this.lastErrorAt
+    };
   }
 
   private computeStats(): TelemetryStats {
