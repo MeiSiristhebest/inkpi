@@ -1,22 +1,22 @@
 import type * as net from 'node:net';
 import {
+  ContextPipeline,
+  type InstructionDefinition,
+  type InstructionEntry,
+  InstructionRegistry,
   type ManagedSession,
+  ProgressiveSkillRuntime,
+  type ProgressiveSkillRuntimeOptions,
   REAL_CLOCK,
+  RuntimeCacheCoordinator,
+  type RuntimeCacheCoordinatorPort,
   type SessionCreateOptions,
   SessionRegistry,
-  ContextPipeline,
-  InstructionRegistry,
-  RuntimeCacheCoordinator,
-  TaskRouter,
   TaskObservability,
-  ProgressiveSkillRuntime,
-  type RuntimeCacheCoordinatorPort,
   type TaskObservabilityOptions,
+  TaskRouter,
   type TaskRunObserver,
-  type TaskSchedulerPersistence,
-  type ProgressiveSkillRuntimeOptions,
-  type InstructionDefinition,
-  type InstructionEntry
+  type TaskSchedulerPersistence
 } from '@inkpi/agent-core';
 import type {
   Artifact,
@@ -40,6 +40,13 @@ import type {
   ModelConfig,
   ProposalSyncPushParams,
   ProposalSyncSnapshotParams,
+  SkillActivateParams,
+  SkillActivationResult,
+  SkillDiscoverResult,
+  SkillLoadParams,
+  SkillLoadResult,
+  SkillResolveQuery,
+  SkillResolveResult,
   TaskCancelParams,
   TaskExecutionParams,
   TaskExecutionSnapshot,
@@ -49,25 +56,24 @@ import type {
   TaskStatusParams,
   TaskSteerParams,
   TaskSubmitParams,
-  SkillActivateParams,
-  SkillActivationResult,
-  SkillDiscoverResult,
-  SkillLoadParams,
-  SkillLoadResult,
-  SkillResolveQuery,
-  SkillResolveResult
+  ToolExecuteParams,
+  ToolResultMessage
 } from '@inkpi/protocol';
+import type { ProposalProjectionStore } from '@inkpi/storage';
+import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
+import type { RuntimeCachePersistence } from './daemon-cache-persistence.js';
+import {
+  type FirstPartyPluginRuntimeRegistration,
+  registerFirstPartyPluginRuntime
+} from './first-party-plugin-runtime.js';
+import { JitContextProvider } from './jit-context-provider.js';
+import type { CapabilityRouter, ModelCapabilities, ModelRoute } from './model-capability-router.js';
+import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
 import { InkRpcServer, type ServerContext } from './server.js';
+import { TaskModelHandler } from './task-model-handler.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
-import { TaskModelHandler } from './task-model-handler.js';
-import { JitContextProvider } from './jit-context-provider.js';
-import type { ProposalProjectionStore } from '@inkpi/storage';
-import type { CapabilityRouter, ModelCapabilities, ModelRoute } from './model-capability-router.js';
-import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
-import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
-import type { RuntimeCachePersistence } from './daemon-cache-persistence.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -121,6 +127,7 @@ export class InkPiDaemon {
   private readonly capabilityRouter?: CapabilityRouter;
   private readonly taskObservability: TaskObservability;
   private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
+  private readonly firstPartyPluginRuntime: FirstPartyPluginRuntimeRegistration;
   private cachePersistenceRestored = false;
 
   constructor(options: DaemonOptions = {}) {
@@ -199,6 +206,11 @@ export class InkPiDaemon {
     if (this.skillRuntime.contextPipeline && this.skillRuntime.contextPipeline !== this.taskRouter.contextPipeline) {
       throw new Error('Daemon skill runtime must use the TaskRouter ContextPipeline');
     }
+    this.firstPartyPluginRuntime = registerFirstPartyPluginRuntime({
+      toolRegistry: this.taskRouter.toolRegistry,
+      taskRegistry: this.taskRouter.registry,
+      extensionHost: this.skillRuntime.extensionHost
+    });
     this.rpcServer = new InkRpcServer({
       ...options.context,
       taskRouter: this.taskRouter,
@@ -242,6 +254,11 @@ export class InkPiDaemon {
   /** The single ProgressiveSkillRuntime shared with the daemon's registries. */
   public getSkillRuntime(): ProgressiveSkillRuntime {
     return this.skillRuntime;
+  }
+
+  /** Runtime-owned registrations for first-party plugin tools and workflows. */
+  public getFirstPartyPluginRuntime(): FirstPartyPluginRuntimeRegistration {
+    return this.firstPartyPluginRuntime;
   }
 
   /** 返回守护进程实际监听的 TCP 端口（端口 0 时由操作系统分配）。 */
@@ -345,6 +362,27 @@ export class InkPiDaemon {
       } satisfies InstructionRegistryStatus;
     });
 
+    this.rpcServer.registerMethod('tool.list', () => {
+      const exposed = new Set(this.firstPartyPluginRuntime.toolNames);
+      return this.taskRouter.toolRegistry.getRegistrations().filter((registration) => exposed.has(registration.name));
+    });
+
+    this.rpcServer.registerMethod('tool.execute', async (params: ToolExecuteParams): Promise<ToolResultMessage> => {
+      const toolName = requiredToolName(params?.toolName);
+      if (!this.firstPartyPluginRuntime.toolNames.includes(toolName)) {
+        throw new Error(`Tool '${toolName}' is not exposed through the Desktop Runtime boundary`);
+      }
+      if (!isRecord(params?.arguments)) {
+        throw new Error('tool.execute arguments must be an object');
+      }
+      return this.taskRouter.toolRegistry.executeTool({
+        type: 'toolCall',
+        id: requiredToolCallId(params?.toolCallId),
+        name: toolName,
+        arguments: params.arguments
+      });
+    });
+
     this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
       this.capabilityRouter?.resolve(params.task);
       return this.taskRouter.submit(params.task);
@@ -358,21 +396,27 @@ export class InkPiDaemon {
       return this.taskRouter.status(params.taskId);
     });
 
-    this.rpcServer.registerMethod('task.execution', async (params: TaskExecutionParams): Promise<TaskExecutionSnapshot> => {
-      await this.taskRouter.ready;
-      return this.taskRouter.execution(params.taskId);
-    });
+    this.rpcServer.registerMethod(
+      'task.execution',
+      async (params: TaskExecutionParams): Promise<TaskExecutionSnapshot> => {
+        await this.taskRouter.ready;
+        return this.taskRouter.execution(params.taskId);
+      }
+    );
 
-    this.rpcServer.registerMethod('cache.status', (): CacheStatus => ({
-      version: 1,
-      stats: this.cacheCoordinator.stats(),
-    }));
+    this.rpcServer.registerMethod(
+      'cache.status',
+      (): CacheStatus => ({
+        version: 1,
+        stats: this.cacheCoordinator.stats()
+      })
+    );
 
     this.rpcServer.registerMethod('cache.invalidate', (params: unknown): CacheInvalidateResult => {
       this.cacheCoordinator.invalidate(normalizeCacheInvalidation(params));
       return {
         accepted: true,
-        status: { version: 1, stats: this.cacheCoordinator.stats() },
+        status: { version: 1, stats: this.cacheCoordinator.stats() }
       };
     });
 
@@ -548,19 +592,34 @@ export class InkPiDaemon {
       if (!existing) {
         this.instructionRegistry.register(entry);
         added.push(entry.id);
-        results.push({ id: entry.id, version: definition.version, status: 'added' });
+        results.push({
+          id: entry.id,
+          version: definition.version,
+          status: 'added',
+          ...(definition.provenance ? { provenance: definition.provenance } : {})
+        });
         continue;
       }
 
       if (sameInstruction(existing, entry)) {
         unchanged.push(entry.id);
-        results.push({ id: entry.id, version: definition.version, status: 'unchanged' });
+        results.push({
+          id: entry.id,
+          version: definition.version,
+          status: 'unchanged',
+          ...(definition.provenance ? { provenance: definition.provenance } : {})
+        });
         continue;
       }
 
       this.instructionRegistry.upsert(entry);
       updated.push(entry.id);
-      results.push({ id: entry.id, version: definition.version, status: 'updated' });
+      results.push({
+        id: entry.id,
+        version: definition.version,
+        status: 'updated',
+        ...(definition.provenance ? { provenance: definition.provenance } : {})
+      });
     }
 
     return {
@@ -679,7 +738,29 @@ function normalizeInstructionDefinition(raw: unknown): InstructionDefinition {
   const systemInstruction = requiredString(raw.systemInstruction, 'systemInstruction');
   const taskKind =
     typeof raw.taskKind === 'string' && raw.taskKind.trim().length > 0 ? raw.taskKind.trim() : inferTaskKind(id);
-  return { id, version, taskKind, systemInstruction };
+  const provenance = normalizeInstructionProvenance(raw.provenance);
+  return { id, version, taskKind, systemInstruction, ...(provenance ? { provenance } : {}) };
+}
+
+function normalizeInstructionProvenance(value: unknown): InstructionDefinition['provenance'] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Instruction provenance must be an object');
+  const optional = (field: string): string | undefined => {
+    if (value[field] === undefined) return undefined;
+    return requiredString(value[field], `provenance.${field}`);
+  };
+  const source = requiredString(value.source, 'provenance.source');
+  const skillId = optional('skillId');
+  const skillVersion = optional('skillVersion');
+  const extensionId = optional('extensionId');
+  const extensionVersion = optional('extensionVersion');
+  return {
+    source,
+    ...(skillId ? { skillId } : {}),
+    ...(skillVersion ? { skillVersion } : {}),
+    ...(extensionId ? { extensionId } : {}),
+    ...(extensionVersion ? { extensionVersion } : {})
+  };
 }
 
 function instructionEntry(definition: InstructionDefinition): InstructionEntry {
@@ -689,7 +770,8 @@ function instructionEntry(definition: InstructionDefinition): InstructionEntry {
     content: definition.systemInstruction,
     version: definition.version,
     source: `task:${definition.taskKind}`,
-    tags: [`task:${definition.taskKind}`]
+    tags: [`task:${definition.taskKind}`],
+    ...(definition.provenance ? { provenance: definition.provenance } : {})
   };
 }
 
@@ -698,7 +780,9 @@ function sameInstruction(left: InstructionEntry, right: InstructionEntry): boole
     left.scope === right.scope &&
     left.content === right.content &&
     left.version === right.version &&
-    right.tags?.every((tag) => left.tags?.includes(tag)) === true
+    left.source === right.source &&
+    JSON.stringify(left.tags ?? []) === JSON.stringify(right.tags ?? []) &&
+    JSON.stringify(left.provenance ?? {}) === JSON.stringify(right.provenance ?? {})
   );
 }
 
@@ -716,6 +800,21 @@ function requiredString(value: unknown, field: string): string {
 
 function requiredSkillId(params: { skillId?: unknown } | null | undefined): string {
   return requiredString(params?.skillId, 'skillId');
+}
+
+function requiredToolName(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error('tool.execute toolName must be a non-empty string');
+  }
+  return value.trim();
+}
+
+function requiredToolCallId(value: unknown): string {
+  if (value === undefined) return `rpc-tool-${Date.now()}`;
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error('tool.execute toolCallId must be a non-empty string');
+  }
+  return value.trim();
 }
 
 function normalizeCacheInvalidation(params: unknown): CacheInvalidateParams {

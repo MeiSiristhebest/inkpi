@@ -126,7 +126,12 @@ async function main() {
       const wsPortIdx = args.indexOf('--ws-port');
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
-      const { InkPiDaemon, createDaemonPersistence, createJsonlObservationSink } = await import('@inkpi/server');
+      const {
+        InkPiDaemon,
+        createDaemonPersistence,
+        createJsonlObservationSink,
+        readObservabilitySampleRate
+      } = await import('@inkpi/server');
       const { findModelInCatalog, getModelPreset, modelCatalogEntryToCapabilityDeclaration } = await import('@inkpi/ai');
       const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
       const stateDbPath = stateDbFlag ? readRequiredArg(args, args.indexOf(stateDbFlag), stateDbFlag) : undefined;
@@ -146,6 +151,7 @@ async function main() {
         : undefined;
       const persistence = createDaemonPersistence({ dbPath: stateDbPath });
       const observationFile = process.env.INKPI_OBSERVABILITY_FILE?.trim();
+      const observationSampleRate = readObservabilitySampleRate();
       let daemon;
       try {
         daemon = new InkPiDaemon({
@@ -156,8 +162,13 @@ async function main() {
           skillSearchDirs: resolveSkillSearchDirs(),
           context: persistence.context,
           ...(persistence.cachePersistence ? { cachePersistence: persistence.cachePersistence } : {}),
-          ...(observationFile
-            ? { observability: { onObservation: createJsonlObservationSink(observationFile) } }
+          ...(observationFile || observationSampleRate !== undefined
+            ? {
+                observability: {
+                  ...(observationSampleRate !== undefined ? { sampleRate: observationSampleRate } : {}),
+                  ...(observationFile ? { onObservation: createJsonlObservationSink(observationFile) } : {})
+                }
+              }
             : {})
         });
         await daemon.start(port, '127.0.0.1');

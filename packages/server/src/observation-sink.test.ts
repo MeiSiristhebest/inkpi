@@ -42,6 +42,28 @@ describe('production JSONL observation sink', () => {
     expect(lines[0]).not.toContain('private reasoning');
   });
 
+  it('redacts raw reasoning when the sink is called directly', () => {
+    const filePath = join(tmpdir(), `inkpi-observation-${crypto.randomUUID()}.jsonl`);
+    const sink = createJsonlObservationSink(filePath);
+
+    sink({
+      taskId: task.id,
+      kind: task.kind,
+      status: 'completed',
+      provenance: {
+        analysis: 'private analysis',
+        nested: { scratchpad: 'private scratchpad' },
+        answer: 'safe <think>hidden chain</think> answer'
+      }
+    });
+
+    const line = readFileSync(filePath, 'utf8').trim();
+    expect(JSON.parse(line)).toMatchObject({ provenance: { answer: 'safe  answer', nested: {} } });
+    expect(line).not.toContain('private analysis');
+    expect(line).not.toContain('private scratchpad');
+    expect(line).not.toContain('hidden chain');
+  });
+
   it('rejects an empty path before the daemon starts', () => {
     expect(() => createJsonlObservationSink('  ')).toThrow(/file path/i);
   });

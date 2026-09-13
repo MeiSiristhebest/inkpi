@@ -21,6 +21,7 @@ import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
 import { createDaemonPersistence } from '../packages/server/dist/daemon-persistence.js';
 import { createJsonlObservationSink } from '../packages/server/dist/observation-sink.js';
+import { readObservabilitySampleRate } from '../packages/server/dist/observability-config.js';
 import { getModelPreset } from '../packages/ai/dist/presets.js';
 import { findModelInCatalog, modelCatalogEntryToCapabilityDeclaration } from '../packages/ai/dist/catalog.js';
 // The standalone harness is the dev/test entrypoint exercised by the integration
@@ -79,6 +80,7 @@ async function main() {
       : undefined;
     const persistence = createDaemonPersistence({ dbPath: stateDbPath });
     const observationFile = process.env.INKPI_OBSERVABILITY_FILE?.trim();
+    const observationSampleRate = readObservabilitySampleRate();
     let daemon;
     try {
       daemon = new InkPiDaemon({
@@ -89,8 +91,13 @@ async function main() {
         skillSearchDirs: resolveSkillSearchDirs(),
         context: persistence.context,
         ...(persistence.cachePersistence ? { cachePersistence: persistence.cachePersistence } : {}),
-        ...(observationFile
-          ? { observability: { onObservation: createJsonlObservationSink(observationFile) } }
+        ...(observationFile || observationSampleRate !== undefined
+          ? {
+              observability: {
+                ...(observationSampleRate !== undefined ? { sampleRate: observationSampleRate } : {}),
+                ...(observationFile ? { onObservation: createJsonlObservationSink(observationFile) } : {})
+              }
+            }
           : {})
       });
       await daemon.start(port, '127.0.0.1');

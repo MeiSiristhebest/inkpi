@@ -5,7 +5,6 @@ import type { ProgressiveSkillRuntime } from '@inkpi/agent-core';
 import type { SessionTree } from '@inkpi/agent-core';
 import { SlashCommandRegistry } from '@inkpi/agent-core';
 import type { BranchSummarizer } from '@inkpi/agent-core';
-import type { WorkflowCoordinator } from '@inkpi/agent-core';
 import type { TelemetryCollector } from '@inkpi/agent-core';
 import type { ExtensionHost } from '@inkpi/agent-core';
 import type { TaskCheckpointStore } from '@inkpi/agent-core';
@@ -49,7 +48,6 @@ export interface ServerContext {
   slashRegistry?: SlashCommandRegistry;
   journal?: AppendOnlySessionJournal;
   jitRetriever?: JitMemoryRetriever;
-  pipeline?: WorkflowCoordinator;
   telemetry?: TelemetryCollector;
   extensionHost?: ExtensionHost;
   branchSummarizer?: BranchSummarizer;
@@ -85,13 +83,6 @@ export class InkRpcServer {
     if (this.ctx.agent) {
       this.ctx.agent.subscribe((event) => {
         this.notify('agent.event', event);
-      });
-    }
-
-    // Attach pipeline event listener if present
-    if (this.ctx.pipeline) {
-      this.ctx.pipeline.subscribe((event: any) => {
-        this.notify('pipeline.event', event);
       });
     }
   }

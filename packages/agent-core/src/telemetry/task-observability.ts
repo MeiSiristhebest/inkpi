@@ -64,7 +64,7 @@ export class TaskObservability implements TaskRunObserver {
 
   constructor(options: TaskObservabilityOptions | (() => number) = {}) {
     const normalized = typeof options === 'function' ? {} : options;
-    this.now = typeof options === 'function' ? options : normalized.now ?? Date.now;
+    this.now = typeof options === 'function' ? options : (normalized.now ?? Date.now);
     this.sampleRate = normalizeSampleRate(normalized.sampleRate);
     this.random = normalized.random ?? Math.random;
     this.onObservation = normalized.onObservation;
@@ -250,11 +250,21 @@ function normalizeSampleRate(sampleRate: number | undefined): number {
 }
 
 const PRIVATE_REASONING_KEYS = new Set([
+  'analysis',
   'thinking',
   'reasoning',
   'reasoningcontent',
   'chainofthought',
   'cot',
+  'deliberation',
+  'deliberationcontent',
+  'hiddenthought',
+  'hiddenthoughts',
+  'internalreasoning',
+  'scratchpad',
+  'think',
+  'thought',
+  'thoughts',
   'rawthinking',
   'rawcot'
 ]);

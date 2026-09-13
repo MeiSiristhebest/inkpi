@@ -1,6 +1,6 @@
-import { AssistantEventStream, findModelInCatalog, type ModelCatalogEntry } from '@inkpi/ai';
+import { AssistantEventStream, type ModelCatalogEntry, findModelInCatalog } from '@inkpi/ai';
 import type { AiTask } from '@inkpi/protocol';
-import { createModelRouteFromCatalog, InkPiDaemon } from '@inkpi/server';
+import { InkPiDaemon, createModelRouteFromCatalog } from '@inkpi/server';
 import { afterEach, describe, expect, it } from 'vitest';
 
 function streamThatReturns(text: string) {

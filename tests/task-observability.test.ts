@@ -129,7 +129,10 @@ describe('task observability and provenance', () => {
     expect(emitted).toHaveLength(1);
     expect(emitted[0]).toMatchObject({ taskId: 'sampled-observable', status: 'completed' });
 
-    const unsampled = new TaskObservability({ sampleRate: 0, onObservation: (observation) => emitted.push(observation) });
+    const unsampled = new TaskObservability({
+      sampleRate: 0,
+      onObservation: (observation) => emitted.push(observation)
+    });
     const unsampledRouter = new TaskRouter({ registry, observer: unsampled });
     unsampledRouter.submit({
       id: 'unsampled-observable',
@@ -155,15 +158,18 @@ describe('task observability and provenance', () => {
         taskId: task.id,
         kind: task.kind,
         status: 'completed' as const,
-        usage: { inputTokens: 1, reasoning: 'private usage reasoning' },
-        cache: { hit: false, rawThinking: 'private cache reasoning' },
+        usage: { inputTokens: 1, reasoning: 'private usage reasoning', analysis: 'private usage analysis' },
+        cache: { hit: false, rawThinking: 'private cache reasoning', scratchpad: 'private cache scratchpad' },
         provenance: {
           publicSummary: 'safe',
-          trace: { reasoning: 'private nested reasoning', detail: { chainOfThought: 'private deep reasoning' } },
-          calls: [{ tool: 'fixture', rawThinking: 'private array reasoning' }]
+          trace: {
+            reasoning: 'private nested reasoning',
+            detail: { chainOfThought: 'private deep reasoning', thoughts: 'private thoughts' }
+          },
+          calls: [{ tool: 'fixture', rawThinking: 'private array reasoning', deliberation: 'private deliberation' }]
         }
       },
-      { rawThinking: 'private top-level reasoning' }
+      { rawThinking: 'private top-level reasoning', hiddenThoughts: 'private hidden thoughts' }
     ) as TaskRunObservation;
 
     observer.finished(task, unsafe);
@@ -194,17 +200,17 @@ describe('task observability and provenance', () => {
         answer: 'before <think>hidden chain</think> after',
         nested: {
           chain_of_thought: 'must not persist',
-          REASONING_CONTENT: 'must not persist',
-        },
-      },
+          REASONING_CONTENT: 'must not persist'
+        }
+      }
     });
 
     expect(observer.get(task.id)).toMatchObject({
       provenance: {
         publicSummary: 'safe',
         answer: 'before  after',
-        nested: {},
-      },
+        nested: {}
+      }
     });
     expect(JSON.stringify(observer.get(task.id))).not.toContain('hidden chain');
     expect(JSON.stringify(observer.get(task.id))).not.toContain('must not persist');

@@ -110,7 +110,7 @@ describe('ContextPipeline cache and JIT retrieval integration', () => {
           cached.fragments.find((fragment) => fragment.source === 'retrieval.jit')?.data as {
             fullTextMatches: unknown[];
           }
-      ).fullTextMatches.length
+        ).fullTextMatches.length
       ).toBe(1);
 
       const equivalent = await pipeline.build(makeTask(1, 'context-cache-task-new-id'));
@@ -126,9 +126,9 @@ describe('ContextPipeline cache and JIT retrieval integration', () => {
       const retrievalCached = await pipeline.build(makeTask(1, 'retrieval-cache-task-new-id'));
       expect(search).toHaveBeenCalledTimes(2);
       expect(retrievalCached.fingerprint).toBe(cached.fingerprint);
-      expect(
-        retrievalCached.fragments.find((fragment) => fragment.source === 'retrieval.jit')?.metadata,
-      ).toMatchObject({ cacheLayer: 'retrieval', cacheHit: true });
+      expect(retrievalCached.fragments.find((fragment) => fragment.source === 'retrieval.jit')?.metadata).toMatchObject(
+        { cacheLayer: 'retrieval', cacheHit: true }
+      );
       expect(provider.cacheStats()).toMatchObject({ hits: 1, misses: 2 });
       expect(pipeline.cacheStats()).toMatchObject({ hits: 2, misses: 3, invalidations: 2 });
     } finally {

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import type { TaskRunObservation } from '@inkpi/agent-core';
+import { describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
 
 describe('InkPiDaemon observability defaults', () => {

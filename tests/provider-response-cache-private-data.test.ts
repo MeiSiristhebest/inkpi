@@ -1,5 +1,5 @@
-import { ProviderResponseCache } from '@inkpi/server';
 import type { AssistantMessage } from '@inkpi/protocol';
+import { ProviderResponseCache } from '@inkpi/server';
 import { describe, expect, it } from 'vitest';
 
 describe('provider response cache private-data boundary', () => {
