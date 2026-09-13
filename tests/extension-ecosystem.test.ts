@@ -75,59 +75,46 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
     expect(flashTriggered).toBe(true);
   });
 
-  it('should support novel lifecycle hooks registration interface', async () => {
+  it('should support generic workflow lifecycle hooks registration interface', async () => {
     const host = new ExtensionHost();
-    let outlineHookCalled = false;
-    let draftHookCalled = false;
-    let auditHookCalled = false;
-    let polishHookCalled = false;
+    const calls: string[] = [];
 
-    const unsubscribe = host.registerNovelHooks({
-      onBeforeOutline: async ({ userPrompt }) => {
-        outlineHookCalled = true;
-        return `${userPrompt} (hooked)`;
+    const unsubscribe = host.registerPipelineHooks({
+      onBeforeStage: async ({ stageId, prompt }) => {
+        calls.push(`before:${stageId}`);
+        return `${prompt} (hooked)`;
       },
-      onDraftGenerated: async ({ draftText }) => {
-        draftHookCalled = true;
-        return `${draftText}\n[Draft hook]`;
+      onAfterStage: async ({ stageId, output }) => {
+        calls.push(`after:${stageId}`);
+        return `${output}\n[After hook]`;
       },
-      onAuditPass: async () => {
-        auditHookCalled = true;
-      },
-      onPolishDone: async ({ polishedText }) => {
-        polishHookCalled = true;
-        return `${polishedText}\n[Polish hook]`;
+      onStageOutput: async ({ stageId }) => {
+        calls.push(`output:${stageId}`);
       }
     });
 
-    const hooks = host.getNovelHooks();
+    const hooks = host.getPipelineHooks();
     expect(hooks.length).toBe(1);
 
-    const outPrompt = await hooks[0].onBeforeOutline!({
-      workspaceTitle: 'workspace',
-      documentTitle: 'document',
-      userPrompt: '大纲提示'
+    const outPrompt = await hooks[0].onBeforeStage!({
+      stageId: 'outline',
+      context: {},
+      prompt: '大纲提示'
     });
-    expect(outlineHookCalled).toBe(true);
     expect(outPrompt).toContain('(hooked)');
 
-    const draftOut = await hooks[0].onDraftGenerated!({
-      workspaceTitle: 'workspace',
-      documentTitle: 'document',
-      draftText: '草稿'
+    const draftOut = await hooks[0].onAfterStage!({
+      stageId: 'draft',
+      context: {},
+      output: '草稿'
     });
-    expect(draftHookCalled).toBe(true);
-    expect(draftOut).toContain('[Draft hook]');
+    expect(draftOut).toContain('[After hook]');
 
-    await hooks[0].onAuditPass!({ auditNotes: [], passed: true });
-    expect(auditHookCalled).toBe(true);
-
-    const polishOut = await hooks[0].onPolishDone!({ polishedText: '润色文本' });
-    expect(polishHookCalled).toBe(true);
-    expect(polishOut).toContain('[Polish hook]');
+    await hooks[0].onStageOutput!({ stageId: 'polish', context: {}, output: '润色文本' });
+    expect(calls).toEqual(['before:outline', 'after:draft', 'output:polish']);
 
     unsubscribe();
-    expect(host.getNovelHooks().length).toBe(0);
+    expect(host.getPipelineHooks().length).toBe(0);
   });
 
   it('should report unavailable UI capabilities without a UI delegate', async () => {

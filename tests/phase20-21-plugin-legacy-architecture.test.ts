@@ -8,9 +8,7 @@ import {
   ExtensionRunner,
   ProgressiveSkillRuntime,
   ToolRegistry,
-  genericWorkflowStrategy,
-  legacyPipelineWorkflowStrategy,
-  resolveWorkflowStrategy
+  genericWorkflowStrategy
 } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
 import type { ExtensionAPI } from '@inkpi/protocol';
@@ -34,6 +32,7 @@ const DESKTOP_RUNTIME_CATALOG_FILE = path.join(DESKTOP_ROOT, 'src', 'ai', 'tasks
 
 const RUNTIME_SOURCE_ROOTS = [
   path.join(INKPI_ROOT, 'packages', 'agent-core', 'src'),
+  path.join(INKPI_ROOT, 'packages', 'client', 'src'),
   path.join(INKPI_ROOT, 'packages', 'server', 'src'),
   path.join(INKPI_ROOT, 'packages', 'cli', 'src')
 ];
@@ -47,6 +46,7 @@ type PluginRuntimeEntry = {
   runtimeClass: string;
   runtimeTarget: string;
   taskKind?: string;
+  toolName?: string;
   contextProviderId?: string;
 };
 
@@ -72,9 +72,7 @@ async function importCurrentExport<T>(filePath: string): Promise<T> {
   // catalog has one extensionless relative import, so only that specifier is
   // rewritten in an in-memory, type-stripped module; its exported code/data is
   // otherwise the current file verbatim.
-  const nativeImport = new Function('specifier', 'return import(specifier)') as (
-    specifier: string
-  ) => Promise<unknown>;
+  const nativeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>;
   if (filePath === DESKTOP_RUNTIME_CATALOG_FILE) {
     const moduleApi = (await nativeImport('node:module')) as {
       stripTypeScriptTypes(source: string, options?: { mode?: 'strip' }): string;
@@ -140,9 +138,11 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
       expect(entry!.pluginId).toBe(id);
       expect(CLASS_TARGETS[entry!.runtimeClass]).toBe(entry!.runtimeTarget);
 
-      const needsTask = entry!.runtimeClass === 'ai-task' || entry!.runtimeClass === 'hybrid';
+      const needsTask =
+        entry!.runtimeClass === 'ai-task' || entry!.runtimeClass === 'hybrid' || entry!.runtimeClass === 'workflow';
       const needsContext = entry!.runtimeClass === 'context-provider' || entry!.runtimeClass === 'hybrid';
       expect(Boolean(entry!.taskKind)).toBe(needsTask);
+      expect(Boolean(entry!.toolName)).toBe(entry!.runtimeClass === 'tool');
       expect(Boolean(entry!.contextProviderId)).toBe(needsContext);
     }
   });
@@ -207,46 +207,35 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
   });
 });
 
-describe('Phase 21 legacy AI compatibility boundary', () => {
-  it('keeps generic workflow default and makes legacy behavior opt-in', () => {
-    expect(resolveWorkflowStrategy(undefined)).toBe(genericWorkflowStrategy);
-    expect(resolveWorkflowStrategy('unknown-mode')).toBe(genericWorkflowStrategy);
-    expect(resolveWorkflowStrategy('legacy-pipeline')).toBe(legacyPipelineWorkflowStrategy);
+describe('Phase 21 legacy AI cleanup', () => {
+  it('keeps the coordinator on the single generic strategy', () => {
+    expect(genericWorkflowStrategy.mode).toBe('generic');
     expect(genericWorkflowStrategy.includeLedgerAliases).toBe(false);
-    expect(legacyPipelineWorkflowStrategy.includeLedgerAliases).toBe(true);
   });
 
-  it('contains legacy compatibility references in the explicit adapter surface', () => {
-    const allowed = new Set([
-      'packages/agent-core/src/pipeline/coordinator.ts',
-      'packages/agent-core/src/pipeline/index.ts',
-      'packages/agent-core/src/pipeline/legacy-narrative.ts',
-      'packages/agent-core/src/pipeline/workflow-strategy.ts',
-      'packages/agent-core/src/pipeline/workflow-types.ts',
-      'packages/server/src/builtin-methods.ts',
-      'packages/server/src/client.ts',
-      'packages/cli/src/print-mode.ts'
-    ]);
-    const markers = [
+  it('removes legacy AI gateways and stage-name compatibility hooks from Runtime sources', () => {
+    const removedEntryPoints = [
       /\bonAiPrompt\b/,
       /\bsystemPromptEnhancer\b/,
       /\bopenSession\b/,
       /\bsuggestContinuation\b/,
       /\bpipeline\.run\b/,
+      /\bworkflow\.run\b/,
       /\brunPipeline\s*\(/,
-      /\blegacy-pipeline\b/
+      /\blegacy-pipeline\b/,
+      /\bonBeforeOutline\b/,
+      /\bonBeforeDraft\b/,
+      /\bonDraftGenerated\b/,
+      /\bonAuditPass\b/,
+      /\bonPolishDone\b/,
+      /\bNovelHooks\b/,
+      /\bPipelineExecutionOptions\b/,
+      /\bPipelineContext\b/,
+      /\bPipelineStage\b/,
+      /\bPipelineEvent(?:Listener)?\b/,
+      /\bqualityGateIssues\b/,
+      /\bpipeline_complete\b/
     ];
-    const references = runtimeSources()
-      .filter(({ source }) => markers.some((marker) => marker.test(stripComments(source))))
-      .map(({ relativeFile }) => relativeFile)
-      .sort();
-    const unexpected = references.filter((file) => !allowed.has(file));
-    expect(unexpected, `legacy references outside explicit compatibility surface:\n${unexpected.join('\n')}`).toEqual([]);
-    expect(references).toEqual([...allowed].filter((file) => references.includes(file)).sort());
-  });
-
-  it('does not retain removed legacy UI entry points in Runtime production sources', () => {
-    const removedEntryPoints = [/\bonAiPrompt\b/, /\bsystemPromptEnhancer\b/, /\bopenSession\b/, /\bsuggestContinuation\b/];
     const violations = runtimeSources()
       .filter(({ source }) => removedEntryPoints.some((marker) => marker.test(stripComments(source))))
       .map(({ relativeFile }) => relativeFile)

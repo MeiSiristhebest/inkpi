@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { AgentTool } from '@inkpi/protocol';
 import { generateImage } from '@inkpi/ai';
+import type { AgentTool } from '@inkpi/protocol';
 import { applyFuzzyTextEdit } from './edit-diff.js';
 import { enforceOutputGuard } from './output-guard.js';
 
@@ -233,13 +233,10 @@ export function createAuthoringTools(docStore: AuthoringDocumentStore = new InMe
         };
       }
 
-      const result = applyFuzzyTextEdit(
-        current,
-        {
-          oldText: String(args.oldText),
-          newText: String(args.newText)
-        }
-      );
+      const result = applyFuzzyTextEdit(current, {
+        oldText: String(args.oldText),
+        newText: String(args.newText)
+      });
 
       if (!result.success) {
         return {

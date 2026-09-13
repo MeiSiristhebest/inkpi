@@ -9,8 +9,8 @@ import type {
   ToolResultMessage,
   ToolUpdateOptions
 } from '@inkpi/protocol';
-import type { Clock } from './ports/index.js';
 import { runWithConcurrency } from './concurrency.js';
+import type { Clock } from './ports/index.js';
 import type { ToolExecutionMode } from './types.js';
 
 export {
@@ -179,11 +179,12 @@ export function createToolRegistrationDescriptor(
     throw new Error('Tool name must not be empty');
   }
 
-  const source = typeof options.source === 'string' && options.source.trim().length > 0
-    ? options.source.trim()
-    : options.skillId
-      ? 'skill'
-      : 'runtime';
+  const source =
+    typeof options.source === 'string' && options.source.trim().length > 0
+      ? options.source.trim()
+      : options.skillId
+        ? 'skill'
+        : 'runtime';
   const skillId = normalizeOptionalString(options.skillId);
   const skillVersion = normalizeOptionalString(options.skillVersion);
 
@@ -197,12 +198,14 @@ export function createToolRegistrationDescriptor(
 }
 
 function normalizeCapabilities(capabilities: readonly string[] | undefined): string[] {
-  return [...new Set(
-    (capabilities ?? [])
-      .filter((capability): capability is string => typeof capability === 'string')
-      .map((capability) => capability.trim())
-      .filter(Boolean)
-  )].sort();
+  return [
+    ...new Set(
+      (capabilities ?? [])
+        .filter((capability): capability is string => typeof capability === 'string')
+        .map((capability) => capability.trim())
+        .filter(Boolean)
+    )
+  ].sort();
 }
 
 function normalizeOptionalString(value: string | undefined): string | undefined {

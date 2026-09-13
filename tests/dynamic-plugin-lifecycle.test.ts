@@ -4,9 +4,9 @@ import * as path from 'node:path';
 import {
   DynamicPluginLoader,
   ExtensionHost,
+  InMemoryDocumentStore,
   ToolRegistry,
-  createAuthoringTools,
-  InMemoryDocumentStore
+  createAuthoringTools
 } from '@inkpi/agent-core';
 import { describe, expect, it } from 'vitest';
 

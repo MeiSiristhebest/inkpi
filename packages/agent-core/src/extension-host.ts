@@ -5,6 +5,7 @@ import type {
   ExtensionAPI,
   ExtensionFactory,
   ExtensionModule,
+  ExtensionToolHooks,
   FlashNotificationOptions,
   InputDialogOptions,
   PipelineHooks,
@@ -16,6 +17,8 @@ import type {
 } from '@inkpi/protocol';
 import { consoleLogger } from './ports/index.js';
 import { createToolRegistrationDescriptor } from './tools.js';
+
+type ToolHooks = Parameters<ExtensionToolHooks['registerToolHooks']>[0];
 
 export interface CommandDefinition {
   name: string;
@@ -37,20 +40,7 @@ export class ExtensionHost implements ExtensionAPI {
   private toolRegistrations = new Map<string, ToolRegistrationDescriptor>();
   private transformers: ContextTransformer[] = [];
   private pipelineHooks: PipelineHooks[] = [];
-  private toolHooks: Array<{
-    beforeToolCall?: (
-      event: import('@inkpi/protocol').ToolExecutionEvent
-    ) =>
-      | Promise<import('@inkpi/protocol').BeforeToolHookResult | void>
-      | import('@inkpi/protocol').BeforeToolHookResult
-      | void;
-    afterToolCall?: (
-      event: import('@inkpi/protocol').ToolExecutionResultEvent
-    ) =>
-      | Promise<import('@inkpi/protocol').AfterToolHookResult | void>
-      | import('@inkpi/protocol').AfterToolHookResult
-      | void;
-  }> = [];
+  private toolHooks: ToolHooks[] = [];
   private uiDelegate?: UIDelegate;
 
   constructor(uiDelegate?: UIDelegate) {
@@ -126,9 +116,7 @@ export class ExtensionHost implements ExtensionAPI {
 
   public getToolRegistration(name: string): ToolRegistrationDescriptor | undefined {
     const registration = this.toolRegistrations.get(name);
-    return registration
-      ? { ...registration, capabilities: [...registration.capabilities] }
-      : undefined;
+    return registration ? { ...registration, capabilities: [...registration.capabilities] } : undefined;
   }
 
   // -------------------------------------------------------------
@@ -260,24 +248,7 @@ export class ExtensionHost implements ExtensionAPI {
     };
   }
 
-  public registerNovelHooks(hooks: PipelineHooks): () => void {
-    return this.registerPipelineHooks(hooks);
-  }
-
-  public registerToolHooks(hooks: {
-    beforeToolCall?: (
-      event: import('@inkpi/protocol').ToolExecutionEvent
-    ) =>
-      | Promise<import('@inkpi/protocol').BeforeToolHookResult | void>
-      | import('@inkpi/protocol').BeforeToolHookResult
-      | void;
-    afterToolCall?: (
-      event: import('@inkpi/protocol').ToolExecutionResultEvent
-    ) =>
-      | Promise<import('@inkpi/protocol').AfterToolHookResult | void>
-      | import('@inkpi/protocol').AfterToolHookResult
-      | void;
-  }): () => void {
+  public registerToolHooks(hooks: ToolHooks): () => void {
     this.toolHooks.push(hooks);
     return () => {
       const idx = this.toolHooks.indexOf(hooks);
@@ -306,7 +277,7 @@ export class ExtensionHost implements ExtensionAPI {
   public async executeAfterToolCall(
     event: import('@inkpi/protocol').ToolExecutionResultEvent
   ): Promise<import('@inkpi/protocol').AfterToolHookResult | undefined> {
-    let currentResult = { ...event.result };
+    const currentResult = { ...event.result };
     let overridden = false;
     let terminate = false;
     for (const h of this.toolHooks) {
@@ -326,10 +297,6 @@ export class ExtensionHost implements ExtensionAPI {
 
   public getPipelineHooks(): PipelineHooks[] {
     return [...this.pipelineHooks];
-  }
-
-  public getNovelHooks(): PipelineHooks[] {
-    return this.getPipelineHooks();
   }
 
   public clear(): void {

@@ -59,7 +59,11 @@ describe('@inkpi/agent-core: End-to-End Dynamic Plugin Lifecycle in Agent Loop',
           const stream = new AssistantEventStream();
           if (callCount === 1) {
             stream.push({ type: 'tool_call_start', toolCallId: 'call_blocked_1', toolName: 'mock_author_tool' });
-            stream.push({ type: 'tool_call_delta', toolCallId: 'call_blocked_1', argsDelta: JSON.stringify({ text: '这是危险剧情描述' }) });
+            stream.push({
+              type: 'tool_call_delta',
+              toolCallId: 'call_blocked_1',
+              argsDelta: JSON.stringify({ text: '这是危险剧情描述' })
+            });
             stream.push({
               type: 'tool_call_end',
               toolCall: {

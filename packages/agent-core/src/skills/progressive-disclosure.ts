@@ -3,11 +3,11 @@ import type {
   ContextTransformer,
   ExtensionAPI,
   InstructionEntry,
+  SkillActivation,
   SkillInfo,
   SkillManifest,
-  SkillActivation,
-  SkillRuntimeRegistrationSnapshot,
   SkillResolveQuery,
+  SkillRuntimeRegistrationSnapshot,
   ToolRegistrationDescriptor,
   ToolRegistrationOptions
 } from '@inkpi/protocol';
@@ -455,7 +455,7 @@ export class ProgressiveSkillRuntime {
   /** Return a cloned metadata-only manifest for a skill name or manifest id. */
   getManifest(identifier: string): SkillManifest {
     const name = this.resolveSkillName(identifier);
-    const skill = name ? this.skills.get(name) ?? this.discovery.getSkill(name) : undefined;
+    const skill = name ? (this.skills.get(name) ?? this.discovery.getSkill(name)) : undefined;
     if (!skill) throw new Error(`Skill not found: ${identifier}`);
     return cloneManifest(toManifest(skill));
   }
@@ -491,10 +491,22 @@ export class ProgressiveSkillRuntime {
       loadedSkills: [...this.loaded].map(skillId).sort(),
       activatedSkills: activated,
       tools: this.toolRegistry.getRegistrations(),
-      tasks: this.taskRegistry?.list().map((handler) => handler.id).sort() ?? [],
-      contextProviders: this.contextPipeline?.list().map((provider) => provider.id).sort() ?? [],
+      tasks:
+        this.taskRegistry
+          ?.list()
+          .map((handler) => handler.id)
+          .sort() ?? [],
+      contextProviders:
+        this.contextPipeline
+          ?.list()
+          .map((provider) => provider.id)
+          .sort() ?? [],
       extensionHost: {
-        toolNames: this.extensionHost.getTools().map((tool) => tool?.name).filter(isNonEmptyString).sort(),
+        toolNames: this.extensionHost
+          .getTools()
+          .map((tool) => tool?.name)
+          .filter(isNonEmptyString)
+          .sort(),
         commandNames: this.extensionHost
           .getCommands()
           .map((command) => command?.name)
@@ -657,15 +669,17 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function sameInstruction(left: InstructionEntry, right: InstructionEntry): boolean {
-  return left.id === right.id
-    && left.scope === right.scope
-    && left.content === right.content
-    && left.priority === right.priority
-    && left.enabled === right.enabled
-    && left.version === right.version
-    && left.source === right.source
-    && JSON.stringify(left.tags ?? []) === JSON.stringify(right.tags ?? [])
-    && JSON.stringify(left.provenance ?? {}) === JSON.stringify(right.provenance ?? {});
+  return (
+    left.id === right.id &&
+    left.scope === right.scope &&
+    left.content === right.content &&
+    left.priority === right.priority &&
+    left.enabled === right.enabled &&
+    left.version === right.version &&
+    left.source === right.source &&
+    JSON.stringify(left.tags ?? []) === JSON.stringify(right.tags ?? []) &&
+    JSON.stringify(left.provenance ?? {}) === JSON.stringify(right.provenance ?? {})
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

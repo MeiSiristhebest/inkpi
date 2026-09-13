@@ -4,12 +4,9 @@ import {
   // 弃用别名
   AgentEngine,
   BranchExplorer,
-  CollaborativePipeline,
   ExtensionInstaller,
   ExtensionPackageManager,
   LiveSessionManager,
-  NovelCollaborativePipeline,
-  PipelineCoordinator,
   ProjectTrustManager,
   ProjectTrustStore,
   SandboxExecutor,
@@ -17,8 +14,7 @@ import {
   SessionRegistry,
   SessionShareExporter,
   SessionShareManager,
-  StoryBranchManager,
-  WorkflowCoordinator
+  StoryBranchManager
 } from '@inkpi/agent-core';
 import type {
   HypothesisBranchInfo,
@@ -49,12 +45,6 @@ describe('deprecations: 集中别名与权威名称同址', () => {
 
   it('LiveSessionManager === SessionRegistry', () => {
     expect(LiveSessionManager).toBe(SessionRegistry);
-  });
-
-  it('三个管线旧名 === WorkflowCoordinator', () => {
-    expect(NovelCollaborativePipeline).toBe(WorkflowCoordinator);
-    expect(CollaborativePipeline).toBe(WorkflowCoordinator);
-    expect(PipelineCoordinator).toBe(WorkflowCoordinator);
   });
 
   it('SessionTree.addBranchMarker 与弃用 branch() 行为一致', async () => {

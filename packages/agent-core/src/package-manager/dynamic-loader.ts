@@ -25,10 +25,7 @@ export class DynamicPluginLoader {
    */
   public async loadDefaultDirectories(baseRoot = '.'): Promise<DynamicLoadSummary> {
     const combined: DynamicLoadSummary = { loaded: [], failed: [] };
-    const dirsToScan = [
-      path.join(baseRoot, '.inkpi', 'plugins'),
-      path.join(baseRoot, '.inkpi', 'extensions')
-    ];
+    const dirsToScan = [path.join(baseRoot, '.inkpi', 'plugins'), path.join(baseRoot, '.inkpi', 'extensions')];
 
     for (const d of dirsToScan) {
       const res = await this.loadFromDirectory(d);

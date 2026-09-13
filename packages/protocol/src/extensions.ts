@@ -68,6 +68,13 @@ export interface ToolRegistrationDescriptor {
   readonly capabilities: readonly string[];
 }
 
+/** Parameters for the explicit Desktop -> Runtime tool execution boundary. */
+export interface ToolExecuteParams {
+  readonly toolName: string;
+  readonly arguments: Record<string, unknown>;
+  readonly toolCallId?: string;
+}
+
 export type CommandHandler = (args: string, context?: unknown) => Promise<any> | any;
 
 export interface SlashCommand {
@@ -128,13 +135,13 @@ export interface UIDelegate {
 }
 
 export interface PipelineHooks {
-  /** Generic lifecycle hook. Prefer this over stage-name-specific hooks. */
+  /** Generic lifecycle hook invoked before an arbitrary workflow stage. */
   onBeforeStage?: (ctx: {
     stageId: string;
     context: unknown;
     prompt: string;
   }) => Promise<string | undefined> | string | undefined;
-  /** Generic lifecycle hook. Prefer this over stage-name-specific hooks. */
+  /** Generic lifecycle hook invoked after an arbitrary workflow stage. */
   onAfterStage?: (ctx: {
     stageId: string;
     context: unknown;
@@ -146,40 +153,7 @@ export interface PipelineHooks {
     context: unknown;
     output: string;
   }) => Promise<void> | void;
-  /** @deprecated Use generic lifecycle hooks above. */
-  onBeforeOutline?: (ctx: {
-    workspaceTitle?: string;
-    documentTitle?: string;
-    bookTitle?: string;
-    chapterTitle?: string;
-    sectionTitle?: string;
-    userPrompt: string;
-  }) => Promise<string | undefined> | string | undefined;
-  /** @deprecated Use generic lifecycle hooks above. */
-  onBeforeDraft?: (ctx: {
-    workspaceTitle?: string;
-    documentTitle?: string;
-    bookTitle?: string;
-    chapterTitle?: string;
-    sectionTitle?: string;
-    userPrompt: string;
-  }) => Promise<string | undefined> | string | undefined;
-  /** @deprecated Use generic lifecycle hooks above. */
-  onDraftGenerated?: (ctx: {
-    workspaceTitle?: string;
-    documentTitle?: string;
-    bookTitle?: string;
-    chapterTitle?: string;
-    sectionTitle?: string;
-    draftText: string;
-  }) => Promise<string | undefined> | string | undefined;
-  /** @deprecated Use generic lifecycle hooks above. */
-  onAuditPass?: (ctx: { auditNotes: string[]; passed: boolean }) => Promise<void> | void;
-  /** @deprecated Use generic lifecycle hooks above. */
-  onPolishDone?: (ctx: { polishedText: string }) => Promise<string | undefined> | string | undefined;
 }
-
-export type NovelHooks = PipelineHooks;
 
 /**
  * 扩展能力面（capability facets）——按职责拆分的窄接口。
@@ -267,10 +241,12 @@ export interface AfterToolHookResult {
 /** 创作工具执行前后置门控与质检钩子 (PreToolUse / PostToolUse) */
 export interface ExtensionToolHooks {
   registerToolHooks(hooks: {
-    beforeToolCall?: (event: ToolExecutionEvent) => Promise<BeforeToolHookResult | void> | BeforeToolHookResult | void;
+    beforeToolCall?: (
+      event: ToolExecutionEvent
+    ) => Promise<BeforeToolHookResult | undefined> | BeforeToolHookResult | undefined;
     afterToolCall?: (
       event: ToolExecutionResultEvent
-    ) => Promise<AfterToolHookResult | void> | AfterToolHookResult | void;
+    ) => Promise<AfterToolHookResult | undefined> | AfterToolHookResult | undefined;
   }): () => void;
 }
 

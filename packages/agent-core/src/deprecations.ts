@@ -9,7 +9,6 @@ import { Agent } from './agent.js';
 import { BranchExplorer, type HypothesisBranchInfo, type HypothesisExecutiveReport } from './branch-what-if.js';
 import { SessionShareExporter } from './export/session-share.js';
 import { ExtensionInstaller } from './package-manager/package-manager.js';
-import { WorkflowCoordinator } from './pipeline/coordinator.js';
 import { SessionRegistry } from './rpc/session-registry.js';
 import { SandboxExecutor, type SandboxRunner } from './sandbox/sandbox.js';
 import type { SlashCommandExecutor } from './slash-commands.js';
@@ -31,18 +30,6 @@ export type ExtensionPackageManager = ExtensionInstaller;
 /** @deprecated 已由 `SessionRegistry` 取代（其实际职责是多会话注册表，实现 SessionStore 端口）。计划移除版本：v1.0 */
 export const LiveSessionManager = SessionRegistry;
 export type LiveSessionManager = SessionRegistry;
-
-/** @deprecated 已由 `WorkflowCoordinator` 取代（四个名字指向同一个类，保留唯一权威名）。计划移除版本：v1.0 */
-export const NovelCollaborativePipeline = WorkflowCoordinator;
-export type NovelCollaborativePipeline = WorkflowCoordinator;
-
-/** @deprecated 已由 `WorkflowCoordinator` 取代。计划移除版本：v1.0 */
-export const CollaborativePipeline = WorkflowCoordinator;
-export type CollaborativePipeline = WorkflowCoordinator;
-
-/** @deprecated 已由 `WorkflowCoordinator` 取代。计划移除版本：v1.0 */
-export const PipelineCoordinator = WorkflowCoordinator;
-export type PipelineCoordinator = WorkflowCoordinator;
 
 /** @deprecated 已由 `SlashCommandExecutor` 取代（handler 后缀未能表达"执行命令"语义）。计划移除版本：v1.0 */
 export type SlashCommandHandler = SlashCommandExecutor;
