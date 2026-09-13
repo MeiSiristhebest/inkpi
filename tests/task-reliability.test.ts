@@ -1,9 +1,4 @@
-import {
-  InMemoryTaskCheckpointStore,
-  InMemoryTaskExecutionStore,
-  TaskRegistry,
-  TaskRouter,
-} from '@inkpi/agent-core';
+import { InMemoryTaskCheckpointStore, InMemoryTaskExecutionStore, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
 import type { TaskExecutionRecord, TaskExecutionStore } from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
@@ -46,7 +41,7 @@ function makeTask(overrides: Partial<AiTask> = {}): AiTask {
     kind: 'test.reliability',
     input: { text: 'input' },
     outputContract: { format: 'text' },
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -60,20 +55,20 @@ describe('durable task reliability', () => {
       async execute() {
         executions += 1;
         return { output: { format: 'text', text: 'ok' } };
-      },
+      }
     });
     const router = new TaskRouter({ registry });
     const task = makeTask({ id: 'duplicate-task', kind: 'test.duplicate-task' });
 
     const submissions = await Promise.allSettled([
       Promise.resolve().then(() => router.submit(task)),
-      Promise.resolve().then(() => router.submit(task)),
+      Promise.resolve().then(() => router.submit(task))
     ]);
 
     expect(submissions.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
     expect(submissions.filter(({ status }) => status === 'rejected')).toHaveLength(1);
     expect(submissions.find(({ status }) => status === 'rejected')).toMatchObject({
-      reason: new Error('Task already exists: duplicate-task'),
+      reason: new Error('Task already exists: duplicate-task')
     });
     await expect(router.wait(task.id)).resolves.toMatchObject({ status: 'completed' });
     expect(executions).toBe(1);
@@ -93,7 +88,7 @@ describe('durable task reliability', () => {
           throw error;
         }
         return { output: { format: 'text', text: 'ok' } };
-      },
+      }
     });
     const executions = new InMemoryTaskExecutionStore();
     const router = new TaskRouter({ registry, executionStore: executions });
@@ -104,16 +99,16 @@ describe('durable task reliability', () => {
       run: { id: 'run:retry-task', status: 'completed', attempts: 2 },
       executionAttempts: [
         { attempt: 1, status: 'failed' },
-        { attempt: 2, status: 'completed' },
-      ],
+        { attempt: 2, status: 'completed' }
+      ]
     });
     expect(executions.load('retry-task')).toMatchObject({
       snapshot: { status: 'completed', attempts: 2 },
       run: { status: 'completed', attempts: 2 },
       executionAttempts: [
         { attempt: 1, status: 'failed' },
-        { attempt: 2, status: 'completed' },
-      ],
+        { attempt: 2, status: 'completed' }
+      ]
     });
   });
 
@@ -127,17 +122,17 @@ describe('durable task reliability', () => {
         taskId: task.id,
         kind: task.kind,
         status: 'running',
-        checkpoint: { step: 'chapter-147', updatedAt: 10 },
+        checkpoint: { step: 'chapter-147', updatedAt: 10 }
       },
       attempts: 1,
-      updatedAt: 10,
+      updatedAt: 10
     });
     await checkpoints.save({
       taskId: task.id,
       kind: task.kind,
       step: 'chapter-147',
       data: { nextChapter: 148 },
-      updatedAt: 10,
+      updatedAt: 10
     });
 
     const registry = new TaskRegistry();
@@ -146,7 +141,7 @@ describe('durable task reliability', () => {
       kinds: ['test.resume'],
       async execute({ checkpoint }) {
         return { output: { format: 'text', text: String((checkpoint?.data as { nextChapter: number }).nextChapter) } };
-      },
+      }
     });
     const router = new TaskRouter({ registry, executionStore: executions, checkpointStore: checkpoints });
 
@@ -156,52 +151,58 @@ describe('durable task reliability', () => {
     expect(await router.resume(task.id)).toMatchObject({ status: 'queued' });
     await expect(router.wait(task.id)).resolves.toMatchObject({
       status: 'completed',
-      output: { text: '148' },
+      output: { text: '148' }
     });
   });
 
   it('exposes a recovery gate and persists normalized interruption before resume', async () => {
     const task = makeTask({ id: 'delayed-recovery-task', kind: 'test.delayed-resume' });
     const runId = `run:${task.id}`;
-    const executions = new DelayedExecutionStore([{
-      task,
-      snapshot: {
-        taskId: task.id,
-        kind: task.kind,
-        status: 'running',
-        executionRunId: runId,
-        attempts: 1,
-      },
-      attempts: 1,
-      updatedAt: 10,
-      run: {
-        id: runId,
-        taskId: task.id,
-        status: 'running',
+    const executions = new DelayedExecutionStore([
+      {
+        task,
+        snapshot: {
+          taskId: task.id,
+          kind: task.kind,
+          status: 'running',
+          executionRunId: runId,
+          attempts: 1
+        },
         attempts: 1,
         updatedAt: 10,
-      },
-      steps: [{
-        id: `step:${task.id}:1`,
-        runId,
-        step: 'chapter-147',
-        status: 'running',
-        startedAt: 10,
-      }],
-      executionAttempts: [{
-        runId,
-        attempt: 1,
-        startedAt: 10,
-        status: 'running',
-      }],
-    }]);
+        run: {
+          id: runId,
+          taskId: task.id,
+          status: 'running',
+          attempts: 1,
+          updatedAt: 10
+        },
+        steps: [
+          {
+            id: `step:${task.id}:1`,
+            runId,
+            step: 'chapter-147',
+            status: 'running',
+            startedAt: 10
+          }
+        ],
+        executionAttempts: [
+          {
+            runId,
+            attempt: 1,
+            startedAt: 10,
+            status: 'running'
+          }
+        ]
+      }
+    ]);
     const checkpoints = new InMemoryTaskCheckpointStore();
     await checkpoints.save({
       taskId: task.id,
       kind: task.kind,
       step: 'chapter-147',
       data: { nextChapter: 148 },
-      updatedAt: 10,
+      updatedAt: 10
     });
     const registry = new TaskRegistry();
     registry.register({
@@ -209,9 +210,9 @@ describe('durable task reliability', () => {
       kinds: [task.kind],
       async execute({ checkpoint }) {
         return {
-          output: { format: 'text', text: String((checkpoint?.data as { nextChapter: number }).nextChapter) },
+          output: { format: 'text', text: String((checkpoint?.data as { nextChapter: number }).nextChapter) }
         };
-      },
+      }
     });
     const router = new TaskRouter({ registry, executionStore: executions, checkpointStore: checkpoints });
 
@@ -227,12 +228,12 @@ describe('durable task reliability', () => {
       snapshot: { status: 'interrupted' },
       run: { status: 'interrupted' },
       steps: [{ status: 'interrupted' }],
-      executionAttempts: [{ status: 'interrupted' }],
+      executionAttempts: [{ status: 'interrupted' }]
     });
     await expect(resume).resolves.toMatchObject({ taskId: task.id, status: 'queued' });
     await expect(router.wait(task.id)).resolves.toMatchObject({
       status: 'completed',
-      output: { text: '148' },
+      output: { text: '148' }
     });
   });
 
@@ -243,7 +244,7 @@ describe('durable task reliability', () => {
       kinds: ['test.echo'],
       async execute({ task }) {
         return { output: { format: 'text', text: String(task.input.text) } };
-      },
+      }
     });
     const router = new TaskRouter({ registry });
     const original = makeTask({ id: 'original', kind: 'test.echo' });
@@ -277,21 +278,23 @@ describe('durable task reliability', () => {
           });
         }
         return Promise.resolve({ output: { format: 'text', text: 'resumed' } });
-      },
+      }
     });
     const router = new TaskRouter({ registry, executionStore: executions });
-    router.submit(makeTask({
-      id: 'interrupted-task',
-      kind: 'test.interrupted',
-      executionPolicy: { cancellable: true },
-    }));
+    router.submit(
+      makeTask({
+        id: 'interrupted-task',
+        kind: 'test.interrupted',
+        executionPolicy: { cancellable: true }
+      })
+    );
     await started;
     await router.stop();
     expect(router.status('interrupted-task').status).toBe('interrupted');
     expect(executions.load('interrupted-task')).toMatchObject({
       snapshot: { status: 'interrupted' },
       run: { status: 'interrupted' },
-      executionAttempts: [{ status: 'interrupted' }],
+      executionAttempts: [{ status: 'interrupted' }]
     });
     release();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -302,14 +305,14 @@ describe('durable task reliability', () => {
     await expect(router.resume('interrupted-task')).resolves.toMatchObject({ status: 'queued' });
     await expect(router.wait('interrupted-task')).resolves.toMatchObject({
       status: 'completed',
-      output: { text: 'resumed' },
+      output: { text: 'resumed' }
     });
     expect(router.execution('interrupted-task')).toMatchObject({
       run: { status: 'completed', attempts: 1 },
       executionAttempts: [
         { attempt: 1, status: 'interrupted' },
-        { attempt: 1, status: 'completed' },
-      ],
+        { attempt: 1, status: 'completed' }
+      ]
     });
   });
 
@@ -324,12 +327,12 @@ describe('durable task reliability', () => {
         kind: task.kind,
         status: 'running',
         executionRunId: runId,
-        attempts: 1,
+        attempts: 1
       },
       attempts: 1,
       updatedAt: 10,
       run: { id: runId, taskId: task.id, status: 'running', attempts: 1, updatedAt: 10 },
-      executionAttempts: [{ runId, attempt: 1, startedAt: 10, status: 'running' }],
+      executionAttempts: [{ runId, attempt: 1, startedAt: 10, status: 'running' }]
     });
     const registry = new TaskRegistry();
     registry.register({
@@ -337,7 +340,7 @@ describe('durable task reliability', () => {
       kinds: [task.kind],
       async execute() {
         return { output: { format: 'text', text: 'recovered once' } };
-      },
+      }
     });
 
     const first = new TaskRouter({ registry, executionStore: executions });
@@ -346,7 +349,7 @@ describe('durable task reliability', () => {
     expect(first.execution(task.id).executionAttempts).toHaveLength(1);
     expect(executions.load(task.id)).toMatchObject({
       snapshot: { status: 'interrupted' },
-      executionAttempts: [{ status: 'interrupted' }],
+      executionAttempts: [{ status: 'interrupted' }]
     });
 
     const second = new TaskRouter({ registry, executionStore: executions });

@@ -22,8 +22,8 @@ import type {
   TaskExecutionSnapshot,
   TaskForkParams,
   TaskReplayParams,
-  TaskResumeParams,
   TaskResult,
+  TaskResumeParams,
   TaskStatusSnapshot,
   TaskSteerParams,
   TaskSteerResult,
@@ -281,16 +281,7 @@ export class InkRpcClient {
     return this.request<{ handled: boolean; output: string }>('slash.execute', { command });
   }
 
-  // 6. Pipeline
-  public runWorkflow<T = any>(context: Record<string, unknown>) {
-    return this.request<T>('workflow.run', context);
-  }
-
-  public runPipeline(bookTitle: string, chapterTitle: string, userPrompt: string) {
-    return this.request<any>('pipeline.run', { bookTitle, chapterTitle, userPrompt });
-  }
-
-  // 7. Journal
+  // 6. Journal
   public appendJournal(type: string, payload: any, id?: string) {
     return this.request<{ id: string }>('journal.append', { type, payload, id });
   }
@@ -299,12 +290,12 @@ export class InkRpcClient {
     return this.request<any[]>('journal.getEntries');
   }
 
-  // 8. JIT Memory
+  // 7. JIT Memory
   public retrieveJitMemory(params: any) {
     return this.request<any>('jit.retrieve', params);
   }
 
-  // 9. FTS
+  // 8. FTS
   public searchFts(query: string, limit?: number) {
     return this.request<any[]>('storage.searchFts', { query, limit });
   }

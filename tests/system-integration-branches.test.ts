@@ -10,7 +10,7 @@ import {
   SlashCommandRegistry,
   SyncedClipboard,
   TelemetryCollector,
-  createStandardEntitySafetyRules
+  createNarrativeEntitySafetyRules
 } from '@inkpi/agent-core';
 import { convertMessagesToStandard, getModelPreset, streamAi } from '@inkpi/ai';
 import { runPrintMode } from '@inkpi/cli';
@@ -292,36 +292,34 @@ describe('System Integration & Edge Cases Suite', () => {
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'provider stage output', inputTokens: 5, outputTokens: 7 };
 
-    let beforeOutlineHit = false;
-    let draftGenHit = false;
-    let auditPassHit = false;
-    let polishDoneHit = false;
+    const beforeStages: string[] = [];
+    const afterStages: string[] = [];
+    const outputStages: string[] = [];
 
     const coordinator = new WorkflowCoordinator({
       model,
+      stages: [
+        { id: 'outline', name: '大纲', role: 'architect' },
+        { id: 'draft', name: '正文', role: 'writer' },
+        { id: 'audit', name: '审计', role: 'auditor' },
+        { id: 'polish', name: '润色', role: 'polisher' }
+      ],
       hooks: [
         {
-          onBeforeOutline: async () => {
-            beforeOutlineHit = true;
-            return '大纲前置提示';
+          onBeforeStage: async ({ stageId, prompt }) => {
+            beforeStages.push(stageId);
+            return `${prompt} [before]`;
           },
-          onDraftGenerated: async () => {
-            draftGenHit = true;
-            return '正文后置修饰';
+          onAfterStage: async ({ stageId, output }) => {
+            afterStages.push(stageId);
+            return `${output} [after]`;
           },
-          onAuditPass: async () => {
-            auditPassHit = true;
-          },
-          onPolishDone: async () => {
-            polishDoneHit = true;
-            return '润色完成版';
+          onStageOutput: async ({ stageId }) => {
+            outputStages.push(stageId);
           }
         }
       ],
-      enablePlotGate: true,
-      plotGateHandler: async () => {
-        return { approved: true, modifiedContent: '人工审查通过后的大纲' };
-      }
+      enableQualityGate: true
     });
 
     // Add stage with transformOutput and executor
@@ -333,19 +331,22 @@ describe('System Integration & Edge Cases Suite', () => {
       transformOutput: async (txt) => `【转换】${txt}`
     });
 
-    const ctx = await coordinator.runPipeline('万相之王', '第一章', '测试创作指令');
-    expect(ctx.polishedText).toBe('润色完成版');
-    expect(beforeOutlineHit).toBe(true);
-    expect(draftGenHit).toBe(true);
-    expect(auditPassHit).toBe(true);
-    expect(polishDoneHit).toBe(true);
-    expect(ctx.stageOutputs.custom_check).toBe('【转换】质检文本');
+    const ctx = await coordinator.runWorkflow({
+      title: '万相之王',
+      sectionTitle: '第一章',
+      userPrompt: '测试创作指令'
+    });
+    expect(ctx.stageOutputs.polish).toContain('[after]');
+    expect(beforeStages).toEqual(['outline', 'draft', 'audit', 'polish', 'custom_check']);
+    expect(afterStages).toEqual(['outline', 'draft', 'audit', 'polish', 'custom_check']);
+    expect(outputStages).toEqual(['outline', 'draft', 'audit', 'polish', 'custom_check']);
+    expect(ctx.stageOutputs.custom_check).toBe('【转换】质检文本 [after]');
 
     // Test rejection in quality gate
     const rejectingCoordinator = new WorkflowCoordinator({
-      enablePlotGate: true,
-      customGateRules: createStandardEntitySafetyRules(),
-      plotGateHandler: async () => ({ approved: false, feedback: '设定严重冲突' })
+      enableQualityGate: true,
+      customGateRules: createNarrativeEntitySafetyRules(),
+      qualityGateHandler: async () => ({ approved: false, feedback: '设定严重冲突' })
     });
     // Add a conflict to trigger gate
     rejectingCoordinator.registerStage({

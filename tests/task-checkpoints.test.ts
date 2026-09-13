@@ -9,14 +9,14 @@ describe('durable task checkpoints', () => {
       id: 'opaque-checkpoint',
       kind: 'test.opaque-checkpoint',
       input: {},
-      outputContract: { format: 'structured' },
+      outputContract: { format: 'structured' }
     };
     await checkpoints.save({
       taskId: task.id,
       kind: task.kind,
       step: '',
       data: undefined,
-      updatedAt: Number.NaN,
+      updatedAt: Number.NaN
     });
     const registry = new TaskRegistry();
     registry.register({
@@ -26,17 +26,17 @@ describe('durable task checkpoints', () => {
         return {
           output: {
             format: 'structured',
-            data: { step: checkpoint?.step, data: checkpoint?.data, updatedAt: checkpoint?.updatedAt },
-          },
+            data: { step: checkpoint?.step, data: checkpoint?.data, updatedAt: checkpoint?.updatedAt }
+          }
         };
-      },
+      }
     });
     const router = new TaskRouter({ registry, checkpointStore: checkpoints });
 
     router.submit(task);
     await expect(router.wait(task.id)).resolves.toMatchObject({
       status: 'completed',
-      output: { data: { step: '', data: undefined, updatedAt: Number.NaN } },
+      output: { data: { step: '', data: undefined, updatedAt: Number.NaN } }
     });
   });
 
@@ -47,7 +47,7 @@ describe('durable task checkpoints', () => {
       kind: 'test.unknown-step',
       step: 'step-added-by-a-new-client',
       data: { value: 7 },
-      updatedAt: 1,
+      updatedAt: 1
     });
     const registry = new TaskRegistry();
     registry.register({
@@ -55,19 +55,19 @@ describe('durable task checkpoints', () => {
       kinds: ['test.unknown-step'],
       async execute({ checkpoint }) {
         return { output: { format: 'structured', data: checkpoint } };
-      },
+      }
     });
     const router = new TaskRouter({ registry, checkpointStore: checkpoints });
     router.submit({
       id: 'unknown-step',
       kind: 'test.unknown-step',
       input: {},
-      outputContract: { format: 'structured' },
+      outputContract: { format: 'structured' }
     });
 
     await expect(router.wait('unknown-step')).resolves.toMatchObject({
       status: 'completed',
-      output: { data: { step: 'step-added-by-a-new-client', data: { value: 7 } } },
+      output: { data: { step: 'step-added-by-a-new-client', data: { value: 7 } } }
     });
   });
 

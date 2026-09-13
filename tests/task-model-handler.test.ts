@@ -1,14 +1,14 @@
-import { AssistantEventStream } from '@inkpi/ai';
 import { TaskRegistry, TaskRouter, ToolRegistry } from '@inkpi/agent-core';
 import type { TaskHandlerContext } from '@inkpi/agent-core';
-import type { AiTask, AgentMessage, ModelConfig } from '@inkpi/protocol';
-import { describe, expect, it } from 'vitest';
+import { AssistantEventStream } from '@inkpi/ai';
+import type { AgentMessage, AiTask, ModelConfig } from '@inkpi/protocol';
 import { TaskModelHandler } from '@inkpi/server';
+import { describe, expect, it } from 'vitest';
 
 const model: ModelConfig = {
   id: 'test-model',
   name: 'Test model',
-  provider: 'faux',
+  provider: 'faux'
 };
 
 function task(overrides: Partial<AiTask> = {}): AiTask {
@@ -17,7 +17,7 @@ function task(overrides: Partial<AiTask> = {}): AiTask {
     kind: 'test.model',
     input: { text: 'context' },
     outputContract: { format: 'structured' },
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -31,7 +31,7 @@ describe('generic model task handler', () => {
       execute: async () => {
         toolExecutions += 1;
         return { content: [{ type: 'text', text: 'tool result' }] };
-      },
+      }
     });
     let modelCalls = 0;
     const messagesSeen: AgentMessage[][] = [];
@@ -42,7 +42,10 @@ describe('generic model task handler', () => {
         if (modelCalls++ === 0) {
           result.push({ type: 'thinking_delta', thinkingDelta: 'private reasoning' });
           result.push({ type: 'tool_call_start', toolCallId: 'call-1', toolName: 'lookup' });
-          result.push({ type: 'tool_call_end', toolCall: { type: 'toolCall', id: 'call-1', name: 'lookup', arguments: {} } });
+          result.push({
+            type: 'tool_call_end',
+            toolCall: { type: 'toolCall', id: 'call-1', name: 'lookup', arguments: {} }
+          });
         } else {
           result.push({ type: 'thinking_delta', thinkingDelta: 'hidden' });
           result.push({ type: 'text_delta', textDelta: '<think>raw hidden reasoning</think>{"answer":"ok"}' });
@@ -52,12 +55,14 @@ describe('generic model task handler', () => {
       return result;
     };
     const registry = new TaskRegistry();
-    registry.register(new TaskModelHandler({
-      model,
-      stream,
-      maxToolSteps: 2,
-      defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true },
-    }));
+    registry.register(
+      new TaskModelHandler({
+        model,
+        stream,
+        maxToolSteps: 2,
+        defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true }
+      })
+    );
     const router = new TaskRouter({ registry, toolRegistry });
 
     router.submit(task());
@@ -68,8 +73,8 @@ describe('generic model task handler', () => {
       output: { format: 'structured', data: { answer: 'ok' } },
       provenance: {
         toolStepCount: 1,
-        toolCalls: [{ id: 'call-1', name: 'lookup', isError: false }],
-      },
+        toolCalls: [{ id: 'call-1', name: 'lookup', isError: false }]
+      }
     });
     expect(toolExecutions).toBe(1);
     expect(messagesSeen).toHaveLength(2);
@@ -81,7 +86,10 @@ describe('generic model task handler', () => {
       const result = new AssistantEventStream();
       queueMicrotask(() => {
         result.push({ type: 'tool_call_start', toolCallId: 'call-missing', toolName: 'missing' });
-        result.push({ type: 'tool_call_end', toolCall: { type: 'toolCall', id: 'call-missing', name: 'missing', arguments: {} } });
+        result.push({
+          type: 'tool_call_end',
+          toolCall: { type: 'toolCall', id: 'call-missing', name: 'missing', arguments: {} }
+        });
         result.end();
       });
       return result;
@@ -89,7 +97,7 @@ describe('generic model task handler', () => {
     const handler = new TaskModelHandler({
       model,
       stream,
-      defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true },
+      defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true }
     });
     const context: TaskHandlerContext = {
       task: task({ id: 'model-no-tools' }),
@@ -98,14 +106,14 @@ describe('generic model task handler', () => {
         text: '',
         tokenEstimate: 0,
         fingerprint: 'test-context',
-        truncated: false,
+        truncated: false
       },
       signal: new AbortController().signal,
       executionRunId: 'run:model-no-tools',
       attempt: 1,
       consumeSteering: () => [],
       saveCheckpoint: async () => undefined,
-      reportProgress: () => undefined,
+      reportProgress: () => undefined
     };
 
     await expect(handler.execute(context)).rejects.toThrow('no ToolRegistry');

@@ -214,31 +214,7 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
     return res;
   },
 
-  // 6. Pipeline execution
-  'workflow.run': (params, ctx) => {
-    if (!ctx.pipeline) throw new Error('Pipeline not initialized');
-    return ctx.pipeline.runWorkflow(params);
-  },
-
-  'pipeline.run': async (params, ctx) => {
-    if (!ctx.pipeline) throw new Error('Pipeline not initialized');
-    const bookTitle = params.bookTitle || params.title;
-    const chapterTitle = params.chapterTitle || params.documentTitle || params.title;
-    const userPrompt = params.userPrompt || params.initialPrompt;
-    if (typeof bookTitle !== 'string' || bookTitle.trim().length === 0) {
-      throw new Error('pipeline.run requires bookTitle or title in legacy compatibility mode');
-    }
-    if (typeof chapterTitle !== 'string' || chapterTitle.trim().length === 0) {
-      throw new Error('pipeline.run requires chapterTitle or documentTitle in legacy compatibility mode');
-    }
-    if (typeof userPrompt !== 'string' || userPrompt.trim().length === 0) {
-      throw new Error('pipeline.run requires userPrompt or initialPrompt in legacy compatibility mode');
-    }
-    const res = await ctx.pipeline.runPipeline(bookTitle, chapterTitle, userPrompt);
-    return res;
-  },
-
-  // 7. Journal
+  // 6. Journal
   'journal.append': (params, ctx) => {
     if (!ctx.journal) throw new Error('Journal not initialized');
     return ctx.journal.append(params.type, params.payload, params.id);
@@ -249,7 +225,7 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
     return ctx.journal.getEntries();
   },
 
-  // 8. JIT Memory
+  // 7. JIT Memory
   'jit.retrieve': (params, ctx) => BUILTIN_RPC_METHODS['storage.queryMemory'](params, ctx),
   'storage.queryMemory': async (params, ctx) => {
     if (!ctx.jitRetriever) throw new Error('JitRetriever not initialized');
@@ -257,7 +233,7 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
     return mem;
   },
 
-  // 9. FTS search
+  // 8. FTS search
   'storage.searchFts': (params, ctx) => BUILTIN_RPC_METHODS['fts.search'](params, ctx),
   'fts.search': (params, ctx) => {
     if (!ctx.fts) throw new Error('FTS search capability not initialized');

@@ -31,6 +31,8 @@ export interface ScheduledTaskState {
 
 export interface TaskSchedulerPersistence {
   load(id: string): ScheduledTaskState | undefined | Promise<ScheduledTaskState | undefined>;
+  /** Enumerate persisted schedules so a new scheduler can recover its queue. */
+  list?(): ScheduledTaskState[] | Promise<ScheduledTaskState[]>;
   save(state: ScheduledTaskState): void | Promise<void>;
 }
 
@@ -347,6 +349,36 @@ export class TaskScheduler {
     return this.handle<T>(record);
   }
 
+  /**
+   * Rehydrates every non-terminal schedule exposed by the persistence boundary.
+   * The resolver supplies executable work because functions are intentionally
+   * never serialized with the durable schedule metadata.
+   */
+  async rehydrateAll(
+    resolveWork: (
+      state: ScheduledTaskState
+    ) => ScheduledWork<unknown> | undefined | Promise<ScheduledWork<unknown> | undefined>
+  ): Promise<ScheduledHandle<unknown>[]> {
+    const persistence = this.persistence;
+    if (!persistence) throw new Error('Task scheduler persistence is not configured');
+    if (!persistence.list) throw new Error('Task scheduler persistence does not support listing schedules');
+    if (this.state === 'stopping' || this.state === 'stopped') throw new Error('Task scheduler is stopping');
+
+    const states = await persistence.list();
+    const handles: ScheduledHandle<unknown>[] = [];
+    for (const state of states) {
+      if (state.status === 'completed' || state.status === 'failed' || state.status === 'cancelled') continue;
+      const work = await resolveWork(cloneScheduledState(state));
+      if (!work) continue;
+      if (work.id !== state.id) {
+        throw new Error(`Resolved scheduled task id does not match persisted state: ${state.id}`);
+      }
+      const handle = await this.rehydrate(work);
+      if (handle) handles.push(handle);
+    }
+    return handles;
+  }
+
   status(id: string): ScheduledSnapshot {
     const record = this.records.get(id);
     if (!record) throw new Error(`Unknown scheduled task: ${id}`);
@@ -433,6 +465,7 @@ export class TaskScheduler {
     record.resumeFrom = undefined;
     record.snapshot.status = 'running';
     record.snapshot.startedAt = record.snapshot.startedAt ?? this.now();
+    record.snapshot.error = undefined;
     record.attempts += 1;
     record.snapshot.attempts = record.attempts;
     this.persist(record);
@@ -467,7 +500,8 @@ export class TaskScheduler {
         record.controller = new AbortController();
         record.generation += 1;
         record.snapshot.status = 'queued';
-        record.readyAt = Number.MAX_SAFE_INTEGER;
+        const delay = Math.max(0, record.work.retryDelayMs ?? 0);
+        record.readyAt = this.now() + delay;
         this.persist(record);
         this.emit({ type: 'retrying', snapshot: this.status(record.work.id) });
         const schedule = () => {
@@ -475,7 +509,6 @@ export class TaskScheduler {
           record.readyAt = this.now();
           this.pump();
         };
-        const delay = Math.max(0, record.work.retryDelayMs ?? 0);
         if (delay > 0) setTimeout(schedule, delay);
         else queueMicrotask(schedule);
       } else if (controller.signal.aborted) {
@@ -583,6 +616,13 @@ function cloneSnapshot(snapshot: ScheduledSnapshot): ScheduledSnapshot {
   const copy = { ...snapshot };
   if (snapshot.checkpoint) copy.checkpoint = cloneCheckpoint(snapshot.checkpoint);
   return copy;
+}
+
+function cloneScheduledState(state: ScheduledTaskState): ScheduledTaskState {
+  return {
+    ...state,
+    snapshot: cloneSnapshot(state.snapshot)
+  };
 }
 
 function toScheduledTaskState(record: ScheduledRecord<unknown>): ScheduledTaskState {

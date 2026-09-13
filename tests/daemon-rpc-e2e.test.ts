@@ -203,6 +203,11 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     await firstDaemon.getTaskRouter().ready;
     const firstClient = await InkRpcClient.connectTcp(firstDaemon.getStatus().port!, '127.0.0.1');
     expect(await firstClient.request<any>('task.status', { taskId: task.id })).toMatchObject({ status: 'interrupted' });
+    expect(await firstClient.request<any>('task.execution', { taskId: task.id })).toMatchObject({
+      task: { id: task.id, kind: task.kind },
+      snapshot: { taskId: task.id, status: 'interrupted' },
+      attempts: 1
+    });
     await firstClient.close();
     await firstDaemon.stop();
     firstDb.close();
@@ -217,6 +222,11 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     const secondClient = await InkRpcClient.connectTcp(secondDaemon.getStatus().port!, '127.0.0.1');
     await expect(secondClient.request<any>('task.status', { taskId: task.id })).resolves.toMatchObject({
       status: 'interrupted'
+    });
+    await expect(secondClient.request<any>('task.execution', { taskId: task.id })).resolves.toMatchObject({
+      task: { id: task.id, kind: task.kind },
+      snapshot: { taskId: task.id, status: 'interrupted' },
+      attempts: 1
     });
     await secondClient.close();
     await secondDaemon.stop();

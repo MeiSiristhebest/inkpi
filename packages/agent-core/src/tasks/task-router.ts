@@ -147,6 +147,7 @@ export class TaskRouter {
       throw new Error('Task router is recovering; await router.ready before submitting');
     }
     if (this.records.has(task.id)) throw new Error(`Task already exists: ${task.id}`);
+    const submittedTask = cloneValue(task);
     const controller = new AbortController();
     let resolveCompletion!: (result: TaskResult) => void;
     const completion = new Promise<TaskResult>((resolve) => {
@@ -168,13 +169,13 @@ export class TaskRouter {
       updatedAt: this.now()
     };
     const record: TaskRecord = {
-      task,
+      task: submittedTask,
       controller,
       snapshot,
       completion,
       resolveCompletion,
       attempts: 0,
-      maxAttempts: Math.max(1, task.executionPolicy?.maxAttempts ?? 1),
+      maxAttempts: Math.max(1, submittedTask.executionPolicy?.maxAttempts ?? 1),
       executionRun,
       executionSteps: [],
       executionAttempts: [],

@@ -25,6 +25,10 @@ class MemoryTaskSchedulerPersistence implements TaskSchedulerPersistence {
   save(state: ScheduledTaskState): void {
     this.states.set(state.id, clone(state));
   }
+
+  list(): ScheduledTaskState[] {
+    return [...this.states.values()].map((state) => clone(state));
+  }
 }
 
 function clone<T>(value: T): T {
@@ -207,5 +211,65 @@ describe('TaskScheduler persistence boundary', () => {
     await expect(restored?.promise).resolves.toBe('resumed');
     expect(seenCheckpoint).toEqual({ step: 'chapter-9', data: { offset: 24 }, updatedAt: 100 });
     await scheduler.stop();
+  });
+
+  it('rehydrates all recoverable schedules from one persistence enumeration', async () => {
+    const persistence = new MemoryTaskSchedulerPersistence();
+    persistence.seed({
+      id: 'recover-queued',
+      mode: 'background',
+      status: 'queued',
+      snapshot: { id: 'recover-queued', mode: 'background', status: 'queued' },
+      attempts: 0,
+      readyAt: Date.now()
+    });
+    persistence.seed({
+      id: 'recover-running',
+      mode: 'foreground',
+      status: 'running',
+      snapshot: { id: 'recover-running', mode: 'foreground', status: 'running' },
+      attempts: 1,
+      readyAt: Date.now()
+    });
+    persistence.seed({
+      id: 'already-completed',
+      mode: 'background',
+      status: 'completed',
+      snapshot: { id: 'already-completed', mode: 'background', status: 'completed' },
+      attempts: 1,
+      readyAt: Date.now()
+    });
+
+    const scheduler = new TaskScheduler({ persistence });
+    const resolved: string[] = [];
+    const handles = await scheduler.rehydrateAll((state) => {
+      resolved.push(state.id);
+      return {
+        id: state.id,
+        mode: state.mode,
+        run: async (_signal, _progress, _checkpoint, resumeFrom) =>
+          resumeFrom ? `resumed:${resumeFrom.step}` : `ran:${state.id}`
+      };
+    });
+
+    expect(resolved).toEqual(['recover-queued', 'recover-running']);
+    expect(handles).toHaveLength(2);
+    expect(scheduler.status('recover-running')).toMatchObject({
+      status: 'interrupted',
+      error: { name: 'TaskInterruptedError' }
+    });
+    await expect(handles[0]?.promise).resolves.toBe('ran:recover-queued');
+    await scheduler.stop();
+  });
+
+  it('rejects bulk recovery when persistence cannot enumerate schedules', async () => {
+    const persistence: TaskSchedulerPersistence = {
+      load: () => undefined,
+      save: () => undefined
+    };
+    const scheduler = new TaskScheduler({ persistence });
+    await expect(scheduler.rehydrateAll(() => undefined)).rejects.toThrow(
+      'Task scheduler persistence does not support listing schedules'
+    );
   });
 });

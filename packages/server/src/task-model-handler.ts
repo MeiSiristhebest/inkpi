@@ -1,11 +1,11 @@
 import {
-  createRuntimeCacheKey,
   type RuntimeCacheCoordinatorPort,
-  stableSerialize,
   type TaskHandler,
   type TaskHandlerContext,
   type TaskHandlerResult,
-  type ToolRegistry
+  type ToolRegistry,
+  createRuntimeCacheKey,
+  stableSerialize
 } from '@inkpi/agent-core';
 import { type ModelConfig, streamAi } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessage, TaskOutput, ToolCallContent } from '@inkpi/protocol';
@@ -291,13 +291,13 @@ function buildPrompt(context: TaskHandlerContext): string {
       : '';
   const fragments = context.context.fragments;
   const projectContext = renderFragments(fragments.filter(isStableProjectContext));
-  const retrievedContext = renderFragments(fragments.filter((fragment) => !isStableProjectContext(fragment) && !isCurrentScene(fragment)));
+  const retrievedContext = renderFragments(
+    fragments.filter((fragment) => !isStableProjectContext(fragment) && !isCurrentScene(fragment))
+  );
   const currentScene = renderFragments(fragments.filter(isCurrentScene));
   const fallbackContext = fragments.length === 0 ? context.context.text : '';
   const taskDetails = payload === undefined ? '' : stableSerialize(payload);
-  const checkpoint = context.checkpoint
-    ? stableSerialize(context.checkpoint.data)
-    : '';
+  const checkpoint = context.checkpoint ? stableSerialize(context.checkpoint.data) : '';
   return [
     `Runtime instruction:\nTask kind: ${context.task.kind}\nReturn only the declared output format. Do not describe hidden reasoning.`,
     stableInstruction ? `Stable skill instruction:\n${stableInstruction}` : '',
@@ -316,8 +316,7 @@ function buildPrompt(context: TaskHandlerContext): string {
 function withoutCompiledContext(payload: unknown): unknown {
   const record = asRecord(payload);
   if (!record || !Object.prototype.hasOwnProperty.call(record, 'context')) return payload;
-  const copy = { ...record };
-  delete copy.context;
+  const { context: _context, ...copy } = record;
   return Object.keys(copy).length > 0 ? copy : undefined;
 }
 

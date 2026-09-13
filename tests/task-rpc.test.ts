@@ -1,6 +1,6 @@
-import type { AiTask } from '@inkpi/protocol';
 import { InMemoryTransport as ClientInMemoryTransport, InkRpcClient as ClientInkRpcClient } from '@inkpi/client';
-import { InkPiDaemon, InkRpcClient, InMemoryTransport } from '@inkpi/server';
+import type { AiTask } from '@inkpi/protocol';
+import { InMemoryTransport, InkPiDaemon, InkRpcClient } from '@inkpi/server';
 import { describe, expect, it } from 'vitest';
 
 describe('task RPC surface', () => {
@@ -11,14 +11,14 @@ describe('task RPC surface', () => {
       kinds: ['test.rpc'],
       async execute({ task }) {
         return { output: { format: 'structured', data: { kind: task.kind } } };
-      },
+      }
     });
     const client = new InkRpcClient(new InMemoryTransport(daemon.getRpcServer()));
     const task: AiTask = {
       id: 'rpc-task',
       kind: 'test.rpc',
       input: { payload: { source: 'test' } },
-      outputContract: { format: 'structured' },
+      outputContract: { format: 'structured' }
     };
 
     expect(await client.submitTask(task)).toEqual({ taskId: 'rpc-task', status: 'queued' });
@@ -26,7 +26,7 @@ describe('task RPC surface', () => {
     expect(result).toMatchObject({
       taskId: 'rpc-task',
       status: 'completed',
-      output: { format: 'structured', data: { kind: 'test.rpc' } },
+      output: { format: 'structured', data: { kind: 'test.rpc' } }
     });
     expect((await client.getTaskStatus('rpc-task')).status).toBe('completed');
     await client.close();
@@ -39,14 +39,14 @@ describe('task RPC surface', () => {
       kinds: ['test.rpc.lifecycle'],
       async execute({ task }) {
         return { output: { format: 'text', text: String(task.input.text ?? 'empty') } };
-      },
+      }
     });
     const client = new InkRpcClient(new InMemoryTransport(daemon.getRpcServer()));
     const task: AiTask = {
       id: 'rpc-lifecycle-task',
       kind: 'test.rpc.lifecycle',
       input: { text: 'original' },
-      outputContract: { format: 'text' },
+      outputContract: { format: 'text' }
     };
 
     await client.submitTask(task);
@@ -55,10 +55,10 @@ describe('task RPC surface', () => {
     await client.forkTask(task.id, 'rpc-fork', { input: { text: 'forked' } });
 
     await expect(client.waitForTask('rpc-replay')).resolves.toMatchObject({
-      output: { format: 'text', text: 'original' },
+      output: { format: 'text', text: 'original' }
     });
     await expect(client.waitForTask('rpc-fork')).resolves.toMatchObject({
-      output: { format: 'text', text: 'forked' },
+      output: { format: 'text', text: 'forked' }
     });
     expect((await client.getTaskStatus(task.id)).status).toBe('completed');
     await client.close();

@@ -1,13 +1,13 @@
 import type {
   AiTask,
-  DomainChangeSet,
-  DomainProjectionApplyResult,
-  DomainProjectionSnapshot,
   Artifact,
   ArtifactGetParams,
   ArtifactListParams,
   ArtifactSaveParams,
   ArtifactSaveResult,
+  DomainChangeSet,
+  DomainProjectionApplyResult,
+  DomainProjectionSnapshot,
   ProposalProjectionSnapshot,
   ProposalProjectionState,
   ProposalSyncPushResult,
@@ -20,6 +20,9 @@ import type {
   TaskStatusSnapshot,
   TaskSteerResult,
   TaskSubmitResult,
+  ToolExecuteParams,
+  ToolRegistrationDescriptor,
+  ToolResultMessage
 } from '@inkpi/protocol';
 import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
@@ -302,10 +305,6 @@ export class InkRpcClient {
     });
   }
 
-  public triggerWorkflow(userPrompt: string, title?: string) {
-    return this.request<{ success: boolean; result: unknown }>('pipeline.run', { userPrompt, title });
-  }
-
   public getTelemetry() {
     return this.request<unknown>('telemetry.getMetrics');
   }
@@ -316,6 +315,14 @@ export class InkRpcClient {
 
   public submitTask(task: AiTask): Promise<TaskSubmitResult> {
     return this.request<TaskSubmitResult>('task.submit', { task });
+  }
+
+  public listTools(): Promise<ToolRegistrationDescriptor[]> {
+    return this.request<ToolRegistrationDescriptor[]>('tool.list');
+  }
+
+  public executeTool(params: ToolExecuteParams): Promise<ToolResultMessage> {
+    return this.request<ToolResultMessage>('tool.execute', { ...params });
   }
 
   public cancelTask(taskId: string): Promise<TaskCancelResult> {
@@ -369,20 +376,22 @@ export class InkRpcClient {
     return this.request<DomainProjectionSnapshot>('domain.sync.snapshot', { workspaceId });
   }
 
-  public restoreDomainSnapshot(snapshot: DomainProjectionSnapshot): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
+  public restoreDomainSnapshot(
+    snapshot: DomainProjectionSnapshot
+  ): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
     return this.request('domain.sync.restore', { snapshot });
   }
 
   public pushProposalState(
     workspaceId: string,
     expectedRevision: number,
-    proposal: ProposalProjectionState,
+    proposal: ProposalProjectionState
   ): Promise<ProposalSyncPushResult> {
     return this.request<ProposalSyncPushResult>('proposal.sync.push', {
       workspaceId,
       expectedRevision,
       proposal,
-      stateHash: calculateProposalProjectionStateHash(proposal),
+      stateHash: calculateProposalProjectionStateHash(proposal)
     });
   }
 

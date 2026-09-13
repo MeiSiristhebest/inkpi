@@ -51,13 +51,13 @@ describe('domain-neutral AiTask contract', () => {
       scheduling: 'batch',
       checkpointIntervalMs: 0,
       checkpoint: { enabled: false, step: '' },
-      maxAttempts: 0,
+      maxAttempts: 0
     };
     const task: AiTask = {
       id: 'policy-combination',
       kind: 'client.workflow',
       input: {},
-      executionPolicy,
+      executionPolicy
     };
 
     expect(task.executionPolicy).toEqual(executionPolicy);
@@ -71,11 +71,11 @@ describe('domain-neutral AiTask contract', () => {
       id: 'unsafe-proposal',
       kind: 'test.policy',
       input: {},
-      effectPolicy: { mode: 'proposal' },
+      effectPolicy: { mode: 'proposal' }
     };
     const report = evaluateTaskCase({
       task,
-      result: { taskId: task.id, kind: task.kind, status: 'completed' },
+      result: { taskId: task.id, kind: task.kind, status: 'completed' }
     });
 
     expect(report.passed).toBe(false);
