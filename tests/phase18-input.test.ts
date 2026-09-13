@@ -58,6 +58,10 @@ describe('Phase 18 corpus input assembler', () => {
         mode: string;
         chapterCount: number;
         chapters: Array<{ chapter: number; text: string }>;
+        responseContract: {
+          expectedRetrievedAnchors: number[];
+          expectedRecoveredChapter: number;
+        };
       }>;
       [key: string]: unknown;
     };
@@ -71,6 +75,10 @@ describe('Phase 18 corpus input assembler', () => {
     });
     expect(template.benchmarks[0]?.chapters[0]?.text).toContain('正文 1');
     expect(template.benchmarks[1]?.chapters[299]).toMatchObject({ chapter: 300 });
+    expect(template.benchmarks.map(({ responseContract }) => responseContract)).toEqual([
+      { expectedRetrievedAnchors: [1, 50, 100], expectedRecoveredChapter: 100 },
+      { expectedRetrievedAnchors: [1, 150, 300], expectedRecoveredChapter: 300 }
+    ]);
   });
 
   it('supports Chinese chapter numerals and keeps the heading in the chapter text', () => {

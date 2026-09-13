@@ -195,7 +195,11 @@ export function createPhase18InputTemplate(corpora) {
         id: `external-long-context-${chapterCount}`,
         mode: 'real-provider',
         chapterCount,
-        chapters: corpus.chapters.map(({ chapter, text }) => ({ chapter, text }))
+        chapters: corpus.chapters.map(({ chapter, text }) => ({ chapter, text })),
+        responseContract: {
+          expectedRetrievedAnchors: [1, Math.floor(chapterCount / 2), chapterCount],
+          expectedRecoveredChapter: chapterCount
+        }
       };
     })
   };
