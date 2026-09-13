@@ -1,10 +1,8 @@
 import {
-  type QualityGateIssue,
   WorkflowCoordinator,
-  createLegacyNarrativeStages,
+  createNarrativeEntitySafetyRules,
   createScreenplayGateRules,
   createShortDramaGateRules,
-  createStandardEntitySafetyRules,
   createVisualNovelGateRules
 } from '@inkpi/agent-core';
 import type { StateLedger } from '@inkpi/protocol';
@@ -16,7 +14,7 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
   it('should detect entity destruction and major twists with generic gate rules', () => {
     const pipeline = new WorkflowCoordinator({
       customGateRules: [
-        ...createStandardEntitySafetyRules(),
+        ...createNarrativeEntitySafetyRules(),
         {
           type: 'power_escalation',
           pattern: /突飞猛进|连续暴涨|瞬间跃迁/,
@@ -60,21 +58,22 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
 
     const pipeline = new WorkflowCoordinator({
       enableQualityGate: true,
+      stages: [{ id: 'outline', name: '结构大纲', role: 'architect' }],
       customExecutor: async (role) => {
         if (role === 'architect') {
           return '【细纲】核心节点：Bob为掩护主角突围，在强敌围攻中自爆惨烈阵亡！';
         }
         return `[${role}] 生成内容`;
       },
-      customGateRules: createStandardEntitySafetyRules(),
-      qualityGateHandler: async ({ workspaceTitle, documentTitle, issues, outlineText }) => {
+      customGateRules: createNarrativeEntitySafetyRules(),
+      qualityGateHandler: async ({ issues }) => {
         gateTriggered = true;
         expect(issues.length).toBeGreaterThan(0);
         expect(issues[0].type).toBe('entity_death');
         // Author reviews and modifies outline to retain the entity with heavy injuries instead of death
         return {
           approved: true,
-          modifiedOutlineText: '【作者微调细纲】Bob虽受重创濒死，但被神秘盟友暗中救走保住一命！',
+          modifiedContent: '【作者微调细纲】Bob虽受重创濒死，但被神秘盟友暗中救走保住一命！',
           feedback: '改动剧情：保留导师角色为后续伏笔'
         };
       }
@@ -84,24 +83,30 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
       events.push(ev.type);
     });
 
-    const result = await pipeline.runPipeline('星穹纪元', '第40章 突围行动', '基地遭遇围攻', {
-      entities: [{ name: 'Bob', status: '关键导师' }],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedDocuments: []
+    const result = await pipeline.runWorkflow({
+      title: '星穹纪元',
+      sectionTitle: '第40章 突围行动',
+      userPrompt: '基地遭遇围攻',
+      stateLedger: {
+        entities: [{ name: 'Bob', status: '关键导师' }],
+        assets: [],
+        tracks: [],
+        locations: [],
+        modifiedDocuments: []
+      } as any
     });
 
     expect(gateTriggered).toBe(true);
-    expect(events).toContain('plot_gate_triggered');
-    expect(events).toContain('plot_gate_resolved');
-    expect(result.outlineText).toContain('【作者微调细纲】');
-    expect(result.qualityGateIssues?.length).toBeGreaterThan(0);
+    expect(events).toContain('quality_gate_triggered');
+    expect(events).toContain('quality_gate_resolved');
+    expect(result.stageOutputs.outline).toContain('【作者微调细纲】');
+    expect(result.qualityIssues?.length).toBeGreaterThan(0);
   });
 
   it('should abort and throw error when author rejects dangerous twist in gate', async () => {
     const pipeline = new WorkflowCoordinator({
       enableQualityGate: true,
+      stages: [{ id: 'outline', name: '结构大纲', role: 'architect' }],
       customGateRules: [
         {
           type: 'power_escalation',
@@ -124,10 +129,17 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
       }
     });
 
-    await expect(pipeline.runPipeline('测试作品', '第一章', '测试')).rejects.toThrow('门禁未通过');
+    await expect(
+      pipeline.runWorkflow({
+        title: '测试作品',
+        sectionTitle: '第一章',
+        userPrompt: '测试',
+        stateLedger: { entities: [], assets: [], tracks: [], locations: [] }
+      })
+    ).rejects.toThrow('门禁未通过');
   });
 
-  it('should evaluate screenplay, short-drama, visual-novel gates and legacy stages templates', () => {
+  it('should evaluate screenplay, short-drama, and visual-novel gates', () => {
     // 1. Screenplay gates
     const screenplayRules = createScreenplayGateRules();
     expect((screenplayRules[0]!.pattern as RegExp).test('INT. COFFEE SHOP - DAY')).toBe(false);
@@ -142,21 +154,5 @@ describe('Human-in-the-loop Gate Protocol (Collaborative Pipeline)', () => {
     // 3. Visual novel choice integrity
     const vnRules = createVisualNovelGateRules();
     expect((vnRules[0]!.pattern as RegExp).test('<choice id="1">Go Left</choice>')).toBe(true);
-
-    // 4. Legacy narrative stages prompts
-    const stages = createLegacyNarrativeStages();
-    expect(stages.length).toBe(4);
-    const mockCtx = {
-      userPrompt: '测试指令',
-      title: '书名',
-      sectionTitle: '章节名',
-      stageOutputs: { outline: '大纲', draft: '正文', audit: '合规' },
-      stateLedger: emptyLedger
-    };
-    expect(stages[0]!.promptTemplate!(mockCtx)).toContain('书名 - 章节名');
-    expect(stages[1]!.promptTemplate!(mockCtx)).toContain('大纲');
-    expect(stages[2]!.promptTemplate!(mockCtx)).toContain('正文');
-    expect(stages[3]!.promptTemplate!(mockCtx)).toContain('合规');
-    expect(stages[3]!.transformOutput!('原文本', mockCtx)).toBeDefined();
   });
 });

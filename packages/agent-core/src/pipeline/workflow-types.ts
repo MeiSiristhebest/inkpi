@@ -8,21 +8,12 @@ import type {
   QualityGateRule,
   StateLedger,
   WorkflowContext,
-  WorkflowEvent,
-  WorkflowEventListener,
   WorkflowStageConfig
 } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
 import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import type { RoleRegistry } from './roles.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
-
-export type PipelineStage = 'outline' | 'draft' | 'audit' | 'polish' | string;
-export type PlotGateType = string;
-export type PlotGateRule = QualityGateRule;
-export type PlotGateIssue = QualityGateIssue;
-export type PlotGateDecision = QualityGateDecision;
-export type PlotGateHandler = QualityGateHandler;
 
 export interface WorkflowStageHooks {
   onBeforeStage?: (stageId: string, ctx: WorkflowContext, currentPrompt: string) => Promise<string | undefined>;
@@ -36,7 +27,7 @@ export interface WorkflowStageHooks {
  * 与协调器实现分离：执行器只依赖本类型，不依赖 `coordinator.ts`，
  * 从而打断"协调器 ↔ 执行器"的循环依赖。
  */
-export interface PipelineExecutionOptions {
+export interface WorkflowExecutionOptions {
   model?: ModelConfig;
   customExecutor?: (role: string, systemPrompt: string, userPrompt: string, signal?: AbortSignal) => Promise<string>;
   telemetry?: TelemetryCollector;
@@ -44,9 +35,7 @@ export interface PipelineExecutionOptions {
   hooks?: PipelineHooks[];
   stageHooks?: WorkflowStageHooks;
   signal?: AbortSignal;
-  enablePlotGate?: boolean;
   enableQualityGate?: boolean;
-  plotGateHandler?: PlotGateHandler;
   qualityGateHandler?: QualityGateHandler;
   customGateRules?: QualityGateRule[];
   stages?: WorkflowStageConfig[];
@@ -59,18 +48,7 @@ export interface PipelineExecutionOptions {
   /** 可选的领域状态格式化器；通用工作流不会自动注入账本。 */
   ledgerFormatter?: (ledger: StateLedger) => string;
   /**
-   * 仅供旧 pipeline.run 兼容字段和事件名称；通用工作流不启用。
-   * @deprecated 这只是 `strategy: legacyPipelineWorkflowStrategy` 的语法糖。
-   * 新增执行模式请直接注入 `strategy`，不要再扩展本联合类型。
-   */
-  compatibilityMode?: 'legacy-pipeline';
-  /**
-   * 直接注入执行策略，优先于 `compatibilityMode`。
-   * 自定义模式（例如新增一种事件命名约定）无需修改协调器即可生效。
+   * 可选执行策略。默认使用唯一的 domain-neutral generic strategy。
    */
   strategy?: WorkflowStrategy;
 }
-
-export type PipelineContext = WorkflowContext;
-export type PipelineEvent = WorkflowEvent;
-export type PipelineEventListener = WorkflowEventListener;

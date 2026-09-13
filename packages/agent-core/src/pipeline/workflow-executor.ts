@@ -9,7 +9,7 @@ import { type StageRegistry, resolveStageRole, resolveStageRoleId } from './stag
 import type { TelemetrySpanHandle } from './telemetry-tracer.js';
 import type { TelemetryTracer } from './telemetry-tracer.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
-import type { PipelineExecutionOptions } from './workflow-types.js';
+import type { WorkflowExecutionOptions } from './workflow-types.js';
 
 export interface WorkflowExecutorDeps {
   events: WorkflowEventBus;
@@ -18,7 +18,7 @@ export interface WorkflowExecutorDeps {
   roles: RoleRegistry;
   telemetry: TelemetryTracer;
   strategy: WorkflowStrategy;
-  options: PipelineExecutionOptions;
+  options: WorkflowExecutionOptions;
   invoker: RoleInvoker;
 }
 
@@ -41,7 +41,7 @@ export class WorkflowExecutor {
   private readonly roles: RoleRegistry;
   private readonly telemetry: TelemetryTracer;
   private readonly strategy: WorkflowStrategy;
-  private readonly options: PipelineExecutionOptions;
+  private readonly options: WorkflowExecutionOptions;
   private readonly invoker: RoleInvoker;
 
   constructor(deps: WorkflowExecutorDeps) {
@@ -59,7 +59,6 @@ export class WorkflowExecutor {
    * 顺序执行阶段列表并返回最终上下文。
    *
    * @param stageList 显式指定阶段序列；缺省取注册表当前内容。
-   *                  `runPipeline` 用它传入叠加后的遗留阶段序列。
    */
   public async execute(
     initialCtx: Partial<WorkflowContext>,
@@ -67,13 +66,13 @@ export class WorkflowExecutor {
   ): Promise<WorkflowContext> {
     const stages = stageList ?? this.stages.list();
     const ctx = this.prepareContext(initialCtx);
-    const isGateActive = Boolean(this.options.enablePlotGate || this.options.enableQualityGate);
+    const isGateActive = Boolean(this.options.enableQualityGate);
 
     for (const stage of stages) {
       await this.runStage(stage, ctx, isGateActive);
     }
 
-    await this.events.emit({ type: 'pipeline_complete', result: ctx });
+    await this.events.emit({ type: 'workflow_complete', result: ctx });
     return ctx;
   }
 
@@ -167,7 +166,7 @@ export class WorkflowExecutor {
     });
   }
 
-  /** 依次应用 stageHooks、通用 onBeforeStage 与策略专属的提示词改写。 */
+  /** 依次应用 stageHooks、通用 onBeforeStage 与策略提示词改写。 */
   private async buildStagePrompt(stage: WorkflowStageConfig, ctx: WorkflowContext): Promise<string> {
     let prompt = stage.promptTemplate ? stage.promptTemplate(ctx) : ctx.userPrompt;
 
@@ -258,7 +257,7 @@ export class WorkflowExecutor {
     this.strategy.applyGateIssues(ctx, issues);
     await this.events.emit(this.strategy.buildGateTriggeredEvent({ stageId: stage.id, output: outputText, issues }));
 
-    const gateHandler = stage.gateHandler || this.options.qualityGateHandler || this.options.plotGateHandler;
+    const gateHandler = stage.gateHandler || this.options.qualityGateHandler;
     if (!gateHandler) {
       return outputText;
     }
@@ -279,8 +278,8 @@ export class WorkflowExecutor {
       throw new Error(`门禁未通过: ${decision.feedback || '人工决策拒绝该阶段内容'}`);
     }
 
-    if (decision.modifiedContent || decision.modifiedOutlineText) {
-      return decision.modifiedContent || decision.modifiedOutlineText || outputText;
+    if (decision.modifiedContent) {
+      return decision.modifiedContent;
     }
     return outputText;
   }

@@ -16,8 +16,6 @@ export interface QualityGateIssue {
 export interface QualityGateDecision {
   approved: boolean;
   modifiedContent?: string;
-  /** @deprecated Use modifiedContent. */
-  modifiedOutlineText?: string;
   feedback?: string;
 }
 
@@ -35,14 +33,6 @@ export type QualityGateHandler<TContext = any> = (event: {
   content: string;
   issues: QualityGateIssue[];
   context: TContext;
-  workspaceTitle?: string;
-  documentTitle?: string;
-  /** @deprecated Use workspaceTitle. */
-  bookTitle?: string;
-  /** @deprecated Use documentTitle or sectionTitle. */
-  chapterTitle?: string;
-  /** @deprecated Use content. */
-  outlineText?: string;
 }) => Promise<QualityGateDecision> | QualityGateDecision;
 
 export interface AgentRoleConfig {
@@ -77,28 +67,11 @@ export interface WorkflowContext {
   id?: string;
   title?: string;
   sectionTitle?: string;
-  /** @deprecated Use title. */
-  bookTitle?: string;
-  workspaceTitle?: string;
-  /** @deprecated Use sectionTitle. */
-  chapterTitle?: string;
-  documentTitle?: string;
   userPrompt: string;
   stateLedger: StateLedger;
   stageOutputs: Record<string, string>;
   stageLogs: Array<{ stageId: string; role: string; content: string; timestamp: number }>;
   qualityIssues?: QualityGateIssue[];
-  qualityGateIssues?: QualityGateIssue[];
-  /** @deprecated Use qualityIssues or qualityGateIssues. */
-  plotGateIssues?: QualityGateIssue[];
-  /** @deprecated Use stageOutputs. */
-  outlineText?: string;
-  /** @deprecated Use stageOutputs. */
-  draftText?: string;
-  /** @deprecated Use stageOutputs. */
-  auditNotes?: string[];
-  /** @deprecated Use stageOutputs. */
-  polishedText?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -107,23 +80,18 @@ export type WorkflowEvent =
   | { type: 'stage_progress'; stage: string; stageId?: string; role: string; delta: string }
   | { type: 'stage_end'; stage: string; stageId?: string; role: string; result: string }
   | {
-      type: 'quality_gate_triggered' | 'plot_gate_triggered';
+      type: 'quality_gate_triggered';
       issues: QualityGateIssue[];
-      content?: string;
-      /** @deprecated Use content. */
-      outlineText?: string;
-      gateContent?: string;
+      content: string;
       stageId?: string;
     }
   | {
-      type: 'quality_gate_resolved' | 'plot_gate_resolved';
+      type: 'quality_gate_resolved';
       approved: boolean;
       modifiedContent?: string;
-      /** @deprecated Use modifiedContent. */
-      modifiedOutlineText?: string;
       feedback?: string;
       stageId?: string;
     }
-  | { type: 'pipeline_complete'; result: WorkflowContext };
+  | { type: 'workflow_complete'; result: WorkflowContext };
 
 export type WorkflowEventListener = (event: WorkflowEvent) => void | Promise<void>;

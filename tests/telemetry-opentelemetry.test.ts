@@ -41,10 +41,23 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'telemetry provider output', inputTokens: 5, outputTokens: 7 };
     const telem = new TelemetryCollector(Date.now);
-    const pipeline = new WorkflowCoordinator({ telemetry: telem, model });
+    const pipeline = new WorkflowCoordinator({
+      telemetry: telem,
+      model,
+      stages: [
+        { id: 'outline', name: '大纲', role: 'architect' },
+        { id: 'draft', name: '正文', role: 'writer' },
+        { id: 'audit', name: '审计', role: 'auditor' },
+        { id: 'polish', name: '润色', role: 'polisher' }
+      ]
+    });
 
-    const result = await pipeline.runPipeline('Test Workspace B', 'Document 1 Start', '主角初入World');
-    expect(result.polishedText).toBeDefined();
+    const result = await pipeline.runWorkflow({
+      title: 'Test Workspace B',
+      sectionTitle: 'Document 1 Start',
+      userPrompt: '主角初入World'
+    });
+    expect(result.stageOutputs.polish).toBeDefined();
 
     const spans = telem.getSpans();
     expect(spans.length).toBe(4);

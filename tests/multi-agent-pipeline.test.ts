@@ -1,5 +1,27 @@
-import { RoleRegistry, WorkflowCoordinator } from '@inkpi/agent-core';
+import {
+  NarrativeSemanticLedgerExtractor,
+  RoleRegistry,
+  WorkflowCoordinator,
+  extractStateLedger
+} from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
+import { formatChineseTypography } from '@inkpi/editor-core';
+
+function narrativeStages() {
+  return [
+    { id: 'outline', name: '结构大纲规划', role: 'architect' },
+    { id: 'draft', name: '正文主创展开', role: 'writer' },
+    { id: 'audit', name: '约束与一致性审计', role: 'critic' },
+    { id: 'polish', name: '排版校对与润色', role: 'polisher', transformOutput: formatChineseTypography }
+  ];
+}
+
+function extractLedger(output: string) {
+  return extractStateLedger(
+    [{ role: 'assistant', content: [{ type: 'text', text: output }] } as any],
+    [NarrativeSemanticLedgerExtractor]
+  );
+}
 
 describe('Multi-Agent Collaborative Pipeline', () => {
   it('should support dynamic role registration in RoleRegistry (100% pure & decoupled from core)', () => {
@@ -21,24 +43,25 @@ describe('Multi-Agent Collaborative Pipeline', () => {
     const events: string[] = [];
     const pipeline = new WorkflowCoordinator({
       model: getModelPreset('mock-test'),
+      stages: narrativeStages(),
       customExecutor: async (role) => {
         if (role === 'architect') return '<entity name="First" status="active" /> <asset name="Key" holder="First" />';
         if (role === 'writer') return '<track clue="Archive" status="pending" /> <location name="Harbor" />';
         if (role === 'critic') return 'audit passed';
         return 'polished output';
       },
-      ledgerFormatter: () => ''
+      ledgerExtractor: extractLedger
     });
 
     pipeline.subscribe((ev) => {
       events.push(ev.type);
     });
 
-    const result = await pipeline.runPipeline(
-      '仙魔道',
-      '第一document 灵脉复苏',
-      '主角发现古修遗迹并战胜窥探的杂役弟子',
-      {
+    const result = await pipeline.runWorkflow({
+      title: '仙魔道',
+      sectionTitle: '第一document 灵脉复苏',
+      userPrompt: '主角发现古修遗迹并战胜窥探的杂役弟子',
+      stateLedger: {
         entities: [
           { name: 'UserE', status: '练气三层' },
           { name: '老者', status: '神秘' }
@@ -47,21 +70,21 @@ describe('Multi-Agent Collaborative Pipeline', () => {
         tracks: [],
         locations: [{ name: '青石镇' }],
         modifiedDocuments: ['序document']
-      }
-    );
+      } as any
+    });
 
     expect(events).toContain('stage_start');
     expect(events).toContain('stage_end');
-    expect(events).toContain('pipeline_complete');
+    expect(events).toContain('workflow_complete');
 
-    expect(result.outlineText).toBeDefined();
-    expect(result.draftText).toBeDefined();
-    expect(result.auditNotes).toBeDefined();
-    expect(result.polishedText).toBeDefined();
+    expect(result.stageOutputs.outline).toBeDefined();
+    expect(result.stageOutputs.draft).toBeDefined();
+    expect(result.stageOutputs.audit).toBeDefined();
+    expect(result.stageOutputs.polish).toBeDefined();
     expect(result.stageLogs.length).toBe(4);
 
     // Verify Chinese typography was applied by polisher (fullwidth indent)
-    expect(result.polishedText).toContain('　　');
+    expect(result.stageOutputs.polish).toContain('　　');
     expect(result.stateLedger.entities.some((entity) => entity.name === 'First')).toBe(true);
     expect(result.stateLedger.assets.some((asset) => asset.name === 'Key')).toBe(true);
     expect(result.stateLedger.tracks.some((track) => track.clue === 'Archive')).toBe(true);
@@ -70,14 +93,19 @@ describe('Multi-Agent Collaborative Pipeline', () => {
 
   it('should allow custom role executor injection', async () => {
     const pipeline = new WorkflowCoordinator({
+      stages: narrativeStages(),
       customExecutor: async (role, sysPrompt, userPrompt) => {
         return `[Custom ${role}] executed: ${userPrompt.slice(0, 10)}`;
       }
     });
 
-    const res = await pipeline.runPipeline('workspace名', 'document节', '测试请求');
-    expect(res.outlineText).toContain('[Custom architect]');
-    expect(res.draftText).toContain('[Custom writer]');
+    const res = await pipeline.runWorkflow({
+      title: 'workspace名',
+      sectionTitle: 'document节',
+      userPrompt: '测试请求'
+    });
+    expect(res.stageOutputs.outline).toContain('[Custom architect]');
+    expect(res.stageOutputs.draft).toContain('[Custom writer]');
   });
 
   it('should preserve generic workflow ledger extensions and merge canonical aliases by identity', async () => {
@@ -157,11 +185,6 @@ describe('Multi-Agent Collaborative Pipeline', () => {
     const coordinator = new WorkflowCoordinator({
       hooks: [
         {
-          onBeforeOutline: async () => {
-            throw new Error('legacy hook must not run in generic workflow');
-          }
-        },
-        {
           onBeforeStage: ({ stageId, prompt }) => {
             before.push(`${stageId}:${prompt}`);
             return `${prompt} [before]`;
@@ -222,7 +245,7 @@ describe('Multi-Agent Collaborative Pipeline', () => {
   it('should test progress callback event stream', async () => {
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'provider stage output', inputTokens: 5, outputTokens: 7 };
-    const pipeline = new WorkflowCoordinator({ model });
+    const pipeline = new WorkflowCoordinator({ model, stages: narrativeStages() });
     const progressLogs: string[] = [];
     const unsubscribe = pipeline.subscribe((ev) => {
       if (ev.type === 'stage_start' || ev.type === 'stage_end') {
@@ -230,41 +253,60 @@ describe('Multi-Agent Collaborative Pipeline', () => {
       }
     });
 
-    await pipeline.runPipeline('新workspace', '第一回', '正文开端');
+    await pipeline.runWorkflow({
+      title: '新workspace',
+      sectionTitle: '第一回',
+      userPrompt: '正文开端',
+      stateLedger: { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] }
+    });
     unsubscribe();
     expect(progressLogs.length).toBe(8);
   });
 
-  it('should trigger all novel hooks in pipeline execution', async () => {
+  it('should trigger generic lifecycle hooks in workflow execution', async () => {
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'provider stage output', inputTokens: 5, outputTokens: 7 };
     const executedHooks: string[] = [];
     const pipeline = new WorkflowCoordinator({
       model,
+      stages: narrativeStages(),
       hooks: [
         {
-          onBeforeOutline: async ({ userPrompt }) => {
-            executedHooks.push('outline');
-            return `${userPrompt} (补充设定)`;
+          onBeforeStage: async ({ stageId, prompt }) => {
+            executedHooks.push(`before:${stageId}`);
+            return `${prompt} (补充设定)`;
           },
-          onDraftGenerated: async ({ draftText }) => {
-            executedHooks.push('draft');
-            return `${draftText}\n【伏笔埋设完毕】`;
+          onAfterStage: async ({ stageId, output }) => {
+            executedHooks.push(`after:${stageId}`);
+            return `${output}\n【阶段完成】`;
           },
-          onAuditPass: async () => {
-            executedHooks.push('audit');
-          },
-          onPolishDone: async ({ polishedText }) => {
-            executedHooks.push('polish');
-            return `${polishedText}\n（终稿排版已校）`;
+          onStageOutput: async ({ stageId }) => {
+            executedHooks.push(`output:${stageId}`);
           }
         }
       ]
     });
 
-    const res = await pipeline.runPipeline('封神记', '第1回', '开局风云变幻');
-    expect(executedHooks).toEqual(['outline', 'draft', 'audit', 'polish']);
-    expect(res.draftText).toContain('【伏笔埋设完毕】');
-    expect(res.polishedText).toContain('（终稿排版已校）');
+    const res = await pipeline.runWorkflow({
+      title: '封神记',
+      sectionTitle: '第1回',
+      userPrompt: '开局风云变幻'
+    });
+    expect(executedHooks).toEqual([
+      'before:outline',
+      'after:outline',
+      'output:outline',
+      'before:draft',
+      'after:draft',
+      'output:draft',
+      'before:audit',
+      'after:audit',
+      'output:audit',
+      'before:polish',
+      'after:polish',
+      'output:polish'
+    ]);
+    expect(res.stageOutputs.draft).toContain('【阶段完成】');
+    expect(res.stageOutputs.polish).toContain('【阶段完成】');
   });
 });

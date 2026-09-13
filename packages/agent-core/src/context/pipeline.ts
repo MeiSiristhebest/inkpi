@@ -168,11 +168,19 @@ export class ContextPipeline {
     const cached = this.getCached(cacheKey);
     if (cached) return cached;
 
+    const maxTokens = normalizeNonNegativeInteger(
+      task.contextPolicy?.maxTokens ?? this.maxTokens,
+      'Context token budget'
+    );
+    const maxFragments =
+      task.contextPolicy?.maxFragments === undefined
+        ? undefined
+        : normalizeNonNegativeInteger(task.contextPolicy.maxFragments, 'Context fragment limit');
     const request: ContextRequest = {
       task,
       signal,
       purpose: task.kind,
-      projectRevision: task.input.selection?.revision,
+      projectRevision: projectRevisionFor(task),
       metadata: task.contextPolicy?.metadata
     };
     const fragments: ContextFragment[] = [];
@@ -201,14 +209,11 @@ export class ContextPipeline {
       fragments.push(...provided);
     }
 
-    const packet = buildPacket(fragments, task.contextPolicy?.maxTokens ?? this.maxTokens, request.projectRevision);
-    if (task.contextPolicy?.maxFragments !== undefined && packet.fragments.length > task.contextPolicy.maxFragments) {
-      const limited = packet.fragments.slice(0, Math.max(0, task.contextPolicy.maxFragments));
-      const limitedPacket = buildPacket(
-        limited,
-        task.contextPolicy.maxTokens ?? this.maxTokens,
-        request.projectRevision
-      );
+    const packet = buildPacket(fragments, maxTokens, request.projectRevision);
+    if (maxFragments !== undefined && packet.fragments.length > maxFragments) {
+      const limited = packet.fragments.slice(0, maxFragments);
+      const limitedPacket = buildPacket(limited, maxTokens, request.projectRevision);
+      limitedPacket.truncated = true;
       limitedPacket.metadata = task.contextPolicy?.metadata;
       this.setCached(cacheKey, limitedPacket);
       return limitedPacket;
@@ -262,11 +267,7 @@ export class ContextPipeline {
 export function createContextCacheKey(task: AiTask, providerIds: readonly string[], maxTokens: number): string {
   const metadata = asRecord(task.metadata);
   const contextMetadata = asRecord(task.contextPolicy?.metadata);
-  const projectRevision = firstNumber(
-    task.input.selection?.revision,
-    metadata?.projectRevision,
-    contextMetadata?.projectRevision
-  );
+  const projectRevision = projectRevisionFor(task);
   const instructionVersion = firstString(metadata?.instructionVersion, contextMetadata?.instructionVersion);
   const skillVersion = firstString(metadata?.skillVersion, contextMetadata?.skillVersion);
   const inputFingerprint = hash(stableSerialize(task.input));
@@ -453,6 +454,23 @@ function firstString(...values: unknown[]): string | undefined {
 
 function firstNumber(...values: unknown[]): number | undefined {
   return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value));
+}
+
+function projectRevisionFor(task: AiTask): number | undefined {
+  const metadata = asRecord(task.metadata);
+  const contextMetadata = asRecord(task.contextPolicy?.metadata);
+  return firstNumber(
+    task.input.selection?.revision,
+    metadata?.projectRevision,
+    contextMetadata?.projectRevision
+  );
+}
+
+function normalizeNonNegativeInteger(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative finite number`);
+  }
+  return Math.floor(value);
 }
 
 function fingerprint(fragments: ContextFragment[], projectRevision?: number): string {

@@ -8,52 +8,38 @@ import type {
 } from '@inkpi/protocol';
 import type { TelemetryCollector } from '../telemetry/telemetry.js';
 
-import { extractNovelStateLedger, formatNovelStateLedger } from '../compaction/state-ledger.js';
 import { WorkflowEventBus } from './event-bus.js';
 import { detectGateIssues } from './gate-detection.js';
 import { GateRuleRegistry } from './gate-rule-registry.js';
 import {
-  createLegacyNarrativeStages,
   createNarrativeEntitySafetyRules,
   createScreenplayGateRules,
   createShortDramaGateRules,
-  createStandardEntitySafetyRules,
   createVisualNovelGateRules
-} from './legacy-narrative.js';
+} from './narrative-gates.js';
 import { RoleInvoker } from './role-invoker.js';
 import { RoleRegistry } from './roles.js';
-import { StageRegistry, mergeStageLists } from './stage-registry.js';
+import { StageRegistry } from './stage-registry.js';
 import { TelemetryTracer } from './telemetry-tracer.js';
 import { WorkflowExecutor } from './workflow-executor.js';
-import { legacyPipelineWorkflowStrategy, resolveWorkflowStrategy } from './workflow-strategy.js';
+import { genericWorkflowStrategy } from './workflow-strategy.js';
 import type { WorkflowStrategy } from './workflow-strategy.js';
-import type { PipelineExecutionOptions } from './workflow-types.js';
+import type { WorkflowExecutionOptions } from './workflow-types.js';
 
 export type {
-  PipelineStage,
-  PlotGateType,
-  PlotGateRule,
-  PlotGateIssue,
-  PlotGateDecision,
-  PlotGateHandler,
   WorkflowStageHooks,
-  PipelineExecutionOptions,
-  PipelineContext,
-  PipelineEvent,
-  PipelineEventListener
+  WorkflowExecutionOptions
 } from './workflow-types.js';
 
 /**
  * 标准实体安全与破坏性变动门禁规则
  */
 export {
-  createLegacyNarrativeStages,
   createNarrativeEntitySafetyRules,
   createScreenplayGateRules,
   createShortDramaGateRules,
-  createStandardEntitySafetyRules,
   createVisualNovelGateRules
-} from './legacy-narrative.js';
+} from './narrative-gates.js';
 
 /**
  * 多 Agent 协作与工作流编排引擎。
@@ -62,12 +48,13 @@ export {
  * 角色调用、执行策略各自是独立协作对象，阶段循环本身位于 `WorkflowExecutor`。
  * 这样职责单一，每一部分都能独立替换与测试。
  *
- * 对外行为与拆分前逐字一致，包括所有遗留别名（见文件末尾）。
+ * 对外只提供显式的 domain-neutral workflow API；创作领域行为通过
+ * TaskHandler 或调用方注入的 stage 配置进入 Runtime Task Router。
  */
 export class WorkflowCoordinator {
   public telemetry?: TelemetryCollector;
 
-  private options: PipelineExecutionOptions;
+  private options: WorkflowExecutionOptions;
   private strategy: WorkflowStrategy;
   private invoker: RoleInvoker;
   private stages: StageRegistry;
@@ -77,10 +64,10 @@ export class WorkflowCoordinator {
   private tracer: TelemetryTracer;
   private executor: WorkflowExecutor;
 
-  constructor(options: PipelineExecutionOptions = {}) {
+  constructor(options: WorkflowExecutionOptions = {}) {
     this.options = options;
     this.telemetry = options.telemetry;
-    this.strategy = options.strategy ?? resolveWorkflowStrategy(options.compatibilityMode);
+    this.strategy = options.strategy ?? genericWorkflowStrategy;
     this.roles =
       options.roleRegistry ?? new RoleRegistry(options.initialRoles ? { initialRoles: options.initialRoles } : {});
     this.stages = new StageRegistry(options.stages || []);
@@ -123,27 +110,15 @@ export class WorkflowCoordinator {
     return this.events.subscribe(listener);
   }
 
-  private async emit(event: Parameters<WorkflowEventListener>[0]): Promise<void> {
-    return this.events.emit(event);
-  }
-
   /**
    * 纯规则驱动的质量门禁自动检测 (100% 领域中立)
    */
-  public detectPlotGateIssues(
-    content: string,
-    ledger?: StateLedger,
-    context?: any
-  ): (QualityGateIssue & { entityOrEntity?: string })[] {
-    return detectGateIssues(content, this.gates.all(), ledger, context).map((i) => ({ ...i }));
-  }
-
   public detectGateIssues(content: string, ledger?: StateLedger, context?: any): QualityGateIssue[] {
-    return this.detectPlotGateIssues(content, ledger, context);
+    return detectGateIssues(content, this.gates.all(), ledger, context);
   }
 
   public detectQualityGateIssues(content: string, ledger?: StateLedger, context?: any): QualityGateIssue[] {
-    return this.detectPlotGateIssues(content, ledger, context);
+    return this.detectGateIssues(content, ledger, context);
   }
 
   /**
@@ -152,57 +127,4 @@ export class WorkflowCoordinator {
   public async runWorkflow(initialCtx: Partial<WorkflowContext>): Promise<WorkflowContext> {
     return this.executor.execute(initialCtx, this.stages.list());
   }
-
-  /**
-   * 向后兼容快捷调用方法：以遗留叙事阶段序列与兼容策略执行一次流水线。
-   */
-  public async runPipeline(
-    bookTitle: string,
-    chapterTitle: string,
-    userPrompt: string,
-    initialLedger?: StateLedger
-  ): Promise<WorkflowContext> {
-    const legacyOptions: PipelineExecutionOptions = {
-      ...this.options,
-      compatibilityMode: 'legacy-pipeline',
-      enableQualityGate: this.options.enableQualityGate,
-      customGateRules: [...createStandardEntitySafetyRules(), ...(this.options.customGateRules || [])],
-      ledgerExtractor: (output) =>
-        extractNovelStateLedger([{ role: 'assistant', content: [{ type: 'text', text: output }] } as any]),
-      ledgerFormatter: formatNovelStateLedger
-    };
-
-    const legacyStages = mergeStageLists(createLegacyNarrativeStages(), this.stages.list());
-
-    const forwardingBus = new WorkflowEventBus();
-    forwardingBus.subscribe((event) => this.emit(event));
-
-    const legacyExecutor = new WorkflowExecutor({
-      events: forwardingBus,
-      stages: new StageRegistry(legacyStages),
-      gates: new GateRuleRegistry(legacyOptions.customGateRules || []),
-      roles:
-        legacyOptions.roleRegistry ??
-        new RoleRegistry(legacyOptions.initialRoles ? { initialRoles: legacyOptions.initialRoles } : {}),
-      telemetry: this.tracer,
-      strategy: legacyPipelineWorkflowStrategy,
-      options: legacyOptions,
-      invoker: this.invoker
-    });
-
-    return legacyExecutor.execute(
-      {
-        bookTitle,
-        title: bookTitle,
-        chapterTitle,
-        sectionTitle: chapterTitle,
-        userPrompt,
-        stateLedger: initialLedger
-      },
-      legacyStages
-    );
-  }
 }
-
-// 兼容别名（NovelCollaborativePipeline / CollaborativePipeline / PipelineCoordinator）
-// 已集中迁移至 src/deprecations.ts。

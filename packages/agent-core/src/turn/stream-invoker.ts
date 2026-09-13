@@ -12,7 +12,6 @@ function defaultMapThinkingLevelToEffort(level: string | null | undefined): 'low
       return 'low';
     case 'medium':
       return 'medium';
-    case 'high':
     default:
       return 'high';
   }

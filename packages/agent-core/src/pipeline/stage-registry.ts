@@ -35,7 +35,7 @@ export class StageRegistry {
 /**
  * 把 `overrides` 合并进 `base`：同 id 覆盖，新 id 追加。
  *
- * `runPipeline` 用它把调用方注册的阶段叠加到遗留叙事阶段序列之上。
+ * 调用方通过 `WorkflowCoordinator.runWorkflow()` 传入或注册显式阶段。
  * 纯函数：不修改任何入参数组。
  */
 export function mergeStageLists(base: WorkflowStageConfig[], overrides: WorkflowStageConfig[]): WorkflowStageConfig[] {

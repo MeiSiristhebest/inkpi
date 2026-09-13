@@ -4,8 +4,7 @@ import { emptyLedger } from './ledger-merge.js';
 /**
  * 纯函数：按一组门禁规则检测内容，返回命中的质量问题列表。无副作用、无 I/O。
  *
- * 原 `WorkflowCoordinator.detectPlotGateIssues`（公开）与 `detectIssues`（私有）含两份几乎一致的实现，
- * 现收敛为单一纯函数，二者均委托于此。行为逐字保持：
+ * WorkflowCoordinator 只通过通用质量门禁方法委托到此函数。行为保持：
  * - `rule.pattern` 以 `RegExp` 或字符串构造，每次检测前 `lastIndex = 0`（避免全局正则状态串扰）；
  * - `rule.detector` 返回 falsy 视为未命中；
  * - `ledger` 缺省时回退到空账本。
