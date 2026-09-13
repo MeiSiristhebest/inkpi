@@ -39,7 +39,11 @@
     "lint": "biome check packages tests scripts",
     "format": "biome format --write packages tests scripts",
     "test": "vitest run",
-    "test:evals": "vitest run tests/evals-runner.test.ts tests/task-evals.test.ts tests/task-observability.test.ts tests/task-provenance.test.ts tests/subjective-evals.test.ts packages/evals/src/subjective-evals.test.ts",
+    "test:evals": "vitest run tests/evals-runner.test.ts tests/task-evals.test.ts tests/task-observability.test.ts tests/task-provenance.test.ts tests/subjective-evals.test.ts packages/evals/src/subjective-evals.test.ts packages/evals/src/human-gold.test.ts packages/evals/src/real-provider-acceptance.test.ts",
+    "acceptance:real-provider": "pnpm build && node ./scripts/real-provider-acceptance.mjs",
+    "acceptance:phase18": "pnpm build && node ./scripts/phase18-acceptance.mjs",
+    "audit:final-freeze": "node ./scripts/final-freeze-audit.mjs",
+    "audit:final-freeze:local": "node ./scripts/final-freeze-audit.mjs --evidence docs/evidence/final-freeze-local.json",
     "test:coverage": "vitest run --coverage",
     "check": "pnpm run check:pinned-deps && tsc -b"
   },
