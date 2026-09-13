@@ -1,10 +1,10 @@
 import {
   ArtifactRuntime,
   ContextPipeline,
+  type ScheduledTaskState,
   TaskRegistry,
   TaskRouter,
-  TaskScheduler,
-  type ScheduledTaskState
+  TaskScheduler
 } from '@inkpi/agent-core';
 import type { AiTask, Artifact, ArtifactStore, ModelConfig } from '@inkpi/protocol';
 import { CapabilityRouter, InkPiDaemon } from '@inkpi/server';

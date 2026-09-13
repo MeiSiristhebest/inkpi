@@ -359,5 +359,4 @@ describe('durable task reliability', () => {
     await expect(second.resume(task.id)).resolves.toMatchObject({ status: 'queued' });
     await expect(second.wait(task.id)).resolves.toMatchObject({ status: 'completed' });
   });
-
 });

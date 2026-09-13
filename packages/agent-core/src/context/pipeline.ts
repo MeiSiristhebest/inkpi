@@ -459,11 +459,7 @@ function firstNumber(...values: unknown[]): number | undefined {
 function projectRevisionFor(task: AiTask): number | undefined {
   const metadata = asRecord(task.metadata);
   const contextMetadata = asRecord(task.contextPolicy?.metadata);
-  return firstNumber(
-    task.input.selection?.revision,
-    metadata?.projectRevision,
-    contextMetadata?.projectRevision
-  );
+  return firstNumber(task.input.selection?.revision, metadata?.projectRevision, contextMetadata?.projectRevision);
 }
 
 function normalizeNonNegativeInteger(value: number, label: string): number {
