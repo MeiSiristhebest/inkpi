@@ -44,6 +44,30 @@ function readRequiredArg(index, name) {
   return value;
 }
 
+/**
+ * Resolve a direct model configuration for packaged/headless daemon runs.
+ * Presets remain the default path, while an explicit provider + model pair
+ * lets an OpenAI-compatible endpoint be injected through the process
+ * environment without persisting credentials in Desktop settings.
+ */
+function resolveEnvironmentDaemonModel() {
+  const provider = process.env.INKPI_PROVIDER?.trim().toLowerCase();
+  const id = process.env.INKPI_MODEL?.trim();
+  if (!provider && !id) return undefined;
+  if (!provider || !id) {
+    throw new Error('INKPI_PROVIDER and INKPI_MODEL must be configured together.');
+  }
+
+  // Unknown OpenAI-compatible models are conservative about tool support.
+  // The daemon still advertises text/structured output through its legacy
+  // capability fallback, but it will not send an unverified tool schema to a
+  // gateway that may implement only chat completions.
+  const model = { id, name: id, provider, supportsTools: false };
+  const baseUrl = process.env[`INKPI_${provider.toUpperCase()}_BASE_URL`]?.trim();
+  if (baseUrl) model.baseUrl = baseUrl;
+  return model;
+}
+
 const providerEnv = {
   deepseek: 'DEEPSEEK_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
@@ -67,10 +91,15 @@ async function main() {
     const modelIdx = args.indexOf('--model');
     const modelPreset = modelIdx !== -1 ? readRequiredArg(modelIdx, '--model') : process.env.INKPI_MODEL_PRESET || 'creative-pro';
     let defaultModel;
-    try {
-      defaultModel = getModelPreset(modelPreset);
-    } catch {
-      defaultModel = undefined;
+    if (modelIdx === -1) {
+      defaultModel = resolveEnvironmentDaemonModel();
+    }
+    if (!defaultModel) {
+      try {
+        defaultModel = getModelPreset(modelPreset);
+      } catch {
+        defaultModel = undefined;
+      }
     }
     const defaultModelCapabilities = defaultModel
       ? (() => {

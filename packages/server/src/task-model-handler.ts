@@ -131,7 +131,10 @@ export class TaskModelHandler implements TaskHandler {
     const startedAt = Date.now();
     const prompt = buildPrompt(context);
     const messages: AgentMessage[] = [{ role: 'user', content: prompt, timestamp: Date.now() }];
-    const toolRegistry = context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry;
+    const toolRegistry =
+      route.capabilities.tools === false
+        ? undefined
+        : (context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry);
     const toolTrace: Array<{ id: string; name: string; isError: boolean }> = [];
     const maxToolSteps = route.maxToolSteps ?? this.maxToolSteps;
     let assistant: AssistantMessage | undefined;
@@ -238,11 +241,14 @@ export class TaskModelHandler implements TaskHandler {
     context: TaskHandlerContext,
     route: ResolvedModelRoute
   ): Promise<AssistantMessage> {
-    const tools = (context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry)?.getAll().map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters
-    }));
+    const tools =
+      route.capabilities.tools === false
+        ? undefined
+        : (context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry)?.getAll().map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters
+          }));
     const stream = (route.stream ?? this.stream)(route.model, messages, {
       signal: context.signal,
       systemPrompt: route.systemPrompt ?? this.systemPrompt,

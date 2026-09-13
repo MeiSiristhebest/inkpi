@@ -1,5 +1,6 @@
 import type { TaskHandlerContext } from '@inkpi/agent-core';
-import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
+import { ToolRegistry } from '@inkpi/agent-core';
+import { AssistantEventStream, type ModelConfig, type StreamOptions } from '@inkpi/ai';
 import type { AgentMessage, AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 import { TaskModelHandler } from './task-model-handler.js';
@@ -126,5 +127,59 @@ describe('TaskModelHandler structured output failures', () => {
     expect(prompt).toContain('TASK_DETAILS');
     expect(prompt).toContain('USER_INTENT');
     expect(prompt).not.toContain('must appear through providers only');
+  });
+
+  it('does not send tool schemas when the selected route disables tools', async () => {
+    let observedTools: StreamOptions['tools'];
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register({
+      name: 'lookup',
+      description: 'Lookup',
+      execute: async () => ({ content: [{ type: 'text', text: 'tool value' }] })
+    });
+    const stream = (_model: ModelConfig, _messages: AgentMessage[], options?: StreamOptions) => {
+      observedTools = options?.tools;
+      const result = new AssistantEventStream();
+      queueMicrotask(() => {
+        result.push({ type: 'text_delta', textDelta: 'answer' });
+        result.end();
+      });
+      return result;
+    };
+    const handler = new TaskModelHandler({
+      model,
+      toolRegistry,
+      stream,
+      defaultModelCapabilities: {
+        outputFormats: ['text'],
+        structuredOutput: true,
+        tools: false,
+        toolCalling: false
+      }
+    });
+
+    await handler.execute({
+      task: {
+        id: 'tools-disabled-task',
+        kind: 'test.tools-disabled',
+        input: {},
+        outputContract: { format: 'text' }
+      },
+      context: {
+        fragments: [],
+        text: '',
+        tokenEstimate: 0,
+        fingerprint: 'tools-disabled-context',
+        truncated: false
+      },
+      signal: new AbortController().signal,
+      executionRunId: 'run:tools-disabled-task',
+      attempt: 1,
+      consumeSteering: () => [],
+      saveCheckpoint: async () => undefined,
+      reportProgress: () => undefined
+    });
+
+    expect(observedTools).toBeUndefined();
   });
 });
