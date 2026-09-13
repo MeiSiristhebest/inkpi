@@ -75,7 +75,7 @@ export class BranchSummarizer {
     // 对齐上游 v0.85.0 PR #8845：提升分支推演与深度思考时的摘要上限 (4096 tokens / ~16000 字符)，
     // 避免深度推理模型输出截断导致总结丢失关键世界观。
     if (summaryText.length > 32000) {
-      summaryText = summaryText.slice(0, 32000) + '... (truncated)';
+      summaryText = `${summaryText.slice(0, 32000)}... (truncated)`;
     }
 
     const discardedIdeas: string[] = [];

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FileSystemDocumentStore, createAuthoringTools, ToolRegistry } from '@inkpi/agent-core';
+import { FileSystemDocumentStore, ToolRegistry, createAuthoringTools } from '@inkpi/agent-core';
 import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core: FileSystemDocumentStore & Desktop Workspace Bridge', () => {
