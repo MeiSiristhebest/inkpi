@@ -279,7 +279,7 @@ function receipt(
 }
 
 function inversePatchOf(result: ApplyResult): unknown {
-  return result && result.inversePatch;
+  return result?.inversePatch;
 }
 
 function cloneValue<T>(value: T): T {

@@ -69,9 +69,7 @@ export interface DomainSyncRestoreParams {
  * checksum deliberately excludes the checksum field itself so both desktop
  * and daemon can verify the same wire object without a shared mutable state.
  */
-export function calculateDomainChangeSetChecksum(
-  changeSet: Omit<DomainChangeSet, 'checksum'>,
-): string {
+export function calculateDomainChangeSetChecksum(changeSet: Omit<DomainChangeSet, 'checksum'>): string {
   const serialized = stableSerialize(changeSet);
   let hash = 0x811c9dc5;
   for (let index = 0; index < serialized.length; index += 1) {

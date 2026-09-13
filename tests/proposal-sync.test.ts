@@ -1,9 +1,9 @@
-import {
-  calculateProposalProjectionSnapshotHash,
-  calculateProposalProjectionStateHash,
-  type ProposalProjectionState,
-} from '@inkpi/protocol';
 import { InkRpcClient, MemoryTransport } from '@inkpi/client';
+import {
+  type ProposalProjectionState,
+  calculateProposalProjectionSnapshotHash,
+  calculateProposalProjectionStateHash
+} from '@inkpi/protocol';
 import { InkPiDaemon } from '@inkpi/server';
 import { InkDb, ProposalProjectionStore } from '@inkpi/storage';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -26,7 +26,7 @@ function makeState(overrides: Partial<ProposalProjectionState> = {}): ProposalPr
     status: 'pending',
     createdAt: 10,
     updatedAt: 10,
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -42,21 +42,19 @@ describe('proposal projection protocol', () => {
     const reordered = {
       ...state,
       target: { id: 'chapter-1', type: 'document' },
-      patch: [{ text: '改', to: 1, from: 0, documentId: 'chapter-1' }],
+      patch: [{ text: '改', to: 1, from: 0, documentId: 'chapter-1' }]
     };
 
-    expect(calculateProposalProjectionStateHash(state)).toBe(
-      calculateProposalProjectionStateHash(reordered),
-    );
+    expect(calculateProposalProjectionStateHash(state)).toBe(calculateProposalProjectionStateHash(reordered));
     expect(JSON.parse(JSON.stringify({ proposal: state }))).toEqual({ proposal: state });
     expect(
-      calculateProposalProjectionSnapshotHash({ workspaceId: 'workspace-1', revision: 1, proposals: [state] }),
+      calculateProposalProjectionSnapshotHash({ workspaceId: 'workspace-1', revision: 1, proposals: [state] })
     ).toBe(
       calculateProposalProjectionSnapshotHash({
         workspaceId: 'workspace-1',
         revision: 1,
-        proposals: [reordered],
-      }),
+        proposals: [reordered]
+      })
     );
   });
 
@@ -64,7 +62,7 @@ describe('proposal projection protocol', () => {
     const db = new InkDb();
     openDbs.push(db);
     const daemon = new InkPiDaemon({
-      context: { proposalProjection: new ProposalProjectionStore(db, () => 100) },
+      context: { proposalProjection: new ProposalProjectionStore(db, () => 100) }
     });
     const client = connect(daemon);
     const pending = makeState();
@@ -74,12 +72,12 @@ describe('proposal projection protocol', () => {
       duplicate: false,
       revision: 1,
       proposalId: 'proposal-1',
-      stateHash: calculateProposalProjectionStateHash(pending),
+      stateHash: calculateProposalProjectionStateHash(pending)
     });
     await expect(client.pushProposalState('workspace-1', 0, pending)).resolves.toMatchObject({
       accepted: true,
       duplicate: true,
-      revision: 1,
+      revision: 1
     });
 
     const tampered = await client.request<{
@@ -90,7 +88,7 @@ describe('proposal projection protocol', () => {
       workspaceId: 'workspace-1',
       expectedRevision: 1,
       proposal: { ...pending, status: 'accepted', updatedAt: 11 },
-      stateHash: '00000000',
+      stateHash: '00000000'
     });
     expect(tampered).toMatchObject({ accepted: false, reason: 'hash-mismatch', revision: 1 });
 
@@ -99,12 +97,12 @@ describe('proposal projection protocol', () => {
       accepted: false,
       duplicate: false,
       reason: 'revision-conflict',
-      revision: 1,
+      revision: 1
     });
     await expect(client.pushProposalState('workspace-1', 1, accepted)).resolves.toMatchObject({
       accepted: true,
       duplicate: false,
-      revision: 2,
+      revision: 2
     });
 
     await client.close();
@@ -115,21 +113,21 @@ describe('proposal projection protocol', () => {
     const db = new InkDb();
     openDbs.push(db);
     const firstDaemon = new InkPiDaemon({
-      context: { proposalProjection: new ProposalProjectionStore(db, () => 100) },
+      context: { proposalProjection: new ProposalProjectionStore(db, () => 100) }
     });
     const firstClient = connect(firstDaemon);
     const committed = makeState({
       status: 'committed',
       committedRevision: 5,
       inversePatch: [{ documentId: 'chapter-1', from: 0, to: 1, text: '原' }],
-      updatedAt: 12,
+      updatedAt: 12
     });
     await firstClient.pushProposalState('workspace-restart', 0, committed);
     await firstClient.close();
     await firstDaemon.stop();
 
     const restartedDaemon = new InkPiDaemon({
-      context: { proposalProjection: new ProposalProjectionStore(db, () => 200) },
+      context: { proposalProjection: new ProposalProjectionStore(db, () => 200) }
     });
     const restartedClient = connect(restartedDaemon);
     await expect(restartedClient.snapshotProposals('workspace-restart')).resolves.toMatchObject({
@@ -139,8 +137,8 @@ describe('proposal projection protocol', () => {
       hash: calculateProposalProjectionSnapshotHash({
         workspaceId: 'workspace-restart',
         revision: 1,
-        proposals: [committed],
-      }),
+        proposals: [committed]
+      })
     });
 
     await restartedClient.close();

@@ -1,15 +1,38 @@
-import { DatabaseSync } from 'node:sqlite';
-import { calculateDomainChangeSetChecksum, type DomainChangeSet } from '@inkpi/protocol';
+import { type DomainChangeSet, calculateDomainChangeSetChecksum } from '@inkpi/protocol';
 import { STORAGE_SCHEMA_DDL } from './ddl.js';
 import type { IDb, PreparedStatement } from './ports.js';
 
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): PreparedStatement;
+  close(): void;
+}
+
+interface SqliteModule {
+  Database?: new (path: string) => SqliteDatabase;
+  DatabaseSync?: new (path: string) => SqliteDatabase;
+}
+
+// Node 22+ exposes the synchronous driver as `node:sqlite`; Bun exposes the
+// compatible synchronous API as `bun:sqlite`. Keep the specifier dynamic so a
+// Bun-compiled standalone daemon never tries to load Node's unsupported module.
+const sqliteModuleName = process.versions.bun ? 'bun:sqlite' : 'node:sqlite';
+const sqliteModule = (await import(sqliteModuleName)) as unknown as SqliteModule;
+const SqliteDatabase = (() => {
+  const database = process.versions.bun ? sqliteModule.Database : sqliteModule.DatabaseSync;
+  if (!database) {
+    throw new Error(`SQLite driver is unavailable for runtime '${process.release.name}'.`);
+  }
+  return database;
+})();
+
 export class InkDb implements IDb {
-  private db: DatabaseSync;
+  private db: SqliteDatabase;
   private dbPath: string;
 
   constructor(dbPath = ':memory:') {
     this.dbPath = dbPath;
-    this.db = new DatabaseSync(dbPath);
+    this.db = new SqliteDatabase(dbPath);
     this.initSchema();
   }
 
@@ -41,7 +64,7 @@ export class InkDb implements IDb {
   private ensureColumn(
     table: 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions',
     column: string,
-    definition: string,
+    definition: string
   ): boolean {
     const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (columns.some((entry) => entry.name === column)) return false;
@@ -51,7 +74,9 @@ export class InkDb implements IDb {
 
   private backfillDomainChangeSetChecksums(): void {
     const rows = this.db
-      .prepare('SELECT id, workspace_id, source_device_id, base_revision, revision, changes_json, created_at, checksum FROM domain_change_sets')
+      .prepare(
+        'SELECT id, workspace_id, source_device_id, base_revision, revision, changes_json, created_at, checksum FROM domain_change_sets'
+      )
       .all() as Array<Record<string, unknown>>;
     const update = this.db.prepare('UPDATE domain_change_sets SET checksum = ? WHERE id = ?');
     for (const row of rows) {
@@ -64,7 +89,7 @@ export class InkDb implements IDb {
         baseRevision: Number(row.base_revision),
         revision: Number(row.revision),
         changes: JSON.parse(String(row.changes_json)),
-        createdAt: Number(row.created_at),
+        createdAt: Number(row.created_at)
       } as Omit<DomainChangeSet, 'checksum'>;
       update.run(calculateDomainChangeSetChecksum(changeSet), changeSet.id);
     }

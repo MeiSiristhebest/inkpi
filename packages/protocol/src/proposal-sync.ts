@@ -1,8 +1,4 @@
-import {
-  type DomainProposal,
-  type DomainProposalStatus,
-  validateDomainProposal,
-} from './domain-proposal.js';
+import { type DomainProposal, type DomainProposalStatus, validateDomainProposal } from './domain-proposal.js';
 
 /**
  * Runtime-side projection of a reviewable proposal.
@@ -66,24 +62,26 @@ export function calculateProposalProjectionStateHash(state: ProposalProjectionSt
 
 /** Hashes the canonical, id-sorted snapshot contents. */
 export function calculateProposalProjectionSnapshotHash(
-  input: Pick<ProposalProjectionSnapshot, 'workspaceId' | 'revision' | 'proposals'>,
+  input: Pick<ProposalProjectionSnapshot, 'workspaceId' | 'revision' | 'proposals'>
 ): string {
   return fnv1a(
     stableSerialize({
       workspaceId: input.workspaceId,
       revision: input.revision,
-      proposals: [...input.proposals].sort((left, right) => left.id.localeCompare(right.id)),
-    }),
+      proposals: [...input.proposals].sort((left, right) => left.id.localeCompare(right.id))
+    })
   );
 }
 
 function isProposalStatus(value: unknown): value is DomainProposalStatus {
-  return value === 'pending'
-    || value === 'accepted'
-    || value === 'rejected'
-    || value === 'stale'
-    || value === 'committed'
-    || value === 'undone';
+  return (
+    value === 'pending' ||
+    value === 'accepted' ||
+    value === 'rejected' ||
+    value === 'stale' ||
+    value === 'committed' ||
+    value === 'undone'
+  );
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

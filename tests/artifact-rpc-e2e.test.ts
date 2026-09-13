@@ -1,9 +1,9 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Artifact } from '@inkpi/protocol';
 import { InkRpcClient } from '@inkpi/client';
-import { createDaemonPersistence, InkPiDaemon } from '@inkpi/server';
+import type { Artifact } from '@inkpi/protocol';
+import { InkPiDaemon, createDaemonPersistence } from '@inkpi/server';
 import { InkDb, SqliteArtifactStore } from '@inkpi/storage';
 import { describe, expect, it } from 'vitest';
 
@@ -48,9 +48,7 @@ describe('artifact RPC over TCP', () => {
       expect(JSON.parse(JSON.stringify(rehydrated))).toEqual(artifact);
       await expect(client.listArtifacts({ taskId: 'task:tcp-e2e' })).resolves.toEqual([artifact]);
       await expect(client.listArtifacts({ type: artifact.type })).resolves.toEqual([artifact, sameTypeOtherTask]);
-      await expect(
-        client.listArtifacts({ taskId: 'task:tcp-e2e', type: artifact.type })
-      ).resolves.toEqual([artifact]);
+      await expect(client.listArtifacts({ taskId: 'task:tcp-e2e', type: artifact.type })).resolves.toEqual([artifact]);
     } finally {
       await client?.close();
       await daemon.stop();
@@ -99,9 +97,9 @@ describe('artifact RPC over TCP', () => {
       expect(rehydrated).toEqual(artifact);
       expect(JSON.parse(JSON.stringify(rehydrated))).toEqual(artifact);
       await expect(secondClient.listArtifacts({ taskId: 'task:rehydrate' })).resolves.toEqual([artifact]);
-      await expect(
-        secondClient.listArtifacts({ taskId: 'task:rehydrate', type: artifact.type })
-      ).resolves.toEqual([artifact]);
+      await expect(secondClient.listArtifacts({ taskId: 'task:rehydrate', type: artifact.type })).resolves.toEqual([
+        artifact
+      ]);
     } finally {
       await secondClient?.close();
       await secondDaemon.stop();

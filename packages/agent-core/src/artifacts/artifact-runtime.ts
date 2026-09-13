@@ -36,15 +36,20 @@ export class ArtifactRuntime {
     const id = artifactId ?? result.artifactIds?.[0] ?? options.idGenerator?.(task) ?? this.idGenerator(task);
     const resultProvenance = result.provenance ?? {};
     const parentArtifactId =
-      options.parentArtifactId ?? readString(task.metadata, 'parentArtifactId') ?? readString(resultProvenance, 'parentArtifactId');
+      options.parentArtifactId ??
+      readString(task.metadata, 'parentArtifactId') ??
+      readString(resultProvenance, 'parentArtifactId');
     const sourceRevision =
       options.sourceRevision ??
       readNumber(task.metadata, 'sourceRevision') ??
       readNumber(resultProvenance, 'sourceRevision') ??
       task.input.selection?.revision;
-    const sessionId = options.sessionId ?? readString(task.metadata, 'sessionId') ?? readString(resultProvenance, 'sessionId');
+    const sessionId =
+      options.sessionId ?? readString(task.metadata, 'sessionId') ?? readString(resultProvenance, 'sessionId');
     const executionRunId =
-      options.executionRunId ?? readString(task.metadata, 'executionRunId') ?? readString(resultProvenance, 'executionRunId');
+      options.executionRunId ??
+      readString(task.metadata, 'executionRunId') ??
+      readString(resultProvenance, 'executionRunId');
     const createdAt = this.now();
     const artifact: Artifact = {
       id,
@@ -70,13 +75,19 @@ export class ArtifactRuntime {
     const existingPending = this.pending.get(id);
     if (existingPending) {
       const existing = await existingPending;
-      if (stableSerialize(existing) !== stableSerialize(artifact)) {
-        throw new Error(`Artifact ${id} is already being persisted with incompatible content`);
-      }
-      return existing;
+      assertCompatibleArtifact(existing, artifact);
+      return cloneValue(existing);
     }
 
-    const save = Promise.resolve(this.store.save(cloneValue(artifact))).then(() => artifact);
+    const save = (async () => {
+      const existing = await this.store.get(id);
+      if (existing) {
+        assertCompatibleArtifact(existing, artifact);
+        return cloneValue(existing);
+      }
+      await this.store.save(cloneValue(artifact));
+      return artifact;
+    })();
     this.pending.set(id, save);
     try {
       return await save;
@@ -84,6 +95,22 @@ export class ArtifactRuntime {
       if (this.pending.get(id) === save) this.pending.delete(id);
     }
   }
+}
+
+function assertCompatibleArtifact(existing: Artifact, candidate: Artifact): void {
+  if (stableSerialize(artifactIdentity(existing)) !== stableSerialize(artifactIdentity(candidate))) {
+    throw new Error(`Artifact ${candidate.id} is already persisted with incompatible content`);
+  }
+}
+
+function artifactIdentity(artifact: Artifact): unknown {
+  return {
+    id: artifact.id,
+    type: artifact.type,
+    version: artifact.version,
+    content: artifact.content,
+    provenance: artifact.provenance
+  };
 }
 
 function outputContent(output: TaskOutput): unknown {
