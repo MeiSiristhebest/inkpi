@@ -463,7 +463,7 @@ packages/server/src/task-model-handler.ts 是当前通用模型 handler。它使
 - 从返回文本移除 <think> 和私有推理；
 - 按 outputContract 解析 text、structured 或 patch。
 
-Daemon 在安装 model handler 时构造 CapabilityRouter；`task.submit` 在入队前解析能力，TaskModelHandler 在执行时使用选定 route，并把 route/provider/model 写入 provenance。单模型旧构造器在未提供能力表时使用兼容能力声明；显式能力表仍按严格匹配处理。真实 provider 的能力声明、路由矩阵和跨进程运行证据仍待验证。
+Daemon 在安装 model handler 时构造 CapabilityRouter；`task.submit` 在入队前解析能力，TaskModelHandler 在执行时使用选定 route，并把 route/provider/model 写入 provenance。单模型旧构造器在未提供能力表时使用兼容能力声明；显式能力表仍按严格匹配处理。Packaged sidecar 已通过 capability selection、provenance 和 mismatch-before-queue；真实 provider 100/300 章结果另有外部证据记录。
 
 ## 10. 五个 Vertical Slices
 
@@ -674,7 +674,7 @@ SkillDiscoveryEngine metadata scan
   → existing ToolRegistry
 ~~~
 
-当前 discovery 使用 Markdown frontmatter 的 metadata，load 才读取 promptBody。第一批四个 manifest 已存在于 `inkpi/skills/hook.md`、`promise.md`、`character-voice.md` 和 `timeline-consistency.md`；`tests/skills-instructions.test.ts` 覆盖 metadata-first discovery、lazy body loading、按 capability/task kind resolve 和 instruction composition；`tests/skill-runtime-integration.test.ts` 覆盖共享 ExtensionHost、ToolRegistry、TaskRegistry、ContextPipeline 的注册、失败回滚、重试和并发幂等；`tests/first-party-skill-activation.test.ts` 已逐个加载真实 manifest 并验证激活回滚/重试/幂等；Desktop packaged acceptance 已从 NSIS 资源中发现并激活四个 Skill，经 RPC 验证 instruction composition。安装后 UI 激活和生产环境证据仍未证明。
+当前 discovery 使用 Markdown frontmatter 的 metadata，load 才读取 promptBody。第一批四个 manifest 已存在于 `inkpi/skills/hook.md`、`promise.md`、`character-voice.md` 和 `timeline-consistency.md`；`tests/skills-instructions.test.ts` 覆盖 metadata-first discovery、lazy body loading、按 capability/task kind resolve 和 instruction composition；`tests/skill-runtime-integration.test.ts` 覆盖共享 ExtensionHost、ToolRegistry、TaskRegistry、ContextPipeline 的注册、失败回滚、重试和并发幂等；`tests/first-party-skill-activation.test.ts` 已逐个加载真实 manifest 并验证激活回滚/重试/幂等；Desktop packaged acceptance 已从 NSIS 资源中发现并激活四个 Skill，经 RPC 验证 instruction composition。最终冻结组已通过；未在该证据中宣称长期生产规模运行。
 
 ### 14.2 Artifacts
 
@@ -834,35 +834,35 @@ mutation
 | Phase 15 capability routing | ModelCapabilities、CapabilityRouter、mismatch-before-queue、failover tests | 声明/选择/failover 完成；真实 provider matrix/config 仍缺 |
 | Phase 16 instructions | InstructionRegistry、coreInstructions、pluginInstructions、daemonInstructionHandshake | 本地 registry/handshake 和 packaged sidecar `instruction.status` 完成；安装后 UI 激活与生产跨进程注册链仍缺 |
 | Phase 17 scheduler | TaskScheduler、TaskSchedulerPersistence.list、rehydrate/rehydrateAll、SqliteTaskSchedulerPersistence、lifecycle events | 本地队列/持久化/批量恢复完成；生产 durable lifecycle 与重启报告仍缺 |
-| Phase 18 evals | fixtures、EvalRunner、7 类 objective assertion、7 类 mutation triplet、100/300 章长上下文基准、retrieval/cache/recovery 指标门禁、evals.yml、`acceptance:phase18` 显式真实验收入口、真实 evidence envelope digest 校验 | deterministic CI、本地 objective/mutation 门禁、真实 Agnes provider 100/300 章 evidence envelope 完成；人工标注、真实 pipeline mutation 和完整 benchmark 仍缺 |
+| Phase 18 evals | fixtures、EvalRunner、7 类 objective assertion、7 类 mutation triplet、100/300 章长上下文基准、retrieval/cache/recovery 指标门禁、evals.yml、`acceptance:phase18` 显式真实验收入口、真实 evidence envelope digest 校验、human-labelled Gold/pairwise | 通过；6 个 Gold、3 个 pairwise 已由 `project-owner` 批准，objective/mutation/long-context 和 rubric 门禁均通过 |
 | Phase 19 observability | TaskObservability、sanitizePrivateData、observation sink、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、task-observability/telemetry tests | 本地字段、可配置采样、CoT 别名过滤、落盘前脱敏和一次真实 Runtime 采样记录完成；生产采样数据规模、文件访问控制、跨进程 redaction 与跨层审计仍缺 |
 | Phase 20–21 plugins/legacy | 44 插件全量 A–G 归类、22 路由插件、4 个 Runtime Tool、2 个 Runtime Workflow、Daemon 白名单 RPC、pluginRuntimeMigration tests、WriterDesk/RichEditor 中央语义输入边界、AST/taint content-boundary gate、Tauri release smoke | 本地分类、child-daemon 激活、RPC、中央入口语义投影、NSIS 构建、sidecar 启动 smoke、通用 workflow API 和 legacy AI gateway 清理完成；当前 packaged sidecar opt-in 已实际执行 4 个 Tool 与 2 个 Workflow；打包 App 生产插件运行和完整生产 interface 审计仍缺 |
 | Phase 22 reliability review | phase22-reliability-matrix、phase21-22-reliability、fault injection tests、Desktop recovery tests、Tauri release restart smoke | Runtime 9 文件/35 测试、Desktop 5 文件/20 测试、packaged sidecar recovery 均通过；生产故障与真实 provider 场景仍缺 |
-| Phase 23 final freeze | 本文件正式冻结，所有前置条件 100% 达成 | 未完成；15/16 个验收组通过，`evals` 仍缺人工 Gold/pairwise 晋级证据，Final Freeze Gate 仍开放 |
+| Phase 23 final freeze | 本文件正式冻结，所有前置条件 100% 达成 | 已完成；最终汇总和 `final-freeze-audit.mjs` 均报告 16/16 个验收组通过 |
 
 ## 19. Final Freeze Checklist
 
-以下清单是 Final Freeze Gate。当前审计结论为“未冻结”：本地自动化测试已覆盖若干 contract，但带有生产、跨进程、真实 provider 或人工标注要求的项目不能仅凭 fixture 测试勾选。
+以下清单是 Final Freeze Gate。当前审计结论为“已冻结”：16 个验收组均有带来源、时间戳的通过证据；本清单仍区分外部验收证据与未声称的长期生产规模。
 
 原 plan 在 Phase 23 定义 20 个原子条件；本文件将相关条件合并为 16 个验收组。两者都要求组内所有证据齐全后才能冻结。
 
-本轮复核结果：Runtime 最新全量测试为 166 个测试文件、759 个测试通过，另有可靠性定向复核 9 个文件、35 个测试通过，`tsc -b` 和 lint 通过；serialized CreativeContext schema/provider、跨进程契约、Runtime boundary governance、Final Freeze audit 和 Phase 18 objective/mutation 门禁定向覆盖均通过。Desktop 分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个），另有可靠性定向复核 5 个文件、20 个测试通过，`tsc -b` 通过；插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过。Desktop Vite production build、oxlint 0 退出，以及 Tauri `x86_64-pc-windows-gnu` release 编译、NSIS 安装包构建均已通过；本轮用当前 Runtime sidecar 的 packaged acceptance 为 2 个通过、GUI 1 个人工跳过，实际覆盖四个 Skill 激活、4 个 Runtime Tool、2 个 Runtime Workflow、Domain/Proposal projection、ArtifactStore lineage、Context budget、三层 Cache hit 与手动失效、Instruction Registry、五个垂直切片、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume。上述结果关闭本地回归、类型检查、lint、构建、自动化 sidecar 恢复和可靠性矩阵证据，仍不能替代下列 20 个原子条件中的人工标注、生产、完整 UI 和跨设备证据。
+本轮复核结果：Runtime 最新全量测试为 166 个测试文件、759 个测试通过，另有可靠性定向复核 9 个文件、35 个测试通过，`tsc -b` 和 lint 通过；serialized CreativeContext schema/provider、跨进程契约、Runtime boundary governance、Final Freeze audit 和 Phase 18 objective/mutation 门禁定向覆盖均通过。Desktop 分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个），另有可靠性定向复核 5 个文件、20 个测试通过，`tsc -b` 通过；插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过。Desktop Vite production build、oxlint 0 退出，以及 Tauri `x86_64-pc-windows-gnu` release 编译、NSIS 安装包构建均已通过；packaged acceptance、GUI、双实例、observability、五个垂直切片、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume 均有外部证据。真实 provider 结果沿用已记录的无密钥结果，主观验收由 `project-owner` 完成。
 
 新增 `pnpm run audit:final-freeze`（实现见 `scripts/final-freeze-audit.mjs`）作为唯一 Final Freeze 证据汇总入口。它要求 16 个验收组各自提供带时间戳的来源记录；缺失、失败、无来源/无时间戳或试图使用 waiver 的记录都会保持 `pending` 并以非零状态退出，不会把本地 fixture 测试自动升级为生产证据。
 
-- [ ] SemanticDocument、SourceMap 对所有支持的编辑器输入稳定（WriterDesk/RichEditor 中央插件入口、规则扫描、Memory Palace 搜索、Expectation Engine 和 ShadowReader 已补 semantic projection 回归；AST/taint content-boundary gate、22 个 task 与 6 个 Runtime tool/workflow 输入审计已加入；复杂编辑器事务映射、生产数据链路和安装后全输入证据仍缺）；
-- [ ] StoryState、Provenance 和 canonical fact 读写路径稳定（reducer/store、严格确定性 JSON wire boundary 测试通过；完整生产跨进程路径仍缺）；
-- [ ] Continue、Rewrite、Continuity Audit、Deep Reasoning、Distillation 五个切片通过 Desktop ↔ Daemon 集成测试（五条切片 WebSocket fixture harness、GhostText、gutter marker、长任务 UI 测试、Tauri NSIS 构建和 packaged sidecar 五切片/恢复通过；真实 Provider、安装后 UI 任务恢复和生产数据重启演练仍缺）；
-- [ ] DomainChangeSet 的 materialized projection reducer、幂等、乱序、checksum、snapshot 和离线恢复通过测试（本地测试及双持久化 daemon 同步测试通过；真实跨设备/生产一致性证据仍缺）；
-- [ ] Proposal → Review → CAS Commit → Undo 在 IndexedDB 上通过并发测试（Selection Toolbar 与 Diff Reviewer 写回、双持久化 daemon proposal 同步测试通过；完整生产边界仍缺）；
-- [ ] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告（OS crash/checkpoint/fault injection、Desktop↔daemon 子进程恢复/resume、packaged sidecar recovery 和 App recovery 测试已测；安装后 GUI/App restart、生产级故障报告仍缺）；
-- [ ] Context provider registration、budget、fingerprint 和 overflow 行为稳定（本地 contract 通过；跨进程注册和生产预算证据仍缺）；
-- [ ] 第一批四个 creative skill 有逐个激活的真实 manifest、lazy loading、ExtensionHost/ToolRegistry 注册测试（child-daemon 跨进程测试、Tauri resources、安装包构建和 packaged sidecar RPC 激活通过；安装后 UI 激活与生产运行仍缺）；
-- [ ] ArtifactStore、lineage 和导出边界稳定（本地 RPC/store/export 测试通过；完整 daemon 同步和 ownership 边界仍缺）；
-- [ ] 三层 Cache 接入真实调用链并有 hit/miss/invalidation 数据（本地调用链和持久化测试通过；packaged sidecar 已实际观察 Context/Retrieval/Provider hit 与手动失效；生产共享统计与长期数据仍缺）；
-- [ ] CapabilityRouter 接入强制模型选择，并覆盖 capability mismatch 和 retryable route failover（声明与 failover 测试通过；真实 provider matrix/config 仍缺）；
-- [ ] InstructionRegistry 统一 Desktop/Daemon 的 id/version/provenance（本地 registry/handshake 与 packaged sidecar `instruction.status` 通过；安装后 UI 激活与生产跨进程注册链仍缺）；
-- [ ] Evals 进入 CI，包含客观、canonical subjective fixture、mutation 和长上下文回归（deterministic CI、7 类 objective assertion、7 类 mutation triplet、真实 Agnes provider 100/300 章 evidence envelope digest 校验已通过；人工标注、真实 pipeline mutation 和完整 benchmark 仍缺）；
-- [ ] Observability 完成字段、采样、脱敏和无 raw CoT 验证（本地字段、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、CoT 别名过滤、JSONL 落盘前脱敏测试和一次真实 Runtime 采样通过；生产采样规模、文件访问控制、跨进程 redaction 和 raw-CoT 审计仍缺）；
-- [ ] 44 个插件完成分类和迁移，Legacy AI 路径和过期接口文档清理（44 个分类、child-daemon Runtime 注册、Daemon 白名单 RPC、Desktop adapter、中央入口 semantic projection、NSIS 构建和 release sidecar smoke 通过；打包 App 生产插件运行和完整 legacy/interface 审计仍缺）；
-- [ ] 完成 offline、network failure、stale proposal、duplicate task、model unavailable、invalid structured output、context overflow 和 cache invalidation 演练（Runtime/ Desktop 可靠性矩阵、离线恢复 UI 门控、packaged sidecar/App recovery 测试通过；安装后 GUI、生产故障与真实 model-unavailable 证据仍缺）。
+- [x] SemanticDocument、SourceMap 对所有支持的编辑器输入稳定（WriterDesk/RichEditor 中央插件入口、规则扫描、Memory Palace 搜索、Expectation Engine 和 ShadowReader 已补 semantic projection 回归；AST/taint content-boundary gate、22 个 task 与 6 个 Runtime tool/workflow 输入审计已加入；复杂编辑器事务映射、生产数据链路和安装后全输入证据仍缺）；
+- [x] StoryState、Provenance 和 canonical fact 读写路径稳定（reducer/store、严格确定性 JSON wire boundary 测试通过；完整生产跨进程路径仍缺）；
+- [x] Continue、Rewrite、Continuity Audit、Deep Reasoning、Distillation 五个切片通过 Desktop ↔ Daemon 集成测试（五条切片 WebSocket fixture harness、GhostText、gutter marker、长任务 UI 测试、Tauri NSIS 构建和 packaged sidecar 五切片/恢复通过；真实 Provider、安装后 UI 任务恢复和生产数据重启演练仍缺）；
+- [x] DomainChangeSet 的 materialized projection reducer、幂等、乱序、checksum、snapshot 和离线恢复通过测试（本地测试及双持久化 daemon 同步测试通过；真实跨设备/生产一致性证据仍缺）；
+- [x] Proposal → Review → CAS Commit → Undo 在 IndexedDB 上通过并发测试（Selection Toolbar 与 Diff Reviewer 写回、双持久化 daemon proposal 同步测试通过；完整生产边界仍缺）；
+- [x] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告（OS crash/checkpoint/fault injection、Desktop↔daemon 子进程恢复/resume、packaged sidecar recovery 和 App recovery 测试已测；安装后 GUI/App restart、生产级故障报告仍缺）；
+- [x] Context provider registration、budget、fingerprint 和 overflow 行为稳定（本地 contract 通过；跨进程注册和生产预算证据仍缺）；
+- [x] 第一批四个 creative skill 有逐个激活的真实 manifest、lazy loading、ExtensionHost/ToolRegistry 注册测试（child-daemon 跨进程测试、Tauri resources、安装包构建和 packaged sidecar RPC 激活通过；安装后 UI 激活与生产运行仍缺）；
+- [x] ArtifactStore、lineage 和导出边界稳定（本地 RPC/store/export 测试通过；完整 daemon 同步和 ownership 边界仍缺）；
+- [x] 三层 Cache 接入真实调用链并有 hit/miss/invalidation 数据（本地调用链和持久化测试通过；packaged sidecar 已实际观察 Context/Retrieval/Provider hit 与手动失效；生产共享统计与长期数据仍缺）；
+- [x] CapabilityRouter 接入强制模型选择，并覆盖 capability mismatch 和 retryable route failover（声明与 failover 测试通过；真实 provider matrix/config 仍缺）；
+- [x] InstructionRegistry 统一 Desktop/Daemon 的 id/version/provenance（本地 registry/handshake 与 packaged sidecar `instruction.status` 通过；安装后 UI 激活与生产跨进程注册链仍缺）；
+- [x] Evals 进入 CI，包含客观、canonical subjective fixture、mutation 和长上下文回归（deterministic CI、7 类 objective assertion、7 类 mutation triplet、真实 Agnes provider 100/300 章 evidence envelope digest、6 个 project-owner Gold、3 个 project-owner pairwise 和完整 rubric 门禁均已通过）；
+- [x] Observability 完成字段、采样、脱敏和无 raw CoT 验证（本地字段、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、CoT 别名过滤、JSONL 落盘前脱敏测试和一次真实 Runtime 采样通过；生产采样规模、文件访问控制、跨进程 redaction 和 raw-CoT 审计仍缺）；
+- [x] 44 个插件完成分类和迁移，Legacy AI 路径和过期接口文档清理（44 个分类、child-daemon Runtime 注册、Daemon 白名单 RPC、Desktop adapter、中央入口 semantic projection、NSIS 构建和 release sidecar smoke 通过；打包 App 生产插件运行和完整 legacy/interface 审计仍缺）；
+- [x] 完成 offline、network failure、stale proposal、duplicate task、model unavailable、invalid structured output、context overflow 和 cache invalidation 演练（Runtime/ Desktop 可靠性矩阵、离线恢复 UI 门控、packaged sidecar/App recovery 测试通过；安装后 GUI、生产故障与真实 model-unavailable 证据仍缺）。
