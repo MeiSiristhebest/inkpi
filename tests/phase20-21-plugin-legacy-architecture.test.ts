@@ -37,6 +37,12 @@ const RUNTIME_SOURCE_ROOTS = [
   path.join(INKPI_ROOT, 'packages', 'cli', 'src')
 ];
 
+const RUNTIME_BOUNDARY_SOURCE_ROOTS = [
+  path.join(INKPI_ROOT, 'packages', 'agent-core', 'src', 'pipeline'),
+  path.join(INKPI_ROOT, 'packages', 'agent-core', 'src', 'compaction'),
+  path.join(INKPI_ROOT, 'packages', 'agent-core', 'src', 'tools')
+];
+
 type DesktopCatalogModule = {
   FIRST_PARTY_PLUGIN_IDS: readonly string[];
 };
@@ -102,6 +108,16 @@ function listSourceFiles(root: string): string[] {
 
 function runtimeSources(): Array<{ file: string; relativeFile: string; source: string }> {
   return RUNTIME_SOURCE_ROOTS.flatMap((root) =>
+    listSourceFiles(root).map((file) => ({
+      file,
+      relativeFile: path.relative(INKPI_ROOT, file).split(path.sep).join('/'),
+      source: fs.readFileSync(file, 'utf8')
+    }))
+  );
+}
+
+function runtimeBoundarySources(): Array<{ file: string; relativeFile: string; source: string }> {
+  return RUNTIME_BOUNDARY_SOURCE_ROOTS.flatMap((root) =>
     listSourceFiles(root).map((file) => ({
       file,
       relativeFile: path.relative(INKPI_ROOT, file).split(path.sep).join('/'),
@@ -210,7 +226,52 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
 describe('Phase 21 legacy AI cleanup', () => {
   it('keeps the coordinator on the single generic strategy', () => {
     expect(genericWorkflowStrategy.mode).toBe('generic');
-    expect(genericWorkflowStrategy.includeLedgerAliases).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(genericWorkflowStrategy, 'includeLedgerAliases')).toBe(false);
+  });
+
+  it('keeps Creative Domain adapters out of the default agent-core export', async () => {
+    const agentCore = await import('@inkpi/agent-core');
+    for (const removedExport of [
+      'createNarrativeEntitySafetyRules',
+      'createScreenplayGateRules',
+      'createShortDramaGateRules',
+      'createVisualNovelGateRules',
+      'NarrativeSemanticLedgerExtractor',
+      'extractNovelStateLedger',
+      'formatNovelStateLedger',
+      'createAuthoringTools',
+      'FileSystemDocumentStore',
+      'InMemoryDocumentStore'
+    ]) {
+      expect(agentCore).not.toHaveProperty(removedExport);
+    }
+    expect(agentCore.extractRuntimeState).toBeDefined();
+    expect(agentCore.createDocumentResourceTools).toBeDefined();
+  });
+
+  it('keeps creative parsing and direct document writes outside Runtime boundary sources', () => {
+    const sourceMarkers = [
+      /narrative-gates/,
+      /state-ledger/,
+      /authoring-tools/,
+      /createAuthoringTools/,
+      /FileSystemDocumentStore/,
+      /InMemoryDocumentStore/
+    ];
+    const sourceViolations = runtimeBoundarySources()
+      .filter(({ source }) => sourceMarkers.some((marker) => marker.test(stripComments(source))))
+      .map(({ relativeFile }) => relativeFile)
+      .sort();
+    expect(sourceViolations).toEqual([]);
+
+    const directWriteMarkers = [/\bedit_text\b/, /\bwrite_draft\b/, /docStore\.write\s*\(/];
+    const directWriteViolations = runtimeBoundarySources()
+      .filter(({ relativeFile, source }) =>
+        relativeFile.includes('/tools/') && directWriteMarkers.some((marker) => marker.test(stripComments(source)))
+      )
+      .map(({ relativeFile }) => relativeFile)
+      .sort();
+    expect(directWriteViolations).toEqual([]);
   });
 
   it('removes legacy AI gateways and stage-name compatibility hooks from Runtime sources', () => {

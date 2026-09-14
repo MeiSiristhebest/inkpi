@@ -1,10 +1,10 @@
 # InkPi AI Runtime Specification v1
 
-状态：Final Freeze 已通过
+状态：本地 Phase 23 Atomic Gate 已接入；正式 Freeze 需按原始 20 项重新审计
 
 基线日期：2026-09-14
 
-本文件是 Runtime v1 的接口基线与验收记录。Phase 0–23 的代码、契约、跨进程、打包、可靠性、GUI/双实例/观测和人工主观验收证据已汇总；`inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json` 通过最终冻结审计，16/16 个 Final Freeze 组通过。6 个 Gold 与 3 个 pairwise 已由 `project-owner` 批准并登记为 human-labelled；Phase 18 的 7 个 objective、7 个 mutation、100/300 章长上下文和主观评分门禁均通过。真实 provider 结果沿用已记录的无密钥外部证据，最近一次门禁使用该记录做 replay 校验，没有写入凭证或原始 provider payload。Runtime 最新全量复核为 166 个测试文件、759 个测试通过；可靠性定向复核为 9 个测试文件、35 个测试通过；TypeScript 类型检查和 lint 通过。Desktop 最新分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个）；可靠性定向复核为 5 个测试文件、20 个测试通过；TypeScript 类型检查通过。
+本文件是 Runtime v1 的接口基线与验收记录。本轮在 Runtime 仓库内新增了只使用本地测试、fixture 和 CI 标记的 20 项 Phase 23 原子门禁；它不替代真实 provider、GUI、双实例、人工标注或生产长期运行证据。`inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json` 仍是既有的 external/replay 记录，旧 `scripts/final-freeze-audit.mjs` 仍报告 16 个外部聚合组；两者都不会被本地门禁当作新的实现证据。Phase 18 的本地 7 个 objective、7 个 mutation、100/300 章 fixture 和 Phase 22 的 13 个可靠性场景由确定性测试覆盖。真实 provider、Gold/pairwise、GUI、双实例和生产 observability 结论仍按其原有 evidence role 解释，不在本地门禁中自动升级。
 
 ## 1. 范围和术语
 
@@ -803,6 +803,7 @@ mutation
 已有 runner 可以检查 task status、output contract、required provenance 和 proposal approval；已有 long-context fixture、mutation helper，以及 `packages/evals/fixtures/subjective/` 下的 canonical gold-set、pairwise preference 和 rubric fixture。当前 deterministic 与 subjective 测试已覆盖实体/状态矛盾、source-map/range、100/300 chapter budget、mutation、distillation checkpoint、候选评分、pairwise 排名和 rubric 门禁，并验证 fixture JSON 与 CI workflow 清单。long-context benchmark 现已提供 retrieval recall、cache hit/invalidation 和 distillation recovery 的可注入指标与阈值门禁；默认报告仍明确为 `fixture-only`，不产生真实 provider 或生产数据证据。
 
 `.github/workflows/evals.yml` 已把 `pnpm run test:evals` 接入 push、pull request 和手动触发的 CI。`acceptance:real-provider` 已提供显式环境门控、凭据检查和 marker 报告，但默认不调用外部 provider。当前 deterministic suite、canonical subjective fixture suite、真实 provider 100/300 章 evidence、人工 Gold/pairwise、可靠性矩阵和 packaged sidecar 门禁均有可复现或带来源的证据。正式汇总见 `inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json`。
+`.github/workflows/evals.yml` 除 `pnpm run test:evals` 外，还直接运行 `tests/phase23-local-freeze.test.ts`、Phase 22 reliability matrix 和 20 项门禁引用的本地回归文件。`packages/evals/src/phase23-local-gate.ts` 是本地门禁的唯一矩阵实现，`packages/evals/fixtures/phase23/local-gate-contract.json` 是 fixture-only 契约：provider/model 调用数为 0，7/7 objective、7/7 mutation 和 100/300 章 benchmark 只用于确定性回归。external/replay 记录只计入 `ignoredCount`，`usedForEligibility` 固定为 `false`。`acceptance:real-provider` 仍提供显式环境门控，但默认不调用外部 provider；正式外部汇总仍见 `inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json`。
 
 - 真实 provider 的 100/300 章 marker、retrieval、recovery 结果；
 - 7 类 objective assertion、7 类 mutation triplet 和 6 个 Gold/3 个 pairwise 主观验收；
@@ -832,21 +833,63 @@ mutation
 | Phase 15 capability routing | ModelCapabilities、CapabilityRouter、mismatch-before-queue、failover tests | 声明/选择/failover 完成；真实 provider matrix/config 仍缺 |
 | Phase 16 instructions | InstructionRegistry、coreInstructions、pluginInstructions、daemonInstructionHandshake | 本地 registry/handshake 和 packaged sidecar `instruction.status` 完成；安装后 UI 激活与生产跨进程注册链仍缺 |
 | Phase 17 scheduler | TaskScheduler、TaskSchedulerPersistence.list、rehydrate/rehydrateAll、SqliteTaskSchedulerPersistence、lifecycle events | 本地队列/持久化/批量恢复完成；生产 durable lifecycle 与重启报告仍缺 |
-| Phase 18 evals | fixtures、EvalRunner、7 类 objective assertion、7 类 mutation triplet、100/300 章长上下文基准、retrieval/cache/recovery 指标门禁、evals.yml、`acceptance:phase18` 显式真实验收入口、真实 evidence envelope digest 校验、human-labelled Gold/pairwise | 通过；6 个 Gold、3 个 pairwise 已由 `project-owner` 批准，objective/mutation/long-context 和 rubric 门禁均通过 |
-| Phase 19 observability | TaskObservability、sanitizePrivateData、observation sink、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、task-observability/telemetry tests | 本地字段、可配置采样、CoT 别名过滤、落盘前脱敏和一次真实 Runtime 采样记录完成；生产采样数据规模、文件访问控制、跨进程 redaction 与跨层审计仍缺 |
+| Phase 18 evals | fixtures、EvalRunner、7 类 objective assertion、7 类 mutation triplet、100/300 章长上下文基准、retrieval/cache/recovery 指标门禁、`phase23-local-freeze.test.ts`、evals.yml；真实 evidence envelope、Gold/pairwise 仍单独保留 | 本地 deterministic fixture gate 通过；真实 provider 和 human-labelled 结果仍是 external/replay，不由本地 fixture 产生 |
+| Phase 19 observability | TaskObservability、23 个公开 observation 字段、sanitizePrivateData、observation sink、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、task-observability/task-provenance tests | 本地字段完整性、采样、脱敏和嵌套 private reasoning 过滤门禁覆盖；生产采样规模、访问控制、跨进程 redaction 与跨层审计仍未声明完成 |
 | Phase 20–21 plugins/legacy | 44 插件全量 A–G 归类、22 路由插件、4 个 Runtime Tool、2 个 Runtime Workflow、Daemon 白名单 RPC、pluginRuntimeMigration tests、WriterDesk/RichEditor 中央语义输入边界、AST/taint content-boundary gate、Tauri release smoke | 本地分类、child-daemon 激活、RPC、中央入口语义投影、NSIS 构建、sidecar 启动 smoke、通用 workflow API 和 legacy AI gateway 清理完成；当前 packaged sidecar opt-in 已实际执行 4 个 Tool 与 2 个 Workflow；打包 App 生产插件运行和完整生产 interface 审计仍缺 |
-| Phase 22 reliability review | phase22-reliability-matrix、phase21-22-reliability、fault injection tests、Desktop recovery tests、Tauri release restart smoke | Runtime 9 文件/35 测试、Desktop 5 文件/20 测试、packaged sidecar recovery 均通过；生产故障与真实 provider 场景仍缺 |
-| Phase 23 final freeze | 本文件正式冻结，所有前置条件 100% 达成 | 已完成；最终汇总和 `final-freeze-audit.mjs` 均报告 16/16 个验收组通过 |
+| Phase 22 reliability review | 13 个场景的 `PHASE22_RELIABILITY_SCENARIOS`、phase22-reliability-matrix、fault injection、RPC/restart/cache/provider tests | 本地 13/13 场景进入 deterministic gate；生产故障、真实 provider 和长期运行仍未声明完成 |
+| Phase 23 final freeze | `PHASE23_ATOMIC_CONDITIONS` 的 20 个原子条件、source marker、CI 直接执行和 Final Freeze audit 规则 | 本地门禁以 20 项为准；旧 `final-freeze-audit.mjs` 的 16 组 external/replay 汇总不是 20 项实现证据的替代物 |
 
 ## 19. Final Freeze Checklist
 
-以下清单是 Final Freeze Gate。当前审计结论为“已冻结”：16 个验收组均有带来源、时间戳的通过证据；本清单仍区分外部验收证据与未声称的长期生产规模。
+以下清单是本地 Final Freeze Gate 的映射说明。当前本地 gate 只接受 Runtime 仓库内的 test、fixture、workflow 来源；它不把 fixture、旧 external/replay JSON、GUI 记录或真实 provider 结果转换成新的实现证据。
 
-原 plan 在 Phase 23 定义 20 个原子条件；本文件将相关条件合并为 16 个验收组。两者都要求组内所有证据齐全后才能冻结。
+原 plan 在 Phase 23 定义 20 个原子条件。本地实现逐项保留这 20 个 ID，并额外要求 Phase 22 的 13 个可靠性场景；旧 16 组审计仍作为历史 external/replay 聚合入口保留，但不能满足本地 20 项资格。
 
-本轮复核结果：Runtime 最新全量测试为 166 个测试文件、759 个测试通过，另有可靠性定向复核 9 个文件、35 个测试通过，`tsc -b` 和 lint 通过；serialized CreativeContext schema/provider、跨进程契约、Runtime boundary governance、Final Freeze audit 和 Phase 18 objective/mutation 门禁定向覆盖均通过。Desktop 分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个），另有可靠性定向复核 5 个文件、20 个测试通过，`tsc -b` 通过；插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过。Desktop Vite production build、oxlint 0 退出，以及 Tauri `x86_64-pc-windows-gnu` release 编译、NSIS 安装包构建均已通过；packaged acceptance、GUI、双实例、observability、五个垂直切片、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume 均有外部证据。真实 provider 结果沿用已记录的无密钥结果，主观验收由 `project-owner` 完成。
+运行本地闭环：
 
-新增 `pnpm run audit:final-freeze`（实现见 `scripts/final-freeze-audit.mjs`）作为唯一 Final Freeze 证据汇总入口。它要求 16 个验收组各自提供带时间戳的来源记录；缺失、失败、无来源/无时间戳或试图使用 waiver 的记录都会保持 `pending` 并以非零状态退出，不会把本地 fixture 测试自动升级为生产证据。
+~~~text
+pnpm exec vitest run tests/phase23-local-freeze.test.ts
+pnpm --filter @inkpi/evals run build
+~~~
+
+测试输出是本地回归结果，不是 Phase 18/23 外部 evidence JSON。实现不修改 agent-core、Desktop 源码或既有 Phase 18/23 外部证据。
+
+`pnpm run audit:final-freeze`（实现见 `scripts/final-freeze-audit.mjs`）仍是旧 external evidence 汇总入口。它要求 16 个验收组各自提供带时间戳的来源记录；本轮不修改该脚本，也不把它的输出当作本地 20 项门禁结果。
+
+### 19.1 Phase 23 原始 Plan 的 20 项原子映射
+
+`packages/evals/src/phase23-local-gate.ts` 中的 `PHASE23_ATOMIC_CONDITIONS` 是可执行矩阵的 source of truth。每个条目必须提供精确的本地 source ref 和 marker；缺失、失败、重复、路径越界或 external/replay 来源都会使 gate 不能通过。
+
+| ID | 原始 Plan 条件 | 本地来源 |
+| --- | --- | --- |
+| `canonical-content` | Canonical Content Representation 稳定 | `tests/semantic-content-boundaries.test.ts`、`packages/evals/fixtures/semantic-content/source-map-range.json` |
+| `canonical-story-model` | Canonical Story Model 稳定 | `tests/domain-sync.test.ts`、`tests/final-freeze-cross-boundary.test.ts` |
+| `continue-prose` | Continue Prose 稳定 | `tests/task-evals.test.ts`、`tests/first-party-skill-activation.test.ts` |
+| `selection-rewrite` | Selection Rewrite 稳定 | `tests/task-evals.test.ts`、`tests/first-party-skill-activation.test.ts` |
+| `continuity-audit` | Continuity Audit 稳定 | `tests/task-contract.test.ts`、`tests/first-party-skill-activation.test.ts` |
+| `deep-story-reasoning` | Deep Story Reasoning 稳定 | `tests/first-party-skill-activation.test.ts` |
+| `project-distillation` | Project Distillation 稳定 | `tests/first-party-skill-activation.test.ts` |
+| `projection-sync` | Projection Sync 稳定 | `tests/domain-sync.test.ts` |
+| `proposal-commit` | Proposal → Commit 稳定 | `tests/runtime-phase9-13.test.ts`、`tests/proposal-sync.test.ts` |
+| `optimistic-concurrency` | Optimistic Concurrency 稳定 | `tests/proposal-sync.test.ts`、`tests/phase22-reliability-matrix.test.ts` |
+| `durable-execution` | Durable Execution 稳定 | `tests/process-restart-e2e.test.ts`、`tests/fault-injection-recovery.test.ts` |
+| `context-pipeline` | Context Pipeline 稳定 | `tests/context-cache-pipeline-integration.test.ts`、`tests/context-overflow-reliability.test.ts` |
+| `story-context-compiler` | Story Context Compiler 稳定 | `tests/serialized-creative-context-provider.test.ts` |
+| `skill-lazy-loading` | Skill Lazy Loading 稳定 | `tests/first-party-skill-activation.test.ts`、`tests/skills-instructions.test.ts` |
+| `artifact-store` | Artifact Store 稳定 | `tests/artifact-rpc-e2e.test.ts` |
+| `cache-architecture` | Cache Architecture 稳定 | `tests/runtime-cache-cross-layer.test.ts`、`tests/runtime-cache-persistence-restart.test.ts` |
+| `capability-aware-model-routing` | Capability-aware Model Routing 稳定 | `tests/phase22-reliability-matrix.test.ts`、`tests/provider-route-fallback.test.ts` |
+| `evals-in-ci` | Evals 进入 CI | `.github/workflows/evals.yml`、`tests/phase23-local-freeze.test.ts` |
+| `observability` | Observability 完成 | `tests/task-provenance.test.ts`、`tests/task-observability.test.ts` |
+| `legacy-ai-paths` | 主要 Legacy AI 路径删除 | `tests/phase20-21-plugin-legacy-architecture.test.ts` |
+
+### 19.2 Phase 22 的 13 个可靠性场景
+
+本地 gate 对以下场景逐项计数，任何缺失或失败都会使报告保持 `pending`：`crash-test`、`daemon-restart`、`offline-desktop`、`broken-network`、`stale-proposal`、`duplicate-task`、`out-of-order-delta`、`corrupt-checkpoint`、`model-unavailable`、`provider-capability-mismatch`、`invalid-structured-output`、`context-overflow`、`cache-invalidation`。来源矩阵同样位于 `phase23-local-gate.ts`，并由 `tests/phase23-local-freeze.test.ts` 和 `tests/phase22-reliability-matrix.test.ts` 执行。
+
+### 19.3 历史外部聚合清单
+
+下方旧清单仅保留为 external/replay 证据索引。其 16 组 `[x]` 标记不代表本地 20 项 Atomic Gate 已通过，也不改变真实 provider、GUI、双实例、人工标注或生产 observability 的 evidence role。
 
 - [x] SemanticDocument、SourceMap 对所有支持的编辑器输入稳定（WriterDesk/RichEditor 中央插件入口、规则扫描、Memory Palace 搜索、Expectation Engine 和 ShadowReader 已补 semantic projection 回归；AST/taint content-boundary gate、22 个 task 与 6 个 Runtime tool/workflow 输入审计已加入；复杂编辑器事务映射、生产数据链路和安装后全输入证据仍缺）；
 - [x] StoryState、Provenance 和 canonical fact 读写路径稳定（reducer/store、严格确定性 JSON wire boundary 测试通过；完整生产跨进程路径仍缺）；

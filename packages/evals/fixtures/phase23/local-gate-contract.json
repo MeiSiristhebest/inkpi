@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase23-local-gate-fixture",
+  "mode": "fixture-only",
+  "evidenceRole": "deterministic-regression-only",
+  "providerCalls": 0,
+  "modelCalls": 0,
+  "phase18": {
+    "objectiveKindCount": 7,
+    "mutationKindCount": 7,
+    "chapterCounts": [100, 300],
+    "realProviderEvidence": "not-produced",
+    "humanLabelEvidence": "not-produced"
+  },
+  "phase19": {
+    "requiredFieldCount": 23,
+    "privateReasoningPolicy": "never-persist"
+  },
+  "phase22": {
+    "reliabilityScenarioCount": 13
+  },
+  "phase23": {
+    "atomicConditionCount": 20,
+    "externalEvidencePolicy": "supplemental-only",
+    "realProviderRequired": false,
+    "crossDeviceLongRunRequired": false
+  }
+}

@@ -12,3 +12,4 @@ export * from './subjective-evals.js';
 export * from './human-gold.js';
 export * from './real-provider-acceptance.js';
 export * from './phase18-acceptance.js';
+export * from './phase23-local-gate.js';

@@ -5,11 +5,8 @@ on:
     branches: [master, main]
     paths:
       - "packages/evals/**"
-      - "tests/evals-runner.test.ts"
-      - "tests/task-evals.test.ts"
-      - "tests/task-observability.test.ts"
-      - "tests/task-provenance.test.ts"
-      - "tests/subjective-evals.test.ts"
+      - "tests/**"
+      - "docs/specs/AI_RUNTIME_SPEC_v1.md"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vitest.config.ts"
@@ -18,11 +15,8 @@ on:
     branches: [master, main]
     paths:
       - "packages/evals/**"
-      - "tests/evals-runner.test.ts"
-      - "tests/task-evals.test.ts"
-      - "tests/task-observability.test.ts"
-      - "tests/task-provenance.test.ts"
-      - "tests/subjective-evals.test.ts"
+      - "tests/**"
+      - "docs/specs/AI_RUNTIME_SPEC_v1.md"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vitest.config.ts"
@@ -63,6 +57,36 @@ jobs:
 
       - name: Run Deterministic Evals & Provenance Contracts
         run: pnpm run test:evals
+
+      - name: Run Phase 23 local atomic gate and Phase 22 reliability matrix
+        run: >-
+          pnpm exec vitest run
+          tests/phase23-local-freeze.test.ts
+          tests/phase22-reliability-matrix.test.ts
+          tests/semantic-content-boundaries.test.ts
+          tests/domain-sync.test.ts
+          tests/final-freeze-cross-boundary.test.ts
+          tests/task-evals.test.ts
+          tests/task-contract.test.ts
+          tests/first-party-skill-activation.test.ts
+          tests/proposal-sync.test.ts
+          tests/runtime-phase9-13.test.ts
+          tests/process-restart-e2e.test.ts
+          tests/fault-injection-recovery.test.ts
+          tests/context-cache-pipeline-integration.test.ts
+          tests/context-overflow-reliability.test.ts
+          tests/serialized-creative-context-provider.test.ts
+          tests/skills-instructions.test.ts
+          tests/artifact-rpc-e2e.test.ts
+          tests/runtime-cache-cross-layer.test.ts
+          tests/runtime-cache-persistence-restart.test.ts
+          tests/provider-route-fallback.test.ts
+          tests/provider-capability-matrix-gate.test.ts
+          tests/daemon-rpc-e2e.test.ts
+          tests/task-router-durable-boundary.test.ts
+          tests/phase20-21-plugin-legacy-architecture.test.ts
+          tests/task-provenance.test.ts
+          tests/task-observability.test.ts
 
       - name: Run Phase 18 long-context benchmarks
         run: pnpm exec vitest run packages/evals/src/benchmarks/long-context.test.ts
