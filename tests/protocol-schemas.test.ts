@@ -1,6 +1,7 @@
 import {
   AssistantMessageSchema,
   EntityStateSchema,
+  LegacyStateLedgerSchema,
   RpcRequestSchema,
   RuntimeStateSchema,
   StateLedgerSchema,
@@ -12,7 +13,9 @@ import {
   UserMessageSchema,
   Value,
   assertValid,
+  sanitizeLegacyStateLedger,
   sanitizeNovelStateLedger,
+  sanitizeRuntimeState,
   sanitizeStateLedger,
   validateSchema
 } from '@inkpi/protocol';
@@ -77,6 +80,35 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
       locations: [{ id: 'loc_1', name: 'location' }]
     };
     expect(Value.Check(StateLedgerSchema, ledger)).toBe(true);
+    expect(StateLedgerSchema).toBe(LegacyStateLedgerSchema);
+  });
+
+  it('should keep generic Runtime state opaque at the protocol boundary', () => {
+    const raw = {
+      entities: 'caller-owned value',
+      arbitraryDomainState: { nested: true },
+      customArray: [1, { value: 'untouched' }]
+    };
+
+    const sanitized = sanitizeRuntimeState(raw);
+
+    expect(sanitized).toEqual(raw);
+    expect(sanitized).not.toBe(raw);
+    expect(sanitizeRuntimeState(null)).toEqual({});
+    expect(sanitizeRuntimeState(['not a state object'])).toEqual({});
+  });
+
+  it('should validate legacy aliases only through the explicit compatibility schema', () => {
+    expect(
+      Value.Check(StateLedgerSchema, {
+        characters: [{ name: 'Character A' }],
+        items: [{ name: 'Object A' }],
+        foreshadowings: [{ summary: 'Unresolved thread' }],
+        modifiedChapters: ['chapter-1'],
+        modifiedDocuments: ['document-1'],
+        customExtension: { source: 'legacy-client' }
+      })
+    ).toBe(true);
   });
 
   it('should validate the durable task.execution query contract', () => {
@@ -170,6 +202,30 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
     expect(sanitized.assets.length).toBe(1);
     expect(sanitized.tracks.length).toBe(1);
     expect(sanitized.locations.length).toBe(1);
+    expect(sanitizeLegacyStateLedger(null)).toEqual({
+      entities: [],
+      assets: [],
+      tracks: [],
+      locations: [],
+      modifiedResources: []
+    });
+  });
+
+  it('should normalize legacy aliases without adding domain defaults', () => {
+    const sanitized = sanitizeStateLedger({
+      characters: [{ name: 'Character A' }],
+      items: [{ name: 'Object A' }],
+      foreshadowings: [{ summary: 'Unresolved thread' }],
+      modifiedChapters: ['chapter-1'],
+      modifiedDocuments: ['document-1'],
+      customExtension: { revision: 2 }
+    });
+
+    expect(sanitized.entities).toEqual([{ name: 'Character A' }]);
+    expect(sanitized.assets).toEqual([{ name: 'Object A' }]);
+    expect(sanitized.tracks).toEqual([{ summary: 'Unresolved thread' }]);
+    expect(sanitized.modifiedResources).toEqual(['chapter-1', 'document-1']);
+    expect(sanitized.customExtension).toEqual({ revision: 2 });
   });
 
   it('should keep generic ledger sanitization free of inferred domain semantics', () => {

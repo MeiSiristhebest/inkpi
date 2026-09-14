@@ -123,8 +123,12 @@ export const AgentMessageSchema = Type.Union([
   CustomMessageSchema
 ]);
 
-// 6. 通用状态账本 Schemas (Entity / Asset / Track / Resource)
-export const EntityStateSchema = Type.Object({
+// 6. Legacy state adapter Schemas (Entity / Asset / Track / Resource)
+//
+// These schemas are intentionally kept separate from RuntimeStateSchema. They
+// describe the historical structured snapshot accepted by older storage and
+// client integrations; generic Runtime payloads use the opaque schema above.
+export const LegacyEntityStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
   name: Type.String({ minLength: 1 }),
   type: Type.Optional(Type.String()),
@@ -136,7 +140,7 @@ export const EntityStateSchema = Type.Object({
   location: Type.Optional(Type.String())
 });
 
-export const AssetStateSchema = Type.Object({
+export const LegacyAssetStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
   name: Type.String({ minLength: 1 }),
   holder: Type.Optional(Type.String()),
@@ -146,7 +150,7 @@ export const AssetStateSchema = Type.Object({
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any()))
 });
 
-export const TrackStateSchema = Type.Object({
+export const LegacyTrackStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
   clue: Type.Optional(Type.String()),
   summary: Type.Optional(Type.String()),
@@ -155,7 +159,7 @@ export const TrackStateSchema = Type.Object({
   metadata: Type.Optional(Type.Record(Type.String(), Type.Any()))
 });
 
-export const LocationStateSchema = Type.Object({
+export const LegacyLocationStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
   name: Type.String({ minLength: 1 }),
   description: Type.Optional(Type.String()),
@@ -169,20 +173,37 @@ export const LocationStateSchema = Type.Object({
 export const RuntimeStateSchema = Type.Record(Type.String(), Type.Any());
 
 /**
- * @deprecated Compatibility schema for the normalized state snapshot used by
- * legacy persistence/sanitization callers. Runtime workflows use
- * RuntimeStateSchema and do not depend on this shape.
+ * Compatibility schema for the normalized state snapshot used by legacy
+ * persistence/sanitization callers. Runtime workflows use RuntimeStateSchema
+ * and do not depend on this shape.
  */
-export const StateLedgerSchema = Type.Object(
+export const LegacyStateLedgerSchema = Type.Object(
   {
-    entities: Type.Optional(Type.Array(EntityStateSchema)),
-    assets: Type.Optional(Type.Array(AssetStateSchema)),
-    tracks: Type.Optional(Type.Array(TrackStateSchema)),
-    locations: Type.Optional(Type.Array(LocationStateSchema)),
-    modifiedResources: Type.Optional(Type.Array(Type.String()))
+    entities: Type.Optional(Type.Array(LegacyEntityStateSchema)),
+    assets: Type.Optional(Type.Array(LegacyAssetStateSchema)),
+    tracks: Type.Optional(Type.Array(LegacyTrackStateSchema)),
+    locations: Type.Optional(Type.Array(LegacyLocationStateSchema)),
+    modifiedResources: Type.Optional(Type.Array(Type.String())),
+    characters: Type.Optional(Type.Array(LegacyEntityStateSchema)),
+    items: Type.Optional(Type.Array(LegacyAssetStateSchema)),
+    foreshadowings: Type.Optional(Type.Array(LegacyTrackStateSchema)),
+    modifiedChapters: Type.Optional(Type.Array(Type.String())),
+    modifiedDocuments: Type.Optional(Type.Array(Type.String())),
+    customExtension: Type.Optional(Type.Any())
   },
   { additionalProperties: false }
 );
+
+/** @deprecated Use `RuntimeStateSchema` for generic Runtime payloads. */
+export const EntityStateSchema = LegacyEntityStateSchema;
+/** @deprecated Use `RuntimeStateSchema` for generic Runtime payloads. */
+export const AssetStateSchema = LegacyAssetStateSchema;
+/** @deprecated Use `RuntimeStateSchema` for generic Runtime payloads. */
+export const TrackStateSchema = LegacyTrackStateSchema;
+/** @deprecated Use `RuntimeStateSchema` for generic Runtime payloads. */
+export const LocationStateSchema = LegacyLocationStateSchema;
+/** @deprecated Use `RuntimeStateSchema` for generic Runtime payloads. */
+export const StateLedgerSchema = LegacyStateLedgerSchema;
 
 // 7. Durable task execution query Schemas
 export const TaskStatusSchema = Type.Union([

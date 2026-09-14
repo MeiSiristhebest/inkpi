@@ -1,3 +1,5 @@
+import type { RuntimeState } from './pipeline.js';
+
 export interface Workspace {
   id: string;
   title: string;
@@ -63,7 +65,15 @@ export interface FtsSearchResult {
   orderIndex: number;
 }
 
-export interface EntityRecord {
+/**
+ * Legacy compatibility records.
+ *
+ * These shapes are retained for storage and older integrations only. Generic
+ * Runtime code must use `RuntimeState` and an injected domain adapter instead
+ * of depending on any of these named collections.
+ */
+export interface LegacyEntityRecord {
+  [key: string]: unknown;
   id?: string;
   name: string;
   type?: string;
@@ -73,7 +83,8 @@ export interface EntityRecord {
   attributes?: Record<string, unknown>;
 }
 
-export interface AssetRecord {
+export interface LegacyAssetRecord {
+  [key: string]: unknown;
   id?: string;
   name: string;
   holder?: string;
@@ -83,7 +94,8 @@ export interface AssetRecord {
   attributes?: Record<string, unknown>;
 }
 
-export interface TrackRecord {
+export interface LegacyTrackRecord {
+  [key: string]: unknown;
   id?: string;
   clue?: string;
   summary?: string;
@@ -93,18 +105,25 @@ export interface TrackRecord {
   metadata?: Record<string, unknown>;
 }
 
-export interface LocationRecord {
+export interface LegacyLocationRecord {
+  [key: string]: unknown;
   id?: string;
   name: string;
   description?: string;
 }
 
-/** 结构化通用状态账本 (1:1 移植自 repos/pi FileOperations 思想) */
-export interface StateLedger {
-  entities: EntityRecord[];
-  assets: AssetRecord[];
-  tracks: TrackRecord[];
-  locations: LocationRecord[];
+/**
+ * Legacy structured state snapshot.
+ *
+ * This is an adapter contract, not the Runtime state model. It exists so
+ * storage, exports, and older clients can continue to exchange the historical
+ * shape while generic Runtime workflows carry opaque `RuntimeState` values.
+ */
+export interface LegacyStateLedger extends RuntimeState {
+  entities: LegacyEntityRecord[];
+  assets: LegacyAssetRecord[];
+  tracks: LegacyTrackRecord[];
+  locations: LegacyLocationRecord[];
   /** Optional in practice: all readers fall back to modifiedChapters/modifiedDocuments. */
   modifiedResources?: string[];
   /** Free-form domain extension bag (e.g. workflow-injected state). Typed explicitly; do not use an index signature. */
@@ -117,9 +136,33 @@ export interface StateLedger {
   modifiedDocuments?: string[];
 }
 
-export type NovelStateLedger = StateLedger;
-export type CharacterRecord = EntityRecord;
-export type ForeshadowingRecord = TrackRecord;
+/** @deprecated Use `RuntimeState` with an explicit domain adapter. */
+export type StateLedger = LegacyStateLedger;
+/** @deprecated Use `RuntimeState` with an explicit domain adapter. */
+export type NovelStateLedger = LegacyStateLedger;
+/** @deprecated Use an adapter-owned record shape. */
+export type EntityRecord = LegacyEntityRecord;
+/** @deprecated Use an adapter-owned record shape. */
+export type AssetRecord = LegacyAssetRecord;
+/** @deprecated Use an adapter-owned record shape. */
+export type TrackRecord = LegacyTrackRecord;
+/** @deprecated Use an adapter-owned record shape. */
+export type LocationRecord = LegacyLocationRecord;
+/** @deprecated Use an adapter-owned record shape. */
+export type CharacterRecord = LegacyEntityRecord;
+/** @deprecated Use an adapter-owned record shape. */
+export type ForeshadowingRecord = LegacyTrackRecord;
+
+/**
+ * Opaque compaction metadata. The optional `stateLedger` member is retained
+ * only as an un-interpreted compatibility payload; Runtime does not read or
+ * construct its legacy shape.
+ */
+export interface OpaqueCompactionDetails {
+  [key: string]: unknown;
+  /** @deprecated Legacy persistence member; use `runtimeState`. */
+  stateLedger?: RuntimeState;
+}
 
 /** 结构化 Compaction 摘要条目 */
 export interface CompactionEntry {
@@ -130,7 +173,7 @@ export interface CompactionEntry {
   tokensBefore: number;
   estimatedTokensAfter?: number;
   createdAt: number;
-  details?: Record<string, unknown> | { stateLedger?: StateLedger };
+  details?: OpaqueCompactionDetails;
 }
 
 /** 多进程排他写锁租约 */
@@ -216,9 +259,15 @@ export interface JitContextQuery {
   maxFtsResults?: number;
 }
 
-export interface JitContextResult {
+/**
+ * JIT retrieval result with caller-owned working state. The generic parameter
+ * lets Runtime callers carry an opaque state; the historical default remains
+ * `LegacyStateLedger` so existing storage integrations keep their inferred
+ * record fields without a migration flag.
+ */
+export interface JitContextResult<TState extends RuntimeState = LegacyStateLedger> {
   l1WorkingMemory: {
-    activeLedger: StateLedger;
+    activeLedger: TState;
     activeReferences: string[];
     /** @deprecated Use activeReferences. */
     activeEntities: string[];
@@ -233,3 +282,6 @@ export interface JitContextResult {
   l3GlobalLore: FtsSearchResult[];
   assembledPromptBlock: string;
 }
+
+/** @deprecated Use `JitContextResult<RuntimeState>` in new integrations. */
+export type LegacyJitContextResult = JitContextResult<LegacyStateLedger>;
