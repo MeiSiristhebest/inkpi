@@ -11,7 +11,8 @@ This document establishes the engineering standards, architecture invariants, an
 2. **Single-Defect Atomic Focus (RFC-100)**:
    - PRs and commits must remain small, focused, and atomic. Packaged commits with unrelated multi-bug fixes are strictly prohibited.
 3. **Quality Gate Thresholds**:
-   - Monorepo coverage must strictly satisfy: Lines $\ge 85\%$, Branches $\ge 80\%$.
+   - The aggregate coverage gate enforced by `vitest.config.ts` is: Lines/Statements/Functions $\ge 85\%$, Branches $\ge 75\%$.
+   - A per-file coverage floor is not currently enabled.
    - Every new feature or bug fix must include dedicated unit and integration tests.
 4. **Supply-Chain Hardening**:
    - All external dependencies in `package.json` files must use exact versions without `^` or `~` ranges.

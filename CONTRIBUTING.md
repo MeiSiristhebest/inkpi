@@ -5,7 +5,7 @@ Thank you for your interest in contributing to InkPi!
 ## 🛡️ Core Contribution Principles
 
 1. **Strict Single-Defect / Atomic Focus**: PRs must be hyper-focused and minimal.
-2. **Test Coverage ($\ge 85\%$ Lines, $\ge 80\%$ Branches)**: All PRs must include unit or integration tests with high branch coverage.
+2. **Test Coverage Gate (aggregate: $\ge 85\%$ Lines/Statements/Functions, $\ge 75\%$ Branches)**: All PRs must include unit or integration tests and pass the thresholds enforced by `vitest.config.ts`. A per-file floor is not currently enabled.
 3. **Exact Dependency Pinning**: All dependencies must be strictly pinned without wildcards (`^` or `~`).
 4. **No Hardcoding**: Follow clean architecture (Ports & Adapters, SOLID, Separation of Concerns).
 

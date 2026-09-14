@@ -1,10 +1,10 @@
 # InkPi AI Runtime Specification v1
 
-状态：本地 Phase 23 Atomic Gate 已接入；正式 Freeze 需按原始 20 项重新审计
+状态：Runtime 本地 Phase 23 Atomic Gate 已通过 20/20 原子条件和 13/13 可靠性场景；正式 Freeze 仍须按外部 evidence policy 解释，不能由本地 gate 自动升级。
 
 基线日期：2026-09-14
 
-本文件是 Runtime v1 的接口基线与验收记录。本轮在 Runtime 仓库内新增了只使用本地测试、fixture 和 CI 标记的 20 项 Phase 23 原子门禁；它不替代真实 provider、GUI、双实例、人工标注或生产长期运行证据。`inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json` 仍是既有的 external/replay 记录，旧 `scripts/final-freeze-audit.mjs` 仍报告 16 个外部聚合组；两者都不会被本地门禁当作新的实现证据。Phase 18 的本地 7 个 objective、7 个 mutation、100/300 章 fixture 和 Phase 22 的 13 个可靠性场景由确定性测试覆盖。真实 provider、Gold/pairwise、GUI、双实例和生产 observability 结论仍按其原有 evidence role 解释，不在本地门禁中自动升级。
+本文件是 Runtime v1 的接口基线与验收记录。本轮在 Runtime 仓库内新增了只使用本地测试、fixture 和 CI 标记的 20 项 Phase 23 原子门禁；`docs/evidence/phase23-local-gate.json` 当前记录 20/20 原子条件、13/13 可靠性场景通过，但其 `formalFreeze.eligible` 仍为 `false`。工作区的 `inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json` 是独立的 external/replay 记录，当前记录 16/16 聚合组通过，并包含 100/300 章真实 provider、6 个 Gold、3 个 pairwise 和 packaged/GUI 记录；它不被本地门禁当作新的实现证据。旧 `scripts/final-freeze-audit.mjs` 仍是外部聚合入口。Phase 18 的本地 7 个 objective、7 个 mutation、100/300 章 fixture 和 Phase 22 的 13 个可靠性场景由确定性测试覆盖；真实 provider、Gold/pairwise、GUI、双实例和生产 observability 结论仍按各自 evidence role 解释。
 
 ## 1. 范围和术语
 

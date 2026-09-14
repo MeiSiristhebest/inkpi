@@ -197,7 +197,7 @@ cd inkpi
 # 安装 Monorepo 依赖（跳过生命周期脚本）
 pnpm install --ignore-scripts
 
-# 编译所有 10 个子包
+# 编译所有 11 个子包
 pnpm run build
 
 # 运行单元测试
@@ -257,8 +257,8 @@ console.log(session.editor.getText());
    `AgentEngine` 核心状态机与斜杠指令解析、RPC 协议帧完全解耦。
 2. **基于端口与适配器的可插拔持久化**：
    领域模型仅依赖 `ISessionBackend` 接口契约。
-3. **严格质量门禁（$\ge 85\%$ 行，$\ge 80\%$ 分支）**：
-   所有 Pull Request 均在 Linux、macOS 和 Windows 下通过 280+ 个单测与集成测试校验。
+3. **严格质量门禁（聚合覆盖率：行/语句/函数 $\ge 85\%$，分支 $\ge 75\%$）**：
+   所有 Pull Request 均在 Linux、macOS 和 Windows CI 下通过完整 Vitest 套件；最近一次运行覆盖 169 个测试文件、779 个测试。
 4. **供应链依赖安全加固**：
    所有外部依赖均采用确定版本锁定，严禁使用漂移范围操作符（`^` 或 `~`）。
 5. **确定性事件溯源**：

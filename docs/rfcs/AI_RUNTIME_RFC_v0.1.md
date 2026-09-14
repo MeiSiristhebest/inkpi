@@ -13,7 +13,9 @@ domain layer and must not become dependencies of Runtime packages.
 This RFC freezes the boundaries needed for the later task, context, proposal,
 durability, and projection work. It does not freeze the Runtime v1 protocol.
 Runtime v1 may be frozen only after the five vertical slices and the remaining
-Phase 23 checks are complete.
+The local Phase 23 gate is implemented; formal Runtime v1 freeze still depends
+on the external evidence listed in the specification, including real-provider,
+GUI, dual-instance, human-labelled, and production observability checks.
 
 ## Frozen invariants
 

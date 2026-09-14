@@ -252,8 +252,8 @@ console.log(session.editor.getText());
    The `Agent` state machine is decoupled from slash command interpretations and RPC framing.
 2. **Pluggable Persistence via Ports & Adapters**:
    Domain logic relies entirely on the `ISessionBackend` interface.
-3. **Rigorous Quality Gate ($\ge 85\%$ Lines, $\ge 80\%$ Branches)**:
-   Every pull request is verified against 415 unit and integration tests across Linux, macOS, and Windows.
+3. **Rigorous Quality Gate (aggregate: $\ge 85\%$ Lines/Statements/Functions, $\ge 75\%$ Branches)**:
+   Every pull request is verified by the full Vitest suite; the latest run covered 169 test files and 779 tests across Linux, macOS, and Windows CI.
 4. **Supply-Chain Security**:
    All dependencies are locked to exact versions without floating range operators (`^` or `~`).
 5. **Deterministic Event Sourcing**:
