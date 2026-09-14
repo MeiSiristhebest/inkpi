@@ -863,6 +863,14 @@ function candidateRubricCases(goldSet: SubjectiveGoldSet): Array<{
   });
 }
 
+function countRubricCases(value: unknown): number {
+  if (!isRecord(value) || !Array.isArray(value.cases)) return 0;
+  return value.cases.filter(
+    (subjectiveCase) =>
+      isRecord(subjectiveCase) && isRecord(subjectiveCase.gold) && isRecord(subjectiveCase.gold.rubric)
+  ).length;
+}
+
 function validateBenchmarkInput(input: unknown, index: number, violations: InternalViolation[]): number | undefined {
   if (!isRecord(input)) {
     addViolation(violations, `benchmark-${index}-invalid`);
@@ -1020,7 +1028,7 @@ export function validatePhase18AcceptanceInput(input: unknown): Phase18InputVali
   if (!hasHumanGoldSet) {
     addViolation(violations, 'gold-set-missing');
   } else {
-    const report = validateSubjectiveHumanGoldSet(goldSet as unknown as SubjectiveHumanGoldSet);
+    const report = validateSubjectiveHumanGoldSet(goldSet);
     for (const violation of report.violations) addViolation(violations, violation.code);
   }
 
@@ -1033,7 +1041,7 @@ export function validatePhase18AcceptanceInput(input: unknown): Phase18InputVali
     for (const violation of report.violations) addViolation(violations, violation.code);
   }
 
-  const rubricCaseCount = hasHumanGoldSet ? candidateRubricCases(goldSet as unknown as SubjectiveGoldSet).length : 0;
+  const rubricCaseCount = hasHumanGoldSet ? countRubricCases(goldSet) : 0;
   if (rubricCaseCount === 0) addViolation(violations, 'rubric-data-missing');
 
   const benchmarks = root?.benchmarks;

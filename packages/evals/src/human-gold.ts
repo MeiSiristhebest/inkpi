@@ -57,11 +57,6 @@ export interface HumanGoldValidationReport {
   };
 }
 
-type UntrustedHumanGoldSet = SubjectiveGoldSet & {
-  provenance?: unknown;
-  annotations?: unknown;
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -94,11 +89,12 @@ function addViolation(
  * This validates declared evidence; it does not claim that a label was human
  * generated merely because the envelope is present.
  */
-export function validateSubjectiveHumanGoldSet(input: UntrustedHumanGoldSet): HumanGoldValidationReport {
+export function validateSubjectiveHumanGoldSet(input: unknown): HumanGoldValidationReport {
   const violations: HumanGoldValidationViolation[] = [];
-  const cases = Array.isArray(input.cases) ? input.cases : [];
-  const annotations = Array.isArray(input.annotations) ? input.annotations : [];
-  const provenance = isRecord(input.provenance) ? input.provenance : undefined;
+  const root = isRecord(input) ? input : {};
+  const cases = Array.isArray(root.cases) ? root.cases : [];
+  const annotations = Array.isArray(root.annotations) ? root.annotations : [];
+  const provenance = isRecord(root.provenance) ? root.provenance : undefined;
   const caseIds = new Set<string>();
   const annotatorIds = new Set<string>();
   const coveredCaseIds = new Set<string>();
@@ -143,7 +139,8 @@ export function validateSubjectiveHumanGoldSet(input: UntrustedHumanGoldSet): Hu
         provenance.annotatedAt
       );
     }
-    if (!Number.isInteger(provenance.annotationCount) || (provenance.annotationCount as number) < 1) {
+    const annotationCount = provenance.annotationCount;
+    if (typeof annotationCount !== 'number' || !Number.isInteger(annotationCount) || annotationCount < 1) {
       addViolation(
         violations,
         'human-gold-count-invalid',
@@ -152,7 +149,7 @@ export function validateSubjectiveHumanGoldSet(input: UntrustedHumanGoldSet): Hu
         'positive integer',
         provenance.annotationCount
       );
-    } else if (provenance.annotationCount !== annotations.length) {
+    } else if (annotationCount !== annotations.length) {
       addViolation(
         violations,
         'human-gold-count-mismatch',
@@ -237,12 +234,14 @@ export function validateSubjectiveHumanGoldSet(input: UntrustedHumanGoldSet): Hu
     if (provenance.agreement !== undefined) {
       const agreement = provenance.agreement;
       const agreementScore = isRecord(agreement) ? agreement.score : undefined;
+      const sampleCount = isRecord(agreement) ? agreement.sampleCount : undefined;
       if (
         !isRecord(agreement) ||
         !nonEmptyString(agreement.metric) ||
         !validAgreementScore(agreementScore) ||
-        !Number.isInteger(agreement.sampleCount) ||
-        (agreement.sampleCount as number) < 1
+        typeof sampleCount !== 'number' ||
+        !Number.isInteger(sampleCount) ||
+        sampleCount < 1
       ) {
         addViolation(
           violations,
@@ -360,7 +359,7 @@ export function validateSubjectiveHumanGoldSet(input: UntrustedHumanGoldSet): Hu
   }
 
   return {
-    id: nonEmptyString(input.id) ? input.id : 'subjective-human-gold',
+    id: nonEmptyString(root.id) ? root.id : 'subjective-human-gold',
     passed: violations.length === 0,
     violations,
     metrics: {

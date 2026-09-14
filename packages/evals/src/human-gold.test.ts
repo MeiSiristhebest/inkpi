@@ -25,8 +25,6 @@ const validHumanGoldSet: SubjectiveHumanGoldSet = {
 };
 
 describe('human-labelled gold set contract', () => {
-  type UntrustedHumanGoldFixture = Parameters<typeof validateSubjectiveHumanGoldSet>[0];
-
   it('accepts a complete provenance and annotation envelope', () => {
     const report = validateSubjectiveHumanGoldSet(validHumanGoldSet);
 
@@ -39,19 +37,20 @@ describe('human-labelled gold set contract', () => {
   });
 
   it('rejects missing provenance, uncovered cases, unknown annotators, and duplicates', () => {
-    type MutableHumanGoldFixture = Omit<SubjectiveHumanGoldSet, 'provenance' | 'annotations'> & {
-      provenance: { source: string; annotationCount: number };
-      annotations: Array<{ caseId: string; annotatorId: string; label: string; score?: number }>;
+    const invalid = {
+      ...validHumanGoldSet,
+      provenance: {
+        ...validHumanGoldSet.provenance,
+        source: 'deterministic-reference',
+        annotationCount: 5
+      },
+      annotations: [
+        { caseId: 'hook-1', annotatorId: 'annotator-a', label: 'strong', score: 90 },
+        { caseId: 'missing-case', annotatorId: 'annotator-b', label: 'strong', score: 88 },
+        { caseId: 'hook-1', annotatorId: 'unknown', label: 'unknown' },
+        { caseId: 'hook-1', annotatorId: 'annotator-a', label: 'duplicate' }
+      ]
     };
-    const invalid = structuredClone(validHumanGoldSet) as unknown as MutableHumanGoldFixture;
-    invalid.provenance.source = 'deterministic-reference';
-    invalid.provenance.annotationCount = 5;
-    invalid.annotations = [
-      ...invalid.annotations,
-      { caseId: 'hook-1', annotatorId: 'unknown', label: 'unknown' },
-      { caseId: 'hook-1', annotatorId: 'annotator-a', label: 'duplicate' }
-    ];
-    invalid.annotations[1].caseId = 'missing-case';
 
     const report = validateSubjectiveHumanGoldSet(invalid);
     expect(report.passed).toBe(false);
@@ -87,7 +86,7 @@ describe('human-labelled gold set contract', () => {
         { caseId: 'duplicate-case', annotatorId: 'annotator-a', label: 'first' },
         { caseId: 'duplicate-case', annotatorId: 'annotator-a', label: 'second' }
       ]
-    } as unknown as UntrustedHumanGoldFixture);
+    });
 
     expect(report.passed).toBe(false);
     expect(report.metrics).toMatchObject({ caseCount: 3, annotationCount: 4, coveredCaseCount: 1 });
@@ -127,7 +126,7 @@ describe('human-labelled gold set contract', () => {
         agreement: 'missing'
       },
       annotations: [{ caseId: 'case-1', annotatorId: 'annotator-a', label: 'valid' }]
-    } as unknown as UntrustedHumanGoldFixture);
+    });
 
     expect(report.passed).toBe(false);
     expect(report.violations.map((violation) => violation.code)).toEqual(
@@ -152,7 +151,7 @@ describe('human-labelled gold set contract', () => {
         adjudication: { status: 'not-required' }
       },
       annotations: [{ caseId: 'case-1', annotatorId: 'annotator-a', label: 'valid' }]
-    } as unknown as UntrustedHumanGoldFixture);
+    });
 
     expect(report.passed).toBe(false);
     expect(report.violations.map((violation) => violation.code)).toContain('human-gold-adjudication-reason-missing');

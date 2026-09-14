@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TaskObservability, type TaskRunObservation } from '@inkpi/agent-core';
+import { TaskObservability } from '@inkpi/agent-core';
 import {
   type LongContextFixtureDefinition,
   PHASE18_LOCAL_FIXTURE_CONTRACT,
@@ -235,7 +235,7 @@ describe('Phase 23 local atomic freeze gate', () => {
           status: 'passed',
           sources: [
             {
-              kind: 'external' as never,
+              kind: 'test',
               ref: 'inkpi-evidence/phase23/old-record.json',
               marker: 'status: passed'
             }
@@ -398,14 +398,13 @@ describe('Phase 23 local atomic freeze gate', () => {
       artifactIds: ['artifact:phase23'],
       proposalIds: ['proposal:phase23'],
       checkpointIds: ['checkpoint:phase23'],
-      error: undefined,
       provenance: {
         publicSummary: 'safe summary',
         rawThinking: 'must not persist',
         trace: { chainOfThought: 'must not persist' },
         apiKey: 'must not persist'
       }
-    } as unknown as TaskRunObservation);
+    });
 
     const observation = observer.get(task.id);
     expect(observation).toBeDefined();

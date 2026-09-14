@@ -371,15 +371,15 @@ function evaluateMatrix(
 ): Phase23LocalMatrixResult {
   const expectedById = new Map(expected.map((entry) => [entry.id, entry]));
   const supplied = Array.isArray(checks) ? checks : [];
-  const byId = new Map<string, Phase23LocalCheck>();
+  const byId = new Map<string, CandidateLocalCheck>();
   const invalid = new Set<string>();
 
   for (const check of supplied) {
-    if (!isRecord(check) || typeof check.id !== 'string' || !expectedById.has(check.id)) {
-      invalid.add(isRecord(check) && typeof check.id === 'string' ? check.id : '<unknown>');
+    const candidate = readCandidateCheck(check);
+    if (!candidate || !expectedById.has(candidate.id)) {
+      invalid.add(candidate?.id ?? '<unknown>');
       continue;
     }
-    const candidate = check as Phase23LocalCheck;
     if (byId.has(candidate.id)) {
       invalid.add(candidate.id);
       continue;
@@ -404,7 +404,7 @@ function evaluateMatrix(
       id: entry.id,
       planText: entry.planText,
       status,
-      sourceRefs: check?.sources?.map((source) => normalizeRef(source.ref)) ?? []
+      sourceRefs: readSourceRefs(check?.sources)
     };
   });
 
@@ -418,10 +418,18 @@ function evaluateMatrix(
   };
 }
 
-function sameSources(
-  actual: readonly Phase23LocalSource[] | undefined,
-  expected: readonly Phase23LocalSource[]
-): boolean {
+interface CandidateLocalCheck {
+  id: string;
+  status: unknown;
+  sources: unknown;
+}
+
+function readCandidateCheck(value: unknown): CandidateLocalCheck | undefined {
+  if (!isRecord(value) || typeof value.id !== 'string') return undefined;
+  return { id: value.id, status: value.status, sources: value.sources };
+}
+
+function sameSources(actual: unknown, expected: readonly Phase23LocalSource[]): boolean {
   if (!Array.isArray(actual) || actual.length !== expected.length) return false;
   return expected.every((expectedSource) =>
     actual.some(
@@ -432,6 +440,11 @@ function sameSources(
         actualSource.marker === expectedSource.marker
     )
   );
+}
+
+function readSourceRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isValidLocalSource).map((source) => normalizeRef(source.ref));
 }
 
 function isValidStatus(value: unknown): value is Phase23LocalCheckStatus {
@@ -465,6 +478,6 @@ function normalizeRef(value: string): string {
   return value.replaceAll('\\', '/');
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

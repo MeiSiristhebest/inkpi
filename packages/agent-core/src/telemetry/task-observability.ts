@@ -167,6 +167,7 @@ export class TaskObservability implements TaskRunObserver {
       startedAt,
       finishedAt,
       durationMs: startedAt === undefined ? undefined : Math.max(0, finishedAt - startedAt),
+      error: safeObservation.error,
       provenance: { ...existing.provenance, ...safeObservation.provenance }
     });
     const stored = this.observations.get(task.id);

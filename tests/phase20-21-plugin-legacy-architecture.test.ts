@@ -266,8 +266,9 @@ describe('Phase 21 legacy AI cleanup', () => {
 
     const directWriteMarkers = [/\bedit_text\b/, /\bwrite_draft\b/, /docStore\.write\s*\(/];
     const directWriteViolations = runtimeBoundarySources()
-      .filter(({ relativeFile, source }) =>
-        relativeFile.includes('/tools/') && directWriteMarkers.some((marker) => marker.test(stripComments(source)))
+      .filter(
+        ({ relativeFile, source }) =>
+          relativeFile.includes('/tools/') && directWriteMarkers.some((marker) => marker.test(stripComments(source)))
       )
       .map(({ relativeFile }) => relativeFile)
       .sort();
