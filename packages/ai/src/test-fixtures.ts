@@ -18,7 +18,39 @@ const MOCK_TEST_PRESET: ModelConfig = {
   supportsThinking: true,
   temperature: 0.0,
   fauxScript: {
-    text: 'Faux test response'
+    text: 'Faux test response',
+    taskResponses: {
+      'creative.continue': { text: 'packaged vertical slice continuation' },
+      'creative.rewrite': {
+        text: JSON.stringify({ from: 0, to: 6, text: '雨停后只剩冷灯。' }),
+      },
+      'narrative.continuity.audit': {
+        text: JSON.stringify([
+          {
+            id: 'packaged-continuity-finding',
+            severity: 'warning',
+            description: 'Packaged continuity finding.',
+          },
+        ]),
+      },
+      'narrative.deep.reason': {
+        text: JSON.stringify({
+          answer: 'Keep the cold-light motif.',
+          assumptions: ['The scene remains after the rain.'],
+          alternatives: ['Change the motif to warm light.'],
+          risks: ['A tonal shift may weaken continuity.'],
+        }),
+      },
+      'narrative.project.distill': {
+        text: JSON.stringify({
+          summary: 'A character pauses after the rain.',
+          entities: [{ id: 'packaged-character', kind: 'character', name: '她' }],
+          events: [{ id: 'packaged-event', type: 'pause', description: 'She does not look back.' }],
+          promises: [{ id: 'packaged-promise', statement: 'The cold light remains.', status: 'open' }],
+          confidence: 0.9,
+        }),
+      },
+    },
   }
 };
 

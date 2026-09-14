@@ -100,6 +100,8 @@ export interface FauxScriptedResponse {
   text?: string;
   toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
   usage?: Usage;
+  /** Optional explicit response overrides selected by the Runtime task kind. */
+  taskResponses?: Record<string, FauxScriptedResponse>;
   /** @deprecated Use usage. */
   inputTokens?: number;
   /** @deprecated Use usage. */

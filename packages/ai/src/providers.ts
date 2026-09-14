@@ -331,10 +331,11 @@ export function createFauxProvider(script?: FauxScriptedResponse): ProviderHandl
 function fauxProviderWithScript(
   script: FauxScriptedResponse | null | undefined,
   _model: ModelConfig,
-  _messages: AgentMessage[],
+  messages: AgentMessage[],
   options?: StreamOptions
 ): EventStream<AssistantMessageEvent> {
   const stream = new AssistantEventStream();
+  const effectiveScript = selectFauxTaskResponse(script, messages);
 
   queueMicrotask(() => {
     if (options?.signal?.aborted) {
@@ -342,18 +343,18 @@ function fauxProviderWithScript(
       return;
     }
 
-    if (!script) {
+    if (!effectiveScript) {
       stream.error('Faux provider requires an explicit scripted response on the model or provider instance.');
       return;
     }
-    const thinkingText = script.thinking;
+    const thinkingText = effectiveScript.thinking;
 
     if (thinkingText) {
       stream.push({ type: 'thinking_delta', thinkingDelta: thinkingText });
     }
 
-    if (script.toolCalls && script.toolCalls.length > 0) {
-      for (const tc of script.toolCalls) {
+    if (effectiveScript.toolCalls && effectiveScript.toolCalls.length > 0) {
+      for (const tc of effectiveScript.toolCalls) {
         stream.push({ type: 'tool_call_start', toolCallId: tc.id, toolName: tc.name });
         stream.push({ type: 'tool_call_delta', toolCallId: tc.id, argsDelta: JSON.stringify(tc.arguments) });
         stream.push({
@@ -362,18 +363,31 @@ function fauxProviderWithScript(
         });
       }
     } else {
-      if (script.text !== undefined) {
-        stream.push({ type: 'text_delta', textDelta: script.text });
+      if (effectiveScript.text !== undefined) {
+        stream.push({ type: 'text_delta', textDelta: effectiveScript.text });
       }
     }
 
-    const usage = script.usage || legacyUsage(script);
+    const usage = effectiveScript.usage || legacyUsage(effectiveScript);
     if (usage) stream.push({ type: 'usage', usage });
 
     stream.end();
   });
 
   return stream;
+}
+
+function selectFauxTaskResponse(
+  script: FauxScriptedResponse | null | undefined,
+  messages: AgentMessage[]
+): FauxScriptedResponse | null | undefined {
+  if (!script?.taskResponses) return script;
+  const prompt = messages
+    .filter((message): message is Extract<AgentMessage, { role: 'user' }> => message.role === 'user')
+    .map((message) => (typeof message.content === 'string' ? message.content : message.content.map((item) => item.type === 'text' ? item.text : '').join('')))
+    .join('\n');
+  const taskKind = prompt.match(/(?:^|\n)Task kind:\s*([^\r\n]+)/)?.[1]?.trim();
+  return (taskKind && script.taskResponses[taskKind]) || script;
 }
 
 export const fauxProvider: ProviderHandler = (model, messages, options) =>
