@@ -1,5 +1,6 @@
 import { ExtensionHost, TaskRegistry, ToolRegistry } from '@inkpi/agent-core';
-import type { AiTask, ToolCallContent } from '@inkpi/protocol';
+import type { TaskHandler } from '@inkpi/agent-core';
+import type { AgentTool, AiTask, ToolCallContent } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
 import {
@@ -255,6 +256,64 @@ describe('first-party Runtime plugin registration', () => {
       output: { format: 'structured', data: { frames: expect.any(Array) } },
       provenance: { pluginId: 'storyboard-gen', runtimeClass: 'workflow' }
     });
+  });
+
+  it('assembles injected extensions through the same host and registries', async () => {
+    const toolRegistry = new ToolRegistry();
+    const taskRegistry = new TaskRegistry();
+    const extensionHost = new ExtensionHost();
+    const tool: AgentTool = {
+      name: 'test.extension.tool',
+      label: 'Injected test tool',
+      description: 'A tool supplied by an injected extension descriptor.',
+      parameters: { type: 'object', properties: {} },
+      executionMode: 'sequential',
+      replay: 'safe',
+      execute: async () => ({ content: [{ type: 'text', text: 'ok' }], details: { ok: true } })
+    };
+    const workflow: TaskHandler = {
+      id: 'test.extension.workflow-handler',
+      kinds: ['test.extension.workflow'],
+      execute: async (context) => {
+        await context.saveCheckpoint('completed', { ok: true });
+        return {
+          output: { format: 'structured', data: { ok: true } },
+          provenance: { extensionId: 'test-extension' }
+        };
+      }
+    };
+
+    const registration = registerFirstPartyPluginRuntime({
+      toolRegistry,
+      taskRegistry,
+      extensionHost,
+      extensions: [
+        () => ({
+          id: 'test-extension',
+          tools: [tool],
+          workflows: [workflow],
+          toolRegistration: { source: 'test-extension', capabilities: ['test'] }
+        })
+      ]
+    });
+
+    expect(registration.toolNames).toEqual(['test.extension.tool']);
+    expect(registration.workflowKinds).toEqual(['test.extension.workflow']);
+    expect(extensionHost.getTools()).toEqual([tool]);
+    expect(toolRegistry.get('test.extension.tool')).toBe(tool);
+    expect(toolRegistry.getRegistration('test.extension.tool')).toMatchObject({
+      source: 'test-extension',
+      capabilities: ['test']
+    });
+    expect(taskRegistry.resolve(task('resolve-injected', 'test.extension.workflow', {}))).toBe(workflow);
+
+    const result = await toolRegistry.executeTool(toolCall('test.extension.tool', {}));
+    expect(result).toMatchObject({ isError: false, details: { ok: true } });
+
+    registration.dispose();
+    expect(extensionHost.getTools()).toHaveLength(0);
+    expect(toolRegistry.getAll()).toHaveLength(0);
+    expect(taskRegistry.list()).toHaveLength(0);
   });
 
   it('is idempotent and only disposes registrations created by the caller', () => {
