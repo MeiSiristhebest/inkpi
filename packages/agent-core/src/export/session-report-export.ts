@@ -1,5 +1,12 @@
 import type { UsageCostBreakdown } from '@inkpi/ai';
-import type { AgentMessage, ExportOptions, QualityGateIssue, StateLedger, UsageTotals } from '@inkpi/protocol';
+import type {
+  AgentMessage,
+  ExportOptions,
+  QualityGateIssue,
+  RuntimeState,
+  StateLedger,
+  UsageTotals
+} from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
 import { REPORT_SCRIPT, REPORT_STYLE } from './report-assets.js';
@@ -10,20 +17,17 @@ export interface SessionReportBranchSummary {
   differenceCount?: number;
 }
 
-export interface SessionReportLabels {
+export interface RuntimeSessionReportLabels {
   user: string;
   assistant: string;
   thinking: string;
   toolCall: string;
   toolResult: string;
   timeline: string;
-  ledger: string;
+  state: string;
   branches: string;
   gates: string;
-  entities: string;
-  assets: string;
-  tracks: string;
-  emptyLedger: string;
+  emptyState: string;
   emptyBranches: string;
   gatesPassed: string;
   totalTokens: string;
@@ -40,33 +44,61 @@ export interface SessionReportLabels {
   custom: string;
 }
 
-export interface SessionReportExportOptions extends Partial<ExportOptions> {
+export interface SessionReportLabels extends RuntimeSessionReportLabels {
+  /** Legacy creative labels used only by the compatibility adapter. */
+  ledger: string;
+  entities: string;
+  assets: string;
+  tracks: string;
+  emptyLedger: string;
+}
+
+export interface RuntimeSessionReportStateSection {
+  title: string;
+  columns: readonly string[];
+  rows: readonly (readonly string[])[];
+}
+
+export interface RuntimeSessionReportStateAdapter<TState extends RuntimeState = RuntimeState> {
+  toSections(state: TState): readonly RuntimeSessionReportStateSection[];
+}
+
+export interface RuntimeSessionReportExportOptions<TState extends RuntimeState = RuntimeState>
+  extends Partial<ExportOptions> {
   title?: string;
   author?: string;
-  ledger?: StateLedger;
+  state?: TState;
+  stateAdapter?: RuntimeSessionReportStateAdapter<TState>;
   gateIssues?: QualityGateIssue[];
   usageTotals?: UsageTotals;
   costBreakdown?: UsageCostBreakdown;
   branchSummaries?: SessionReportBranchSummary[];
-  labels?: Partial<SessionReportLabels>;
+  labels?: Partial<RuntimeSessionReportLabels>;
   /** Allows callers and tests to provide a stable export timestamp. */
   exportedAt?: string | number | Date;
 }
 
-const DEFAULT_LABELS: SessionReportLabels = {
+/**
+ * Legacy compatibility options. New Runtime callers should use
+ * RuntimeSessionReportExportOptions and provide an opaque state adapter.
+ */
+export interface SessionReportExportOptions extends Omit<RuntimeSessionReportExportOptions<RuntimeState>, 'labels'> {
+  /** @deprecated Use `state` with RuntimeSessionReportStateAdapter. */
+  ledger?: StateLedger;
+  labels?: Partial<SessionReportLabels>;
+}
+
+const DEFAULT_RUNTIME_LABELS: RuntimeSessionReportLabels = {
   user: 'User',
   assistant: 'Assistant',
   thinking: 'Thinking',
   toolCall: 'Tool Call',
   toolResult: 'Tool Result',
   timeline: 'Timeline',
-  ledger: 'State Ledger',
+  state: 'State',
   branches: 'Branches',
   gates: 'Quality Gates',
-  entities: 'Entities',
-  assets: 'Assets',
-  tracks: 'Tracks',
-  emptyLedger: 'No state records.',
+  emptyState: 'No state records.',
   emptyBranches: 'No branch summaries.',
   gatesPassed: 'No gate issues detected.',
   totalTokens: 'Total tokens',
@@ -83,15 +115,28 @@ const DEFAULT_LABELS: SessionReportLabels = {
   custom: 'Custom'
 };
 
+const DEFAULT_LEGACY_LABELS: SessionReportLabels = {
+  ...DEFAULT_RUNTIME_LABELS,
+  ledger: 'State Ledger',
+  entities: 'Entities',
+  assets: 'Assets',
+  tracks: 'Tracks',
+  emptyLedger: 'No state records.'
+};
+
 /**
  * Generic, self-contained session/report exporter.
  *
  * The core renders protocol data only. Narrative wording, labels and
  * domain-specific projections belong to an adapter such as StoryboardExporter.
  */
-export class SessionReportExporter {
-  public exportToHtml(messages: AgentMessage[], options: SessionReportExportOptions = {}, tree?: SessionTree): string {
-    const labels = { ...DEFAULT_LABELS, ...options.labels };
+export class RuntimeSessionReportExporter<TState extends RuntimeState = RuntimeState> {
+  public exportToHtml(
+    messages: AgentMessage[],
+    options: RuntimeSessionReportExportOptions<TState> = {},
+    tree?: SessionTree
+  ): string {
+    const labels = { ...DEFAULT_RUNTIME_LABELS, ...options.labels };
     const title = options.title || 'Session Report';
     const author = options.author;
     const branches = tree?.getBranches() || [];
@@ -102,7 +147,7 @@ export class SessionReportExporter {
     const messagesHtml = messages
       .map((message, index) => this.renderMessage(message, index, options, labels))
       .join('\n');
-    const ledgerHtml = this.renderLedger(options.ledger, labels);
+    const stateHtml = this.renderState(options.state, options.stateAdapter, labels);
     const branchHtml = this.renderBranches(branchSummaries, branches.length, labels);
     const gateHtml = this.renderGates(gateIssues, labels);
     const usageHtml = this.renderUsage(options.usageTotals, labels);
@@ -128,12 +173,12 @@ ${REPORT_STYLE}  </style>
     ${usageHtml}
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab(event, 'timeline')">${escapeHtml(labels.timeline)}</button>
-      <button class="tab-btn" onclick="switchTab(event, 'ledger')">${escapeHtml(labels.ledger)}</button>
+      <button class="tab-btn" onclick="switchTab(event, 'state')">${escapeHtml(labels.state)}</button>
       <button class="tab-btn" onclick="switchTab(event, 'branches')">${escapeHtml(labels.branches)} (${branchSummaries.length || branches.length})</button>
       <button class="tab-btn" onclick="switchTab(event, 'gates')">${escapeHtml(labels.gates)} (${gateIssues.length})</button>
     </div>
     <div id="tab-timeline" class="tab-panel active">${messagesHtml}</div>
-    <div id="tab-ledger" class="tab-panel">${ledgerHtml}</div>
+    <div id="tab-state" class="tab-panel">${stateHtml}</div>
     <div id="tab-branches" class="tab-panel">${branchHtml}</div>
     <div id="tab-gates" class="tab-panel">${gateHtml}</div>
   </div>
@@ -147,7 +192,7 @@ ${REPORT_SCRIPT}  </script>
     message: AgentMessage,
     index: number,
     options: SessionReportExportOptions,
-    labels: SessionReportLabels
+    labels: RuntimeSessionReportLabels
   ): string {
     if (message.role === 'user') {
       const text = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
@@ -178,43 +223,36 @@ ${REPORT_SCRIPT}  </script>
     return `<div class="msg-card"><div class="msg-header">${escapeHtml(labels.custom)} #${index + 1}</div><pre class="tool-result-content">${escapeHtml(JSON.stringify(message.content, null, 2))}</pre></div>`;
   }
 
-  private renderLedger(ledger: StateLedger | undefined, labels: SessionReportLabels): string {
-    if (!ledger) return `<p class="empty-hint">${escapeHtml(labels.emptyLedger)}</p>`;
-    const entities = ledger.entities || [];
-    const assets = ledger.assets || [];
-    const tracks = ledger.tracks || [];
-    if (entities.length === 0 && assets.length === 0 && tracks.length === 0) {
-      return `<p class="empty-hint">${escapeHtml(labels.emptyLedger)}</p>`;
-    }
-    const entityRows = entities
+  private renderState(
+    state: TState | undefined,
+    adapter: RuntimeSessionReportStateAdapter<TState> | undefined,
+    labels: RuntimeSessionReportLabels
+  ): string {
+    if (!state) return `<p class="empty-hint">${escapeHtml(labels.emptyState)}</p>`;
+    const sections = adapter?.toSections(state) ?? [
+      {
+        title: labels.state,
+        columns: ['Value'],
+        rows: [[JSON.stringify(state, null, 2)]]
+      }
+    ];
+    if (sections.length === 0) return `<p class="empty-hint">${escapeHtml(labels.emptyState)}</p>`;
+    return `<div class="state-grid">${sections
       .map(
-        (entity) =>
-          `<tr><td>${escapeHtml(entity.name)}</td><td>${escapeHtml(entity.status || labels.active)}</td><td>${escapeHtml(JSON.stringify(entity.attributes || {}))}</td></tr>`
+        (section) =>
+          `<section><h2>${escapeHtml(section.title)}</h2><table class="data-table"><thead><tr>${section.columns
+            .map((column) => `<th>${escapeHtml(column)}</th>`)
+            .join('')}</tr></thead><tbody>${section.rows
+            .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+            .join('')}</tbody></table></section>`
       )
-      .join('');
-    const assetRows = assets
-      .map(
-        (asset) =>
-          `<tr><td>${escapeHtml(asset.name)}</td><td>${escapeHtml(asset.holder || asset.owner || labels.unknown)}</td><td>${escapeHtml(asset.state || labels.active)}</td></tr>`
-      )
-      .join('');
-    const trackRows = tracks
-      .map(
-        (track) =>
-          `<tr><td>${escapeHtml(track.clue || track.summary || track.id || labels.unknown)}</td><td>${escapeHtml(track.status || labels.active)}</td></tr>`
-      )
-      .join('');
-    return `<div class="ledger-grid">
-      <section><h2>${escapeHtml(labels.entities)} (${entities.length})</h2><table class="data-table"><thead><tr><th>Name</th><th>Status</th><th>Attributes</th></tr></thead><tbody>${entityRows}</tbody></table></section>
-      <section><h2>${escapeHtml(labels.assets)} (${assets.length})</h2><table class="data-table"><thead><tr><th>Name</th><th>Owner</th><th>State</th></tr></thead><tbody>${assetRows}</tbody></table></section>
-      <section><h2>${escapeHtml(labels.tracks)} (${tracks.length})</h2><table class="data-table"><thead><tr><th>Track</th><th>Status</th></tr></thead><tbody>${trackRows}</tbody></table></section>
-    </div>`;
+      .join('')}</div>`;
   }
 
   private renderBranches(
     summaries: SessionReportBranchSummary[],
     branchCount: number,
-    labels: SessionReportLabels
+    labels: RuntimeSessionReportLabels
   ): string {
     if (summaries.length === 0) {
       return `<p class="empty-hint">${escapeHtml(branchCount ? `${branchCount} ${labels.branches}` : labels.emptyBranches)}</p>`;
@@ -227,7 +265,7 @@ ${REPORT_SCRIPT}  </script>
       .join('');
   }
 
-  private renderGates(issues: QualityGateIssue[], labels: SessionReportLabels): string {
+  private renderGates(issues: QualityGateIssue[], labels: RuntimeSessionReportLabels): string {
     if (issues.length === 0) return `<p class="empty-hint">${escapeHtml(labels.gatesPassed)}</p>`;
     return issues
       .map(
@@ -237,7 +275,7 @@ ${REPORT_SCRIPT}  </script>
       .join('');
   }
 
-  private renderUsage(usage: UsageTotals | undefined, labels: SessionReportLabels): string {
+  private renderUsage(usage: UsageTotals | undefined, labels: RuntimeSessionReportLabels): string {
     if (!usage) return '';
     const metric = (value: string, label: string, highlight = false) =>
       `<div class="metric-card${highlight ? ' highlight' : ''}"><div class="metric-val">${escapeHtml(value)}</div><div class="metric-lbl">${escapeHtml(label)}</div></div>`;
@@ -249,6 +287,74 @@ ${REPORT_SCRIPT}  </script>
       ${metric(`$${(usage.costUsd || 0).toFixed(4)}`, labels.cost, true)}
     </div>`;
   }
+}
+
+/**
+ * Legacy creative compatibility facade. Domain-shaped rendering is isolated
+ * here and is never used by RuntimeSessionReportExporter itself.
+ */
+export class SessionReportExporter {
+  private readonly runtime = new RuntimeSessionReportExporter<RuntimeState>();
+
+  public exportToHtml(messages: AgentMessage[], options: SessionReportExportOptions = {}, tree?: SessionTree): string {
+    const { ledger, labels, stateAdapter, ...runtimeOptions } = options;
+    const resolvedLabels = { ...DEFAULT_LEGACY_LABELS, ...labels };
+    const state = ledger ?? options.state;
+    const adapter = ledger ? createLegacyStateAdapter(resolvedLabels) : stateAdapter;
+    return this.runtime.exportToHtml(
+      messages,
+      {
+        ...runtimeOptions,
+        state,
+        stateAdapter: adapter,
+        labels: {
+          ...resolvedLabels,
+          state: resolvedLabels.ledger,
+          emptyState: resolvedLabels.emptyLedger
+        }
+      },
+      tree
+    );
+  }
+}
+
+function createLegacyStateAdapter(labels: SessionReportLabels): RuntimeSessionReportStateAdapter<StateLedger> {
+  return {
+    toSections: (ledger) => {
+      const entities = ledger.entities || [];
+      const assets = ledger.assets || [];
+      const tracks = ledger.tracks || [];
+      if (entities.length === 0 && assets.length === 0 && tracks.length === 0) return [];
+      return [
+        {
+          title: `${labels.entities} (${entities.length})`,
+          columns: ['Name', 'Status', 'Attributes'],
+          rows: entities.map((entity) => [
+            entity.name,
+            entity.status || labels.active,
+            JSON.stringify(entity.attributes || {})
+          ])
+        },
+        {
+          title: `${labels.assets} (${assets.length})`,
+          columns: ['Name', 'Owner', 'State'],
+          rows: assets.map((asset) => [
+            asset.name,
+            asset.holder || asset.owner || labels.unknown,
+            asset.state || labels.active
+          ])
+        },
+        {
+          title: `${labels.tracks} (${tracks.length})`,
+          columns: ['Track', 'Status'],
+          rows: tracks.map((track) => [
+            track.clue || track.summary || track.id || labels.unknown,
+            track.status || labels.active
+          ])
+        }
+      ];
+    }
+  };
 }
 
 function formatTimestamp(value: string | number | Date | undefined): string {

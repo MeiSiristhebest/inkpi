@@ -1,4 +1,4 @@
-import { SessionReportExporter, SessionTree } from '@inkpi/agent-core';
+import { RuntimeSessionReportExporter, SessionReportExporter, SessionTree } from '@inkpi/agent-core';
 import type { AgentMessage } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -61,5 +61,27 @@ describe('SessionReportExporter', () => {
     expect(html).toContain('1 Branches');
     expect(html).toContain('No state records.');
     expect(html).toContain('No gate issues detected.');
+  });
+});
+
+describe('RuntimeSessionReportExporter', () => {
+  it('renders opaque state through a caller-supplied adapter', () => {
+    const html = new RuntimeSessionReportExporter().exportToHtml([], {
+      exportedAt: 0,
+      state: { checksum: 'abc123', records: 2 },
+      stateAdapter: {
+        toSections: (state) => [
+          {
+            title: `Snapshot ${state.checksum}`,
+            columns: ['Records'],
+            rows: [[String(state.records)]]
+          }
+        ]
+      }
+    });
+
+    expect(html).toContain('Snapshot abc123');
+    expect(html).toContain('>2</td>');
+    expect(html).not.toContain('State Ledger');
   });
 });
