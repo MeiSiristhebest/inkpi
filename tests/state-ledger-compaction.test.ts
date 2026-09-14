@@ -1,74 +1,89 @@
-import {
-  NarrativeSemanticLedgerExtractor,
-  SessionCompactor,
-  extractNovelStateLedger,
-  extractStateLedger,
-  formatStateLedger
-} from '@inkpi/agent-core';
-import type { AgentMessage, AssistantMessage, UserMessage } from '@inkpi/protocol';
+import { SessionCompactor, extractRuntimeState, formatRuntimeState } from '@inkpi/agent-core';
+import type { RuntimeStateExtractor } from '@inkpi/agent-core';
+import type { AgentMessage, RuntimeState, UserMessage } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
+import { creativeStateExtractor, readCreativeRuntimeState } from './fixtures/domain-adapters.js';
 
-describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
-  it('should accurately extract state ledger from structured tags, tool calls, and text', () => {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readRuntimeState(details: unknown): RuntimeState | undefined {
+  if (!isRecord(details) || !isRecord(details.runtimeState)) return undefined;
+  return details.runtimeState;
+}
+
+describe('@inkpi/agent-core -> Generic Runtime State Context Compaction', () => {
+  it('should extract state only through explicitly injected adapters', () => {
     const messages: AgentMessage[] = [
       {
         role: 'user',
         content: '<entity name="Alice" status="Lead" /> <asset name="QuantumKey" holder="Alice" />'
-      } as UserMessage,
+      },
       {
         role: 'assistant',
         content: [
           { type: 'thinking', thinking: '<track clue="CoreDatabase" status="pending" />' },
           { type: 'text', text: 'Alice secures the QuantumKey and issues system alert.' }
         ]
-      } as AssistantMessage,
+      },
       {
         role: 'user',
         content: '<entity name="Bob" status="Observer" /> doc_12'
-      } as UserMessage
+      }
     ];
 
     // Custom extractor extension capability
-    const customExtractor = {
-      name: 'custom_keyword_extractor',
-      extract(rawText: string, ctx: any) {
+    const customExtractor: RuntimeStateExtractor = {
+      id: 'custom_keyword_extractor',
+      extract(rawText: string, ctx) {
         if (rawText.includes('CustomSignal')) {
-          ctx.tracksMap.set('CustomSignalCaptured', {
-            clue: 'CustomSignalCaptured',
-            status: 'resolved'
-          });
+          const tracks = readCreativeRuntimeState(ctx.state).tracks;
+          ctx.state.tracks = [
+            ...tracks,
+            {
+              clue: 'CustomSignalCaptured',
+              status: 'resolved'
+            }
+          ];
         }
       }
     };
 
-    const genericLedger = extractStateLedger(messages);
-    expect(genericLedger.entities).toEqual([]);
-    expect(genericLedger.assets).toEqual([]);
-    expect(genericLedger.tracks).toEqual([]);
+    const genericState = extractRuntimeState(messages);
+    expect(genericState).toEqual({});
 
-    const ledger = extractNovelStateLedger(
-      [...messages, { role: 'user', content: 'Received CustomSignal' } as any],
-      [customExtractor]
+    const state = extractRuntimeState(
+      [...messages, { role: 'user', content: 'Received CustomSignal' } satisfies UserMessage],
+      [creativeStateExtractor, customExtractor]
     );
+    const creativeState = readCreativeRuntimeState(state);
 
-    expect(ledger.entities.some((c) => c.name === 'Alice')).toBe(true);
-    expect(ledger.entities.some((c) => c.name === 'Bob')).toBe(true);
-    expect(ledger.assets.some((i) => i.name.includes('QuantumKey'))).toBe(true);
-    expect(ledger.tracks.some((f) => f.clue?.includes('CoreDatabase'))).toBe(true);
-    expect(ledger.tracks.some((f) => f.clue === 'CustomSignalCaptured')).toBe(true);
-    expect(ledger.modifiedResources?.some((ch) => ch.includes('doc_12'))).toBe(true);
+    expect(creativeState.entities.some((entity) => entity.name === 'Alice')).toBe(true);
+    expect(creativeState.entities.some((entity) => entity.name === 'Bob')).toBe(true);
+    expect(
+      creativeState.assets.some((asset) => typeof asset.name === 'string' && asset.name.includes('QuantumKey'))
+    ).toBe(true);
+    expect(
+      creativeState.tracks.some((track) => typeof track.clue === 'string' && track.clue.includes('CoreDatabase'))
+    ).toBe(true);
+    expect(creativeState.tracks.some((track) => track.clue === 'CustomSignalCaptured')).toBe(true);
+    expect(creativeState.modifiedResources.some((resource) => resource.includes('doc_12'))).toBe(true);
 
-    const formatted = formatStateLedger(ledger);
-    expect(formatted).toContain('Entities:');
-    expect(formatted).toContain('Assets:');
-    expect(formatted).toContain('Tracks:');
+    const formatted = formatRuntimeState(state);
+    expect(formatted).toContain('entities');
+    expect(formatted).toContain('assets');
+    expect(formatted).toContain('tracks');
 
     // Test custom formatter
-    const customFormatted = formatStateLedger(ledger, (l) => `CUSTOM:[${l.entities.length}]`);
-    expect(customFormatted).toBe(`CUSTOM:[${ledger.entities.length}]`);
+    const customFormatted = formatRuntimeState(state, (runtimeState) => {
+      const creativeState = readCreativeRuntimeState(runtimeState);
+      return `CUSTOM:[${creativeState.entities.length}]`;
+    });
+    expect(customFormatted).toBe(`CUSTOM:[${creativeState.entities.length}]`);
 
-    // Test empty/falsy ledger
-    expect(formatStateLedger(undefined)).toBe('');
+    // Test empty/falsy state
+    expect(formatRuntimeState(undefined)).toBe('');
 
     // Tool call extraction for modify_resource, update_character, update_asset
     const toolCallMsgs: AgentMessage[] = [
@@ -100,23 +115,27 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
             arguments: { content: 'SecretVaultClue', status: 'pending' }
           }
         ]
-      } as any
+      }
     ];
-    const toolCallLedger = extractNovelStateLedger(toolCallMsgs);
-    expect(toolCallLedger.modifiedResources).toContain('doc_custom_section');
-    expect(toolCallLedger.entities.some((e) => e.name === 'CharacterBeta')).toBe(true);
-    expect(toolCallLedger.assets.some((a) => a.name === 'ToolItemA')).toBe(true);
-    expect(toolCallLedger.tracks.some((t) => t.clue === 'SecretVaultClue')).toBe(true);
+    const toolCallState = extractRuntimeState(toolCallMsgs, [creativeStateExtractor]);
+    const toolState = readCreativeRuntimeState(toolCallState);
+    expect(toolState.modifiedResources).toContain('doc_custom_section');
+    expect(toolState.entities.some((entity) => entity.name === 'CharacterBeta')).toBe(true);
+    expect(toolState.assets.some((asset) => asset.name === 'ToolItemA')).toBe(true);
+    expect(toolState.tracks.some((track) => track.clue === 'SecretVaultClue')).toBe(true);
   });
 
-  it('should embed structured state ledger into CompactionEntry details and prompt during compact', async () => {
+  it('should embed injected runtime state into CompactionEntry details and prompt during compact', async () => {
     const compactor = new SessionCompactor({
       clock: Date.now,
       triggerTokensThreshold: 30,
       preserveRecentCount: 1,
       summarizer: async () => 'Core Summary: Key acquired and initialization completed.',
-      ledgerExtractors: [NarrativeSemanticLedgerExtractor],
-      ledgerFormatter: (ledger) => `entities=${ledger.entities.map((entity) => entity.name).join(',')}`
+      stateExtractors: [creativeStateExtractor],
+      stateFormatter: (state) =>
+        `entities=${readCreativeRuntimeState(state)
+          .entities.map((entity) => String(entity.name ?? ''))
+          .join(',')}`
     });
 
     const messages: AgentMessage[] = [
@@ -124,13 +143,13 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
         role: 'user',
         content:
           'doc_1 <entity name="Alice" /> <asset name="HyperTerminal" /> <track clue="SystemInit" status="pending" />'
-      } as UserMessage,
+      },
       {
         role: 'assistant',
         content: [{ type: 'text', text: 'Alice successfully activated HyperTerminal.' }]
-      } as AssistantMessage,
-      { role: 'user', content: 'doc_2 Proceed to command center.' } as UserMessage,
-      { role: 'assistant', content: [{ type: 'text', text: 'Alice enters the command center.' }] } as AssistantMessage
+      },
+      { role: 'user', content: 'doc_2 Proceed to command center.' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Alice enters the command center.' }] }
     ];
 
     expect(compactor.shouldCompact(messages)).toBe(true);
@@ -138,14 +157,17 @@ describe('@inkpi/agent-core -> State Ledger Context Compaction', () => {
     const result = await compactor.compact(messages);
 
     expect(result.entry.details).toBeDefined();
-    const ledger = (result.entry.details as any).stateLedger;
-    expect(ledger).toBeDefined();
-    expect(ledger.entities.some((c: any) => c.name === 'Alice')).toBe(true);
-    expect(result.compactedMessages[0].role).toBe('assistant');
-    if (result.compactedMessages[0].role === 'assistant') {
-      const text = (result.compactedMessages[0].content[0] as any).text;
+    const state = readCreativeRuntimeState(readRuntimeState(result.entry.details));
+    expect(state.entities.some((entity) => entity.name === 'Alice')).toBe(true);
+    const summaryMessage = result.compactedMessages[0];
+    expect(summaryMessage?.role).toBe('assistant');
+    if (summaryMessage?.role === 'assistant') {
+      const firstBlock = summaryMessage.content[0];
+      expect(firstBlock?.type).toBe('text');
+      if (firstBlock?.type !== 'text') return;
+      const text = firstBlock.text;
       expect(text).toContain('Context Summary');
-      expect(text).toContain('State Ledger');
+      expect(text).toContain('Runtime State');
     }
   });
 });

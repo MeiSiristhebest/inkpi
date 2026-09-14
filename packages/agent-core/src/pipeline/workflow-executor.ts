@@ -2,7 +2,7 @@ import type { QualityGateHandler, Usage, WorkflowContext, WorkflowStageConfig } 
 import type { WorkflowEventBus } from './event-bus.js';
 import { detectGateIssues } from './gate-detection.js';
 import type { GateRuleRegistry } from './gate-rule-registry.js';
-import { emptyLedger, mergeLedgers } from './ledger-merge.js';
+import { genericRuntimeStateAdapter } from './ledger-merge.js';
 import type { RoleInvoker } from './role-invoker.js';
 import type { RoleRegistry } from './roles.js';
 import { type StageRegistry, resolveStageRole, resolveStageRoleId } from './stage-registry.js';
@@ -43,6 +43,7 @@ export class WorkflowExecutor {
   private readonly strategy: WorkflowStrategy;
   private readonly options: WorkflowExecutionOptions;
   private readonly invoker: RoleInvoker;
+  private readonly stateAdapter: NonNullable<WorkflowExecutionOptions['stateAdapter']>;
 
   constructor(deps: WorkflowExecutorDeps) {
     this.events = deps.events;
@@ -53,6 +54,7 @@ export class WorkflowExecutor {
     this.strategy = deps.strategy;
     this.options = deps.options;
     this.invoker = deps.invoker;
+    this.stateAdapter = deps.options.stateAdapter ?? genericRuntimeStateAdapter;
   }
 
   /**
@@ -77,12 +79,23 @@ export class WorkflowExecutor {
   }
 
   private prepareContext(initialCtx: Partial<WorkflowContext>): WorkflowContext {
+    const input = initialCtx.input ?? initialCtx.userPrompt ?? '';
+    const state = initialCtx.state ?? initialCtx.stateLedger ?? this.stateAdapter.createInitialState();
+    const outputs = { ...(initialCtx.outputs ?? initialCtx.stageOutputs ?? {}) };
+    const logs = [...(initialCtx.logs ?? initialCtx.stageLogs ?? [])];
+
     return {
       ...initialCtx,
-      userPrompt: initialCtx.userPrompt ?? '',
-      stateLedger: initialCtx.stateLedger ?? emptyLedger(),
-      stageOutputs: { ...(initialCtx.stageOutputs || {}) },
-      stageLogs: [...(initialCtx.stageLogs || [])]
+      input,
+      state,
+      outputs,
+      logs,
+      // Keep the old shape as an explicit compatibility view. Core execution
+      // below only reads/writes input, state, outputs, and logs.
+      userPrompt: input,
+      stateLedger: state,
+      stageOutputs: outputs,
+      stageLogs: logs
     };
   }
 
@@ -139,20 +152,24 @@ export class WorkflowExecutor {
       }
     }
 
-    ctx.stageOutputs[stage.id] = outputText;
+    ctx.outputs[stage.id] = outputText;
     const stageTimestamp = this.options.clock ? this.options.clock() : Date.now();
-    ctx.stageLogs.push({
+    ctx.logs.push({
       stageId: stage.id,
       role: roleConfig.role,
       content: outputText,
       timestamp: stageTimestamp
     });
 
+    // Keep compatibility views pointing at the canonical collections.
+    ctx.stageOutputs = ctx.outputs;
+    ctx.stageLogs = ctx.logs;
+
     this.strategy.applyStageOutputAliases(ctx, stage.id, outputText);
 
-    if (this.options.ledgerExtractor) {
-      const extracted = this.options.ledgerExtractor(outputText, ctx);
-      ctx.stateLedger = mergeLedgers(ctx.stateLedger, extracted, this.strategy.includeLedgerAliases);
+    const stateExtractor = this.options.stateExtractor ?? this.options.ledgerExtractor;
+    if (stateExtractor) {
+      this.applyStatePatch(ctx, stateExtractor(outputText, ctx));
     }
 
     this.telemetry.endStage(span, usage);
@@ -168,7 +185,7 @@ export class WorkflowExecutor {
 
   /** 依次应用 stageHooks、通用 onBeforeStage 与策略提示词改写。 */
   private async buildStagePrompt(stage: WorkflowStageConfig, ctx: WorkflowContext): Promise<string> {
-    let prompt = stage.promptTemplate ? stage.promptTemplate(ctx) : ctx.userPrompt;
+    let prompt = stage.promptTemplate ? stage.promptTemplate(ctx) : ctx.input;
 
     if (this.options.stageHooks?.onBeforeStage) {
       const transformedPrompt = await this.options.stageHooks.onBeforeStage(stage.id, ctx, prompt);
@@ -209,8 +226,8 @@ export class WorkflowExecutor {
       let usage: Usage | undefined;
       if (typeof res === 'object') {
         usage = res.usage;
-        if (res.modifiedLedger) {
-          ctx.stateLedger = mergeLedgers(ctx.stateLedger, res.modifiedLedger, this.strategy.includeLedgerAliases);
+        if (res.statePatch !== undefined) {
+          this.applyStatePatch(ctx, res.statePatch);
         }
       }
       return { outputText: typeof res === 'string' ? res : res.text, usage };
@@ -225,10 +242,10 @@ export class WorkflowExecutor {
     const res = await this.invoker.invoke({
       config: roleConfig,
       prompt,
-      ledger: ctx.stateLedger,
+      state: ctx.state,
       model: this.options.model,
       signal: this.options.signal,
-      ledgerFormatter: this.options.ledgerFormatter
+      stateFormatter: this.options.stateFormatter ?? this.options.ledgerFormatter
     });
     return { outputText: res.text, usage: res.usage };
   }
@@ -249,7 +266,7 @@ export class WorkflowExecutor {
       return outputText;
     }
 
-    const issues = detectGateIssues(outputText, stageRules, ctx.stateLedger, ctx);
+    const issues = detectGateIssues(outputText, stageRules, ctx);
     if (issues.length === 0) {
       return outputText;
     }
@@ -315,5 +332,10 @@ export class WorkflowExecutor {
     if (signal?.aborted) {
       throw new Error(`Workflow aborted before stage '${stageId}'.`);
     }
+  }
+
+  private applyStatePatch(ctx: WorkflowContext, patch: unknown): void {
+    ctx.state = this.stateAdapter.merge(ctx.state, patch);
+    ctx.stateLedger = ctx.state;
   }
 }

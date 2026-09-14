@@ -1,14 +1,20 @@
-import type { PipelineHooks, WorkflowContext } from '@inkpi/protocol';
+import type { PipelineHooks, QualityGateHandler, RuntimeState, WorkflowContext } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 import { genericWorkflowStrategy } from '../packages/agent-core/src/pipeline/workflow-strategy.js';
 
-function makeCtx(): WorkflowContext {
+function makeCtx(): WorkflowContext<RuntimeState> {
+  const state: RuntimeState = { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
+  const outputs = {};
+  const logs: WorkflowContext<RuntimeState>['logs'] = [];
   return {
-    id: 'c1',
+    input: 'write',
+    state,
+    outputs,
+    logs,
     userPrompt: 'write',
-    stateLedger: { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] },
-    stageOutputs: {},
-    stageLogs: []
+    stateLedger: state,
+    stageOutputs: outputs,
+    stageLogs: logs
   };
 }
 
@@ -75,10 +81,15 @@ describe('workflow strategy: generic domain-neutral behavior', () => {
 
   it('does not add domain aliases to gate events or stage output context', () => {
     const ctx = makeCtx();
-    const event: Record<string, unknown> = { stageId: 's1' };
-    genericWorkflowStrategy.decorateGateHandlerEvent(event as never, ctx, 'body');
+    const event: Parameters<QualityGateHandler>[0] = {
+      stageId: 's1',
+      content: 'body',
+      issues: [],
+      context: ctx
+    };
+    genericWorkflowStrategy.decorateGateHandlerEvent(event, ctx, 'body');
     genericWorkflowStrategy.applyStageOutputAliases(ctx, 'outline', 'body');
-    expect(event).toEqual({ stageId: 's1' });
-    expect(ctx.stageOutputs).toEqual({});
+    expect(event).toEqual({ stageId: 's1', content: 'body', issues: [], context: ctx });
+    expect(ctx.outputs).toEqual({});
   });
 });

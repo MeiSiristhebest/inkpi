@@ -1,14 +1,14 @@
 import {
-  InMemoryDocumentStore,
   ToolRegistry,
   applyFuzzyTextEdit,
-  createAuthoringTools,
+  createDocumentResourceTools,
   enforceOutputGuard,
   fuzzyFindText
 } from '@inkpi/agent-core';
+import type { DocumentResourceAdapter, ResourceMutationProposal } from '@inkpi/agent-core';
 import { describe, expect, it } from 'vitest';
 
-describe('@inkpi/agent-core: Native Authoring Tools & Fuzzy Hunk Engine', () => {
+describe('@inkpi/agent-core: Generic Resource Tools & Fuzzy Hunk Engine', () => {
   describe('1. Fuzzy Hunk Matching & Diff Engine', () => {
     it('should perform exact match when lines match exactly', () => {
       const doc = '第一章 序幕\n风雪漫天，少年仗剑独行。\n远处的破庙隐隐透出火光。\n他停下了脚步。';
@@ -56,86 +56,81 @@ describe('@inkpi/agent-core: Native Authoring Tools & Fuzzy Hunk Engine', () => 
     });
   });
 
-  describe('3. Native Authoring Tools in ToolRegistry', () => {
-    it('should register and execute authoring tools successfully', async () => {
-      const store = new InMemoryDocumentStore();
-      const tools = createAuthoringTools(store);
+  describe('3. Injected Resource Adapter in ToolRegistry', () => {
+    it('should read resources and record mutation proposals without direct writes', async () => {
+      const resources = new Map([['resource-1', '第一章：青云初试。\n少年名为林远。']]);
+      const proposals: ResourceMutationProposal[] = [];
+      const adapter: DocumentResourceAdapter = {
+        read: async (resourceId) => resources.get(resourceId) ?? null,
+        list: async () => Array.from(resources, ([resourceId, content]) => ({ resourceId, size: content.length })),
+        search: async (query) =>
+          Array.from(resources)
+            .filter(([, content]) => content.includes(query))
+            .map(([resourceId, content]) => ({ resourceId, snippet: content })),
+        proposeMutation: async (proposal) => {
+          proposals.push(proposal);
+          return {
+            proposalId: `proposal-${proposals.length}`,
+            status: 'proposed',
+            resourceId: proposal.resourceId,
+            operation: proposal.operation
+          };
+        }
+      };
+      const tools = createDocumentResourceTools(adapter);
       const registry = new ToolRegistry();
       for (const tool of tools) {
         registry.register(tool);
       }
 
-      expect(registry.get('read_chapter')).toBeDefined();
-      expect(registry.get('edit_text')).toBeDefined();
-      expect(registry.get('write_draft')).toBeDefined();
-      expect(registry.get('list_story_outline')).toBeDefined();
-      expect(registry.get('search_story_memory')).toBeDefined();
-      expect(registry.get('generate_book_cover')).toBeDefined();
+      expect(registry.get('read_resource')).toBeDefined();
+      expect(registry.get('list_resources')).toBeDefined();
+      expect(registry.get('search_resources')).toBeDefined();
+      expect(registry.get('propose_resource_mutation')).toBeDefined();
+      expect(registry.get('edit_text')).toBeUndefined();
+      expect(registry.get('write_draft')).toBeUndefined();
 
-      // 1. write_draft
-      const writeRes = await registry.executeTool({
-        type: 'toolCall',
-        id: 'call_1',
-        name: 'write_draft',
-        arguments: {
-          documentId: 'ch1',
-          content: '第一章：青云初试。\n少年名为林远，手持一柄青玉佩。',
-          mode: 'create'
-        }
-      });
-      expect(writeRes.isError).toBe(false);
-
-      // 2. read_chapter
       const readRes = await registry.executeTool({
         type: 'toolCall',
-        id: 'call_2',
-        name: 'read_chapter',
-        arguments: { documentId: 'ch1' }
+        id: 'call-1',
+        name: 'read_resource',
+        arguments: { resourceId: 'resource-1' }
       });
       expect(readRes.isError).toBe(false);
       expect((readRes.content[0] as any).text).toContain('林远');
 
-      // 3. search_story_memory (记忆雷达)
       const searchRes = await registry.executeTool({
         type: 'toolCall',
-        id: 'call_3',
-        name: 'search_story_memory',
-        arguments: { query: '青玉佩' }
+        id: 'call-2',
+        name: 'search_resources',
+        arguments: { query: '青云初试' }
       });
       expect(searchRes.isError).toBe(false);
-      expect((searchRes.content[0] as any).text).toContain('青玉佩');
+      expect((searchRes.content[0] as any).text).toContain('resource-1');
 
-      // 4. edit_text (局部手术刀)
-      const editRes = await registry.executeTool({
+      const proposalRes = await registry.executeTool({
         type: 'toolCall',
-        id: 'call_4',
-        name: 'edit_text',
+        id: 'call-3',
+        name: 'propose_resource_mutation',
         arguments: {
-          documentId: 'ch1',
-          oldText: '手持一柄青玉佩。',
-          newText: '怀揣一枚黑铁戒。'
+          resourceId: 'resource-1',
+          operation: 'replace',
+          content: '第一章：青云初试。\n少年名为林远，手持一柄青玉佩。'
         }
       });
-      expect(editRes.isError).toBe(false);
+      expect(proposalRes.isError).toBe(false);
+      expect((proposalRes.content[0] as any).text).toContain('proposal-1');
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0]).toMatchObject({ resourceId: 'resource-1', operation: 'replace' });
+      expect(resources.get('resource-1')).not.toContain('青玉佩');
 
-      // 验证修改生效且其他正文完整
-      const verifyRead = await registry.executeTool({
+      const invalidProposal = await registry.executeTool({
         type: 'toolCall',
-        id: 'call_5',
-        name: 'read_chapter',
-        arguments: { documentId: 'ch1' }
+        id: 'call-4',
+        name: 'propose_resource_mutation',
+        arguments: { resourceId: 'resource-1', operation: 'delete', content: '' }
       });
-      expect((verifyRead.content[0] as any).text).toContain('怀揣一枚黑铁戒');
-      expect((verifyRead.content[0] as any).text).toContain('第一章：青云初试');
-
-      // 5. list_story_outline
-      const outlineRes = await registry.executeTool({
-        type: 'toolCall',
-        id: 'call_6',
-        name: 'list_story_outline',
-        arguments: {}
-      });
-      expect((outlineRes.content[0] as any).text).toContain('ch1');
+      expect(invalidProposal.isError).toBe(true);
     });
   });
 });

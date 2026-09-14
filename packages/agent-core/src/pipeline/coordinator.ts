@@ -1,7 +1,6 @@
 import type {
   QualityGateIssue,
   QualityGateRule,
-  StateLedger,
   WorkflowContext,
   WorkflowEventListener,
   WorkflowStageConfig
@@ -11,12 +10,6 @@ import type { TelemetryCollector } from '../telemetry/telemetry.js';
 import { WorkflowEventBus } from './event-bus.js';
 import { detectGateIssues } from './gate-detection.js';
 import { GateRuleRegistry } from './gate-rule-registry.js';
-import {
-  createNarrativeEntitySafetyRules,
-  createScreenplayGateRules,
-  createShortDramaGateRules,
-  createVisualNovelGateRules
-} from './narrative-gates.js';
 import { RoleInvoker } from './role-invoker.js';
 import { RoleRegistry } from './roles.js';
 import { StageRegistry } from './stage-registry.js';
@@ -30,16 +23,6 @@ export type {
   WorkflowStageHooks,
   WorkflowExecutionOptions
 } from './workflow-types.js';
-
-/**
- * 标准实体安全与破坏性变动门禁规则
- */
-export {
-  createNarrativeEntitySafetyRules,
-  createScreenplayGateRules,
-  createShortDramaGateRules,
-  createVisualNovelGateRules
-} from './narrative-gates.js';
 
 /**
  * 多 Agent 协作与工作流编排引擎。
@@ -113,12 +96,12 @@ export class WorkflowCoordinator {
   /**
    * 纯规则驱动的质量门禁自动检测 (100% 领域中立)
    */
-  public detectGateIssues(content: string, ledger?: StateLedger, context?: any): QualityGateIssue[] {
-    return detectGateIssues(content, this.gates.all(), ledger, context);
+  public detectGateIssues(content: string, context?: unknown): QualityGateIssue[] {
+    return detectGateIssues(content, this.gates.all(), context);
   }
 
-  public detectQualityGateIssues(content: string, ledger?: StateLedger, context?: any): QualityGateIssue[] {
-    return this.detectGateIssues(content, ledger, context);
+  public detectQualityGateIssues(content: string, context?: unknown): QualityGateIssue[] {
+    return this.detectGateIssues(content, context);
   }
 
   /**

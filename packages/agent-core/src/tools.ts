@@ -24,7 +24,7 @@ export {
 } from './tools/edit-diff.js';
 export type { DiffFuzzyMatchResult } from './tools/edit-diff.js';
 export * from './tools/output-guard.js';
-export * from './tools/authoring-tools.js';
+export * from './tools/document-tools.js';
 
 export interface ToolRegistryQuery {
   requiredCapabilities?: readonly string[];

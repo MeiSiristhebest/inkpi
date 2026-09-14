@@ -1,13 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import {
-  DynamicPluginLoader,
-  ExtensionHost,
-  InMemoryDocumentStore,
-  ToolRegistry,
-  createAuthoringTools
-} from '@inkpi/agent-core';
+import { DynamicPluginLoader, ExtensionHost } from '@inkpi/agent-core';
 import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core: Dynamic Plugin Loader & Pre/Post Tool Lifecycle Hooks', () => {

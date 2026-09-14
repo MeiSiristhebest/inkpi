@@ -1,10 +1,11 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { RuntimeState } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
-import { mergeLedgers, mergeRecords } from '../packages/agent-core/src/pipeline/ledger-merge.js';
-
-function emptyLedger(): StateLedger {
-  return { entities: [], assets: [], tracks: [], locations: [], modifiedResources: [] };
-}
+import {
+  emptyRuntimeState,
+  genericRuntimeStateAdapter,
+  mergeRecords,
+  mergeRuntimeState
+} from '../packages/agent-core/src/pipeline/ledger-merge.js';
 
 describe('mergeRecords (pure)', () => {
   it('归并两条记录数组，相同 key 后项浅覆盖前项', () => {
@@ -31,92 +32,39 @@ describe('mergeRecords (pure)', () => {
   });
 });
 
-describe('mergeLedgers (pure)', () => {
-  it('实体按 id 归并，存在则浅覆盖', () => {
-    const base = emptyLedger();
-    base.entities = [{ id: 'e1', name: 'Alice', status: 'active' }];
-    const addition: Partial<StateLedger> = {
-      entities: [
-        { id: 'e1', name: 'Alice', status: 'edited' },
-        { id: 'e2', name: 'Bob' }
+describe('mergeRuntimeState (pure)', () => {
+  it('按通用记录身份归并数组，存在则浅覆盖', () => {
+    const base: RuntimeState = { records: [{ id: 'r1', label: 'old' }] };
+    const addition: RuntimeState = {
+      records: [
+        { id: 'r1', label: 'updated' },
+        { id: 'r2', label: 'new' }
       ]
     };
-    const result = mergeLedgers(base, addition);
-    expect(result.entities).toHaveLength(2);
-    const alice = result.entities.find((e: any) => e.id === 'e1');
-    expect(alice).toEqual({ id: 'e1', name: 'Alice', status: 'edited' });
+    const result = mergeRuntimeState(base, addition);
+    expect(result.records).toEqual([
+      { id: 'r1', label: 'updated' },
+      { id: 'r2', label: 'new' }
+    ]);
   });
 
-  it('支持旧别名 characters/items 作为输入', () => {
-    const base = emptyLedger();
-    const addition: any = {
-      characters: [{ id: 'c1', name: 'Old' }],
-      items: [{ id: 'i1', name: 'Sword' }]
-    };
-    const result = mergeLedgers(base, addition);
-    expect(result.entities).toHaveLength(1);
-    expect(result.assets).toHaveLength(1);
-    expect((result.entities[0] as any).name).toBe('Old');
+  it('保留任意 opaque key，不读取或制造产品域别名', () => {
+    const base: RuntimeState = { counters: [1, 2], opaque: { source: 'base' } };
+    const result = mergeRuntimeState(base, { counters: [2, 3], extra: true });
+    expect(result.counters).toEqual([1, 2, 3]);
+    expect(result.opaque).toEqual({ source: 'base' });
+    expect(result.extra).toBe(true);
   });
 
-  it('非 legacy 模式清除 characters/items/foreshadowings/modifiedChapters/modifiedDocuments 别名', () => {
-    const base: any = {
-      entities: [],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedResources: [],
-      characters: [{ id: 'c1' }],
-      items: [{ id: 'i1' }],
-      modifiedChapters: ['ch1']
-    };
-    const result: any = mergeLedgers(base, {});
-    expect(result.characters).toBeUndefined();
-    expect(result.items).toBeUndefined();
-    expect(result.modifiedChapters).toBeUndefined();
+  it('非对象 patch 不改变 state', () => {
+    const base: RuntimeState = { value: 1 };
+    expect(mergeRuntimeState(base, null)).toEqual(base);
+    expect(mergeRuntimeState(base, 'ignored')).toEqual(base);
   });
 
-  it('legacy 模式保留别名并填充 foreshadowings/modifiedChapters/modifiedDocuments', () => {
-    const base: any = {
-      entities: [],
-      assets: [],
-      tracks: [{ id: 't1', clue: 'x' }],
-      locations: [],
-      modifiedResources: []
-    };
-    const result: any = mergeLedgers(base, {}, true);
-    expect(result.foreshadowings).toHaveLength(1);
-    expect(result.modifiedChapters).toEqual([]);
-    expect(result.modifiedDocuments).toEqual([]);
-    expect(result.characters).toEqual([]);
-  });
-
-  it('modifiedResources 合并 base 与 addition（注意 || 链只取首个真值数组）', () => {
-    // 原始实现用 `base.modifiedResources || base.modifiedChapters || base.modifiedDocuments`，
-    // 即三者互斥、只取首个真值数组。此处 base 有 modifiedResources，addition 也有 modifiedResources，
-    // 因此 addition.modifiedDocuments 被忽略（与抽取前行为一致，不应在抽取时改变）。
-    const base: any = {
-      entities: [],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedResources: ['r1'],
-      modifiedChapters: ['c1']
-    };
-    const addition: any = { modifiedResources: ['r2'], modifiedDocuments: ['d1'] };
-    const result: any = mergeLedgers(base, addition);
-    expect(result.modifiedResources.sort()).toEqual(['r1', 'r2']);
-    // 兼容字段不会被并入（保留原行为的可观测事实，供回归守护）
-    expect((result as any).modifiedDocuments).toBeUndefined();
-    expect((result as any).modifiedChapters).toBeUndefined();
-  });
-
-  it('空 base 与空 addition 返回空账本', () => {
-    const result = mergeLedgers(emptyLedger(), {});
-    expect(result.entities).toEqual([]);
-    expect(result.assets).toEqual([]);
-    expect(result.tracks).toEqual([]);
-    expect(result.locations).toEqual([]);
-    expect(result.modifiedResources).toEqual([]);
+  it('默认 adapter 提供空初始状态和 generic merge', () => {
+    expect(emptyRuntimeState()).toEqual({});
+    expect(genericRuntimeStateAdapter.createInitialState()).toEqual({});
+    expect(genericRuntimeStateAdapter.merge({ value: 1 }, { value: 2 })).toEqual({ value: 2 });
   });
 });

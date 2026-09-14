@@ -18,7 +18,7 @@ import type {
   AgentRoleConfig,
   QualityGateHandler,
   QualityGateRule,
-  StateLedger,
+  RuntimeState,
   ThinkingLevel,
   Usage,
   WorkflowContext,
@@ -31,8 +31,14 @@ export interface PrintWorkflowOptions {
   finalStageId?: string;
   customExecutor?: (role: string, systemPrompt: string, userPrompt: string) => Promise<string>;
   initialRoles?: Record<string, AgentRoleConfig>;
-  ledgerExtractor?: (output: string, ctx: WorkflowContext) => StateLedger | Partial<StateLedger>;
-  ledgerFormatter?: (ledger: StateLedger) => string;
+  /** Explicit caller-owned opaque state extractor. */
+  stateExtractor?: (output: string, ctx: WorkflowContext) => RuntimeState | Partial<RuntimeState>;
+  /** Explicit caller-owned opaque state formatter. */
+  stateFormatter?: (state: RuntimeState) => string;
+  /** @deprecated Use stateExtractor; retained only as an injected compatibility alias. */
+  ledgerExtractor?: (output: string, ctx: WorkflowContext) => RuntimeState | Partial<RuntimeState>;
+  /** @deprecated Use stateFormatter; retained only as an injected compatibility alias. */
+  ledgerFormatter?: (state: RuntimeState) => string;
   enableQualityGate?: boolean;
   qualityGateHandler?: QualityGateHandler;
   customGateRules?: QualityGateRule[];

@@ -107,7 +107,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
   it('should score foreshadowing payoff rates', () => {
     const scorer = new ForeshadowingPayoffScorer();
 
-    const ledger = {
+    const runtimeState = {
       entities: [],
       assets: [],
       tracks: [
@@ -118,7 +118,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       modifiedDocuments: []
     };
 
-    const res = scorer.score(ledger);
+    const res = scorer.score(runtimeState);
     expect(res.totalClues).toBe(2);
     expect(res.resolvedClues).toBe(1);
     expect(res.pendingClues).toBe(1);
@@ -159,7 +159,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Workspace Title',
       documentTitle: '第十document 最终集成测试',
       content: '　　“执行开始！”UserA系统引导序列启动……\n　　所有服务运行正常。Capital City。',
-      stateLedger: {
+      runtimeState: {
         entities: [{ name: 'UserA', status: 'State Level 99' }],
         assets: [{ name: 'Test Asset A' }],
         tracks: [{ clue: 'Test Clue 1', status: 'resolved' }],
@@ -182,7 +182,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     const foreshadowingScorer = new ForeshadowingPayoffScorer();
     const typographyScorer = new TypographyComplianceScorer();
 
-    // 1. Empty state ledger & invariants test
+    // 1. Empty runtime state & invariants test
     const emptyRes = consistencyScorer.score('Normal Text', {
       entities: [],
       assets: [],
@@ -244,7 +244,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Perfect Result',
       documentTitle: 'Perfect Document',
       content: '　　“系统组件运行正常。”UserA正在等待指令……\n　　微风拂过，远山如黛。',
-      stateLedger: {
+      runtimeState: {
         entities: [{ name: 'UserA', status: 'Peak State' }],
         assets: [],
         tracks: [{ clue: 'Ancient Secret', status: 'resolved' }],
@@ -260,7 +260,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Good Result',
       documentTitle: 'Good Document',
       content: '　　“系统上线。”UserA就绪。',
-      stateLedger: {
+      runtimeState: {
         entities: [{ name: 'UserA', status: 'Peak State' }],
         assets: [],
         tracks: [{ clue: 'Ancient Secret', status: 'resolved' }],
@@ -276,7 +276,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Medium Result',
       documentTitle: 'Document B',
       content: '"half-width quotes!"UserArunning... logs streaming.。',
-      stateLedger: {
+      runtimeState: {
         entities: [{ name: 'UserA', status: 'Normal State' }],
         assets: [],
         tracks: [
@@ -298,7 +298,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Pass Result',
       documentTitle: 'Document C',
       content: '"half-width quotes!"UserArunning... logs streaming..',
-      stateLedger: {
+      runtimeState: {
         entities: [{ name: 'UserA', status: 'Normal State' }],
         assets: [],
         tracks: [
@@ -321,7 +321,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: '不Pass Result',
       documentTitle: 'Document F',
       content: '"half-width quotes!"UserAUserB started the background process without errors....四周狂风,黑夜漫漫.',
-      stateLedger: {
+      runtimeState: {
         entities: [{ name: 'UserA', status: 'Injured' }],
         assets: [],
         tracks: [
@@ -344,7 +344,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Empty Content',
       documentTitle: 'Empty Document',
       content: '',
-      stateLedger: {
+      runtimeState: {
         entities: [],
         assets: [],
         tracks: [],
@@ -359,7 +359,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Zero Target Words',
       documentTitle: 'Zero Document',
       content: '　　“Has content。”……\n　　测试。',
-      stateLedger: {
+      runtimeState: {
         entities: [],
         assets: [],
         tracks: [],
@@ -375,7 +375,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Chapter Test',
       chapterTitle: 'Chapter 1',
       content: 'Text content here',
-      stateLedger: {
+      runtimeState: {
         entities: [],
         assets: [],
         tracks: [],
@@ -389,7 +389,7 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
       title: 'Section Test',
       sectionTitle: 'Section A',
       content: 'Text content here',
-      stateLedger: {
+      runtimeState: {
         entities: [],
         assets: [],
         tracks: [],
@@ -420,13 +420,13 @@ describe('Evaluation Benchmark Suite (@inkpi/evals)', () => {
     expect(invConditionRes.violations.length).toBe(2);
     expect(invConditionRes.passed).toBe(false);
 
-    // Test NovelEvalRunner without stateLedger and documentTitle fallback
-    const reportNoLedger = runner.evaluateDocument({
+    // Test NovelEvalRunner without runtimeState and documentTitle fallback
+    const reportNoState = runner.evaluateDocument({
       content: '纯文本内容，没有任何账本'
     });
-    expect(reportNoLedger.passed).toBe(true);
-    expect(reportNoLedger.chapterTitle).toBe('Content');
-    expect(reportNoLedger.title).toBe('');
+    expect(reportNoState.passed).toBe(true);
+    expect(reportNoState.chapterTitle).toBe('Content');
+    expect(reportNoState.title).toBe('');
 
     const reportDocTitle = runner.evaluateDocument({
       documentTitle: 'Doc Title',

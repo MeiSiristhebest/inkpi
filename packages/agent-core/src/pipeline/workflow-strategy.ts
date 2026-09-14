@@ -49,7 +49,6 @@ export interface GateResolvedArgs {
  */
 export interface WorkflowStrategy {
   readonly mode: WorkflowMode;
-  readonly includeLedgerAliases: boolean;
   transformStagePrompt(args: {
     stageId: string;
     ctx: WorkflowContext;
@@ -67,7 +66,6 @@ export interface WorkflowStrategy {
 
 export const genericWorkflowStrategy: WorkflowStrategy = {
   mode: 'generic',
-  includeLedgerAliases: false,
 
   async transformStagePrompt({ prompt }) {
     return prompt;
@@ -104,6 +102,6 @@ export const genericWorkflowStrategy: WorkflowStrategy = {
   },
 
   applyStageOutputAliases() {
-    // Generic mode stores outputs only under ctx.stageOutputs.
+    // Generic mode stores outputs only under ctx.outputs.
   }
 };

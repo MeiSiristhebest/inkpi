@@ -1,4 +1,4 @@
-import type { QualityGateRule, StateLedger } from '@inkpi/protocol';
+import type { QualityGateRule } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 import { detectGateIssues } from '../packages/agent-core/src/pipeline/gate-detection.js';
 
@@ -43,45 +43,44 @@ describe('detectGateIssues (pure)', () => {
     expect(detectGateIssues('anything', rules)).toHaveLength(0);
   });
 
-  it('ledger 缺省时回退空账本，detector 收到空账本', () => {
-    let received: StateLedger | undefined;
+  it('context 缺省时保持 undefined，不创建产品域默认状态', () => {
+    let received: unknown = 'unset';
     const rules: QualityGateRule[] = [
       {
         type: 'c',
         description: 'd',
         severity: 'info',
-        detector: (_c, ledger) => {
-          received = ledger;
+        detector: (_c, context) => {
+          received = context;
           return null;
         }
       }
     ];
     detectGateIssues('x', rules);
-    expect(received).toBeDefined();
-    expect((received as StateLedger).entities).toEqual([]);
+    expect(received).toBeUndefined();
   });
 
-  it('传入的 ledger 透传给 detector', () => {
-    const ledger: StateLedger = {
+  it('传入的 opaque context 原样透传给 detector', () => {
+    const context = {
       entities: [{ id: 'e1', name: 'A' }],
       assets: [],
       tracks: [],
       locations: [],
       modifiedResources: []
     };
-    let received: StateLedger | undefined;
+    let received: unknown;
     const rules: QualityGateRule[] = [
       {
         type: 'c',
         description: 'd',
         severity: 'info',
-        detector: (_c, l) => {
-          received = l;
+        detector: (_c, value) => {
+          received = value;
           return null;
         }
       }
     ];
-    detectGateIssues('x', rules, ledger);
-    expect(received?.entities[0]?.name).toBe('A');
+    detectGateIssues('x', rules, context);
+    expect(received).toBe(context);
   });
 });

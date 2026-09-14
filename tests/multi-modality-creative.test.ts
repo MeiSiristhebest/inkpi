@@ -1,14 +1,14 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { AgentMessage, RuntimeState } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
+import { WorkflowCoordinator, extractRuntimeState } from '../packages/agent-core/src/index.js';
+import { streamAi } from '../packages/ai/src/index.js';
 import {
-  NarrativeSemanticLedgerExtractor,
-  WorkflowCoordinator,
   createScreenplayGateRules,
   createShortDramaGateRules,
   createVisualNovelGateRules,
-  extractStateLedger
-} from '../packages/agent-core/src/index.js';
-import { streamAi } from '../packages/ai/src/index.js';
+  creativeStateExtractor,
+  readCreativeRuntimeState
+} from './fixtures/domain-adapters.js';
 
 describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite', () => {
   // --------------------------------------------------------------------------
@@ -34,7 +34,7 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         }
       });
 
-      const screenplayLedger: StateLedger = {
+      const screenplayState: RuntimeState = {
         entities: [
           { id: 'char_lu', name: '陆警官', status: '刑侦支队长' },
           { id: 'char_chen', name: '陈默', status: '神秘嫌疑人' }
@@ -48,14 +48,14 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
       const result = await coordinator.runWorkflow({
         title: '迷雾追凶 (Film Screenplay)',
         sectionTitle: 'SCENE_01',
-        userPrompt: '撰写一场高张力警局审讯开场戏',
-        stateLedger: screenplayLedger
+        input: '撰写一场高张力警局审讯开场戏',
+        state: screenplayState
       });
 
-      expect(result.stageOutputs.outline).toContain('INT. 警局审讯室');
-      expect(result.stageOutputs.draft).toContain('INT. 警局审讯室 - NIGHT');
-      expect(result.stageOutputs.draft).toContain('陆警官');
-      expect(result.stageOutputs.draft).toContain('陈默');
+      expect(result.outputs.outline).toContain('INT. 警局审讯室');
+      expect(result.outputs.draft).toContain('INT. 警局审讯室 - NIGHT');
+      expect(result.outputs.draft).toContain('陆警官');
+      expect(result.outputs.draft).toContain('陈默');
     });
   });
 
@@ -97,10 +97,10 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
           { id: 'draft', name: '视觉小说场景', role: 'writer' }
         ],
         customGateRules: createVisualNovelGateRules(),
-        ledgerExtractor: (output) =>
-          extractStateLedger(
-            [{ role: 'assistant', content: [{ type: 'text', text: output }] } as any],
-            [NarrativeSemanticLedgerExtractor]
+        stateExtractor: (output) =>
+          extractRuntimeState(
+            [{ role: 'assistant', content: [{ type: 'text', text: output }] } satisfies AgentMessage],
+            [creativeStateExtractor]
           ),
         customExecutor: async (role) => {
           if (role === 'writer') {
@@ -110,7 +110,7 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
         }
       });
 
-      const vnLedger: StateLedger = {
+      const vnState: RuntimeState = {
         entities: [{ id: 'heroine', name: '夏目铃', status: '好感度:80' }],
         assets: [],
         tracks: [{ id: 'flag_confession', clue: '天台告白支线', status: 'pending' }],
@@ -121,13 +121,14 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
       const res = await coordinator.runWorkflow({
         title: '星空下的约定 (Visual Novel)',
         sectionTitle: 'VN_ACT_02',
-        userPrompt: '设计天台关键选项分支',
-        stateLedger: vnLedger
+        input: '设计天台关键选项分支',
+        state: vnState
       });
 
-      expect(res.stageOutputs.draft).toContain('<choice id="opt_1"');
-      // StateLedger should capture the new asset from XML tags
-      expect(res.stateLedger.assets.some((a) => a.name === '红线风铃')).toBe(true);
+      expect(res.outputs.draft).toContain('<choice id="opt_1"');
+      // The injected adapter captures the new asset from XML tags.
+      const state = readCreativeRuntimeState(res.state);
+      expect(state.assets.some((asset) => asset.name === '红线风铃')).toBe(true);
     });
   });
 
@@ -197,15 +198,15 @@ describe('Multi-Modality Creative Harness & Domain-Agnostic Extensibility Suite'
 
       const res = await coordinator.runWorkflow({
         title: '星际救援',
-        userPrompt: '救生舱迫降未知星球'
+        input: '救生舱迫降未知星球'
       });
 
       expect(beforeCalled).toBe(true);
       expect(afterCalled).toBe(true);
-      expect(res.stageOutputs.screenplay).toContain('【screenwriter输出】');
-      expect(res.stageOutputs.storyboard).toContain('【storyboarder输出】');
-      expect(res.stageOutputs.review).toContain('【script_doctor输出】');
-      expect(res.stageOutputs.review).toContain('<!-- End of review -->');
+      expect(res.outputs.screenplay).toContain('【screenwriter输出】');
+      expect(res.outputs.storyboard).toContain('【storyboarder输出】');
+      expect(res.outputs.review).toContain('【script_doctor输出】');
+      expect(res.outputs.review).toContain('<!-- End of review -->');
     });
   });
 });

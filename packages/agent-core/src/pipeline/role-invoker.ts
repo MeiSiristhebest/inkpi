@@ -1,8 +1,8 @@
 import type { ModelConfig } from '@inkpi/ai';
-import type { AgentRoleConfig, StateLedger, Usage } from '@inkpi/protocol';
+import type { AgentRoleConfig, RuntimeState, Usage } from '@inkpi/protocol';
 import type { Clock, ModelStreamer } from '../ports/index.js';
 import { REAL_CLOCK } from '../ports/index.js';
-import { emptyLedger } from './ledger-merge.js';
+import { emptyRuntimeState } from './ledger-merge.js';
 
 export interface RoleInvocation {
   text: string;
@@ -18,12 +18,12 @@ export class RoleInvocationError extends Error {
 }
 
 /**
- * 把状态账本快照拼接进角色系统提示词。纯函数。
+ * 把调用方提供的运行状态快照拼接进角色系统提示词。纯函数。
  *
- * 账本块为空时原样返回系统提示词，不追加空标题。
+ * 状态块为空时原样返回系统提示词，不追加空标题。
  */
-export function assembleSystemPrompt(systemPrompt: string, ledgerBlock: string): string {
-  return ledgerBlock ? `${systemPrompt}\n\n【核心状态账本快照】\n${ledgerBlock}` : systemPrompt;
+export function assembleSystemPrompt(systemPrompt: string, stateBlock: string): string {
+  return stateBlock ? `${systemPrompt}\n\n【Runtime State】\n${stateBlock}` : systemPrompt;
 }
 
 /** 由角色默认思考档位推导 token 预算。纯函数。 */
@@ -54,20 +54,26 @@ export class RoleInvoker {
   public async invoke(args: {
     config: AgentRoleConfig;
     prompt: string;
-    ledger?: StateLedger;
+    state?: RuntimeState;
     model?: ModelConfig;
     signal?: AbortSignal;
-    ledgerFormatter?: (ledger: StateLedger) => string;
+    stateFormatter?: (state: RuntimeState) => string;
     streamFn?: ModelStreamer;
+    /** @deprecated Use state. */
+    ledger?: RuntimeState;
+    /** @deprecated Use stateFormatter. */
+    ledgerFormatter?: (state: RuntimeState) => string;
   }): Promise<RoleInvocation> {
-    const { config, prompt, ledger, model, signal, ledgerFormatter } = args;
+    const { config, prompt, model, signal } = args;
 
     if (!model) {
       throw new RoleInvocationError('Workflow requires an explicit model or executor.');
     }
 
-    const ledgerBlock = ledgerFormatter?.(ledger || emptyLedger()) || '';
-    const systemPrompt = assembleSystemPrompt(config.systemPrompt, ledgerBlock);
+    const state = args.state ?? args.ledger;
+    const formatter = args.stateFormatter ?? args.ledgerFormatter;
+    const stateBlock = formatter?.(state || emptyRuntimeState()) || '';
+    const systemPrompt = assembleSystemPrompt(config.systemPrompt, stateBlock);
 
     let streamer = args.streamFn || this.streamFn;
     if (!streamer) {

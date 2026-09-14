@@ -6,9 +6,10 @@ import type {
   QualityGateHandler,
   QualityGateIssue,
   QualityGateRule,
-  StateLedger,
+  RuntimeState,
   WorkflowContext,
-  WorkflowStageConfig
+  WorkflowStageConfig,
+  WorkflowStateAdapter
 } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
 import type { TelemetryCollector } from '../telemetry/telemetry.js';
@@ -37,16 +38,25 @@ export interface WorkflowExecutionOptions {
   signal?: AbortSignal;
   enableQualityGate?: boolean;
   qualityGateHandler?: QualityGateHandler;
-  customGateRules?: QualityGateRule[];
+  customGateRules?: QualityGateRule<WorkflowContext>[];
   stages?: WorkflowStageConfig[];
   /** 注入已构造好的 RoleRegistry 实例（优先于 initialRoles） */
   roleRegistry?: RoleRegistry;
   /** 初始角色字典，由 coordinator 内部构建 RoleRegistry（当 roleRegistry 未传入时生效） */
   initialRoles?: Record<string, AgentRoleConfig>;
-  /** 可选的领域状态抽取器；通用工作流不会自行推断状态。 */
-  ledgerExtractor?: (output: string, ctx: WorkflowContext) => StateLedger | Partial<StateLedger>;
-  /** 可选的领域状态格式化器；通用工作流不会自动注入账本。 */
-  ledgerFormatter?: (ledger: StateLedger) => string;
+  /** Caller-owned opaque state adapter; the Runtime supplies no domain default. */
+  stateAdapter?: WorkflowStateAdapter;
+  /** Optional caller-owned state extractor; generic workflows never infer state. */
+  stateExtractor?: (output: string, ctx: WorkflowContext) => RuntimeState | Partial<RuntimeState>;
+  /** Optional caller-owned state formatter; generic workflows never format domain state by default. */
+  stateFormatter?: (state: RuntimeState) => string;
+  /**
+   * @deprecated Compatibility alias for stateExtractor. It remains an
+   * explicit injection point and is never installed as a Runtime default.
+   */
+  ledgerExtractor?: (output: string, ctx: WorkflowContext) => RuntimeState | Partial<RuntimeState>;
+  /** @deprecated Compatibility alias for stateFormatter. */
+  ledgerFormatter?: (state: RuntimeState) => string;
   /**
    * 可选执行策略。默认使用唯一的 domain-neutral generic strategy。
    */

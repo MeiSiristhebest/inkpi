@@ -1,7 +1,7 @@
 import { CHARS_PER_TOKEN_HEURISTIC } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessage, CompactionEntry } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
-import { type LedgerExtractor, extractStateLedger } from './state-ledger.js';
+import { type RuntimeState, type RuntimeStateExtractor, extractRuntimeState } from './runtime-state.js';
 import { GENERIC_SUMMARIZATION_SYSTEM_PROMPT, serializeConversationForSummary } from './summarize.js';
 
 export interface CompactionConfig {
@@ -11,10 +11,10 @@ export interface CompactionConfig {
   preserveRecentCount?: number;
   /** Custom summarizer function */
   summarizer?: (serializedConversation: string, systemPrompt: string) => Promise<string>;
-  /** Optional domain adapter for extracting structured state from compacted messages. */
-  ledgerExtractors?: LedgerExtractor[];
-  /** Optional domain adapter for rendering the extracted state into the summary message. */
-  ledgerFormatter?: (ledger: ReturnType<typeof extractStateLedger>) => string;
+  /** Optional caller-owned adapter for extracting opaque state from compacted messages. */
+  stateExtractors?: RuntimeStateExtractor[];
+  /** Optional caller-owned formatter for the extracted opaque state. */
+  stateFormatter?: (state: RuntimeState) => string;
   /** Injectable clock for timestamps / ids. Required — no `Date.now` fallback. */
   clock: Clock;
   /**
@@ -29,8 +29,8 @@ interface ResolvedCompactionConfig {
   triggerTokensThreshold: number;
   preserveRecentCount: number;
   summarizer?: CompactionConfig['summarizer'];
-  ledgerExtractors?: LedgerExtractor[];
-  ledgerFormatter?: CompactionConfig['ledgerFormatter'];
+  stateExtractors?: RuntimeStateExtractor[];
+  stateFormatter?: CompactionConfig['stateFormatter'];
 }
 
 export class SessionCompactor {
@@ -43,8 +43,8 @@ export class SessionCompactor {
       triggerTokensThreshold: config.triggerTokensThreshold ?? 50000,
       preserveRecentCount: config.preserveRecentCount ?? 4,
       summarizer: config.summarizer,
-      ledgerExtractors: config.ledgerExtractors,
-      ledgerFormatter: config.ledgerFormatter,
+      stateExtractors: config.stateExtractors,
+      stateFormatter: config.stateFormatter,
       charsPerToken: config.charsPerToken ?? CHARS_PER_TOKEN_HEURISTIC
     };
   }
@@ -99,10 +99,10 @@ export class SessionCompactor {
     const oldMessages = messages.slice(0, splitIndex);
     const keptMessages = messages.slice(splitIndex);
 
-    const stateLedger = this.config.ledgerExtractors
-      ? extractStateLedger(oldMessages, this.config.ledgerExtractors)
+    const runtimeState = this.config.stateExtractors
+      ? extractRuntimeState(oldMessages, this.config.stateExtractors)
       : undefined;
-    const formattedLedger = stateLedger && this.config.ledgerFormatter ? this.config.ledgerFormatter(stateLedger) : '';
+    const formattedState = runtimeState && this.config.stateFormatter ? this.config.stateFormatter(runtimeState) : '';
 
     // Generate conversation summary
     const serialized = serializeConversationForSummary(oldMessages);
@@ -114,8 +114,8 @@ export class SessionCompactor {
       throw new Error('Session compaction aborted by signal');
     }
 
-    const fullSummaryContent = formattedLedger
-      ? `【Context Summary / 会话前情提要】\n${summaryText}\n\n【State Ledger / 核心状态账本】\n${formattedLedger}`
+    const fullSummaryContent = formattedState
+      ? `【Context Summary / 会话前情提要】\n${summaryText}\n\n【Runtime State】\n${formattedState}`
       : `【Context Summary / 会话前情提要】\n${summaryText}`;
 
     const entry: CompactionEntry = {
@@ -127,7 +127,7 @@ export class SessionCompactor {
       estimatedTokensAfter:
         this.estimateTokens(keptMessages) + Math.ceil(fullSummaryContent.length * this.config.charsPerToken),
       createdAt: this.clock(),
-      details: stateLedger ? { stateLedger } : undefined
+      details: runtimeState ? { runtimeState } : undefined
     };
 
     // Replace old messages with structured summary block

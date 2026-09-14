@@ -1,4 +1,30 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { RuntimeState } from '@inkpi/protocol';
+
+interface RuntimeTrackRecord {
+  id?: string;
+  clue?: string;
+  summary?: string;
+  status?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isRuntimeTrackRecord(value: unknown): value is RuntimeTrackRecord {
+  return (
+    isRecord(value) &&
+    (value.id === undefined || typeof value.id === 'string') &&
+    (value.clue === undefined || typeof value.clue === 'string') &&
+    (value.summary === undefined || typeof value.summary === 'string') &&
+    (value.status === undefined || typeof value.status === 'string')
+  );
+}
+
+function readRuntimeTracks(state: RuntimeState): RuntimeTrackRecord[] {
+  const tracks = (state as Record<string, unknown>).tracks;
+  return Array.isArray(tracks) ? tracks.filter(isRuntimeTrackRecord) : [];
+}
 
 export interface ForeshadowingScoreResult {
   score: number; // 0 - 100
@@ -16,11 +42,11 @@ export interface ForeshadowingScoreResult {
  */
 export class ForeshadowingPayoffScorer {
   public score(
-    ledger: StateLedger,
+    runtimeState: RuntimeState,
     currentText = '',
     customResolver?: (clue: string, text: string) => boolean
   ): ForeshadowingScoreResult {
-    const clues = ledger.tracks || [];
+    const clues = readRuntimeTracks(runtimeState);
     if (clues.length === 0) {
       return {
         score: 100,
@@ -37,7 +63,7 @@ export class ForeshadowingPayoffScorer {
     const unresolved: string[] = [];
 
     for (const clue of clues) {
-      const label = clue.clue || clue.summary || clue.id || 'track';
+      const label = clue.clue ?? clue.summary ?? clue.id ?? 'track';
       const isResolvedInLedger = clue.status === 'resolved';
       const isResolvedByCustom = Boolean(customResolver?.(label, currentText));
 

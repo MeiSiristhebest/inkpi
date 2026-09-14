@@ -1,4 +1,4 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { RuntimeState } from '@inkpi/protocol';
 import type { LongContextBenchmark, LongContextChapter } from './fixtures.js';
 
 export interface DeterministicViolation {
@@ -62,7 +62,10 @@ export interface EntityLedgerEntry {
 }
 
 export interface EntityContradictionInput {
-  ledger?: StateLedger | { entities?: readonly (EntityFact | EntityLedgerEntry)[] };
+  /** Current opaque RuntimeState input. */
+  runtimeState?: RuntimeState;
+  /** @deprecated Use runtimeState. This name remains only for API compatibility. */
+  ledger?: RuntimeState;
   facts?: readonly EntityFact[];
   claims?: readonly EntityAssertion[];
   observations?: readonly EntityAssertion[];
@@ -76,6 +79,25 @@ export interface EntityContradictionReport extends DeterministicEvaluationReport
     claimCount: number;
     contradictionCount: number;
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isEntityLedgerEntry(value: unknown): value is EntityLedgerEntry {
+  if (!isRecord(value)) return false;
+  return (
+    (value.entity === undefined || typeof value.entity === 'string') &&
+    (value.name === undefined || typeof value.name === 'string') &&
+    (value.status === undefined || typeof value.status === 'string') &&
+    (value.attributes === undefined || isRecord(value.attributes))
+  );
+}
+
+function readRuntimeEntities(state: RuntimeState | undefined): EntityLedgerEntry[] {
+  const entities = state ? (state as Record<string, unknown>).entities : undefined;
+  return Array.isArray(entities) ? entities.filter(isEntityLedgerEntry) : [];
 }
 
 const terminalEntityStatuses = new Set(['dead', 'deceased', '死亡', '已故']);
@@ -121,12 +143,7 @@ function addEntityContradiction(
 
 export function evaluateEntityContradiction(input: EntityContradictionInput): EntityContradictionReport {
   const violations: DeterministicViolation[] = [];
-  const ledgerEntities = (input.ledger?.entities ?? []) as ReadonlyArray<{
-    entity?: string;
-    name?: string;
-    status?: string;
-    attributes?: Record<string, unknown>;
-  }>;
+  const ledgerEntities = readRuntimeEntities(input.runtimeState ?? input.ledger);
   const facts = [
     ...ledgerEntities.map((entity) => ({
       entity: entity.entity ?? entity.name ?? '',

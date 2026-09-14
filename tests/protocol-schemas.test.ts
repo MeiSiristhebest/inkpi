@@ -1,7 +1,8 @@
 import {
   AssistantMessageSchema,
-  CharacterStateSchema,
+  EntityStateSchema,
   RpcRequestSchema,
+  RuntimeStateSchema,
   StateLedgerSchema,
   TaskExecutionParamsSchema,
   TaskExecutionSnapshotSchema,
@@ -59,21 +60,21 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
     expect(Value.Check(AssistantMessageSchema, assistantMsg)).toBe(true);
   });
 
-  it('should validate CharacterStateSchema and StateLedgerSchema', () => {
-    const character = {
-      id: 'char_1',
-      name: '林动',
+  it('should validate generic RuntimeState and compatibility snapshot schemas', () => {
+    const entity = {
+      id: 'entity_1',
+      name: 'entity',
       status: 'active',
-      inventory: ['神秘石符'],
-      faction: '林家'
+      attributes: { source: 'adapter' }
     };
-    expect(Value.Check(CharacterStateSchema, character)).toBe(true);
+    expect(Value.Check(EntityStateSchema, entity)).toBe(true);
+    expect(Value.Check(RuntimeStateSchema, { adapterState: { revision: 1 } })).toBe(true);
 
     const ledger = {
-      entities: [character],
-      assets: [{ id: 'asset_1', name: '神秘石符', state: 'intact' }],
-      tracks: [{ id: 'track_1', summary: '石符之谜', status: 'open' }],
-      locations: [{ id: 'loc_1', name: '青阳镇' }]
+      entities: [entity],
+      assets: [{ id: 'asset_1', name: 'asset', state: 'intact' }],
+      tracks: [{ id: 'track_1', summary: 'track', status: 'open' }],
+      locations: [{ id: 'loc_1', name: 'location' }]
     };
     expect(Value.Check(StateLedgerSchema, ledger)).toBe(true);
   });

@@ -135,7 +135,6 @@ export const EntityStateSchema = Type.Object({
   aliases: Type.Optional(Type.Array(Type.String())),
   location: Type.Optional(Type.String())
 });
-export const CharacterStateSchema = EntityStateSchema;
 
 export const AssetStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
@@ -146,7 +145,6 @@ export const AssetStateSchema = Type.Object({
   state: Type.Optional(Type.String()),
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any()))
 });
-export const AssetTrackSchema = AssetStateSchema;
 
 export const TrackStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
@@ -156,7 +154,6 @@ export const TrackStateSchema = Type.Object({
   notes: Type.Optional(Type.String()),
   metadata: Type.Optional(Type.Record(Type.String(), Type.Any()))
 });
-export const PlotThreadSchema = TrackStateSchema;
 
 export const LocationStateSchema = Type.Object({
   id: Type.Optional(IdSchema),
@@ -165,16 +162,27 @@ export const LocationStateSchema = Type.Object({
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any()))
 });
 
-export const StateLedgerSchema = Type.Object({
-  entities: Type.Optional(Type.Array(EntityStateSchema)),
-  assets: Type.Optional(Type.Array(AssetStateSchema)),
-  tracks: Type.Optional(Type.Array(TrackStateSchema)),
-  locations: Type.Optional(Type.Array(LocationStateSchema)),
-  modifiedResources: Type.Optional(Type.Array(Type.String())),
-  characters: Type.Optional(Type.Array(EntityStateSchema)),
-  items: Type.Optional(Type.Array(AssetStateSchema)),
-  foreshadowings: Type.Optional(Type.Array(TrackStateSchema))
-});
+/**
+ * Canonical opaque Runtime state. Domain adapters may choose their own keys
+ * and value shapes; Runtime only transports and merges this object.
+ */
+export const RuntimeStateSchema = Type.Record(Type.String(), Type.Any());
+
+/**
+ * @deprecated Compatibility schema for the normalized state snapshot used by
+ * legacy persistence/sanitization callers. Runtime workflows use
+ * RuntimeStateSchema and do not depend on this shape.
+ */
+export const StateLedgerSchema = Type.Object(
+  {
+    entities: Type.Optional(Type.Array(EntityStateSchema)),
+    assets: Type.Optional(Type.Array(AssetStateSchema)),
+    tracks: Type.Optional(Type.Array(TrackStateSchema)),
+    locations: Type.Optional(Type.Array(LocationStateSchema)),
+    modifiedResources: Type.Optional(Type.Array(Type.String()))
+  },
+  { additionalProperties: false }
+);
 
 // 7. Durable task execution query Schemas
 export const TaskStatusSchema = Type.Union([

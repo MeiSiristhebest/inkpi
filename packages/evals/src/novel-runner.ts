@@ -1,5 +1,9 @@
-import type { StateLedger } from '@inkpi/protocol';
-import { type ConsistencyScoreResult, EntityConsistencyScorer } from './benchmarks/entity-consistency.js';
+import type { RuntimeState } from '@inkpi/protocol';
+import {
+  type ConsistencyScoreResult,
+  EntityConsistencyScorer,
+  type InvariantRule
+} from './benchmarks/entity-consistency.js';
 import { ForeshadowingPayoffScorer, type ForeshadowingScoreResult } from './benchmarks/foreshadowing-payoff.js';
 import { type TypographyComplianceResult, TypographyComplianceScorer } from './benchmarks/typography-compliance.js';
 
@@ -9,10 +13,12 @@ export interface NovelEvaluationInput {
   chapterTitle?: string;
   sectionTitle?: string;
   content: string;
-  stateLedger?: StateLedger;
+  runtimeState?: RuntimeState;
+  /** @deprecated Use runtimeState. This name remains only for API compatibility. */
+  stateLedger?: RuntimeState;
   targetSize?: number;
   targetWords?: number;
-  expectedInvariants?: any[];
+  expectedInvariants?: readonly InvariantRule[];
   customResolver?: (clue: string, text: string) => boolean;
 }
 
@@ -55,15 +61,16 @@ export class NovelEvalRunner {
   private typographyScorer = new TypographyComplianceScorer();
 
   public evaluateDocument(input: NovelEvaluationInput): BenchmarkReport {
-    const ledger = input.stateLedger || {
-      entities: [],
-      assets: [],
-      tracks: [],
-      locations: [],
-      modifiedResources: []
-    };
-    const consistencyRes = this.consistencyScorer.score(input.content, ledger, input.expectedInvariants);
-    const foreshadowingRes = this.foreshadowingScorer.score(ledger, input.content, input.customResolver);
+    const runtimeState = input.runtimeState ??
+      input.stateLedger ?? {
+        entities: [],
+        assets: [],
+        tracks: [],
+        locations: [],
+        modifiedResources: []
+      };
+    const consistencyRes = this.consistencyScorer.score(input.content, runtimeState, input.expectedInvariants);
+    const foreshadowingRes = this.foreshadowingScorer.score(runtimeState, input.content, input.customResolver);
     const typographyRes = this.typographyScorer.score(input.content);
 
     const chineseChars = (input.content.match(/[\u4e00-\u9fa5]/g) || []).length;

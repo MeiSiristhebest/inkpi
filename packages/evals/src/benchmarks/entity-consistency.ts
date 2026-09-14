@@ -1,4 +1,26 @@
-import type { StateLedger } from '@inkpi/protocol';
+import type { RuntimeState } from '@inkpi/protocol';
+
+interface RuntimeEntityRecord {
+  name: string;
+  status?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isRuntimeEntityRecord(value: unknown): value is RuntimeEntityRecord {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    (value.status === undefined || typeof value.status === 'string')
+  );
+}
+
+function readRuntimeEntities(state: RuntimeState): RuntimeEntityRecord[] {
+  const values = (state as Record<string, unknown>).entities ?? (state as Record<string, unknown>).characters;
+  return Array.isArray(values) ? values.filter(isRuntimeEntityRecord) : [];
+}
 
 export interface ConsistencyScoreResult {
   score: number; // 0 - 100
@@ -22,16 +44,20 @@ export class EntityConsistencyScorer {
   /**
    * Score the consistency between the text and the state ledger based on generic rules
    */
-  public score(text: string, ledger: StateLedger, expectedInvariants?: InvariantRule[]): ConsistencyScoreResult {
+  public score(
+    text: string,
+    runtimeState: RuntimeState,
+    expectedInvariants?: readonly InvariantRule[]
+  ): ConsistencyScoreResult {
     const violations: string[] = [];
     let trackedCount = 0;
 
-    const entities = ledger.entities || (ledger as any).characters || [];
+    const entities = readRuntimeEntities(runtimeState);
     if (entities.length === 0) {
       return { score: 100, passed: true, violations: [], trackedCharactersCount: 0 };
     }
 
-    const charMap = new Map<string, any>();
+    const charMap = new Map<string, RuntimeEntityRecord>();
     for (const char of entities) {
       charMap.set(char.name, char);
       if (text.includes(char.name)) {

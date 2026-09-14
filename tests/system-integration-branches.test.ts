@@ -9,23 +9,28 @@ import {
   SessionTree,
   SlashCommandRegistry,
   SyncedClipboard,
-  TelemetryCollector,
-  createNarrativeEntitySafetyRules
+  TelemetryCollector
 } from '@inkpi/agent-core';
 import { convertMessagesToStandard, getModelPreset, streamAi } from '@inkpi/ai';
 import { runPrintMode } from '@inkpi/cli';
 import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
-import { StateLedgerSchema, sanitizeStateLedger, validateSchema } from '@inkpi/protocol';
+import { RuntimeStateSchema, sanitizeStateLedger, validateSchema } from '@inkpi/protocol';
+import type { AssistantMessage, ToolResultMessage } from '@inkpi/protocol';
 import { InMemoryTransport, InkRpcClient, InkRpcServer } from '@inkpi/server';
 import { AppendOnlySessionJournal, FtsSearchEngine, InkDb } from '@inkpi/storage';
 import { Editor, SelectList, parseKey } from '@inkpi/tui';
 import { describe, expect, it } from 'vitest';
+import {
+  createNarrativeEntitySafetyRules,
+  creativeStateExtractor,
+  readCreativeRuntimeState
+} from './fixtures/domain-adapters.js';
 
 describe('System Integration & Edge Cases Suite', () => {
   it('should test InkRpcServer uninitialized component branches', async () => {
     const emptyServer = new InkRpcServer({});
 
-    const expectError = async (method: string, params?: any) => {
+    const expectError = async (method: string, params?: unknown) => {
       const res = await emptyServer.handleRequest({
         jsonrpc: '2.0',
         id: 1,
@@ -223,14 +228,14 @@ describe('System Integration & Edge Cases Suite', () => {
   });
 
   it('should test TypeBox schema validation errors and sanitization branches', () => {
-    const invalidData = { entities: 'not-an-array' };
-    const validRes = validateSchema(StateLedgerSchema, invalidData);
+    const invalidData: unknown = null;
+    const validRes = validateSchema(RuntimeStateSchema, invalidData);
     expect(validRes.valid).toBe(false);
     expect(validRes.errors && validRes.errors.length > 0).toBe(true);
 
     const sanitized = sanitizeStateLedger({
       entities: [{ id: 'c1', name: '萧炎' }],
-      assets: null as any
+      assets: null
     });
     expect(sanitized.entities.length).toBe(1);
     expect(sanitized.assets).toEqual([]);
@@ -360,7 +365,7 @@ describe('System Integration & Edge Cases Suite', () => {
     await expect(
       rejectingCoordinator.runWorkflow({
         userPrompt: '测试冲突',
-        stateLedger: {
+        state: {
           entities: [{ id: '1', name: '主角', status: 'alive' }],
           assets: [],
           tracks: [],
@@ -420,11 +425,11 @@ describe('System Integration & Edge Cases Suite', () => {
     lanesMgr.setDefaultLane('ws_1', 'lane_1');
   });
 
-  it('should test StateLedger extraction: items/clue branches and XML tags', async () => {
-    const { extractNovelStateLedger } = await import('@inkpi/agent-core');
+  it('should test RuntimeState extraction: items/clue branches and XML tags', async () => {
+    const { extractRuntimeState } = await import('@inkpi/agent-core');
 
     // 触发 tool calls and standard tags
-    const msgsWithItems = [
+    const msgsWithItems: AssistantMessage[] = [
       {
         role: 'assistant',
         content: [
@@ -445,36 +450,36 @@ describe('System Integration & Edge Cases Suite', () => {
             text: '<entity name="Alice" status="Lead" /> <asset name="Keycard" holder="Alice" /> <track clue="Database-Access" status="pending" />'
           }
         ]
-      } as any
+      }
     ];
-    const ledger1 = extractNovelStateLedger(msgsWithItems);
-    expect(ledger1.entities.length).toBeGreaterThan(0);
-    expect(ledger1.assets.length).toBeGreaterThan(0);
-    expect(ledger1.tracks.length).toBeGreaterThan(0);
+    const runtimeState1 = readCreativeRuntimeState(extractRuntimeState(msgsWithItems, [creativeStateExtractor]));
+    expect(runtimeState1.entities.length).toBeGreaterThan(0);
+    expect(runtimeState1.assets.length).toBeGreaterThan(0);
+    expect(runtimeState1.tracks.length).toBeGreaterThan(0);
 
     // 触发 XML 标签 (location, track with content/status)
-    const msgsXml = [
+    const msgsXml: AssistantMessage[] = [
       {
         role: 'assistant',
         content: [
           { type: 'text', text: '<location name="CommandCenter" /> <track content="ServerRoom" status="resolved" />' }
         ]
-      } as any
+      }
     ];
-    const ledger2 = extractNovelStateLedger(msgsXml);
-    expect(ledger2.locations.length).toBeGreaterThan(0);
-    expect(ledger2.tracks.some((t) => t.status === 'resolved')).toBe(true);
+    const runtimeState2 = readCreativeRuntimeState(extractRuntimeState(msgsXml, [creativeStateExtractor]));
+    expect(runtimeState2.locations.length).toBeGreaterThan(0);
+    expect(runtimeState2.tracks.some((track) => track.status === 'resolved')).toBe(true);
 
     // 触发 toolResult branch
-    const msgsToolResult = [
+    const msgsToolResult: ToolResultMessage[] = [
       {
         role: 'toolResult',
         toolCallId: 't1',
         toolName: 'test',
         content: [{ type: 'text', text: '<track clue="AuditLog" status="pending" />' }]
-      } as any
+      }
     ];
-    const ledger3 = extractNovelStateLedger(msgsToolResult);
-    expect(ledger3).toBeDefined();
+    const runtimeState3 = extractRuntimeState(msgsToolResult, [creativeStateExtractor]);
+    expect(runtimeState3).toBeDefined();
   });
 });
