@@ -802,15 +802,13 @@ mutation
 
 已有 runner 可以检查 task status、output contract、required provenance 和 proposal approval；已有 long-context fixture、mutation helper，以及 `packages/evals/fixtures/subjective/` 下的 canonical gold-set、pairwise preference 和 rubric fixture。当前 deterministic 与 subjective 测试已覆盖实体/状态矛盾、source-map/range、100/300 chapter budget、mutation、distillation checkpoint、候选评分、pairwise 排名和 rubric 门禁，并验证 fixture JSON 与 CI workflow 清单。long-context benchmark 现已提供 retrieval recall、cache hit/invalidation 和 distillation recovery 的可注入指标与阈值门禁；默认报告仍明确为 `fixture-only`，不产生真实 provider 或生产数据证据。
 
-`.github/workflows/evals.yml` 已把 `pnpm run test:evals` 接入 push、pull request 和手动触发的 CI。`acceptance:real-provider` 已提供显式环境门控、凭据检查和 marker 报告，但默认不调用外部 provider。当前 deterministic suite 和 canonical subjective fixture suite 已有可复现结果；Final 前仍需补齐真实 provider、人类标注 gold set、生产 benchmark 和跨进程集成门禁：
+`.github/workflows/evals.yml` 已把 `pnpm run test:evals` 接入 push、pull request 和手动触发的 CI。`acceptance:real-provider` 已提供显式环境门控、凭据检查和 marker 报告，但默认不调用外部 provider。当前 deterministic suite、canonical subjective fixture suite、真实 provider 100/300 章 evidence、人工 Gold/pairwise、可靠性矩阵和 packaged sidecar 门禁均有可复现或带来源的证据。正式汇总见 `inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json`。
 
-- 真实 provider 的 dead-character reappearance、timeline/entity contradiction、missing payoff 和 invalid state transition 回归；
-- 真实 retrieval recall、source-map/range 集成回归；
-- Prompt/Context/Skill/Model Router mutation 的生产配置覆盖；
-- 100 和 300 chapter 的真实 context pruning、retrieval recall、cache hit rate；
-- distillation checkpoint/recovery 的进程级 benchmark；
-- 五个 Vertical Slice 的 Desktop ↔ Daemon 集成回归；
-- hook/style/voice/commercial-tension/rewrite-quality 主观任务的 human-labelled gold set、真实候选 pairwise preference 和 rubric 结果。
+- 真实 provider 的 100/300 章 marker、retrieval、recovery 结果；
+- 7 类 objective assertion、7 类 mutation triplet 和 6 个 Gold/3 个 pairwise 主观验收；
+- 真实 context pruning、retrieval recall、cache hit rate、checkpoint/recovery 的证据汇总；
+- 五个 Vertical Slice 的 Desktop ↔ Daemon packaged acceptance；
+- GUI、双实例、observability、插件迁移和可靠性证据组。
 
 单元测试通过不等于 v1 Final。每次契约变更还必须通过 typecheck、lint、unit、architecture、RPC/integration 和相关 regression eval。
 
