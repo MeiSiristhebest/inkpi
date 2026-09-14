@@ -1,10 +1,10 @@
 # InkPi AI Runtime Specification v1
 
-状态：冻结候选（Freeze pending）
+状态：Final Freeze 已通过
 
-基线日期：2026-09-12
+基线日期：2026-09-14
 
-本文件是 Runtime v1 的接口基线与验收记录，不是已通过 Final Freeze 的发布声明。Phase 0–22 的核心本地实现、契约测试和跨进程测试已经存在；人工标注、生产级故障与观测数据、跨设备一致性和完整 UI 证据仍需按第 18–22 节补齐。已新增显式 opt-in 的真实 Provider 验收入口；未提供凭据时不会运行，也不会把 fixture 结果当成真实证据。Tauri NSIS 安装包已用当前 Runtime sidecar 重建；本轮 packaged acceptance 已实际启动当前 sidecar，通过四个 Skill 激活、4 个 Runtime Tool、2 个 Runtime Workflow、Domain/Proposal projection、跨实例投影同步、ArtifactStore lineage、Context budget、三层 Cache hit 与手动失效、Instruction Registry、完整 Proposal CAS（Modify/Accept/Reject/Commit/Undo/Stale/Rebase）、五个垂直切片、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume（GUI/WebView2 仍需人工验证）。最新外部证据汇总记录 15/16 个 Final Freeze 组通过，报告为 `inkpi-evidence/phase18/phase18-23-packaged-reliability-20260914.json`；唯一缺失组为 `evals`，其余组已通过。Runtime 最新全量复核为 166 个测试文件、759 个测试通过；另有可靠性定向复核 9 个测试文件、35 个测试通过，serialized CreativeContext schema/provider、跨进程契约、Phase 18 objective/mutation 门禁和 Final Freeze 定向覆盖均通过，TypeScript 类型检查和 lint 通过。Desktop 最新分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个）；另有可靠性定向复核 5 个测试文件、20 个测试通过，插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过，TypeScript 类型检查通过。
+本文件是 Runtime v1 的接口基线与验收记录。Phase 0–23 的代码、契约、跨进程、打包、可靠性、GUI/双实例/观测和人工主观验收证据已汇总；`inkpi-evidence/phase18/phase18-23-packaged-human-reviewed-final-20260914.json` 通过最终冻结审计，16/16 个 Final Freeze 组通过。6 个 Gold 与 3 个 pairwise 已由 `project-owner` 批准并登记为 human-labelled；Phase 18 的 7 个 objective、7 个 mutation、100/300 章长上下文和主观评分门禁均通过。真实 provider 结果沿用已记录的无密钥外部证据，最近一次门禁使用该记录做 replay 校验，没有写入凭证或原始 provider payload。Runtime 最新全量复核为 166 个测试文件、759 个测试通过；可靠性定向复核为 9 个测试文件、35 个测试通过；TypeScript 类型检查和 lint 通过。Desktop 最新分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个）；可靠性定向复核为 5 个测试文件、20 个测试通过；TypeScript 类型检查通过。
 
 ## 1. 范围和术语
 
