@@ -384,7 +384,11 @@ function selectFauxTaskResponse(
   if (!script?.taskResponses) return script;
   const prompt = messages
     .filter((message): message is Extract<AgentMessage, { role: 'user' }> => message.role === 'user')
-    .map((message) => (typeof message.content === 'string' ? message.content : message.content.map((item) => item.type === 'text' ? item.text : '').join('')))
+    .map((message) =>
+      typeof message.content === 'string'
+        ? message.content
+        : message.content.map((item) => (item.type === 'text' ? item.text : '')).join('')
+    )
     .join('\n');
   const taskKind = prompt.match(/(?:^|\n)Task kind:\s*([^\r\n]+)/)?.[1]?.trim();
   return (taskKind && script.taskResponses[taskKind]) || script;

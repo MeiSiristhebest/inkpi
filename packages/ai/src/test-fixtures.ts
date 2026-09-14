@@ -22,24 +22,24 @@ const MOCK_TEST_PRESET: ModelConfig = {
     taskResponses: {
       'creative.continue': { text: 'packaged vertical slice continuation' },
       'creative.rewrite': {
-        text: JSON.stringify({ from: 0, to: 6, text: '雨停后只剩冷灯。' }),
+        text: JSON.stringify({ from: 0, to: 6, text: '雨停后只剩冷灯。' })
       },
       'narrative.continuity.audit': {
         text: JSON.stringify([
           {
             id: 'packaged-continuity-finding',
             severity: 'warning',
-            description: 'Packaged continuity finding.',
-          },
-        ]),
+            description: 'Packaged continuity finding.'
+          }
+        ])
       },
       'narrative.deep.reason': {
         text: JSON.stringify({
           answer: 'Keep the cold-light motif.',
           assumptions: ['The scene remains after the rain.'],
           alternatives: ['Change the motif to warm light.'],
-          risks: ['A tonal shift may weaken continuity.'],
-        }),
+          risks: ['A tonal shift may weaken continuity.']
+        })
       },
       'narrative.project.distill': {
         text: JSON.stringify({
@@ -47,10 +47,10 @@ const MOCK_TEST_PRESET: ModelConfig = {
           entities: [{ id: 'packaged-character', kind: 'character', name: '她' }],
           events: [{ id: 'packaged-event', type: 'pause', description: 'She does not look back.' }],
           promises: [{ id: 'packaged-promise', statement: 'The cold light remains.', status: 'open' }],
-          confidence: 0.9,
-        }),
-      },
-    },
+          confidence: 0.9
+        })
+      }
+    }
   }
 };
 
