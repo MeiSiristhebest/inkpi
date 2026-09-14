@@ -471,11 +471,11 @@ Daemon 在安装 model handler 时构造 CapabilityRouter；`task.submit` 在入
 
 | Slice | Task kind | 当前策略 | 当前状态和缺口 |
 | --- | --- | --- | --- |
-| VS1 Continue Prose | creative.continue | completion、interactive、text/ephemeral、read-only | Desktop 的 `src/ai/orchestrator/verticalSlices.test.ts` 和 `creativeIntelligence.test.ts` 覆盖 canonical task、路由和文本结果；Daemon↔GhostText 真实链路未验收 |
-| VS2 Selection Rewrite | creative.rewrite | completion、interactive、patch/artifact、proposal/approval | Desktop 覆盖 semantic selection、patch contract、ProposalLedger/CAS 本地逻辑；Desktop↔Daemon fixture、跨端 proposal projection 和冲突 UI 仍需真实 provider/打包 App 验收 |
-| VS3 Continuity Audit | narrative.continuity.audit | workflow、background、structured/artifact、read-only | Desktop 覆盖 debounce/cancel/dedup、structured result、gutter marker 和 Desktop↔Daemon fixture；章节保存生产触发和真实 provider 链路仍待验收 |
-| VS4 Deep Story Reasoning | narrative.deep.reason | reasoning、interactive、structured/artifact、read-only | Desktop 覆盖工具循环边界、steering、progress、长任务 UI 和 capability route；打包 App 人机介入、真实 provider 路由和生产数据仍待验收 |
-| VS5 Project Distillation | narrative.project.distill | workflow、background、structured/artifact、read-only | Desktop 覆盖 chunk、合并、checkpoint、部分失败、resume、artifact、Desktop↔Daemon fixture 和重连读取；大项目真实 benchmark、打包进程重启恢复和生产 lineage 仍待验收 |
+| VS1 Continue Prose | creative.continue | completion、interactive、text/ephemeral、read-only | Desktop 与当前 NSIS sidecar 均已验证 canonical task 和文本完成结果；真实 Provider、GhostText 安装后 UI 和生产链路仍待验收 |
+| VS2 Selection Rewrite | creative.rewrite | completion、interactive、patch/artifact、proposal/approval | Desktop 与当前 NSIS sidecar 均已验证 semantic selection、patch contract、ProposalLedger/CAS 和 patch artifact 读回；真实 Provider、冲突 UI 和生产写回仍待验收 |
+| VS3 Continuity Audit | narrative.continuity.audit | workflow、background、structured/artifact、read-only | Desktop 与当前 NSIS sidecar 均已验证 debounce/cancel/dedup、structured result 和 gutter 边界；章节保存生产触发和真实 Provider 链路仍待验收 |
+| VS4 Deep Story Reasoning | narrative.deep.reason | reasoning、interactive、structured/artifact、read-only | Desktop 与当前 NSIS sidecar 均已验证工具循环、steering、progress 和 structured result；安装后人机介入、真实 Provider 路由和生产数据仍待验收 |
+| VS5 Project Distillation | narrative.project.distill | workflow、background、structured/artifact、read-only | Desktop 与当前 NSIS sidecar 均已验证 chunk、合并、checkpoint/progress、artifact 和结构化结果；大项目真实 benchmark、生产 lineage 和真实 Provider 仍待验收 |
 
 当前 Desktop 任务工厂位于 `inkpi-desktop/src/ai/tasks/taskFactories.ts`，编排位于 Desktop 的 `creativeIntelligence.ts` 和 `verticalSlices.ts`。
 
@@ -725,7 +725,7 @@ CapabilityRouter.select：
 3. 按 route priority、quality 和 latency bonus 排序；
 4. 无满足条件的 route 时抛 NoCapableRouteError。
 
-Desktop CreativeIntelligence 在提交前执行 CapabilityRouter.select；Daemon 的 `task.submit` 在入队前执行 CapabilityRouter.resolve，TaskModelHandler 再按选定 route 执行并记录 route provenance。两个仓库的路由测试覆盖能力过滤、确定性排序、兼容别名、schema/output contract 和 mismatch-before-queue。真实 provider capability matrix、跨进程 route 配置和生产 fallback 行为仍待验证。
+Desktop CreativeIntelligence 在提交前执行 CapabilityRouter.select；Daemon 的 `task.submit` 在入队前执行 CapabilityRouter.resolve，TaskModelHandler 再按选定 route 执行并记录 route provenance。两个仓库的路由测试覆盖能力过滤、确定性排序、兼容别名、schema/output contract 和 mismatch-before-queue；当前 NSIS sidecar 也已验证兼容任务选路、route provenance 和不匹配任务入队前拒绝。真实 provider capability matrix、跨进程真实模型配置和生产 fallback 行为仍待验证。
 
 ### 14.5 Instruction Registry
 
