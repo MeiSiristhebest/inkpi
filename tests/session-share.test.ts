@@ -1,5 +1,5 @@
-import { SessionShareExporter, SessionTree } from '@inkpi/agent-core';
-import type { AgentMessage } from '@inkpi/protocol';
+import { RuntimeSessionShareExporter, SessionShareExporter, SessionTree } from '@inkpi/agent-core';
+import type { AgentMessage, RuntimeState } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
 describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-hf)', () => {
@@ -107,5 +107,25 @@ describe('Creative Session Share & Dataset Generation (1:1 Ported from pi-share-
     // Empty and non-string sanitize
     expect(SessionShareExporter.sanitize('')).toBe('');
     expect(SessionShareExporter.sanitize(null as any)).toBeNull();
+  });
+
+  it('exports generic state opaquely and obtains optional stats from the adapter', () => {
+    type OpaqueState = RuntimeState & { revision: number; marker: string };
+    const original: OpaqueState = { revision: 7, marker: 'runtime-only' };
+    const dataset = RuntimeSessionShareExporter.exportDataset(
+      { messages: [], state: original },
+      {
+        clock: () => 123,
+        stateAdapter: {
+          clone: (state) => ({ ...state }),
+          stats: (state) => ({ revision: state.revision })
+        }
+      }
+    );
+
+    expect(dataset.state).toEqual(original);
+    expect(dataset.state).not.toBe(original);
+    expect(dataset.stateStats).toEqual({ revision: 7 });
+    expect(dataset.stats).not.toHaveProperty('entitiesCount');
   });
 });

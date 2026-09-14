@@ -4,7 +4,7 @@ import {
   reduceSession,
   reduceSessionEntry
 } from '@inkpi/agent-core';
-import type { SessionEntry } from '@inkpi/protocol';
+import type { RuntimeState, SessionEntry } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine)', () => {
@@ -344,5 +344,38 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     const rec = detectAndMarkInterruptedOperations(s2, () => 999);
     expect(rec.state.operations.get('op_a')?.state).toBe('settled'); // settled 不受影响
     expect(s2.operations.get('op_a')).toBe(rec.state.operations.get('op_a'));
+  });
+
+  it('keeps runtime state opaque and delegates state patch merging to the adapter', () => {
+    type TestState = RuntimeState & { revision: number; markers: string[] };
+    const adapter = {
+      createInitialState: (): TestState => ({ revision: 0, markers: [] }),
+      merge: (base: TestState, patch: unknown): TestState => {
+        const addition =
+          patch && typeof patch === 'object' && !Array.isArray(patch) ? (patch as Partial<TestState>) : {};
+        return {
+          revision: addition.revision ?? base.revision,
+          markers: [...base.markers, ...(addition.markers ?? [])]
+        };
+      }
+    };
+    const state = reduceSession(
+      [
+        {
+          id: 'state-patch',
+          sessionId: 'opaque-state',
+          seq: 1,
+          parentId: null,
+          type: 'ledger_mutation',
+          timestamp: 1,
+          payload: { statePatch: { revision: 2, markers: ['adapter-owned'] } }
+        }
+      ],
+      undefined,
+      adapter
+    );
+
+    expect(state.runtimeState).toEqual({ revision: 2, markers: ['adapter-owned'] });
+    expect(state.factsLedger).toBe(state.runtimeState);
   });
 });

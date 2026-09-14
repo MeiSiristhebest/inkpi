@@ -1,4 +1,5 @@
-import { BranchExplorer } from '@inkpi/agent-core';
+import { BranchExplorer, RuntimeBranchExplorer } from '@inkpi/agent-core';
+import type { RuntimeState } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
 describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
@@ -103,5 +104,28 @@ describe('What-If Parallel Branch Timelines & Branch Summarization', () => {
     expect(switchResult.summary).toContain('main -> Exile Branch');
     expect(switchResult.summary).toContain('UserB: Novice -> Exile (Level 5)');
     expect(manager.getActiveBranchId()).toBe('branch_rebellion');
+  });
+
+  it('keeps generic branch state opaque and delegates comparison to the adapter', () => {
+    type TestState = RuntimeState & { score: number; tags: string[] };
+    const explorer = new RuntimeBranchExplorer<TestState, { scoreDelta: number }>(undefined, {
+      stateAdapter: {
+        createInitialState: () => ({ score: 0, tags: [] }),
+        clone: (state) => ({ ...state, tags: [...state.tags] }),
+        diff: (base, target) => ({ scoreDelta: target.score - base.score })
+      },
+      initialState: { score: 1, tags: ['base'] }
+    });
+
+    const branch = explorer.createBranch('alt', 'Alternative', 'state change', {
+      score: 4,
+      tags: ['alternate']
+    });
+    expect(branch.state).toEqual({ score: 4, tags: ['alternate'] });
+    expect(explorer.diffState({ score: 1, tags: [] }, branch.state)).toEqual({ scoreDelta: 3 });
+
+    explorer.updateActiveState({ score: 2, tags: ['main-update'] });
+    expect(explorer.getBranch('main')?.state).toEqual({ score: 2, tags: ['main-update'] });
+    expect(explorer.getBranch('main')?.state).not.toBe(explorer.getBranch('alt')?.state);
   });
 });

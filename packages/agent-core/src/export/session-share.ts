@@ -2,12 +2,12 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentMessage, StateLedger } from '@inkpi/protocol';
+import type { AgentMessage, RuntimeState, StateLedger } from '@inkpi/protocol';
 import type { SessionTree } from '../tree.js';
 import { escapeHtml } from './html.js';
 import { SESSION_SHARE_STYLE } from './report-assets.js';
 
-export interface CreativeSessionShareOptions {
+export interface SessionShareOptions {
   title?: string;
   author?: string;
   category?: string;
@@ -16,10 +16,248 @@ export interface CreativeSessionShareOptions {
   sanitizeLocalPaths?: boolean;
   includeThinking?: boolean;
   includeToolCalls?: boolean;
-  includeStateLedger?: boolean;
+  includeState?: boolean;
   includeSessionTree?: boolean;
   customRedactPatterns?: RegExp[];
   clock?: () => number;
+}
+
+/** Adapter for preparing opaque state for an export without Runtime inspection. */
+export interface RuntimeStateShareAdapter<TState extends RuntimeState = RuntimeState> {
+  clone(state: TState): TState;
+  stats?(state: TState): Record<string, number>;
+}
+
+export interface RuntimeSessionShareOptions<TState extends RuntimeState = RuntimeState> extends SessionShareOptions {
+  stateAdapter?: RuntimeStateShareAdapter<TState>;
+}
+
+export interface RuntimeSessionShareSource<TState extends RuntimeState = RuntimeState> {
+  messages: AgentMessage[];
+  tree?: SessionTree;
+  state?: TState;
+  /** @deprecated Use state. Kept as a domain-neutral compatibility alias. */
+  runtimeState?: TState;
+  systemPrompt?: string;
+}
+
+export interface SessionDatasetPayload<TState extends RuntimeState = RuntimeState> {
+  version: '1.0';
+  id: string;
+  title: string;
+  author: string;
+  category: string;
+  tags: string[];
+  createdAt: number;
+  exportedAt: number;
+  stats: {
+    turnsCount: number;
+    totalMessages: number;
+    branchesCount: number;
+  };
+  systemPrompt: string;
+  state?: TState;
+  stateStats?: Record<string, number>;
+  branches?: Array<{ leafId: string; length: number; lastMessage: AgentMessage }>;
+  messages: AgentMessage[];
+}
+
+const DEFAULT_API_KEY_REGEX = /\b(sk-[a-zA-Z0-9_-]{20,}|Bearer\s+[a-zA-Z0-9_\-\.]{20,}|key-[a-zA-Z0-9]{16,})\b/gi;
+const DEFAULT_PATH_REGEX = /([A-Za-z]:\\[\w\s\.\-\\]+|\/(?:home|Users|var|tmp|etc)\/[\w\s\.\-\/]+)/g;
+
+function sanitizeText(text: string, options: SessionShareOptions): string {
+  if (typeof text !== 'string' || text.length === 0) return text;
+  let sanitized = text;
+
+  if (options.sanitizeApiKeys !== false) {
+    sanitized = sanitized.replace(DEFAULT_API_KEY_REGEX, '[REDACTED_API_KEY]');
+  }
+  if (options.sanitizeLocalPaths !== false) {
+    sanitized = sanitized.replace(DEFAULT_PATH_REGEX, '[REDACTED_LOCAL_PATH]');
+  }
+  if (options.customRedactPatterns) {
+    for (const pattern of options.customRedactPatterns) {
+      sanitized = sanitized.replace(pattern, '[REDACTED]');
+    }
+  }
+  return sanitized;
+}
+
+function sanitizeMessage(message: AgentMessage, options: SessionShareOptions): AgentMessage {
+  let cloned: AgentMessage;
+  try {
+    cloned = JSON.parse(JSON.stringify(message)) as AgentMessage;
+  } catch {
+    return { ...message };
+  }
+
+  if (typeof cloned.content === 'string') {
+    cloned.content = sanitizeText(cloned.content, options);
+  } else if (Array.isArray(cloned.content)) {
+    cloned.content = cloned.content.map((block) => {
+      if (block.type === 'text') return { ...block, text: sanitizeText(block.text, options) };
+      if (block.type === 'thinking') return { ...block, thinking: sanitizeText(block.thinking, options) };
+      if (block.type === 'toolCall') {
+        let sanitizedArgs = block.arguments;
+        try {
+          sanitizedArgs = JSON.parse(sanitizeText(JSON.stringify(block.arguments), options));
+        } catch {
+          // Retain original arguments when they cannot be serialized safely.
+        }
+        return { ...block, arguments: sanitizedArgs };
+      }
+      return block;
+    });
+  }
+  return cloned;
+}
+
+function cloneOpaqueState<TState extends RuntimeState>(
+  state: TState,
+  adapter?: RuntimeStateShareAdapter<TState>
+): TState {
+  return adapter ? adapter.clone(state) : structuredClone(state);
+}
+
+/**
+ * Generic Runtime session exporter. State is transported opaquely and can be
+ * prepared only by a caller-supplied adapter.
+ */
+export const RuntimeSessionShareExporter = {
+  sanitize(text: string, options: SessionShareOptions = {}): string {
+    return sanitizeText(text, options);
+  },
+
+  sanitizeMessage(message: AgentMessage, options: SessionShareOptions = {}): AgentMessage {
+    return sanitizeMessage(message, options);
+  },
+
+  exportDataset<TState extends RuntimeState = RuntimeState>(
+    source: RuntimeSessionShareSource<TState>,
+    options: RuntimeSessionShareOptions<TState> = {}
+  ): SessionDatasetPayload<TState> {
+    const rawMessages = source.messages || [];
+    const sanitizedMessages = rawMessages.map((message) => {
+      const sanitized = sanitizeMessage(message, options);
+      if (sanitized.role !== 'assistant' || !Array.isArray(sanitized.content)) return sanitized;
+
+      let content = sanitized.content;
+      if (options.includeThinking === false) content = content.filter((block) => block.type !== 'thinking');
+      if (options.includeToolCalls === false) content = content.filter((block) => block.type !== 'toolCall');
+      return { ...sanitized, content };
+    });
+
+    const rawState = source.state ?? source.runtimeState;
+    const exportedState =
+      options.includeState !== false && rawState !== undefined
+        ? cloneOpaqueState(rawState, options.stateAdapter)
+        : undefined;
+    const stateStats = exportedState === undefined ? undefined : options.stateAdapter?.stats?.(exportedState);
+    const branches = source.tree ? source.tree.getBranches() : [];
+    const now = options.clock ? options.clock() : Date.now();
+
+    return {
+      version: '1.0',
+      id: `share_${crypto.randomUUID().slice(0, 10)}`,
+      title: options.title || 'Session Share',
+      author: options.author || 'Anonymous',
+      category: options.category || 'agent-session',
+      tags: options.tags || ['agent-session', 'inkpi'],
+      createdAt: now,
+      exportedAt: now,
+      stats: {
+        turnsCount: sanitizedMessages.filter((message) => message.role === 'user').length,
+        totalMessages: sanitizedMessages.length,
+        branchesCount: branches.length
+      },
+      systemPrompt: sanitizeText(source.systemPrompt || '', options),
+      ...(exportedState === undefined ? {} : { state: exportedState }),
+      ...(stateStats === undefined ? {} : { stateStats }),
+      ...(options.includeSessionTree === false ? {} : { branches }),
+      messages: sanitizedMessages
+    };
+  },
+
+  exportShareHtml<TState extends RuntimeState>(dataset: SessionDatasetPayload<TState>): string {
+    const messagesHtml = dataset.messages
+      .map((message) => {
+        const isUser = message.role === 'user';
+        const roleLabel = isUser ? 'User' : message.role === 'assistant' ? 'Assistant' : message.role;
+        let body = '';
+        if (typeof message.content === 'string') {
+          body = `<div class="msg-text">${escapeHtml(message.content)}</div>`;
+        } else if (Array.isArray(message.content)) {
+          body = message.content
+            .map((block) => {
+              if (block.type === 'thinking') {
+                return `<div class="msg-thinking"><span class="badge">Thinking</span><pre>${escapeHtml(block.thinking)}</pre></div>`;
+              }
+              if (block.type === 'text') return `<div class="msg-text">${escapeHtml(block.text)}</div>`;
+              if (block.type === 'toolCall') {
+                return `<div class="msg-tool"><span class="badge">Tool</span> <code>${escapeHtml(block.name)}</code></div>`;
+              }
+              return '';
+            })
+            .join('');
+        } else {
+          body = `<pre class="msg-text">${escapeHtml(JSON.stringify(message.content))}</pre>`;
+        }
+        return `
+        <div class="message-card ${isUser ? 'user' : 'assistant'}">
+          <div class="message-header"><span class="role-badge">${roleLabel}</span></div>
+          <div class="message-body">${body}</div>
+        </div>`;
+      })
+      .join('\n');
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(dataset.title)}</title>
+  <style>
+${SESSION_SHARE_STYLE}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>${escapeHtml(dataset.title)}</h1>
+      <div class="meta-bar">
+        <span>Author: ${escapeHtml(dataset.author)}</span>
+        <span>${dataset.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(' ')}</span>
+        <span>${dataset.stats.turnsCount} Turns | ${dataset.stats.totalMessages} Messages</span>
+      </div>
+    </header>
+    <main>${messagesHtml}</main>
+  </div>
+</body>
+</html>`;
+  },
+
+  /** Run concurrent exports in an isolated temporary directory. */
+  async withIsolatedExportSandbox<T>(action: (tempDir: string) => Promise<T>): Promise<T> {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inkpi-share-'));
+    try {
+      return await action(tempDir);
+    } finally {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup failure; the caller's export result is already known.
+      }
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Explicit creative compatibility adapter.
+// ---------------------------------------------------------------------------
+
+export interface CreativeSessionShareOptions extends SessionShareOptions {
+  /** @deprecated Use includeState. */
+  includeStateLedger?: boolean;
 }
 
 export interface CreativeDatasetPayload {
@@ -43,77 +281,25 @@ export interface CreativeDatasetPayload {
   messages: AgentMessage[];
 }
 
-const DEFAULT_API_KEY_REGEX = /\b(sk-[a-zA-Z0-9_-]{20,}|Bearer\s+[a-zA-Z0-9_\-\.]{20,}|key-[a-zA-Z0-9]{16,})\b/gi;
-const DEFAULT_PATH_REGEX = /([A-Za-z]:\\[\w\s\.\-\\]+|\/(?:home|Users|var|tmp|etc)\/[\w\s\.\-\/]+)/g;
+const creativeStateShareAdapter: RuntimeStateShareAdapter<StateLedger> = {
+  clone: (state) => structuredClone(state),
+  stats: (state) => ({ entitiesCount: state.entities?.length ?? state.characters?.length ?? 0 })
+};
 
 /**
- * 会话脱敏与导出分享引擎
- * 支持将多轮 Agent 交互轨迹、会话树推演与状态流变安全导出为 Hugging Face / Gist 规范的数据集与独立 HTML
+ * Creative-domain compatibility facade. It translates the old StateLedger
+ * payload to the generic `state` slot and is the only place that interprets
+ * entity counts or creative export defaults.
  */
-export const SessionShareExporter = {
-  /**
-   * 脱敏文本内容（移除 API Key、敏感绝对路径与凭据）
-   */
+export const CreativeSessionShareExporter = {
   sanitize(text: string, options: CreativeSessionShareOptions = {}): string {
-    if (!text || typeof text !== 'string') return text;
-    let sanitized = text;
-
-    if (options.sanitizeApiKeys !== false) {
-      sanitized = sanitized.replace(DEFAULT_API_KEY_REGEX, '[REDACTED_API_KEY]');
-    }
-
-    if (options.sanitizeLocalPaths !== false) {
-      sanitized = sanitized.replace(DEFAULT_PATH_REGEX, '[REDACTED_LOCAL_PATH]');
-    }
-
-    if (options.customRedactPatterns) {
-      for (const pattern of options.customRedactPatterns) {
-        sanitized = sanitized.replace(pattern, '[REDACTED]');
-      }
-    }
-
-    return sanitized;
+    return RuntimeSessionShareExporter.sanitize(text, options);
   },
 
-  /**
-   * 对单条消息进行脱敏
-   */
-  sanitizeMessage(msg: AgentMessage, options: CreativeSessionShareOptions = {}): AgentMessage {
-    let cloned: AgentMessage;
-    try {
-      cloned = JSON.parse(JSON.stringify(msg)) as AgentMessage;
-    } catch {
-      return { ...msg };
-    }
-
-    if (typeof cloned.content === 'string') {
-      cloned.content = SessionShareExporter.sanitize(cloned.content, options);
-    } else if (Array.isArray(cloned.content)) {
-      cloned.content = cloned.content.map((block) => {
-        if (block.type === 'text') {
-          return { ...block, text: SessionShareExporter.sanitize(block.text, options) };
-        }
-        if (block.type === 'thinking') {
-          return { ...block, thinking: SessionShareExporter.sanitize(block.thinking, options) };
-        }
-        if (block.type === 'toolCall') {
-          let sanitizedArgs = block.arguments;
-          try {
-            sanitizedArgs = JSON.parse(SessionShareExporter.sanitize(JSON.stringify(block.arguments), options));
-          } catch {
-            // retain original arguments on serialization failure
-          }
-          return { ...block, arguments: sanitizedArgs };
-        }
-        return block;
-      });
-    }
-    return cloned;
+  sanitizeMessage(message: AgentMessage, options: CreativeSessionShareOptions = {}): AgentMessage {
+    return RuntimeSessionShareExporter.sanitizeMessage(message, options);
   },
 
-  /**
-   * 导出为结构化规范数据集 Payload (可直接上传 Hugging Face Datasets 或生成 JSONL)
-   */
   exportDataset(
     source: {
       messages: AgentMessage[];
@@ -123,132 +309,43 @@ export const SessionShareExporter = {
     },
     options: CreativeSessionShareOptions = {}
   ): CreativeDatasetPayload {
-    const rawMessages = source.messages || [];
-    // 纯函数管道：sanitizeMessage 已深拷贝；此处仅用 map 产出新数组，
-    // 绝不修改输入消息。旧实现误用 filter(回调内改 m.content 且恒返 true)，
-    // 是把"过滤内容块"写成了"副作用 + 恒真谓词"的坏味道。
-    const filteredMessages = rawMessages.map((m) => {
-      const sanitized = SessionShareExporter.sanitizeMessage(m, options);
-      if (sanitized.role !== 'assistant' || !Array.isArray(sanitized.content)) {
-        return sanitized;
-      }
-      let content = sanitized.content;
-      if (options.includeThinking === false) {
-        content = content.filter((b) => b.type !== 'thinking');
-      }
-      if (options.includeToolCalls === false) {
-        content = content.filter((b) => b.type !== 'toolCall');
-      }
-      // sanitizeMessage 返回全新对象，改 content 不影响原始消息
-      return { ...sanitized, content };
-    });
-
-    const branches = source.tree ? source.tree.getBranches() : [];
-    const entitiesCount = source.stateLedger?.entities?.length || 0;
-
-    const now = options.clock ? options.clock() : Date.now();
-
-    return {
-      version: '1.0',
-      id: `share_${crypto.randomUUID().slice(0, 10)}`,
-      title: options.title || 'Creative Session Share',
-      author: options.author || 'Anonymous Creator',
-      category: options.category || 'creative-writing',
-      tags: options.tags || ['agentic-writing', 'inkpi'],
-      createdAt: now,
-      exportedAt: now,
-      stats: {
-        turnsCount: filteredMessages.filter((m) => m.role === 'user').length,
-        totalMessages: filteredMessages.length,
-        branchesCount: branches.length,
-        entitiesCount
+    const includeState = options.includeState !== false && options.includeStateLedger !== false;
+    const dataset = RuntimeSessionShareExporter.exportDataset(
+      {
+        messages: source.messages,
+        tree: source.tree,
+        state: source.stateLedger,
+        systemPrompt: source.systemPrompt
       },
-      systemPrompt: SessionShareExporter.sanitize(source.systemPrompt || '', options),
-      stateLedger: options.includeStateLedger !== false ? source.stateLedger : undefined,
-      branches: options.includeSessionTree !== false ? branches : undefined,
-      messages: filteredMessages
+      {
+        ...options,
+        title: options.title || 'Creative Session Share',
+        author: options.author || 'Anonymous Creator',
+        category: options.category || 'creative-writing',
+        tags: options.tags || ['agentic-writing', 'inkpi'],
+        includeState,
+        stateAdapter: creativeStateShareAdapter
+      }
+    );
+    const { state, stateStats, ...genericDataset } = dataset;
+    return {
+      ...genericDataset,
+      stats: {
+        ...genericDataset.stats,
+        entitiesCount: stateStats?.entitiesCount || 0
+      },
+      ...(state === undefined ? {} : { stateLedger: state })
     };
   },
 
-  /**
-   * 生成可直接独立托管的富交互分享 HTML
-   */
   exportShareHtml(dataset: CreativeDatasetPayload): string {
-    const messagesHtml = dataset.messages
-      .map((msg) => {
-        const isUser = msg.role === 'user';
-        const roleLabel = isUser ? 'Creator' : 'InkPi Co-Writer';
-        let body = '';
-        if (typeof msg.content === 'string') {
-          body = `<div class="msg-text">${escapeHtml(msg.content)}</div>`;
-        } else if (Array.isArray(msg.content)) {
-          body = msg.content
-            .map((b) => {
-              if (b.type === 'thinking') {
-                return `<div class="msg-thinking"><span class="badge">💡 Thinking</span><pre>${escapeHtml(b.thinking)}</pre></div>`;
-              }
-              if (b.type === 'text') {
-                return `<div class="msg-text">${escapeHtml(b.text)}</div>`;
-              }
-              if (b.type === 'toolCall') {
-                return `<div class="msg-tool"><span class="badge">🔧 Tool</span> <code>${escapeHtml(b.name)}</code></div>`;
-              }
-              return '';
-            })
-            .join('');
-        }
-        return `
-        <div class="message-card ${isUser ? 'user' : 'assistant'}">
-          <div class="message-header">
-            <span class="role-badge">${roleLabel}</span>
-          </div>
-          <div class="message-body">${body}</div>
-        </div>`;
-      })
-      .join('\n');
-
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(dataset.title)} - InkPi Creative Share</title>
-  <style>
-${SESSION_SHARE_STYLE}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>${escapeHtml(dataset.title)}</h1>
-      <div class="meta-bar">
-        <span>👤 Author: ${escapeHtml(dataset.author)}</span>
-        <span>🏷️ ${dataset.tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join(' ')}</span>
-        <span>📊 ${dataset.stats.turnsCount} Turns | ${dataset.stats.totalMessages} Messages</span>
-      </div>
-    </header>
-    <main>
-      ${messagesHtml}
-    </main>
-  </div>
-</body>
-</html>`;
+    return RuntimeSessionShareExporter.exportShareHtml(dataset as unknown as SessionDatasetPayload<RuntimeState>);
   },
 
-  /**
-   * 安全隔离并发导出到独立沙箱目录（对齐上游 v0.84.4 PR #8613）。
-   * 确保多个会话同时执行 share/export 时不会在全局临时目录发生命名冲突或竞态互相覆盖。
-   */
-  async withIsolatedExportSandbox<T>(action: (tempDir: string) => Promise<T>): Promise<T> {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inkpi-share-'));
-    try {
-      return await action(tempDir);
-    } finally {
-      try {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      } catch {
-        // Ignore cleanup failure
-      }
-    }
+  withIsolatedExportSandbox<T>(action: (tempDir: string) => Promise<T>): Promise<T> {
+    return RuntimeSessionShareExporter.withIsolatedExportSandbox(action);
   }
 };
+
+/** @deprecated Use RuntimeSessionShareExporter or CreativeSessionShareExporter. */
+export const SessionShareExporter = CreativeSessionShareExporter;

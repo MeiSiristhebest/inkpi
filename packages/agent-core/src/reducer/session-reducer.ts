@@ -9,14 +9,19 @@ import type {
   JournalEntry,
   OperationRecord,
   OperationState,
+  RuntimeState,
   SessionEntry,
-  StateLedger,
   ToolResultMessage,
   Usage,
   UserMessage
 } from '@inkpi/protocol';
+import type { WorkflowStateAdapter } from '@inkpi/protocol';
+import { genericRuntimeStateAdapter } from '../pipeline/ledger-merge.js';
 import type { AssistantStreamFrame } from '../turn/assistant-frames.js';
 import { reduceAssistantFrames } from '../turn/assistant-frames.js';
+
+/** State merge contract supplied by the composition root. */
+export type SessionStateAdapter<TState extends RuntimeState = RuntimeState> = WorkflowStateAdapter<TState>;
 
 export interface TokenUsageSummary {
   inputTokens: number;
@@ -24,14 +29,17 @@ export interface TokenUsageSummary {
   totalTokens: number;
 }
 
-export interface MaterializedSessionState {
+export interface MaterializedSessionState<TState extends RuntimeState = RuntimeState> {
   sessionId: string;
   currentLeafId: string | null;
   activeLaneId: string;
   messages: AgentMessage[];
   operations: Map<string, OperationRecord>;
   usageTotals: TokenUsageSummary;
-  factsLedger: Record<string, unknown>;
+  /** Canonical opaque state. Runtime does not inspect its product-domain shape. */
+  runtimeState: TState;
+  /** @deprecated Compatibility alias for runtimeState; it is not a StateLedger. */
+  factsLedger: TState;
   revisions: Map<string, number>;
   /**
    * 源序放置缓冲（对齐上游 pi tool-durability 的 outcome_ready → completed 两阶段）：
@@ -43,7 +51,17 @@ export interface MaterializedSessionState {
   pendingAssistantFrames: AssistantStreamFrame[];
 }
 
-export function createInitialSessionState(sessionId = 'default'): MaterializedSessionState {
+function resolveStateAdapter<TState extends RuntimeState>(
+  stateAdapter?: SessionStateAdapter<TState>
+): SessionStateAdapter<TState> {
+  return stateAdapter ?? (genericRuntimeStateAdapter as SessionStateAdapter<TState>);
+}
+
+export function createInitialSessionState<TState extends RuntimeState = RuntimeState>(
+  sessionId = 'default',
+  stateAdapter?: SessionStateAdapter<TState>
+): MaterializedSessionState<TState> {
+  const runtimeState = resolveStateAdapter(stateAdapter).createInitialState();
   return {
     sessionId,
     currentLeafId: null,
@@ -55,7 +73,8 @@ export function createInitialSessionState(sessionId = 'default'): MaterializedSe
       outputTokens: 0,
       totalTokens: 0
     },
-    factsLedger: {},
+    runtimeState,
+    factsLedger: runtimeState,
     revisions: new Map(),
     pendingToolResults: [],
     pendingAssistantFrames: []
@@ -69,7 +88,9 @@ export function createInitialSessionState(sessionId = 'default'): MaterializedSe
  *   与升级前的行为完全一致，旧日志零回归；
  * - 纯函数：返回新快照，不修改入参。
  */
-function flushPendingToolResults(state: MaterializedSessionState): MaterializedSessionState {
+function flushPendingToolResults<TState extends RuntimeState>(
+  state: MaterializedSessionState<TState>
+): MaterializedSessionState<TState> {
   if (state.pendingToolResults.length === 0) return state;
   const ordered = state.pendingToolResults
     .map((item, order) => ({ item, order }))
@@ -85,16 +106,20 @@ function flushPendingToolResults(state: MaterializedSessionState): MaterializedS
 /**
  * 纯函数归约单条 SessionEntry
  */
-export function reduceSessionEntry(
-  state: MaterializedSessionState,
-  entry: SessionEntry | JournalEntry
-): MaterializedSessionState {
-  const next: MaterializedSessionState = {
+export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
+  state: MaterializedSessionState<TState>,
+  entry: SessionEntry | JournalEntry,
+  stateAdapter?: SessionStateAdapter<TState>
+): MaterializedSessionState<TState> {
+  const adapter = resolveStateAdapter(stateAdapter);
+  const runtimeState = structuredClone(state.runtimeState ?? state.factsLedger ?? adapter.createInitialState());
+  const next: MaterializedSessionState<TState> = {
     ...state,
     messages: [...state.messages],
     operations: new Map(state.operations),
     usageTotals: { ...state.usageTotals },
-    factsLedger: { ...state.factsLedger },
+    runtimeState,
+    factsLedger: runtimeState,
     revisions: new Map(state.revisions),
     pendingToolResults: [...state.pendingToolResults],
     pendingAssistantFrames: [...state.pendingAssistantFrames]
@@ -247,12 +272,18 @@ export function reduceSessionEntry(
     }
 
     case 'ledger_mutation': {
-      const ledger = entry.payload?.ledger || entry.payload;
-      if (ledger && typeof ledger === 'object') {
-        next.factsLedger = {
-          ...next.factsLedger,
-          ...(ledger as Record<string, unknown>)
-        };
+      const payload = entry.payload;
+      // `statePatch` is the generic envelope. `ledger` remains a wire-level
+      // compatibility alias and is not interpreted as a product-domain type.
+      const statePatch =
+        isRecord(payload) && 'statePatch' in payload
+          ? payload.statePatch
+          : isRecord(payload) && 'ledger' in payload
+            ? payload.ledger
+            : payload;
+      if (isRecord(statePatch)) {
+        next.runtimeState = adapter.merge(next.runtimeState, statePatch);
+        next.factsLedger = next.runtimeState;
       }
       break;
     }
@@ -269,7 +300,8 @@ export function reduceSessionEntry(
     case 'compaction': {
       const summary = entry.payload?.summary;
       if (summary) {
-        next.factsLedger._lastCompactionSummary = summary;
+        next.runtimeState = adapter.merge(next.runtimeState, { _lastCompactionSummary: summary });
+        next.factsLedger = next.runtimeState;
       }
       break;
     }
@@ -284,15 +316,17 @@ export function reduceSessionEntry(
 /**
  * 纯函数：全量归约 SessionEntry 日志列表
  */
-export function reduceSession(
+export function reduceSession<TState extends RuntimeState = RuntimeState>(
   entries: (SessionEntry | JournalEntry)[],
-  initialState?: MaterializedSessionState
-): MaterializedSessionState {
+  initialState?: MaterializedSessionState<TState>,
+  stateAdapter?: SessionStateAdapter<TState>
+): MaterializedSessionState<TState> {
+  const adapter = resolveStateAdapter(stateAdapter);
   const base = initialState
-    ? structuredClone(initialState)
-    : createInitialSessionState(entries[0]?.sessionId || 'default');
+    ? normalizeInitialState(structuredClone(initialState), adapter)
+    : createInitialSessionState(entries[0]?.sessionId || 'default', adapter);
 
-  const reduced = entries.reduce((state, entry) => reduceSessionEntry(state, entry), base);
+  const reduced = entries.reduce((state, entry) => reduceSessionEntry(state, entry, adapter), base);
 
   // 归约结束：物化仍在缓冲中的工具结果（源序）。
   const settled = flushPendingToolResults(reduced);
@@ -347,6 +381,18 @@ export function detectAndMarkInterruptedOperations(
     recoveredCount: interruptedIds.length,
     interruptedIds
   };
+}
+
+function normalizeInitialState<TState extends RuntimeState>(
+  state: MaterializedSessionState<TState>,
+  adapter: SessionStateAdapter<TState>
+): MaterializedSessionState<TState> {
+  const runtimeState = state.runtimeState ?? state.factsLedger ?? adapter.createInitialState();
+  return { ...state, runtimeState, factsLedger: runtimeState };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** 单个被中断工具调用的恢复决策（对齐上游 pi tool-durability 的 replay 合约）。 */
