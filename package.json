@@ -43,7 +43,7 @@
     "acceptance:real-provider": "pnpm build && node ./scripts/real-provider-acceptance.mjs",
     "acceptance:phase18": "pnpm build && node ./scripts/phase18-acceptance.mjs",
     "audit:final-freeze": "node ./scripts/final-freeze-audit.mjs",
-    "audit:final-freeze:local": "node ./scripts/final-freeze-audit.mjs --evidence docs/evidence/final-freeze-local.json",
+    "audit:final-freeze:local": "node --experimental-strip-types ./scripts/final-freeze-audit.mjs --local --output docs/evidence/phase23-local-gate.json",
     "test:coverage": "vitest run --coverage",
     "check": "pnpm run check:pinned-deps && tsc -b"
   },

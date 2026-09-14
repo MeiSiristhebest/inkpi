@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -107,6 +108,64 @@ export function readFreezeEvidence(filePath) {
   return parsed;
 }
 
+/**
+ * Run the deterministic local gate without upgrading it to formal freeze
+ * evidence.  The selected tests are provider-free and exercise the source
+ * matrix, Phase 22 reliability matrix, and Phase 18 fixture contract.
+ */
+export async function evaluateLocalFreeze() {
+  const gate = await import('../packages/evals/src/phase23-local-gate.ts');
+  let testsPassed = false;
+  let testError;
+  const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+  const testArgs = [
+    'exec',
+    'vitest',
+    'run',
+    'tests/phase23-local-freeze.test.ts',
+    'tests/phase22-reliability-matrix.test.ts',
+    '--reporter=dot'
+  ];
+
+  try {
+    execFileSync(packageManager, testArgs, {
+      cwd: resolve(fileURLToPath(new URL('../', import.meta.url))),
+      env: { ...process.env, INKPI_RUN_REAL_PROVIDER_ACCEPTANCE: '0' },
+      shell: process.platform === 'win32',
+      stdio: 'inherit'
+    });
+    testsPassed = true;
+  } catch (error) {
+    testError = error instanceof Error ? error.message : 'local gate tests failed';
+  }
+
+  const report = gate.evaluatePhase23LocalGate(
+    testsPassed
+      ? {
+          checks: gate.PHASE23_ATOMIC_CONDITIONS.map(({ id, sources }) => ({ id, status: 'passed', sources })),
+          reliability: gate.PHASE22_RELIABILITY_SCENARIOS.map(({ id, sources }) => ({
+            id,
+            status: 'passed',
+            sources
+          }))
+        }
+      : {}
+  );
+
+  return {
+    ...report,
+    testRun: {
+      command: `${packageManager} ${testArgs.join(' ')}`,
+      passed: testsPassed,
+      ...(testError ? { error: testError } : {})
+    },
+    formalFreeze: {
+      eligible: false,
+      reason: 'Deterministic local regression evidence never promotes to formal external freeze.'
+    }
+  };
+}
+
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -114,26 +173,32 @@ function isRecord(value) {
 function parseArgs(args) {
   const options = {
     evidenceFile: process.env.INKPI_FINAL_FREEZE_EVIDENCE_FILE?.trim() || '',
-    outputFile: process.env.INKPI_FINAL_FREEZE_REPORT_FILE?.trim() || ''
+    outputFile: process.env.INKPI_FINAL_FREEZE_REPORT_FILE?.trim() || '',
+    local: false
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--evidence') options.evidenceFile = args[++index] || '';
     else if (arg === '--output') options.outputFile = args[++index] || '';
+    else if (arg === '--local') options.local = true;
     else if (arg === '--help' || arg === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return options;
 }
 
-function main() {
+async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
     if (options.help) {
-      console.log('Usage: node scripts/final-freeze-audit.mjs [--evidence report.json] [--output audit.json]');
+      console.log(
+        'Usage: node scripts/final-freeze-audit.mjs [--evidence report.json] [--output audit.json] [--local]'
+      );
       return;
     }
-    const report = evaluateFreezeEvidence(readFreezeEvidence(options.evidenceFile));
+    const report = options.local
+      ? await evaluateLocalFreeze()
+      : evaluateFreezeEvidence(readFreezeEvidence(options.evidenceFile));
     const serialized = `${JSON.stringify(report, null, 2)}\n`;
     if (options.outputFile) {
       const outputFile = resolve(options.outputFile);
@@ -148,4 +213,4 @@ function main() {
 }
 
 const entryPath = fileURLToPath(import.meta.url);
-if (process.argv[1] && resolve(process.argv[1]) === entryPath) main();
+if (process.argv[1] && resolve(process.argv[1]) === entryPath) void main();

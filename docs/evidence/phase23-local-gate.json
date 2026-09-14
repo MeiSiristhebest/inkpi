@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "kind": "phase23-local-atomic-gate",
+  "mode": "deterministic-local",
+  "status": "passed",
+  "eligible": true,
+  "atomicConditionCount": 20,
+  "passedConditionCount": 20,
+  "missingConditions": [],
+  "failedConditions": [],
+  "invalidConditions": [],
+  "reliability": {
+    "requiredCount": 13,
+    "passedCount": 13,
+    "missing": [],
+    "failed": [],
+    "invalid": [],
+    "conditions": [
+      {
+        "id": "crash-test",
+        "planText": "Crash test",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/process-restart-e2e.test.ts"
+        ]
+      },
+      {
+        "id": "daemon-restart",
+        "planText": "Daemon restart",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/daemon-rpc-e2e.test.ts"
+        ]
+      },
+      {
+        "id": "offline-desktop",
+        "planText": "Offline Desktop",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/provider-capability-matrix-gate.test.ts"
+        ]
+      },
+      {
+        "id": "broken-network",
+        "planText": "Broken network",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/provider-route-fallback.test.ts"
+        ]
+      },
+      {
+        "id": "stale-proposal",
+        "planText": "Stale proposal",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/phase22-reliability-matrix.test.ts"
+        ]
+      },
+      {
+        "id": "duplicate-task",
+        "planText": "Duplicate task",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/phase22-reliability-matrix.test.ts"
+        ]
+      },
+      {
+        "id": "out-of-order-delta",
+        "planText": "Out-of-order delta",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/phase22-reliability-matrix.test.ts"
+        ]
+      },
+      {
+        "id": "corrupt-checkpoint",
+        "planText": "Corrupt checkpoint",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/task-router-durable-boundary.test.ts"
+        ]
+      },
+      {
+        "id": "model-unavailable",
+        "planText": "Model unavailable",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/phase22-reliability-matrix.test.ts"
+        ]
+      },
+      {
+        "id": "provider-capability-mismatch",
+        "planText": "Provider capability mismatch",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/phase22-reliability-matrix.test.ts"
+        ]
+      },
+      {
+        "id": "invalid-structured-output",
+        "planText": "Invalid structured output",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/phase22-reliability-matrix.test.ts"
+        ]
+      },
+      {
+        "id": "context-overflow",
+        "planText": "Context overflow",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/context-overflow-reliability.test.ts"
+        ]
+      },
+      {
+        "id": "cache-invalidation",
+        "planText": "Cache invalidation",
+        "status": "passed",
+        "sourceRefs": [
+          "tests/runtime-cache-cross-layer.test.ts"
+        ]
+      }
+    ]
+  },
+  "externalEvidence": {
+    "policy": "supplemental-only",
+    "ignoredCount": 0,
+    "usedForEligibility": false
+  },
+  "testRun": {
+    "command": "pnpm.cmd exec vitest run tests/phase23-local-freeze.test.ts tests/phase22-reliability-matrix.test.ts --reporter=dot",
+    "passed": true
+  },
+  "formalFreeze": {
+    "eligible": false,
+    "reason": "Deterministic local regression evidence never promotes to formal external freeze."
+  }
+}

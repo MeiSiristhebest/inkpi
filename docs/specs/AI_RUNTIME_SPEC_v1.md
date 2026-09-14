@@ -856,6 +856,8 @@ pnpm --filter @inkpi/evals run build
 
 `pnpm run audit:final-freeze`（实现见 `scripts/final-freeze-audit.mjs`）仍是旧 external evidence 汇总入口。它要求 16 个验收组各自提供带时间戳的来源记录；本轮不修改该脚本，也不把它的输出当作本地 20 项门禁结果。
 
+`pnpm run audit:final-freeze:local` 是确定性本地回归入口。它运行 Phase 23 local gate 的 provider-free 测试，并写入 `docs/evidence/phase23-local-gate.json`；该报告明确标记 `formalFreeze.eligible=false`，不会把本地结果升级为真实 Provider、人工标注、GUI、双实例或生产 observability 证据。
+
 ### 19.1 Phase 23 原始 Plan 的 20 项原子映射
 
 `packages/evals/src/phase23-local-gate.ts` 中的 `PHASE23_ATOMIC_CONDITIONS` 是可执行矩阵的 source of truth。每个条目必须提供精确的本地 source ref 和 marker；缺失、失败、重复、路径越界或 external/replay 来源都会使 gate 不能通过。
