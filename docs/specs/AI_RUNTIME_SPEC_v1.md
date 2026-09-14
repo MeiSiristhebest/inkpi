@@ -4,7 +4,7 @@
 
 基线日期：2026-09-12
 
-本文件是 Runtime v1 的接口基线与验收记录，不是已通过 Final Freeze 的发布声明。Phase 0–22 的核心本地实现、契约测试和部分跨进程测试已经存在；人工标注、跨设备一致性、完整五切片生产链路和完整 UI 证据仍需按第 18–22 节补齐。已新增显式 opt-in 的真实 Provider 验收入口；未提供凭据时不会运行，也不会把 fixture 结果当成真实证据。Tauri NSIS 安装包已用当前 Runtime sidecar 重建；本轮 packaged acceptance 已实际启动当前 sidecar，通过四个 Skill 激活、4 个 Runtime Tool、2 个 Runtime Workflow、Domain/Proposal projection、跨实例投影同步、ArtifactStore lineage、Context budget、三层 Cache hit 与手动失效、Instruction Registry、完整 Proposal CAS（Modify/Accept/Reject/Commit/Undo/Stale/Rebase）、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume（GUI/WebView2 仍需人工验证）。最新外部证据汇总记录 8/16 个 Final Freeze 组通过，报告为 `inkpi-evidence/phase18/phase18-23-packaged-proposal-cas-20260914.json`；其余组仍保持 pending。Runtime 最新全量复核为 166 个测试文件、759 个测试通过；serialized CreativeContext schema/provider、跨进程契约、Phase 18 objective/mutation 门禁和 Final Freeze 定向覆盖均通过，TypeScript 类型检查和 lint 通过。Desktop 最新分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个）；插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过，TypeScript 类型检查通过。
+本文件是 Runtime v1 的接口基线与验收记录，不是已通过 Final Freeze 的发布声明。Phase 0–22 的核心本地实现、契约测试和跨进程测试已经存在；人工标注、生产级故障与观测数据、跨设备一致性和完整 UI 证据仍需按第 18–22 节补齐。已新增显式 opt-in 的真实 Provider 验收入口；未提供凭据时不会运行，也不会把 fixture 结果当成真实证据。Tauri NSIS 安装包已用当前 Runtime sidecar 重建；本轮 packaged acceptance 已实际启动当前 sidecar，通过四个 Skill 激活、4 个 Runtime Tool、2 个 Runtime Workflow、Domain/Proposal projection、跨实例投影同步、ArtifactStore lineage、Context budget、三层 Cache hit 与手动失效、Instruction Registry、完整 Proposal CAS（Modify/Accept/Reject/Commit/Undo/Stale/Rebase）、五个垂直切片、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume（GUI/WebView2 仍需人工验证）。最新外部证据汇总记录 15/16 个 Final Freeze 组通过，报告为 `inkpi-evidence/phase18/phase18-23-packaged-reliability-20260914.json`；唯一缺失组为 `evals`，其余组已通过。Runtime 最新全量复核为 166 个测试文件、759 个测试通过；另有可靠性定向复核 9 个测试文件、35 个测试通过，serialized CreativeContext schema/provider、跨进程契约、Phase 18 objective/mutation 门禁和 Final Freeze 定向覆盖均通过，TypeScript 类型检查和 lint 通过。Desktop 最新分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个）；另有可靠性定向复核 5 个测试文件、20 个测试通过，插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过，TypeScript 类型检查通过。
 
 ## 1. 范围和术语
 
@@ -837,8 +837,8 @@ mutation
 | Phase 18 evals | fixtures、EvalRunner、7 类 objective assertion、7 类 mutation triplet、100/300 章长上下文基准、retrieval/cache/recovery 指标门禁、evals.yml、`acceptance:phase18` 显式真实验收入口、真实 evidence envelope digest 校验 | deterministic CI、本地 objective/mutation 门禁、真实 Agnes provider 100/300 章 evidence envelope 完成；人工标注、真实 pipeline mutation 和完整 benchmark 仍缺 |
 | Phase 19 observability | TaskObservability、sanitizePrivateData、observation sink、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、task-observability/telemetry tests | 本地字段、可配置采样、CoT 别名过滤、落盘前脱敏和一次真实 Runtime 采样记录完成；生产采样数据规模、文件访问控制、跨进程 redaction 与跨层审计仍缺 |
 | Phase 20–21 plugins/legacy | 44 插件全量 A–G 归类、22 路由插件、4 个 Runtime Tool、2 个 Runtime Workflow、Daemon 白名单 RPC、pluginRuntimeMigration tests、WriterDesk/RichEditor 中央语义输入边界、AST/taint content-boundary gate、Tauri release smoke | 本地分类、child-daemon 激活、RPC、中央入口语义投影、NSIS 构建、sidecar 启动 smoke、通用 workflow API 和 legacy AI gateway 清理完成；当前 packaged sidecar opt-in 已实际执行 4 个 Tool 与 2 个 Workflow；打包 App 生产插件运行和完整生产 interface 审计仍缺 |
-| Phase 22 reliability review | phase22-reliability-matrix、phase21-22-reliability、fault injection tests、Desktop recovery tests、Tauri release restart smoke | 本地演练、App recovery 测试和 Desktop 启动/重启 smoke 完成；打包 App 内任务恢复、生产故障与真实 provider 场景仍缺 |
-| Phase 23 final freeze | 本文件正式冻结，所有前置条件 100% 达成 | 未完成；Final Freeze Gate 仍开放 |
+| Phase 22 reliability review | phase22-reliability-matrix、phase21-22-reliability、fault injection tests、Desktop recovery tests、Tauri release restart smoke | Runtime 9 文件/35 测试、Desktop 5 文件/20 测试、packaged sidecar recovery 均通过；生产故障与真实 provider 场景仍缺 |
+| Phase 23 final freeze | 本文件正式冻结，所有前置条件 100% 达成 | 未完成；15/16 个验收组通过，`evals` 仍缺人工 Gold/pairwise 晋级证据，Final Freeze Gate 仍开放 |
 
 ## 19. Final Freeze Checklist
 
@@ -846,13 +846,13 @@ mutation
 
 原 plan 在 Phase 23 定义 20 个原子条件；本文件将相关条件合并为 16 个验收组。两者都要求组内所有证据齐全后才能冻结。
 
-本轮复核结果：Runtime 最新全量测试为 166 个测试文件、759 个测试通过，`tsc -b` 和 lint 通过；serialized CreativeContext schema/provider、跨进程契约、Runtime boundary governance、Final Freeze audit 和 Phase 18 objective/mutation 门禁定向覆盖均通过。Desktop 分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个），`tsc -b` 通过；插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过。Desktop Vite production build、oxlint 0 退出，以及 Tauri `x86_64-pc-windows-gnu` release 编译、NSIS 安装包构建均已通过；本轮用当前 Runtime sidecar 的 packaged acceptance 为 2 个通过、GUI 1 个人工跳过，实际覆盖四个 Skill 激活、4 个 Runtime Tool、2 个 Runtime Workflow、Domain/Proposal projection、ArtifactStore lineage、Context budget、三层 Cache hit 与手动失效、Instruction Registry、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume。上述结果关闭本地回归、类型检查、lint、构建和自动化 sidecar 恢复证据，不能替代下列 20 个原子条件中的人工标注、完整五切片、生产、完整 UI 和跨设备证据。
+本轮复核结果：Runtime 最新全量测试为 166 个测试文件、759 个测试通过，另有可靠性定向复核 9 个文件、35 个测试通过，`tsc -b` 和 lint 通过；serialized CreativeContext schema/provider、跨进程契约、Runtime boundary governance、Final Freeze audit 和 Phase 18 objective/mutation 门禁定向覆盖均通过。Desktop 分批全量复核为 211 个测试文件、913 个测试通过、2 个测试跳过（共 915 个），另有可靠性定向复核 5 个文件、20 个测试通过，`tsc -b` 通过；插件输入边界、StoryState/SourceMap、架构和 E2E 测试均通过。Desktop Vite production build、oxlint 0 退出，以及 Tauri `x86_64-pc-windows-gnu` release 编译、NSIS 安装包构建均已通过；本轮用当前 Runtime sidecar 的 packaged acceptance 为 2 个通过、GUI 1 个人工跳过，实际覆盖四个 Skill 激活、4 个 Runtime Tool、2 个 Runtime Workflow、Domain/Proposal projection、ArtifactStore lineage、Context budget、三层 Cache hit 与手动失效、Instruction Registry、五个垂直切片、checkpoint 强杀、SQLite 重启 rehydrate、Desktop 恢复和 resume。上述结果关闭本地回归、类型检查、lint、构建、自动化 sidecar 恢复和可靠性矩阵证据，仍不能替代下列 20 个原子条件中的人工标注、生产、完整 UI 和跨设备证据。
 
 新增 `pnpm run audit:final-freeze`（实现见 `scripts/final-freeze-audit.mjs`）作为唯一 Final Freeze 证据汇总入口。它要求 16 个验收组各自提供带时间戳的来源记录；缺失、失败、无来源/无时间戳或试图使用 waiver 的记录都会保持 `pending` 并以非零状态退出，不会把本地 fixture 测试自动升级为生产证据。
 
 - [ ] SemanticDocument、SourceMap 对所有支持的编辑器输入稳定（WriterDesk/RichEditor 中央插件入口、规则扫描、Memory Palace 搜索、Expectation Engine 和 ShadowReader 已补 semantic projection 回归；AST/taint content-boundary gate、22 个 task 与 6 个 Runtime tool/workflow 输入审计已加入；复杂编辑器事务映射、生产数据链路和安装后全输入证据仍缺）；
 - [ ] StoryState、Provenance 和 canonical fact 读写路径稳定（reducer/store、严格确定性 JSON wire boundary 测试通过；完整生产跨进程路径仍缺）；
-- [ ] Continue、Rewrite、Continuity Audit、Deep Reasoning、Distillation 五个切片通过 Desktop ↔ Daemon 集成测试（五条切片 WebSocket fixture harness、GhostText、gutter marker、长任务 UI 测试、Tauri NSIS 构建和 packaged sidecar 恢复通过；真实 Provider、安装后 UI 任务恢复和生产数据重启演练仍缺）；
+- [ ] Continue、Rewrite、Continuity Audit、Deep Reasoning、Distillation 五个切片通过 Desktop ↔ Daemon 集成测试（五条切片 WebSocket fixture harness、GhostText、gutter marker、长任务 UI 测试、Tauri NSIS 构建和 packaged sidecar 五切片/恢复通过；真实 Provider、安装后 UI 任务恢复和生产数据重启演练仍缺）；
 - [ ] DomainChangeSet 的 materialized projection reducer、幂等、乱序、checksum、snapshot 和离线恢复通过测试（本地测试及双持久化 daemon 同步测试通过；真实跨设备/生产一致性证据仍缺）；
 - [ ] Proposal → Review → CAS Commit → Undo 在 IndexedDB 上通过并发测试（Selection Toolbar 与 Diff Reviewer 写回、双持久化 daemon proposal 同步测试通过；完整生产边界仍缺）；
 - [ ] Daemon crash、App restart、checkpoint corruption、partial workflow resume 有报告（OS crash/checkpoint/fault injection、Desktop↔daemon 子进程恢复/resume、packaged sidecar recovery 和 App recovery 测试已测；安装后 GUI/App restart、生产级故障报告仍缺）；
@@ -865,4 +865,4 @@ mutation
 - [ ] Evals 进入 CI，包含客观、canonical subjective fixture、mutation 和长上下文回归（deterministic CI、7 类 objective assertion、7 类 mutation triplet、真实 Agnes provider 100/300 章 evidence envelope digest 校验已通过；人工标注、真实 pipeline mutation 和完整 benchmark 仍缺）；
 - [ ] Observability 完成字段、采样、脱敏和无 raw CoT 验证（本地字段、`INKPI_OBSERVABILITY_SAMPLE_RATE` 配置、CoT 别名过滤、JSONL 落盘前脱敏测试和一次真实 Runtime 采样通过；生产采样规模、文件访问控制、跨进程 redaction 和 raw-CoT 审计仍缺）；
 - [ ] 44 个插件完成分类和迁移，Legacy AI 路径和过期接口文档清理（44 个分类、child-daemon Runtime 注册、Daemon 白名单 RPC、Desktop adapter、中央入口 semantic projection、NSIS 构建和 release sidecar smoke 通过；打包 App 生产插件运行和完整 legacy/interface 审计仍缺）；
-- [ ] 完成 offline、network failure、stale proposal、duplicate task、model unavailable、invalid structured output、context overflow 和 cache invalidation 演练（本地演练、离线恢复 UI 门控、packaged sidecar/App recovery 测试通过；安装后 GUI、生产故障与真实 model-unavailable 证据仍缺）。
+- [ ] 完成 offline、network failure、stale proposal、duplicate task、model unavailable、invalid structured output、context overflow 和 cache invalidation 演练（Runtime/ Desktop 可靠性矩阵、离线恢复 UI 门控、packaged sidecar/App recovery 测试通过；安装后 GUI、生产故障与真实 model-unavailable 证据仍缺）。
