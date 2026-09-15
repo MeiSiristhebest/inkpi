@@ -110,7 +110,11 @@ export class JitMemoryRetriever {
     if (uniqueKeywords.length > 0) {
       for (const kw of uniqueKeywords.slice(0, 5)) {
         try {
-          const searchResults = this.fts.search(kw, query.maxFtsResults ?? 4);
+          const searchResults = this.fts.search({
+            query: kw,
+            workspaceId: query.workspaceId,
+            limit: query.maxFtsResults ?? 4
+          });
           for (const res of searchResults) {
             if (query.currentDocumentId && res.documentId === query.currentDocumentId) {
               continue; // 过滤当前正在编辑的文档自身
