@@ -148,4 +148,83 @@ describe('@inkpi/storage -> FTS5 Full-Text Search Engine (1:1 Ported from repos/
     expect(() => fts.search('anything')).toThrow();
     db.close();
   });
+
+  it('strictly isolates search results by workspaceId (P0.11, INV-03)', () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const fts = new FtsSearchEngine(db);
+    const now = Date.now();
+
+    // Create Workspace A and Document with "林凡"
+    repo.createWorkspace({ id: 'ws_a', title: 'Work A', owner: 'A', createdAt: now, updatedAt: now });
+    repo.createFolder({
+      id: 'fol_a',
+      workspaceId: 'ws_a',
+      title: 'Fol A',
+      orderIndex: 1,
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.createDocument({
+      id: 'doc_a',
+      folderId: 'fol_a',
+      workspaceId: 'ws_a',
+      title: 'A 卷',
+      orderIndex: 1,
+      contentSize: 10,
+      status: 'published',
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.upsertSnapshot({
+      documentId: 'doc_a',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: '林凡在青云宗拔剑出鞘。',
+      contentSize: 20,
+      updatedAt: now
+    });
+
+    // Create Workspace B and Document with "林凡"
+    repo.createWorkspace({ id: 'ws_b', title: 'Work B', owner: 'B', createdAt: now, updatedAt: now });
+    repo.createFolder({
+      id: 'fol_b',
+      workspaceId: 'ws_b',
+      title: 'Fol B',
+      orderIndex: 1,
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.createDocument({
+      id: 'doc_b',
+      folderId: 'fol_b',
+      workspaceId: 'ws_b',
+      title: 'B 卷',
+      orderIndex: 1,
+      contentSize: 10,
+      status: 'published',
+      createdAt: now,
+      updatedAt: now
+    });
+    repo.upsertSnapshot({
+      documentId: 'doc_b',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: '林凡在魔教古刹参悟魔功。',
+      contentSize: 20,
+      updatedAt: now
+    });
+
+    // When querying with workspaceId 'ws_a', must only return results from ws_a
+    const resA = fts.search({ query: '林凡', workspaceId: 'ws_a' });
+    expect(resA.length).toBe(1);
+    expect(resA[0].documentId).toBe('doc_a');
+
+    // When querying with workspaceId 'ws_b', must only return results from ws_b
+    const resB = fts.search({ query: '林凡', workspaceId: 'ws_b' });
+    expect(resB.length).toBe(1);
+    expect(resB[0].documentId).toBe('doc_b');
+
+    db.close();
+  });
 });

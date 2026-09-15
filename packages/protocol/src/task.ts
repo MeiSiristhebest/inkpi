@@ -88,9 +88,25 @@ export interface TaskRequirements {
   minimumContext?: number;
 }
 
+export interface TaskScope {
+  workspaceId: string;
+  workspaceRevision: number;
+  document?: {
+    id: string;
+    revision: number;
+  };
+  selection?: {
+    from: number;
+    to: number;
+    sourceHash?: string;
+  };
+  sessionId?: string;
+}
+
 export interface AiTask {
   id: string;
   kind: string;
+  scope?: TaskScope;
   input: TaskInput;
   contextPolicy?: ContextPolicy;
   executionPolicy?: ExecutionPolicy;
