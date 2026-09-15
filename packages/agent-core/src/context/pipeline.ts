@@ -338,6 +338,7 @@ function validateContextCacheEntry(value: unknown): {
   if (value.projectRevision !== undefined && !isFiniteNumber(value.projectRevision)) {
     throw new Error(`Context pipeline snapshot contains an invalid revision for key: ${value.key}`);
   }
+  // SAFETY: value.packet structure and its required fields have been validated above
   return {
     key: value.key,
     packet: value.packet as unknown as ContextPacket,
@@ -459,7 +460,12 @@ function firstNumber(...values: unknown[]): number | undefined {
 function projectRevisionFor(task: AiTask): number | undefined {
   const metadata = asRecord(task.metadata);
   const contextMetadata = asRecord(task.contextPolicy?.metadata);
-  return firstNumber(task.input.selection?.revision, metadata?.projectRevision, contextMetadata?.projectRevision);
+  return firstNumber(
+    task.scope?.workspaceRevision,
+    task.input.selection?.revision,
+    metadata?.projectRevision,
+    contextMetadata?.projectRevision
+  );
 }
 
 function normalizeNonNegativeInteger(value: number, label: string): number {

@@ -242,4 +242,118 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
     expect(errors).toEqual(['term:index unavailable']);
     db.close();
   });
+
+  it('enforces strict workspace isolation across AiTask -> JitContextProvider -> JitMemoryRetriever -> FTS', async () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const fts = new FtsSearchEngine(db);
+    const jit = new JitMemoryRetriever({ repository: repo, ftsEngine: fts });
+
+    // Workspace A
+    repo.createWorkspace({
+      id: 'workspace_A',
+      title: 'Workspace A',
+      owner: 'Author A',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createFolder({
+      id: 'vol_A',
+      workspaceId: 'workspace_A',
+      title: 'Volume A',
+      orderIndex: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createDocument({
+      id: 'doc_A',
+      folderId: 'vol_A',
+      workspaceId: 'workspace_A',
+      title: 'Doc A',
+      orderIndex: 1,
+      synopsis: '林凡在青云宗修炼',
+      contentSize: 100,
+      status: 'completed',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.upsertSnapshot({
+      documentId: 'doc_A',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: '林凡拔出青云剑，眼神坚定。',
+      contentSize: 100,
+      updatedAt: Date.now()
+    });
+
+    // Workspace B with same entity name "林凡"
+    repo.createWorkspace({
+      id: 'workspace_B',
+      title: 'Workspace B',
+      owner: 'Author B',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createFolder({
+      id: 'vol_B',
+      workspaceId: 'workspace_B',
+      title: 'Volume B',
+      orderIndex: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.createDocument({
+      id: 'doc_B',
+      folderId: 'vol_B',
+      workspaceId: 'workspace_B',
+      title: 'Doc B',
+      orderIndex: 1,
+      synopsis: '林凡在魔都开机甲',
+      contentSize: 100,
+      status: 'completed',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    repo.upsertSnapshot({
+      documentId: 'doc_B',
+      version: 1,
+      contentJson: '{}',
+      contentMarkdown: '林凡驾驶EVA机甲迎战使徒。',
+      contentSize: 100,
+      updatedAt: Date.now()
+    });
+
+    fts.rebuildIndex();
+
+    // Query specifically scoped to Workspace A
+    const retrievedA = await jit.retrieve({
+      workspaceId: 'workspace_A',
+      currentText: '林凡正在聚气。',
+      activeReferences: ['林凡']
+    });
+
+    // Verify L3 full text matches only contain documents from Workspace A
+    expect(retrievedA.l3GlobalLore.length).toBeGreaterThan(0);
+    for (const match of retrievedA.l3GlobalLore) {
+      expect(match.documentId).toBe('doc_A');
+      expect(match.snippet).toContain('青云剑');
+      expect(match.snippet).not.toContain('机甲');
+    }
+
+    // Query specifically scoped to Workspace B
+    const retrievedB = await jit.retrieve({
+      workspaceId: 'workspace_B',
+      currentText: '林凡检查神经连接。',
+      activeReferences: ['林凡']
+    });
+
+    expect(retrievedB.l3GlobalLore.length).toBeGreaterThan(0);
+    for (const match of retrievedB.l3GlobalLore) {
+      expect(match.documentId).toBe('doc_B');
+      expect(match.snippet).toContain('机甲');
+      expect(match.snippet).not.toContain('青云剑');
+    }
+
+    db.close();
+  });
 });
