@@ -60,4 +60,37 @@ describe('context overflow reliability boundary', () => {
     await expect(pipeline.build(task(3), controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(calls).toBe(0);
   });
+
+  it('prevents gigantic task-input text from starving lower-priority story or retrieval providers', async () => {
+    const pipeline = new ContextPipeline({ maxTokens: 200 });
+    pipeline.register({
+      id: 'retrieval.jit',
+      provide: () => [
+        { id: 'lore-1', source: 'fts', text: '上古秘辛：玄阴古玉的真正主人是天机阁主。', priority: 500 }
+      ]
+    });
+
+    const longTask: AiTask = {
+      id: 'task-huge-input',
+      kind: 'test.context-budget',
+      input: {
+        documentId: 'doc-1',
+        text: 'A'.repeat(2000) // 500 tokens, far exceeding 200 total budget
+      },
+      contextPolicy: { maxTokens: 200 },
+      outputContract: { format: 'text' }
+    };
+
+    const packet = await pipeline.build(longTask);
+
+    expect(packet.truncated).toBe(true);
+    // Task input should be capped so retrieval.jit gets accepted!
+    const taskInput = packet.fragments.find((f) => f.source === 'task-input');
+    const retrieval = packet.fragments.find((f) => f.source === 'fts');
+
+    expect(taskInput).toBeDefined();
+    expect(retrieval).toBeDefined();
+    expect(packet.text).toContain('上古秘辛');
+    expect(packet.tokenEstimate).toBeLessThanOrEqual(200);
+  });
 });

@@ -10,7 +10,9 @@ export interface JitMemoryRetrieverOptions {
     query: JitContextQuery,
     activeLedger: StateLedger,
     activeEntities: string[],
-    activeAssets: string[]
+    activeAssets: string[],
+    activeLocations?: string[],
+    activeTracks?: string[]
   ) => string[];
   /** Format the structured retrieval result for a downstream consumer. */
   formatContext?: (result: Omit<JitContextResult, 'assembledPromptBlock'>) => string;
@@ -62,6 +64,17 @@ export class JitMemoryRetriever {
       .filter((i: StateLedger['assets'][number]) => textToScan.includes(i.name))
       .map((i: StateLedger['assets'][number]) => i.name);
 
+    const activeLocations = (activeLedger.locations || [])
+      .filter((l: StateLedger['locations'][number]) => l.name && textToScan.includes(l.name))
+      .map((l: StateLedger['locations'][number]) => l.name);
+
+    const activeTracks = (activeLedger.tracks || [])
+      .filter((t: StateLedger['tracks'][number]) => {
+        const clue = t.clue || t.summary;
+        return clue && textToScan.includes(clue);
+      })
+      .map((t: StateLedger['tracks'][number]) => t.clue || t.summary || '');
+
     // -------------------------------------------------------------
     // L2: Recent document summaries
     // -------------------------------------------------------------
@@ -103,7 +116,11 @@ export class JitMemoryRetriever {
     // L3: Full-text retrieval
     // -------------------------------------------------------------
     const l3GlobalLore: FtsSearchResult[] = [];
-    const uniqueKeywords = Array.from(new Set(this.keywordSelector(query, activeLedger, activeEntities, activeAssets)))
+    const uniqueKeywords = Array.from(
+      new Set(
+        this.keywordSelector(query, activeLedger, activeEntities, activeAssets, activeLocations, activeTracks)
+      )
+    )
       .filter((k) => typeof k === 'string' && k.trim().length >= 2)
       .map((k) => k.trim());
 
@@ -134,7 +151,7 @@ export class JitMemoryRetriever {
     const structuredResult = {
       l1WorkingMemory: {
         activeLedger,
-        activeReferences: [...new Set([...activeEntities, ...activeAssets])],
+        activeReferences: [...new Set([...activeEntities, ...activeAssets, ...activeLocations])],
         activeEntities,
         activeAssets
       },
@@ -153,9 +170,17 @@ function defaultKeywordSelector(
   query: JitContextQuery,
   _activeLedger: StateLedger,
   activeEntities: string[],
-  activeAssets: string[]
+  activeAssets: string[],
+  activeLocations: string[] = [],
+  activeTracks: string[] = []
 ): string[] {
-  return [...(query.activeReferences || query.activeEntities || []), ...activeEntities, ...activeAssets];
+  return [
+    ...(query.activeReferences || query.activeEntities || []),
+    ...activeEntities,
+    ...activeAssets,
+    ...activeLocations,
+    ...activeTracks
+  ];
 }
 
 /** Optional neutral text formatter for consumers that need a prompt block. */
@@ -175,6 +200,11 @@ export function formatJitContextAsPrompt(result: Omit<JitContextResult, 'assembl
   if (activeLedger.tracks?.length) {
     sections.push(
       `Tracks: ${activeLedger.tracks.map((track) => `${track.clue || track.summary || track.id || 'track'}${track.status ? `(${track.status})` : ''}`).join('; ')}`
+    );
+  }
+  if (activeLedger.locations?.length) {
+    sections.push(
+      `Locations: ${activeLedger.locations.map((loc) => `${loc.name}${loc.description ? `(${loc.description})` : ''}`).join(', ')}`
     );
   }
   if (result.l2RecentSummaries.length) {

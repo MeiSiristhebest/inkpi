@@ -183,33 +183,53 @@ export class ContextPipeline {
       projectRevision: projectRevisionFor(task),
       metadata: task.contextPolicy?.metadata
     };
+    const requestedProviders = task.contextPolicy?.providerIds;
+    const activeProviders: ContextProvider[] = [];
+    for (const provider of this.providers.values()) {
+      if (requestedProviders && !requestedProviders.includes(provider.id)) continue;
+      if (provider.supports && !(await provider.supports(request))) continue;
+      activeProviders.push(provider);
+    }
+
     const fragments: ContextFragment[] = [];
+    let inputTruncated = false;
     if (task.input.text) {
+      let inputText = task.input.text;
+      // Budget bucket protection: when other providers are active, clamp task-input to prevent starving story/JIT memory
+      if (activeProviders.length > 0 && maxTokens > 0) {
+        const maxInputTokens = Math.max(1, Math.floor(maxTokens * 0.5));
+        const estimated = Math.max(1, Math.ceil(inputText.length / CHARS_PER_TOKEN));
+        if (estimated > maxInputTokens) {
+          inputText = inputText.slice(0, maxInputTokens * CHARS_PER_TOKEN);
+          inputTruncated = true;
+        }
+      }
+
       fragments.push({
         id: `task-input:${hash(
           stableSerialize({
             documentId: task.input.documentId,
             selection: task.input.selection,
-            text: task.input.text
+            text: inputText
           })
         )}`,
         source: 'task-input',
         kind: 'input',
-        text: task.input.text,
+        text: inputText,
         priority: Number.MAX_SAFE_INTEGER
       });
     }
 
-    const requestedProviders = task.contextPolicy?.providerIds;
-    for (const provider of this.providers.values()) {
-      if (requestedProviders && !requestedProviders.includes(provider.id)) continue;
-      if (provider.supports && !(await provider.supports(request))) continue;
+    for (const provider of activeProviders) {
       if (signal?.aborted) throw abortError();
       const provided = await provider.provide(request, signal);
       fragments.push(...provided);
     }
 
     const packet = buildPacket(fragments, maxTokens, request.projectRevision);
+    if (inputTruncated) {
+      packet.truncated = true;
+    }
     if (maxFragments !== undefined && packet.fragments.length > maxFragments) {
       const limited = packet.fragments.slice(0, maxFragments);
       const limitedPacket = buildPacket(limited, maxTokens, request.projectRevision);

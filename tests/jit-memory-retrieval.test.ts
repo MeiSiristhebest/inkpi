@@ -356,4 +356,38 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
 
     db.close();
   });
+
+  it('should recall active locations and clues into working memory and formatted context', async () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const fts = new FtsSearchEngine(db);
+    const jit = new JitMemoryRetriever({
+      repository: repo,
+      ftsEngine: fts,
+      formatContext: formatJitContextAsPrompt
+    });
+
+    const result = await jit.retrieve(
+      {
+        currentText: '林凡站在天机阁废墟前，凝视着神秘石碑，回想起关于玄阴古玉的线索。'
+      },
+      {
+        entities: [{ name: '林凡', status: '筑基期' }],
+        assets: [{ name: '玄阴古玉', holder: '林凡' }],
+        locations: [{ name: '天机阁', description: '千年占卜重地' }],
+        tracks: [{ clue: '玄阴古玉的线索', status: 'pending' }]
+      }
+    );
+
+    expect(result.l1WorkingMemory.activeEntities).toContain('林凡');
+    expect(result.l1WorkingMemory.activeAssets).toContain('玄阴古玉');
+    expect(result.l1WorkingMemory.activeReferences).toContain('天机阁');
+    expect(result.l1WorkingMemory.activeReferences).toContain('林凡');
+    expect(result.l1WorkingMemory.activeReferences).toContain('玄阴古玉');
+
+    expect(result.assembledPromptBlock).toContain('Locations: 天机阁(千年占卜重地)');
+    expect(result.assembledPromptBlock).toContain('Tracks: 玄阴古玉的线索(pending)');
+
+    db.close();
+  });
 });
