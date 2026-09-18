@@ -73,6 +73,7 @@ import type {
   ModelRoute,
 } from "./model-capability-router.js";
 import { createSerializedCreativeContextProviders } from "./serialized-creative-context-provider.js";
+import { createConversationHistoryProvider } from "./conversation-history-provider.js";
 import { InkRpcServer, type ServerContext } from "./server.js";
 import { TaskModelHandler } from "./task-model-handler.js";
 import { TcpSocketTransport } from "./tcp-transport.js";
@@ -158,6 +159,7 @@ export class InkPiDaemon {
     const contextProviders = [
       ...(options.context?.contextProviders ?? []),
       ...createSerializedCreativeContextProviders(),
+      createConversationHistoryProvider(),
     ];
     for (const provider of contextProviders) {
       if (
