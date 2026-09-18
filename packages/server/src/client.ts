@@ -27,14 +27,14 @@ import type {
   TaskStatusSnapshot,
   TaskSteerParams,
   TaskSteerResult,
-  TaskSubmitResult
-} from '@inkpi/protocol';
-import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
-import type { AgentMessage, ImageContent } from '@inkpi/protocol';
-import type { InkRpcServer } from './server.js';
-import { TcpSocketTransport } from './tcp-transport.js';
-import type { RpcTransport } from './transport.js';
-import { DEFAULT_RPC_HOST } from './transport.js';
+  TaskSubmitResult,
+} from "@inkpi/protocol";
+import { calculateProposalProjectionStateHash } from "@inkpi/protocol";
+import type { AgentMessage, ImageContent } from "@inkpi/protocol";
+import type { InkRpcServer } from "./server.js";
+import { TcpSocketTransport } from "./tcp-transport.js";
+import type { RpcTransport } from "./transport.js";
+import { DEFAULT_RPC_HOST } from "./transport.js";
 
 export interface Transport {
   sendRequest(req: RpcRequest): Promise<RpcResponse>;
@@ -86,19 +86,22 @@ export class RemoteStreamTransport implements Transport {
     this.transport.onMessage((msgStr) => {
       try {
         const parsed = JSON.parse(msgStr);
-        if ('id' in parsed && parsed.id !== null) {
+        if ("id" in parsed && parsed.id !== null) {
           const pending = this.pendingRequests.get(parsed.id);
           if (pending) {
             this.pendingRequests.delete(parsed.id);
             pending.resolve(parsed as RpcResponse);
           }
-        } else if ('method' in parsed) {
+        } else if ("method" in parsed) {
           for (const h of this.notifHandlers) {
             h(parsed as RpcNotification);
           }
         }
       } catch (err) {
-        console.error('[RemoteStreamTransport] Failed to parse incoming message:', err);
+        console.error(
+          "[RemoteStreamTransport] Failed to parse incoming message:",
+          err,
+        );
       }
     });
   }
@@ -129,7 +132,10 @@ export class RemoteStreamTransport implements Transport {
 export class InkRpcClient {
   private transport: Transport;
   private reqIdCounter = 1;
-  private notificationListeners = new Map<string, Array<(params: any) => void>>();
+  private notificationListeners = new Map<
+    string,
+    Array<(params: any) => void>
+  >();
 
   constructor(transport: Transport) {
     this.transport = transport;
@@ -143,7 +149,10 @@ export class InkRpcClient {
     });
   }
 
-  public static async connectTcp(port: number, host = DEFAULT_RPC_HOST): Promise<InkRpcClient> {
+  public static async connectTcp(
+    port: number,
+    host = DEFAULT_RPC_HOST,
+  ): Promise<InkRpcClient> {
     const rawTransport = await TcpSocketTransport.connect(port, host);
     const streamTransport = new RemoteStreamTransport(rawTransport);
     return new InkRpcClient(streamTransport);
@@ -168,10 +177,10 @@ export class InkRpcClient {
 
   public async request<T = any>(method: string, params?: any): Promise<T> {
     const req: RpcRequest = {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: this.reqIdCounter++,
       method,
-      params
+      params,
     };
 
     const res = await this.transport.sendRequest(req);
@@ -183,194 +192,238 @@ export class InkRpcClient {
 
   // 1. Agent API
   public prompt(prompt: string, images?: ImageContent[]) {
-    return this.request('agent.prompt', { prompt, images });
+    return this.request("agent.prompt", { prompt, images });
   }
 
   public steer(message: string | AgentMessage) {
-    return this.request('agent.steer', { message });
+    return this.request("agent.steer", { message });
   }
 
   public followUp(message: string | AgentMessage) {
-    return this.request('agent.followUp', { message });
+    return this.request("agent.followUp", { message });
   }
 
   public getAgentState() {
-    return this.request('agent.getState');
+    return this.request("agent.getState");
   }
 
   public abort() {
-    return this.request('agent.abort');
+    return this.request("agent.abort");
   }
 
   public abortAgent() {
-    return this.request('agent.abort');
+    return this.request("agent.abort");
   }
 
   // 2. Editor API
   public getEditorText(): Promise<string | { text: string }> {
-    return this.request('editor.getText');
+    return this.request("editor.getText");
   }
 
   public insertEditorText(posOrText: number | string, text?: string) {
-    if (typeof posOrText === 'string') {
-      return this.request<{ text: string }>('editor.insertText', { text: posOrText });
+    if (typeof posOrText === "string") {
+      return this.request<{ text: string }>("editor.insertText", {
+        text: posOrText,
+      });
     }
-    return this.request<{ text: string }>('editor.insertText', { pos: posOrText, text: text || '' });
+    return this.request<{ text: string }>("editor.insertText", {
+      pos: posOrText,
+      text: text || "",
+    });
   }
 
   public replaceEditorRange(start: number, end: number, text: string) {
-    return this.request<{ text: string }>('editor.replaceRange', { start, end, text });
+    return this.request<{ text: string }>("editor.replaceRange", {
+      start,
+      end,
+      text,
+    });
   }
 
   public undoEditor() {
-    return this.request<{ success: boolean }>('editor.undo');
+    return this.request<{ success: boolean }>("editor.undo");
   }
 
   public redoEditor() {
-    return this.request<{ success: boolean }>('editor.redo');
+    return this.request<{ success: boolean }>("editor.redo");
   }
 
   // 3. Ghost text API
   public setGhostText(pos: number, text: string) {
-    return this.request<{ suggestion?: string }>('ghost.set', { pos, text });
+    return this.request<{ suggestion?: string }>("ghost.set", { pos, text });
   }
 
   public suggestGhost(suggestion: string) {
-    return this.request<{ suggestion?: string }>('ghost.suggest', { suggestion });
+    return this.request<{ suggestion?: string }>("ghost.suggest", {
+      suggestion,
+    });
   }
 
   public acceptGhostText() {
-    return this.request<{ accepted: boolean; text?: string }>('ghost.accept');
+    return this.request<{ accepted: boolean; text?: string }>("ghost.accept");
   }
 
   public acceptGhost() {
-    return this.request<{ accepted: boolean; text?: string }>('ghost.accept');
+    return this.request<{ accepted: boolean; text?: string }>("ghost.accept");
   }
 
   public dismissGhost() {
-    return this.request<{ success: boolean }>('ghost.dismiss');
+    return this.request<{ success: boolean }>("ghost.dismiss");
   }
 
   // 4. Session Tree & Branches
   public branchTree(name: string, hypothesis?: string) {
-    return this.request('tree.branch', { name, hypothesis });
+    return this.request("tree.branch", { name, hypothesis });
   }
 
   public getBranches() {
-    return this.request<any[]>('tree.getBranches');
+    return this.request<any[]>("tree.getBranches");
   }
 
   public switchBranch(targetLeafId: string) {
-    return this.request<{ currentLeafId: string; node: any }>('tree.switchBranch', { targetLeafId });
+    return this.request<{ currentLeafId: string; node: any }>(
+      "tree.switchBranch",
+      { targetLeafId },
+    );
   }
 
   public navigateTree(nodeId: string) {
-    return this.request('tree.navigate', { nodeId });
+    return this.request("tree.navigate", { nodeId });
   }
 
   public getBranchSummary(fromLeafId?: string, toLeafId?: string) {
-    return this.request('tree.getSummary', { fromLeafId, toLeafId });
+    return this.request("tree.getSummary", { fromLeafId, toLeafId });
   }
 
   // 5. Slash Commands
   public executeSlashCommand(command: string) {
-    return this.request<{ handled: boolean; output: string }>('slash.execute', { command });
+    return this.request<{ handled: boolean; output: string }>("slash.execute", {
+      command,
+    });
   }
 
   public executeSlash(command: string) {
-    return this.request<{ handled: boolean; output: string }>('slash.execute', { command });
+    return this.request<{ handled: boolean; output: string }>("slash.execute", {
+      command,
+    });
   }
 
   // 6. Journal
   public appendJournal(type: string, payload: any, id?: string) {
-    return this.request<{ id: string }>('journal.append', { type, payload, id });
+    return this.request<{ id: string }>("journal.append", {
+      type,
+      payload,
+      id,
+    });
   }
 
   public getJournalEntries() {
-    return this.request<any[]>('journal.getEntries');
+    return this.request<any[]>("journal.getEntries");
   }
 
   // 7. JIT Memory
   public retrieveJitMemory(params: any) {
-    return this.request<any>('jit.retrieve', params);
+    return this.request<any>("jit.retrieve", params);
   }
 
   // 8. FTS
   public searchFts(query: string, limit?: number) {
-    return this.request<any[]>('storage.searchFts', { query, limit });
+    return this.request<any[]>("storage.searchFts", { query, limit });
   }
 
   // 10. Telemetry
   public getTelemetryStats() {
-    return this.request<any>('telemetry.getStats');
+    return this.request<any>("telemetry.getStats");
   }
 
   public getTelemetry() {
-    return this.request('telemetry.getMetrics');
+    return this.request("telemetry.getMetrics");
   }
 
   public exportOpenTelemetry() {
-    return this.request<string>('telemetry.exportOtel');
+    return this.request<string>("telemetry.exportOtel");
   }
 
   public submitTask(task: AiTask): Promise<TaskSubmitResult> {
-    return this.request<TaskSubmitResult>('task.submit', { task });
+    return this.request<TaskSubmitResult>("task.submit", { task });
   }
 
   public cancelTask(taskId: string): Promise<TaskCancelResult> {
-    return this.request<TaskCancelResult>('task.cancel', { taskId });
+    return this.request<TaskCancelResult>("task.cancel", { taskId });
   }
 
   public getTaskStatus(taskId: string): Promise<TaskStatusSnapshot> {
-    return this.request<TaskStatusSnapshot>('task.status', { taskId });
+    return this.request<TaskStatusSnapshot>("task.status", { taskId });
   }
 
   public getTaskExecution(taskId: string): Promise<TaskExecutionSnapshot> {
     const params: TaskExecutionParams = { taskId };
-    return this.request<TaskExecutionSnapshot>('task.execution', params);
+    return this.request<TaskExecutionSnapshot>("task.execution", params);
   }
 
   public getCacheStatus(): Promise<CacheStatus> {
-    return this.request<CacheStatus>('cache.status');
+    return this.request<CacheStatus>("cache.status");
   }
 
-  public invalidateCache(params: CacheInvalidateParams): Promise<CacheInvalidateResult> {
-    return this.request<CacheInvalidateResult>('cache.invalidate', params);
+  public invalidateCache(
+    params: CacheInvalidateParams,
+  ): Promise<CacheInvalidateResult> {
+    return this.request<CacheInvalidateResult>("cache.invalidate", params);
   }
 
   public steerTask(taskId: string, input: unknown): Promise<TaskSteerResult> {
     const params: TaskSteerParams = { taskId, input };
-    return this.request<TaskSteerResult>('task.steer', params);
+    return this.request<TaskSteerResult>("task.steer", params);
   }
 
   public resumeTask(taskId: string): Promise<TaskSubmitResult> {
     const params: TaskResumeParams = { taskId };
-    return this.request<TaskSubmitResult>('task.resume', params);
+    return this.request<TaskSubmitResult>("task.resume", params);
   }
 
-  public replayTask(taskId: string, replayTaskId?: string): Promise<TaskSubmitResult> {
+  public replayTask(
+    taskId: string,
+    replayTaskId?: string,
+  ): Promise<TaskSubmitResult> {
     const params: TaskReplayParams = { taskId, replayTaskId };
-    return this.request<TaskSubmitResult>('task.replay', params);
+    return this.request<TaskSubmitResult>("task.replay", params);
   }
 
-  public forkTask(taskId: string, forkTaskId: string, patch?: Partial<AiTask>): Promise<TaskSubmitResult> {
+  public forkTask(
+    taskId: string,
+    forkTaskId: string,
+    patch?: Partial<AiTask>,
+  ): Promise<TaskSubmitResult> {
     const params: TaskForkParams = { taskId, forkTaskId, patch };
-    return this.request<TaskSubmitResult>('task.fork', params);
+    return this.request<TaskSubmitResult>("task.fork", params);
   }
 
   public waitForTask(taskId: string): Promise<TaskResult> {
     return new Promise((resolve, reject) => {
-      const off = this.on('task.event', (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
-        if (event.taskId !== taskId) return;
-        const status = event.snapshot.status;
-        if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(status)) return;
-        off();
-        if (event.snapshot.result) resolve(event.snapshot.result);
-        else reject(new Error(`Task ${taskId} ended without a result`));
-      });
+      const off = this.on(
+        "task.event",
+        (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
+          if (event.taskId !== taskId) return;
+          const status = event.snapshot.status;
+          if (
+            !["waiting-user", "completed", "failed", "cancelled"].includes(
+              status,
+            )
+          )
+            return;
+          off();
+          if (event.snapshot.result) resolve(event.snapshot.result);
+          else reject(new Error(`Task ${taskId} ended without a result`));
+        },
+      );
       void this.getTaskStatus(taskId)
         .then((snapshot) => {
-          if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(snapshot.status)) return;
+          if (
+            !["waiting-user", "completed", "failed", "cancelled"].includes(
+              snapshot.status,
+            )
+          )
+            return;
           off();
           if (snapshot.result) resolve(snapshot.result);
           else reject(new Error(`Task ${taskId} ended without a result`));
@@ -382,53 +435,79 @@ export class InkRpcClient {
     });
   }
 
-  public pushDomainChangeSet(changeSet: DomainChangeSet): Promise<DomainProjectionApplyResult> {
-    return this.request<DomainProjectionApplyResult>('domain.sync.push', { changeSet });
+  public pushDomainChangeSet(
+    changeSet: DomainChangeSet,
+  ): Promise<DomainProjectionApplyResult> {
+    return this.request<DomainProjectionApplyResult>("domain.sync.push", {
+      changeSet,
+    });
   }
 
-  public pullDomainChangeSets(workspaceId: string, afterRevision = 0): Promise<DomainChangeSet[]> {
-    return this.request<DomainChangeSet[]>('domain.sync.pull', { workspaceId, afterRevision });
+  public pullDomainChangeSets(
+    workspaceId: string,
+    afterRevision = 0,
+  ): Promise<DomainChangeSet[]> {
+    return this.request<DomainChangeSet[]>("domain.sync.pull", {
+      workspaceId,
+      afterRevision,
+    });
   }
 
-  public snapshotDomain(workspaceId: string): Promise<DomainProjectionSnapshot> {
-    return this.request<DomainProjectionSnapshot>('domain.sync.snapshot', { workspaceId });
+  public snapshotDomain(
+    workspaceId: string,
+  ): Promise<DomainProjectionSnapshot> {
+    return this.request<DomainProjectionSnapshot>("domain.sync.snapshot", {
+      workspaceId,
+    });
   }
 
   public restoreDomainSnapshot(
-    snapshot: DomainProjectionSnapshot
+    snapshot: DomainProjectionSnapshot,
   ): Promise<{ workspaceId: string; revision: number; updatedAt: number }> {
-    return this.request('domain.sync.restore', { snapshot });
+    return this.request("domain.sync.restore", { snapshot });
   }
 
   public pushProposalState(
     workspaceId: string,
     expectedRevision: number,
-    proposal: ProposalProjectionState
+    proposal: ProposalProjectionState,
   ): Promise<ProposalSyncPushResult> {
-    return this.request<ProposalSyncPushResult>('proposal.sync.push', {
+    return this.request<ProposalSyncPushResult>("proposal.sync.push", {
       workspaceId,
       expectedRevision,
       proposal,
-      stateHash: calculateProposalProjectionStateHash(proposal)
+      stateHash: calculateProposalProjectionStateHash(proposal),
     });
   }
 
-  public snapshotProposals(workspaceId: string): Promise<ProposalProjectionSnapshot> {
-    return this.request<ProposalProjectionSnapshot>('proposal.sync.snapshot', { workspaceId });
+  public snapshotProposals(
+    workspaceId: string,
+  ): Promise<ProposalProjectionSnapshot> {
+    return this.request<ProposalProjectionSnapshot>("proposal.sync.snapshot", {
+      workspaceId,
+    });
   }
 
   public saveArtifact(artifact: Artifact): Promise<ArtifactSaveResult> {
     const params: ArtifactSaveParams = { artifact };
-    return this.request('artifact.save', params);
+    return this.request("artifact.save", params);
   }
 
   public getArtifact(id: string): Promise<Artifact | undefined> {
     const params: ArtifactGetParams = { id };
-    return this.request('artifact.get', params);
+    return this.request("artifact.get", params);
   }
 
   public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {
-    return this.request('artifact.list', options);
+    return this.request("artifact.list", options);
+  }
+
+  public purgeWorkspace(workspaceId: string): Promise<{
+    success: boolean;
+    workspaceId: string;
+    purgedRecords: Record<string, number>;
+  }> {
+    return this.request("workspace.purge", { workspaceId });
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {

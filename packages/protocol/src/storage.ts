@@ -1,4 +1,4 @@
-import type { RuntimeState } from './pipeline.js';
+import type { RuntimeState } from "./pipeline.js";
 
 export interface Workspace {
   id: string;
@@ -32,7 +32,7 @@ export interface Document {
   orderIndex: number;
   synopsis?: string;
   contentSize: number;
-  status: 'draft' | 'reviewing' | 'completed' | 'published';
+  status: "draft" | "reviewing" | "completed" | "published";
   metadata?: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
@@ -167,7 +167,7 @@ export interface OpaqueCompactionDetails {
 /** 结构化 Compaction 摘要条目 */
 export interface CompactionEntry {
   id: string;
-  type: 'compaction';
+  type: "compaction";
   summary: string;
   firstKeptEntryId: string;
   tokensBefore: number;
@@ -185,9 +185,11 @@ export interface WriterLeaseInfo {
 }
 
 /** 结构化原子操作状态机契约 */
-export type OperationState = 'pending' | 'running' | 'settled' | 'failed' | 'interrupted';
+export type OperationState =
+  "pending" | "running" | "settled" | "failed" | "interrupted";
 
-export type OperationType = 'provider_stream' | 'tool_call' | 'workflow_stage' | 'custom';
+export type OperationType =
+  "provider_stream" | "tool_call" | "workflow_stage" | "custom";
 
 export interface OperationRecord {
   id: string;
@@ -203,27 +205,27 @@ export interface OperationRecord {
 
 /** 事件溯源日志类型 */
 export type SessionEntryType =
-  | 'session_start'
-  | 'user_message'
-  | 'agent_turn'
-  | 'draft_revision'
-  | 'ledger_mutation'
-  | 'compaction'
-  | 'tool_execution'
-  | 'operation_intent'
-  | 'operation_settlement'
-  | 'pipeline_stage'
+  | "session_start"
+  | "user_message"
+  | "agent_turn"
+  | "draft_revision"
+  | "ledger_mutation"
+  | "compaction"
+  | "tool_execution"
+  | "operation_intent"
+  | "operation_settlement"
+  | "pipeline_stage"
   /**
    * 助手流式紧凑帧（对齐上游 pi assistant-durability）。
    * 辅助观察数据：缺失合法、不证明成败、不选重启点；`agent_turn` 结算落地后即被归约丢弃。
    */
-  | 'assistant_frame'
+  | "assistant_frame"
   /**
    * 工具进度持久化检查点（对齐上游 pi tool-durability "checkpoint"）。
    * 仅承载"完整有界"快照，绝不作为工具完成证明；基础恢复不读取它。
    */
-  | 'tool_progress'
-  | 'custom';
+  | "tool_progress"
+  | "custom";
 
 export type JournalEntryType = SessionEntryType;
 
@@ -251,6 +253,8 @@ export interface JitContextQuery {
   currentDocumentId?: string;
   currentText?: string;
   activeReferences?: string[];
+  /** P1-3: Desktop-provided keywords extracted from StoryState / active references */
+  keywords?: string[];
   /** @deprecated Use currentText. */
   currentDraftText?: string;
   /** @deprecated Use activeReferences. */
@@ -259,13 +263,34 @@ export interface JitContextQuery {
   maxFtsResults?: number;
 }
 
+/** P0-2: Permanent workspace purge wire contracts */
+export interface WorkspacePurgeParams {
+  workspaceId: string;
+}
+
+export interface WorkspacePurgeResult {
+  success: boolean;
+  workspaceId: string;
+  purgedRecords: {
+    documents: number;
+    folders: number;
+    documentSnapshots: number;
+    documentDeltas: number;
+    domainChangeSets: number;
+    artifacts: number;
+    lanes: number;
+  };
+}
+
 /**
  * JIT retrieval result with caller-owned working state. The generic parameter
  * lets Runtime callers carry an opaque state; the historical default remains
  * `LegacyStateLedger` so existing storage integrations keep their inferred
  * record fields without a migration flag.
  */
-export interface JitContextResult<TState extends RuntimeState = LegacyStateLedger> {
+export interface JitContextResult<
+  TState extends RuntimeState = LegacyStateLedger,
+> {
   l1WorkingMemory: {
     activeLedger: TState;
     activeReferences: string[];

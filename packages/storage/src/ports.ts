@@ -15,8 +15,8 @@ import type {
   Folder,
   OperationRecord,
   SessionEntry,
-  Workspace
-} from '@inkpi/protocol';
+  Workspace,
+} from "@inkpi/protocol";
 
 /**
  * A prepared statement returned by {@link IDb.prepare}. Mirrors the structural
@@ -24,7 +24,10 @@ import type {
  * the repository depends on the port rather than the concrete driver.
  */
 export interface PreparedStatement {
-  run(...params: unknown[]): { lastInsertRowid: number | bigint; changes: number | bigint };
+  run(...params: unknown[]): {
+    lastInsertRowid: number | bigint;
+    changes: number | bigint;
+  };
   get(...params: unknown[]): unknown;
   all(...params: unknown[]): unknown[];
 }
@@ -82,4 +85,10 @@ export interface IRepository {
   getOperations(sessionId: string): OperationRecord[];
   saveSessionEntry(entry: SessionEntry): void;
   getSessionEntries(sessionId: string): SessionEntry[];
+  purgeWorkspace?(workspaceId: string): {
+    documents: number;
+    folders: number;
+    documentSnapshots: number;
+    documentDeltas: number;
+  };
 }

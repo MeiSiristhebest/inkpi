@@ -272,6 +272,7 @@ CREATE INDEX IF NOT EXISTS idx_task_schedules_ready
 -- Runtime semantic artifacts (derived from task results; never authoritative domain state)
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
+  workspace_id TEXT,
   type TEXT NOT NULL,
   task_id TEXT,
   version INTEGER NOT NULL,
@@ -281,6 +282,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   updated_at INTEGER NOT NULL,
   artifact_json TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type, created_at);
 `;

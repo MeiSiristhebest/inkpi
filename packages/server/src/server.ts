@@ -1,30 +1,44 @@
-import * as net from 'node:net';
-import type { Agent } from '@inkpi/agent-core';
-import type { TaskRouter } from '@inkpi/agent-core';
-import type { ProgressiveSkillRuntime } from '@inkpi/agent-core';
-import type { SessionTree } from '@inkpi/agent-core';
-import { SlashCommandRegistry } from '@inkpi/agent-core';
-import type { BranchSummarizer } from '@inkpi/agent-core';
-import type { TelemetryCollector } from '@inkpi/agent-core';
-import type { ExtensionHost } from '@inkpi/agent-core';
-import type { TaskCheckpointStore } from '@inkpi/agent-core';
-import type { TaskExecutionStore } from '@inkpi/agent-core';
-import type { ContextPipeline } from '@inkpi/agent-core';
-import type { ContextProvider } from '@inkpi/agent-core';
-import type { InstructionRegistry } from '@inkpi/agent-core';
-import type { TaskSchedulerPersistence } from '@inkpi/agent-core';
-import type { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
-import type { ArtifactStore, RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
-import type { AgentMessage } from '@inkpi/protocol';
-import { RPC_ERROR_CODES } from '@inkpi/protocol';
-import type { AppendOnlySessionJournal, FtsSearchEngine, InkRepository, JitMemoryRetriever } from '@inkpi/storage';
-import type { DomainProjectionStore } from '@inkpi/storage';
-import type { ProposalProjectionStore } from '@inkpi/storage';
-import { BUILTIN_RPC_METHODS, type RpcMethodHandler } from './builtin-methods.js';
-import { TcpSocketTransport } from './tcp-transport.js';
-import type { RpcTransport } from './transport.js';
-import { DEFAULT_RPC_HOST } from './transport.js';
-import { WebSocketRpcTransport } from './ws-transport.js';
+import * as net from "node:net";
+import type { Agent } from "@inkpi/agent-core";
+import type { TaskRouter } from "@inkpi/agent-core";
+import type { ProgressiveSkillRuntime } from "@inkpi/agent-core";
+import type { SessionTree } from "@inkpi/agent-core";
+import { SlashCommandRegistry } from "@inkpi/agent-core";
+import type { BranchSummarizer } from "@inkpi/agent-core";
+import type { TelemetryCollector } from "@inkpi/agent-core";
+import type { ExtensionHost } from "@inkpi/agent-core";
+import type { TaskCheckpointStore } from "@inkpi/agent-core";
+import type { TaskExecutionStore } from "@inkpi/agent-core";
+import type { ContextPipeline } from "@inkpi/agent-core";
+import type { ContextProvider } from "@inkpi/agent-core";
+import type { InstructionRegistry } from "@inkpi/agent-core";
+import type { TaskSchedulerPersistence } from "@inkpi/agent-core";
+import type { GhostTextManager, HeadlessEditorState } from "@inkpi/editor-core";
+import type {
+  ArtifactStore,
+  RpcNotification,
+  RpcRequest,
+  RpcResponse,
+} from "@inkpi/protocol";
+import type { AgentMessage } from "@inkpi/protocol";
+import { RPC_ERROR_CODES } from "@inkpi/protocol";
+import type {
+  AppendOnlySessionJournal,
+  FtsSearchEngine,
+  InkRepository,
+  JitMemoryRetriever,
+  LaneManager,
+} from "@inkpi/storage";
+import type { DomainProjectionStore } from "@inkpi/storage";
+import type { ProposalProjectionStore } from "@inkpi/storage";
+import {
+  BUILTIN_RPC_METHODS,
+  type RpcMethodHandler,
+} from "./builtin-methods.js";
+import { TcpSocketTransport } from "./tcp-transport.js";
+import type { RpcTransport } from "./transport.js";
+import { DEFAULT_RPC_HOST } from "./transport.js";
+import { WebSocketRpcTransport } from "./ws-transport.js";
 
 export interface ServerContext {
   agent?: Agent;
@@ -47,6 +61,7 @@ export interface ServerContext {
   fts?: FtsSearchEngine;
   slashRegistry?: SlashCommandRegistry;
   journal?: AppendOnlySessionJournal;
+  laneManager?: LaneManager;
   jitRetriever?: JitMemoryRetriever;
   telemetry?: TelemetryCollector;
   extensionHost?: ExtensionHost;
@@ -69,12 +84,18 @@ export class InkRpcServer {
   private boundTransports = new Set<RpcTransport>();
   private tcpServer: net.Server | null = null;
   private wsServer: any | null = null;
-  private customHandlers = new Map<string, (params: any) => Promise<any> | any>();
+  private customHandlers = new Map<
+    string,
+    (params: any) => Promise<any> | any
+  >();
 
-  constructor(ctx: ServerContext = {}, notificationSender?: RpcNotificationSender) {
+  constructor(
+    ctx: ServerContext = {},
+    notificationSender?: RpcNotificationSender,
+  ) {
     this.ctx = {
       ...ctx,
-      slashRegistry: ctx.slashRegistry || new SlashCommandRegistry()
+      slashRegistry: ctx.slashRegistry || new SlashCommandRegistry(),
     };
     this.branchSummarizer = this.ctx.branchSummarizer;
     this.notificationSender = notificationSender;
@@ -82,7 +103,7 @@ export class InkRpcServer {
     // Attach agent event listener to stream notifications
     if (this.ctx.agent) {
       this.ctx.agent.subscribe((event) => {
-        this.notify('agent.event', event);
+        this.notify("agent.event", event);
       });
     }
   }
@@ -91,7 +112,14 @@ export class InkRpcServer {
     this.notificationSender = sender;
   }
 
-  public registerMethod(name: string, handler: (params: any) => Promise<any> | any): void {
+  public getContext(): ServerContext {
+    return this.ctx;
+  }
+
+  public registerMethod(
+    name: string,
+    handler: (params: any) => Promise<any> | any,
+  ): void {
     this.customHandlers.set(name, handler);
   }
 
@@ -105,26 +133,32 @@ export class InkRpcServer {
       } catch (err) {
         transport.send(
           JSON.stringify({
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id: null,
-            error: { code: RPC_ERROR_CODES.PARSE_ERROR, message: 'Invalid JSON message' }
-          })
+            error: {
+              code: RPC_ERROR_CODES.PARSE_ERROR,
+              message: "Invalid JSON message",
+            },
+          }),
         );
       }
     });
   }
 
-  public async listenTcp(port: number, host = DEFAULT_RPC_HOST): Promise<net.Server> {
+  public async listenTcp(
+    port: number,
+    host = DEFAULT_RPC_HOST,
+  ): Promise<net.Server> {
     return new Promise((resolve, reject) => {
       const server = net.createServer((socket) => {
         const transport = new TcpSocketTransport(socket);
         this.bindTransport(transport);
-        socket.on('close', () => {
+        socket.on("close", () => {
           this.boundTransports.delete(transport);
         });
       });
 
-      server.on('error', reject);
+      server.on("error", reject);
       server.listen(port, host, () => {
         this.tcpServer = server;
         resolve(server);
@@ -136,20 +170,23 @@ export class InkRpcServer {
    * 监听 WebSocket 连接 (浏览器 / Tauri WebView 等 GUI 客户端可直接接入)
    * 复用与 TCP 完全相同的换行无关 JSON-RPC 消息协议 (每条 WS 消息即一条 RPC 消息)
    */
-  public async listenWebSocket(port: number, host = DEFAULT_RPC_HOST): Promise<any> {
-    const { createRequire } = await import('node:module');
+  public async listenWebSocket(
+    port: number,
+    host = DEFAULT_RPC_HOST,
+  ): Promise<any> {
+    const { createRequire } = await import("node:module");
     const nodeRequire = createRequire(import.meta.url);
-    const { WebSocketServer } = nodeRequire('ws');
+    const { WebSocketServer } = nodeRequire("ws");
     const wss = new WebSocketServer({ port, host });
-    wss.on('connection', (ws: any) => {
+    wss.on("connection", (ws: any) => {
       const transport = new WebSocketRpcTransport(ws);
       this.bindTransport(transport);
       const cleanup = () => {
         this.boundTransports.delete(transport);
       };
-      if (typeof ws.on === 'function') {
-        ws.on('close', cleanup);
-        ws.on('error', cleanup);
+      if (typeof ws.on === "function") {
+        ws.on("close", cleanup);
+        ws.on("error", cleanup);
       }
     });
     this.wsServer = wss;
@@ -173,9 +210,9 @@ export class InkRpcServer {
 
   public notify(method: string, params?: any): void {
     const notif: RpcNotification = {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       method,
-      params
+      params,
     };
     if (this.notificationSender) {
       this.notificationSender(notif);
@@ -189,33 +226,33 @@ export class InkRpcServer {
   }
 
   public async handleRequest(req: RpcRequest): Promise<RpcResponse> {
-    if (!req || req.jsonrpc !== '2.0' || !req.method) {
+    if (!req || req.jsonrpc !== "2.0" || !req.method) {
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: req?.id ?? null,
         error: {
           code: RPC_ERROR_CODES.INVALID_REQUEST,
-          message: 'Invalid RPC request structure'
-        }
+          message: "Invalid RPC request structure",
+        },
       };
     }
 
     try {
       const result = await this.dispatch(req.method, req.params || {});
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: req.id,
-        result
+        result,
       };
     } catch (err: any) {
       return {
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: req.id,
         error: {
           code: err.code || RPC_ERROR_CODES.INTERNAL_ERROR,
-          message: err.message || 'Internal server error',
-          data: err.data
-        }
+          message: err.message || "Internal server error",
+          data: err.data,
+        },
       };
     }
   }
@@ -232,17 +269,18 @@ export class InkRpcServer {
 
     throw {
       code: RPC_ERROR_CODES.METHOD_NOT_FOUND,
-      message: `Method '${method}' not found`
+      message: `Method '${method}' not found`,
     };
   }
 }
 
 function normalizeAgentMessage(message: unknown, method: string): AgentMessage {
-  if (typeof message === 'string') {
-    if (message.trim().length === 0) throw new Error(`${method} requires a non-empty message`);
-    return { role: 'user', content: message, timestamp: Date.now() };
+  if (typeof message === "string") {
+    if (message.trim().length === 0)
+      throw new Error(`${method} requires a non-empty message`);
+    return { role: "user", content: message, timestamp: Date.now() };
   }
-  if (!message || typeof message !== 'object' || !('role' in message)) {
+  if (!message || typeof message !== "object" || !("role" in message)) {
     throw new Error(`${method} requires a string or AgentMessage`);
   }
   return message as AgentMessage;

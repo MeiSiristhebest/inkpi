@@ -5,9 +5,9 @@ import {
   type ProposalSyncPushResult,
   calculateProposalProjectionSnapshotHash,
   calculateProposalProjectionStateHash,
-  validateProposalProjectionState
-} from '@inkpi/protocol';
-import type { IDb } from './ports.js';
+  validateProposalProjectionState,
+} from "@inkpi/protocol";
+import type { IDb } from "./ports.js";
 
 export interface ProposalProjectionCursor {
   revision: number;
@@ -34,13 +34,15 @@ interface ProposalProjectionRow {
 export class ProposalProjectionStore {
   public constructor(
     private readonly db: IDb,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
   ) {}
 
   public apply(params: ProposalSyncPushParams): ProposalSyncPushResult {
     validatePushParams(params);
     validateProposalProjectionState(params.proposal);
-    const calculatedHash = calculateProposalProjectionStateHash(params.proposal);
+    const calculatedHash = calculateProposalProjectionStateHash(
+      params.proposal,
+    );
 
     return this.db.transaction(() => {
       const current = this.getCursor(params.workspaceId);
@@ -54,8 +56,8 @@ export class ProposalProjectionStore {
           proposalId: params.proposal.id,
           revision: current.revision,
           stateHash: calculatedHash,
-          reason: 'hash-mismatch',
-          currentHash: current.snapshotHash
+          reason: "hash-mismatch",
+          currentHash: current.snapshotHash,
         };
       }
 
@@ -69,7 +71,7 @@ export class ProposalProjectionStore {
           workspaceId: params.workspaceId,
           proposalId: params.proposal.id,
           revision: Number(existing.revision),
-          stateHash: calculatedHash
+          stateHash: calculatedHash,
         };
       }
 
@@ -81,8 +83,8 @@ export class ProposalProjectionStore {
           proposalId: params.proposal.id,
           revision: current.revision,
           stateHash: calculatedHash,
-          reason: 'revision-conflict',
-          currentHash: current.snapshotHash
+          reason: "revision-conflict",
+          currentHash: current.snapshotHash,
         };
       }
 
@@ -97,7 +99,7 @@ export class ProposalProjectionStore {
              revision = excluded.revision,
              state_hash = excluded.state_hash,
              state_json = excluded.state_json,
-             updated_at = excluded.updated_at`
+             updated_at = excluded.updated_at`,
         )
         .run(
           params.workspaceId,
@@ -105,14 +107,14 @@ export class ProposalProjectionStore {
           revision,
           calculatedHash,
           JSON.stringify(params.proposal),
-          updatedAt
+          updatedAt,
         );
 
       const proposals = this.readProposals(params.workspaceId);
       const snapshotHash = calculateProposalProjectionSnapshotHash({
         workspaceId: params.workspaceId,
         revision,
-        proposals
+        proposals,
       });
       this.db
         .prepare(
@@ -122,7 +124,7 @@ export class ProposalProjectionStore {
            ON CONFLICT(workspace_id) DO UPDATE SET
              revision = excluded.revision,
              snapshot_hash = excluded.snapshot_hash,
-             updated_at = excluded.updated_at`
+             updated_at = excluded.updated_at`,
         )
         .run(params.workspaceId, revision, snapshotHash, updatedAt);
 
@@ -132,7 +134,7 @@ export class ProposalProjectionStore {
         workspaceId: params.workspaceId,
         proposalId: params.proposal.id,
         revision,
-        stateHash: calculatedHash
+        stateHash: calculatedHash,
       };
     });
   }
@@ -142,24 +144,26 @@ export class ProposalProjectionStore {
     const row = this.db
       .prepare(
         `SELECT revision, snapshot_hash, updated_at
-         FROM proposal_projection_cursors WHERE workspace_id = ?`
+         FROM proposal_projection_cursors WHERE workspace_id = ?`,
       )
-      .get(workspaceId) as { revision: number; snapshot_hash: string; updated_at: number } | undefined;
+      .get(workspaceId) as
+      | { revision: number; snapshot_hash: string; updated_at: number }
+      | undefined;
     if (!row) {
       return {
         revision: 0,
         snapshotHash: calculateProposalProjectionSnapshotHash({
           workspaceId,
           revision: 0,
-          proposals: []
+          proposals: [],
         }),
-        updatedAt: 0
+        updatedAt: 0,
       };
     }
     return {
       revision: Number(row.revision),
       snapshotHash: String(row.snapshot_hash),
-      updatedAt: Number(row.updated_at)
+      updatedAt: Number(row.updated_at),
     };
   }
 
@@ -169,26 +173,31 @@ export class ProposalProjectionStore {
     const hash = calculateProposalProjectionSnapshotHash({
       workspaceId,
       revision: cursor.revision,
-      proposals
+      proposals,
     });
     if (hash !== cursor.snapshotHash) {
-      throw new Error(`Proposal projection snapshot hash mismatch for workspace: ${workspaceId}`);
+      throw new Error(
+        `Proposal projection snapshot hash mismatch for workspace: ${workspaceId}`,
+      );
     }
     return {
       workspaceId,
       revision: cursor.revision,
       proposals,
       hash,
-      updatedAt: cursor.updatedAt
+      updatedAt: cursor.updatedAt,
     };
   }
 
-  private getRow(workspaceId: string, proposalId: string): ProposalProjectionRow | undefined {
+  private getRow(
+    workspaceId: string,
+    proposalId: string,
+  ): ProposalProjectionRow | undefined {
     return this.db
       .prepare(
         `SELECT workspace_id, proposal_id, revision, state_hash, state_json, updated_at
          FROM proposal_projections
-         WHERE workspace_id = ? AND proposal_id = ?`
+         WHERE workspace_id = ? AND proposal_id = ?`,
       )
       .get(workspaceId, proposalId) as ProposalProjectionRow | undefined;
   }
@@ -198,20 +207,42 @@ export class ProposalProjectionStore {
       .prepare(
         `SELECT workspace_id, proposal_id, revision, state_hash, state_json, updated_at
          FROM proposal_projections
-         WHERE workspace_id = ? ORDER BY proposal_id ASC`
+         WHERE workspace_id = ? ORDER BY proposal_id ASC`,
       )
       .all(workspaceId) as ProposalProjectionRow[];
     return rows.map((row) => parseRow(row));
+  }
+
+  public purgeWorkspace(workspaceId: string): number {
+    return this.db.transaction(() => {
+      this.db
+        .prepare(
+          "DELETE FROM proposal_projection_cursors WHERE workspace_id = ?",
+        )
+        .run(workspaceId);
+      const res = this.db
+        .prepare("DELETE FROM proposal_projections WHERE workspace_id = ?")
+        .run(workspaceId);
+      return Number(res.changes);
+    });
   }
 }
 
 function validatePushParams(params: ProposalSyncPushParams): void {
   assertWorkspaceId(params.workspaceId);
-  if (!Number.isSafeInteger(params.expectedRevision) || params.expectedRevision < 0) {
-    throw new Error('Proposal sync expected revision must be a non-negative integer');
+  if (
+    !Number.isSafeInteger(params.expectedRevision) ||
+    params.expectedRevision < 0
+  ) {
+    throw new Error(
+      "Proposal sync expected revision must be a non-negative integer",
+    );
   }
-  if (typeof params.stateHash !== 'string' || params.stateHash.trim().length === 0) {
-    throw new Error('Proposal sync state hash must be a non-empty string');
+  if (
+    typeof params.stateHash !== "string" ||
+    params.stateHash.trim().length === 0
+  ) {
+    throw new Error("Proposal sync state hash must be a non-empty string");
   }
 }
 
@@ -220,7 +251,9 @@ function parseRow(row: ProposalProjectionRow): ProposalProjectionState {
   validateProposalProjectionState(proposal);
   const calculatedHash = calculateProposalProjectionStateHash(proposal);
   if (calculatedHash !== row.state_hash) {
-    throw new Error(`Proposal projection state hash mismatch: ${row.proposal_id}`);
+    throw new Error(
+      `Proposal projection state hash mismatch: ${row.proposal_id}`,
+    );
   }
   if (proposal.id !== row.proposal_id) {
     throw new Error(`Proposal projection id mismatch: ${row.proposal_id}`);
@@ -229,7 +262,7 @@ function parseRow(row: ProposalProjectionRow): ProposalProjectionState {
 }
 
 function assertWorkspaceId(workspaceId: string): void {
-  if (typeof workspaceId !== 'string' || workspaceId.trim().length === 0) {
-    throw new Error('Proposal sync workspace id must be a non-empty string');
+  if (typeof workspaceId !== "string" || workspaceId.trim().length === 0) {
+    throw new Error("Proposal sync workspace id must be a non-empty string");
   }
 }
