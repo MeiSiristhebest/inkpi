@@ -1,4 +1,4 @@
-import { validateSchema } from '@inkpi/protocol';
+import { assertToolParameterSchema, findJsonObjectError, findJsonValueError, validateSchema } from '@inkpi/protocol';
 import type {
   AgentTool,
   TSchema,
@@ -81,6 +81,11 @@ export class ToolRegistry {
   }
 
   public validateParameters(tool: AgentTool, args: Record<string, unknown>): { valid: boolean; error?: string } {
+    const jsonError = findJsonObjectError(args, '/arguments');
+    if (jsonError) {
+      return { valid: false, error: `${jsonError.path} ${jsonError.message}` };
+    }
+
     if (!tool.parameters) return { valid: true };
     const result = validateSchema(tool.parameters as TSchema, args);
     return result.valid
@@ -131,6 +136,22 @@ export class ToolRegistry {
       }
 
       const result: ToolResult = await tool.execute(toolCall.id, toolCall.arguments, signal, onUpdate, context);
+      const detailsError = result.details === undefined ? undefined : findJsonValueError(result.details, '/details');
+      if (detailsError) {
+        return {
+          role: 'toolResult',
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Tool result rejected: ${detailsError.path} ${detailsError.message}`
+            }
+          ],
+          timestamp: this.clock()
+        };
+      }
 
       return {
         role: 'toolResult',
@@ -172,12 +193,13 @@ export class ToolRegistry {
 }
 
 export function createToolRegistrationDescriptor(
-  tool: Pick<AgentTool, 'name'>,
+  tool: Pick<AgentTool, 'name' | 'parameters'>,
   options: ToolRegistrationOptions = {}
 ): ToolRegistrationDescriptor {
   if (!tool || typeof tool.name !== 'string' || tool.name.trim().length === 0) {
     throw new Error('Tool name must not be empty');
   }
+  assertToolParameterSchema(tool.parameters, tool.name);
 
   const source =
     typeof options.source === 'string' && options.source.trim().length > 0

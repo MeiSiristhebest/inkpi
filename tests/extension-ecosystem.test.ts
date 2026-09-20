@@ -133,6 +133,7 @@ describe('Novel Extensions Infrastructure & Interface Contracts', () => {
     host.registerTool({
       name: 'temp_tool',
       description: 'temp',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [] })
     });
     expect(host.getTools().some((t) => t.name === 'temp_tool')).toBe(true);

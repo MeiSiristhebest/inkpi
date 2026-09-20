@@ -28,6 +28,7 @@ describe('generic model task handler', () => {
     toolRegistry.register({
       name: 'lookup',
       description: 'Lookup a value',
+      parameters: { type: 'object', properties: {} },
       execute: async () => {
         toolExecutions += 1;
         return { content: [{ type: 'text', text: 'tool result' }] };

@@ -52,6 +52,7 @@ describe('Runtime provider response cache', () => {
     tools.register({
       name: 'lookup',
       description: 'Lookup',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'tool value' }] })
     });
     let streamCalls = 0;

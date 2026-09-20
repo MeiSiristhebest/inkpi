@@ -3,6 +3,28 @@ import { type AgentTool, Type } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
 describe('ToolRegistry parameter validation', () => {
+  it('requires every registered tool to declare an object parameter schema', () => {
+    const registry = new ToolRegistry();
+
+    expect(() =>
+      registry.register({
+        name: 'missing_schema',
+        description: 'Missing schema',
+        parameters: undefined,
+        execute: async () => ({ content: [{ type: 'text', text: 'never' }] })
+      })
+    ).toThrow(/registration rejected/);
+
+    expect(() =>
+      registry.register({
+        name: 'unconstrained_schema',
+        description: 'Unconstrained schema',
+        parameters: Type.Any(),
+        execute: async () => ({ content: [{ type: 'text', text: 'never' }] })
+      })
+    ).toThrow(/unconstrained schema/);
+  });
+
   it('rejects invalid JSON Schema arguments before executing the tool', async () => {
     const registry = new ToolRegistry();
     let executionCount = 0;
@@ -97,6 +119,62 @@ describe('ToolRegistry parameter validation', () => {
     expect(result.isError).toBe(false);
     expect(result.content).toEqual([{ type: 'text', text: 'hello' }]);
     expect(result.details).toEqual({ limit: 3 });
+  });
+
+  it('rejects non-JSON arguments before they reach the tool handler', async () => {
+    const registry = new ToolRegistry();
+    let executionCount = 0;
+    const tool: AgentTool = {
+      name: 'json_input_tool',
+      description: 'Rejects non-JSON input',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => {
+        executionCount += 1;
+        return { content: [{ type: 'text', text: 'executed' }] };
+      }
+    };
+    registry.register(tool);
+
+    const result = await registry.executeTool({
+      type: 'toolCall',
+      id: 'call-non-json',
+      name: tool.name,
+      arguments: { callback: (() => undefined) as unknown }
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('/arguments.callback Unsupported JSON value type')
+    });
+    expect(executionCount).toBe(0);
+  });
+
+  it('rejects non-JSON tool result details at the runtime boundary', async () => {
+    const registry = new ToolRegistry();
+    const tool: AgentTool = {
+      name: 'json_output_tool',
+      description: 'Rejects non-JSON output details',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => ({
+        content: [{ type: 'text', text: 'executed' }],
+        details: { createdAt: new Date() }
+      })
+    };
+    registry.register(tool);
+
+    const result = await registry.executeTool({
+      type: 'toolCall',
+      id: 'call-non-json-output',
+      name: tool.name,
+      arguments: {}
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('/details.createdAt Expected a plain JSON object or array')
+    });
   });
 
   it('uses the same complete validation path for TypeBox schemas', async () => {

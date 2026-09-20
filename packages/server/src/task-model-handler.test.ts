@@ -135,6 +135,7 @@ describe('TaskModelHandler structured output failures', () => {
     toolRegistry.register({
       name: 'lookup',
       description: 'Lookup',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'tool value' }] })
     });
     const stream = (_model: ModelConfig, _messages: AgentMessage[], options?: StreamOptions) => {

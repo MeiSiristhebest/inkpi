@@ -2,6 +2,8 @@
  * Zero-dependency TypeBox schema builder & runtime validator (1:1 aligned with TypeBox API)
  */
 
+import { type JsonValue, findJsonValueError } from './json.js';
+
 export const TypeBoxKind = Symbol('TypeBoxKind');
 
 export type TSchema = {
@@ -111,6 +113,11 @@ export const Type = {
   Any: (): TSchema & { static: any } =>
     ({
       [TypeBoxKind]: 'Any'
+    }) as any,
+
+  JsonValue: (): TSchema & { static: JsonValue } =>
+    ({
+      [TypeBoxKind]: 'JsonValue'
     }) as any,
 
   Unsafe: <T = any>(schema: any): TSchema & { static: T } =>
@@ -299,6 +306,12 @@ export const Value = {
       return errors;
     }
 
+    if (kind === 'JsonValue') {
+      const issue = findJsonValueError(value, path || '/');
+      if (issue) errors.push(issue);
+      return errors;
+    }
+
     if (value === null) {
       if (kind === 'Null') return errors;
       if (schema.nullable) return errors;
@@ -433,7 +446,7 @@ export const Value = {
   Clean<T extends TSchema>(schema: T, value: any): any {
     if (schema[TypeBoxKind] === 'Object' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
       const props: Record<string, TSchema> = schema.properties || {};
-      const result: Record<string, any> = {};
+      const result: Record<string, unknown> = {};
       for (const [key, propSchema] of Object.entries(props)) {
         if (key in value) {
           result[key] = Value.Clean(propSchema, value[key]);

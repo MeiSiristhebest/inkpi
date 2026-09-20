@@ -46,6 +46,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     agent.getToolRegistry().register({
       name: 'update_tool',
       description: 'update tool',
+      parameters: { type: 'object', properties: {} },
       execute: async (_id, _p, _signal, onUpdate) => {
         onUpdate?.({ content: [{ type: 'text', text: '50%' }] });
         return { content: [{ type: 'text', text: '100%' }] };
@@ -55,6 +56,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     agent.getToolRegistry().register({
       name: 'block_tool',
       description: 'blocked tool',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'ok' }] })
     });
 
@@ -362,6 +364,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     agent.getToolRegistry().register({
       name: 'seq_tool',
       description: 'seq tool',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'seq result' }] })
     });
 
@@ -422,6 +425,7 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     agent.getToolRegistry().register({
       name: 'terminating_tool',
       description: 'term tool',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'stop' }], terminate: true })
     });
 

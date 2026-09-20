@@ -5,7 +5,7 @@
 import type { RuntimeState } from './pipeline.js';
 import { RpcRequestSchema, StateLedgerSchema, ToolCallContentSchema } from './schemas.js';
 import type { LegacyStateLedger, StateLedger } from './storage.js';
-import { type TSchema, type ValidationError, Value } from './typebox.js';
+import { type TSchema, TypeBoxKind, type ValidationError, Value } from './typebox.js';
 
 export class SchemaValidationError extends Error {
   public errors: ValidationError[];
@@ -31,6 +31,43 @@ export function assertValid<T extends TSchema>(schema: T, value: unknown, contex
   const { valid, errors } = validateSchema(schema, value);
   if (!valid) {
     throw new SchemaValidationError(`${contextName} validation failed`, errors);
+  }
+}
+
+/**
+ * Tool inputs must describe a JSON object at the registration boundary.  Raw
+ * JSON Schema and the local TypeBox-compatible object/record schemas are both
+ * accepted; unconstrained `Any`/`Unknown` roots are rejected.
+ */
+export function validateToolParameterSchema(schema: unknown): { valid: boolean; error?: string } {
+  if (!isRecord(schema)) {
+    return { valid: false, error: 'tool parameters must be a schema object' };
+  }
+
+  const kind = (schema as TSchema)[TypeBoxKind];
+  if (kind === 'Any' || kind === 'Unknown' || kind === 'Unsafe' || kind === 'JsonValue') {
+    return { valid: false, error: `tool parameters cannot use unconstrained schema kind '${kind}'` };
+  }
+
+  if (kind === 'Union') {
+    const schemas = (schema as TSchema).schemas;
+    if (!Array.isArray(schemas) || schemas.length === 0 || !schemas.every(isToolObjectSchema)) {
+      return { valid: false, error: 'tool parameter unions must contain only object schemas' };
+    }
+    return { valid: true };
+  }
+
+  if (!isToolObjectSchema(schema)) {
+    return { valid: false, error: 'tool parameters must describe an object schema' };
+  }
+
+  return { valid: true };
+}
+
+export function assertToolParameterSchema(schema: unknown, toolName = 'Tool'): void {
+  const result = validateToolParameterSchema(schema);
+  if (!result.valid) {
+    throw new Error(`Tool '${toolName}' registration rejected: ${result.error}`);
   }
 }
 
@@ -199,6 +236,23 @@ function readStringList(source: Record<string, unknown>, keys: string[]): string
     }
   }
   return values;
+}
+
+function isToolObjectSchema(schema: unknown): boolean {
+  if (!isRecord(schema)) return false;
+
+  const kind = (schema as TSchema)[TypeBoxKind];
+  if (kind === 'Object' || kind === 'Record') return true;
+  if (kind === 'Union') {
+    const schemas = (schema as TSchema).schemas;
+    return Array.isArray(schemas) && schemas.length > 0 && schemas.every(isToolObjectSchema);
+  }
+
+  if (schema.type === 'object') return true;
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.length > 0 && schema.anyOf.every(isToolObjectSchema);
+  }
+  return false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

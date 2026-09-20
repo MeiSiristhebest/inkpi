@@ -219,7 +219,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 'echo',
       description: 'echo',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'pong' }] })
     });
 
@@ -244,7 +244,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
   it('beforeToolCall 拦截时不执行工具，并按 terminate 标记终止', async () => {
     const execute = vi.fn();
     const registry = new ToolRegistry();
-    registry.register({ name: 'boom', description: '', parameters: undefined, execute });
+    registry.register({ name: 'boom', description: '', parameters: { type: 'object', properties: {} }, execute });
 
     const { ctx } = makeCtx({
       toolRegistry: registry,
@@ -265,7 +265,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 'echo',
       description: '',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'raw' }] })
     });
 
@@ -292,7 +292,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 'bad',
       description: '',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async () => {
         throw new Error('kaboom');
       }
@@ -313,7 +313,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 'echo',
       description: '',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'ok' }] })
     });
 
@@ -338,7 +338,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
   it('signal 已中断时直接返回中断结果，不调用工具', async () => {
     const execute = vi.fn();
     const registry = new ToolRegistry();
-    registry.register({ name: 'echo', description: '', parameters: undefined, execute });
+    registry.register({ name: 'echo', description: '', parameters: { type: 'object', properties: {} }, execute });
 
     const { ctx } = makeCtx({ toolRegistry: registry });
     ctx.signal = { aborted: true } as AbortSignal;
@@ -356,7 +356,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 't',
       description: '',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async (_id, args: any) => {
         order.push(`start:${args.n}`);
         await new Promise((r) => setTimeout(r, args.n === 1 ? 20 : 1));
@@ -383,7 +383,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 't',
       description: '',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async (_id, args: any) => {
         running += 1;
         maxConcurrent = Math.max(maxConcurrent, running);
@@ -412,7 +412,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     registry.register({
       name: 'echo',
       description: '',
-      parameters: undefined,
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'pong' }] })
     });
 

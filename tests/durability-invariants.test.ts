@@ -274,6 +274,7 @@ describe('P2：dispatcher journal 合约（invocationId / sourceIndex / checkpoi
     registry.register({
       name: 'quick_tool',
       description: 'emits live + checkpoint updates then settles',
+      parameters: { type: 'object', properties: {} },
       replay: 'never',
       execute: async (_id, _args, _signal, onUpdate) => {
         onUpdate?.({ content: [{ type: 'text', text: 'live' }] });
@@ -334,6 +335,7 @@ describe('P2：dispatcher journal 合约（invocationId / sourceIndex / checkpoi
     registry.register({
       name: 'late_tool',
       description: 'calls onUpdate after settling',
+      parameters: { type: 'object', properties: {} },
       execute: async (_id, _args, _signal, onUpdate) => {
         const result = { content: [{ type: 'text' as const, text: 'done' }] };
         // 模拟异步迟到写：结算完成后再触发

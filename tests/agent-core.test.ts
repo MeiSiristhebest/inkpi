@@ -478,6 +478,7 @@ describe('@inkpi/agent-core', () => {
           pi.registerTool({
             name: 'ext_tool_1',
             description: 'ext tool',
+            parameters: { type: 'object', properties: {} },
             execute: async () => ({ content: [{ type: 'text', text: '1' }] })
           });
         }

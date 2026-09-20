@@ -1,3 +1,4 @@
+import { JsonValueSchema, Type, Value, assertJsonValue, isJsonValue } from '@inkpi/protocol';
 import type {
   AgentMessage,
   AgentTool,
@@ -101,6 +102,33 @@ describe('@inkpi/protocol (Pure Zero-Bias Protocol Contracts)', () => {
     expect(document.status).toBe('draft');
     expect(snapshot.version).toBe(1);
     expect(delta.documentId).toBe('ch_1');
+  });
+
+  it('should accept only strict JSON values at the shared protocol boundary', () => {
+    const valid = {
+      text: 'ok',
+      count: 2,
+      enabled: true,
+      nested: [null, { answer: 42 }]
+    };
+    expect(isJsonValue(valid)).toBe(true);
+    expect(Value.Check(JsonValueSchema, valid)).toBe(true);
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(isJsonValue(cyclic)).toBe(false);
+    expect(Value.Check(JsonValueSchema, cyclic)).toBe(false);
+    expect(() => assertJsonValue(cyclic, 'protocol payload')).toThrow(/Cyclic references/);
+
+    expect(isJsonValue({ missing: undefined })).toBe(false);
+    expect(isJsonValue({ when: new Date() })).toBe(false);
+    expect(isJsonValue(Number.NaN)).toBe(false);
+  });
+
+  it('should expose JsonValue through the TypeBox-compatible API', () => {
+    const schema = Type.JsonValue();
+    expect(Value.Check(schema, ['safe', { nested: false }])).toBe(true);
+    expect(Value.Check(schema, { invalid: undefined })).toBe(false);
   });
 
   it('should validate extension API and tool schemas', () => {

@@ -6,6 +6,9 @@ import { type Static, Type } from './typebox.js';
 
 export const PROTOCOL_VERSION = 1 as const;
 
+/** Recursive JSON-safe value used at serializable Runtime boundaries. */
+export const JsonValueSchema = Type.JsonValue();
+
 // 1. 基础标识与时间戳
 export const IdSchema = Type.String({ minLength: 1 });
 export const TimestampSchema = Type.Integer({ minimum: 0 });
@@ -54,7 +57,7 @@ export const ToolCallContentSchema = Type.Object({
   type: Type.Literal('toolCall'),
   id: IdSchema,
   name: Type.String({ minLength: 1 }),
-  arguments: Type.Record(Type.String(), Type.Any())
+  arguments: Type.Record(Type.String(), JsonValueSchema)
 });
 
 export const ContentBlockSchema = Type.Union([
@@ -96,6 +99,7 @@ export const ToolResultMessageSchema = Type.Object({
   toolCallId: IdSchema,
   toolName: Type.String({ minLength: 1 }),
   content: Type.Array(Type.Union([TextContentSchema, ImageContentSchema])),
+  details: Type.Optional(JsonValueSchema),
   isError: Type.Optional(Type.Boolean()),
   timestamp: Type.Optional(TimestampSchema)
 });
@@ -111,7 +115,7 @@ export const CustomMessageSchema = Type.Object({
   id: Type.Optional(IdSchema),
   role: Type.Literal('custom'),
   customType: Type.String({ minLength: 1 }),
-  content: Type.Any(),
+  content: JsonValueSchema,
   timestamp: Type.Optional(TimestampSchema)
 });
 
