@@ -9,7 +9,15 @@ import {
   stableSerialize
 } from '@inkpi/agent-core';
 import { type ModelConfig, streamAi } from '@inkpi/ai';
-import type { AgentMessage, AssistantMessage, JsonObject, TaskOutput, ToolCallContent } from '@inkpi/protocol';
+import {
+  type AgentMessage,
+  type AssistantMessage,
+  type JsonObject,
+  type JsonValue,
+  type TaskOutput,
+  type ToolCallContent,
+  assertJsonValue
+} from '@inkpi/protocol';
 import {
   CapabilityRouter,
   type ModelCapabilities,
@@ -354,11 +362,15 @@ function executionPolicySnapshot(policy: TaskHandlerContext['task']['executionPo
   } as JsonObject;
 }
 
-function withoutCompiledContext(payload: unknown): unknown {
+function withoutCompiledContext(payload: unknown): JsonValue | undefined {
+  if (payload === undefined) return undefined;
+  assertJsonValue(payload, 'Task input payload');
   const record = asRecord(payload);
   if (!record || !Object.prototype.hasOwnProperty.call(record, 'context')) return payload;
   const { context: _context, ...copy } = record;
-  return Object.keys(copy).length > 0 ? copy : undefined;
+  if (Object.keys(copy).length === 0) return undefined;
+  assertJsonValue(copy, 'Task input payload without compiled context');
+  return copy;
 }
 
 function isStableProjectContext(fragment: TaskHandlerContext['context']['fragments'][number]): boolean {
@@ -420,7 +432,7 @@ function createProviderResponseCacheKey(
   });
 }
 
-function messageIdentity(message: AgentMessage): unknown {
+function messageIdentity(message: AgentMessage): Record<string, unknown> {
   if (message.role === 'toolResult') {
     return {
       role: message.role,
@@ -459,11 +471,13 @@ function parseDeclaredOutput(format: TaskOutput['format'] | undefined, text: str
   return { format: 'structured', data: parsed };
 }
 
-function parseJson(text: string): unknown {
+function parseJson(text: string): JsonValue {
   const trimmed = text.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? trimmed;
   try {
-    return JSON.parse(fenced);
+    const parsed: unknown = JSON.parse(fenced);
+    assertJsonValue(parsed, 'Model JSON output');
+    return parsed;
   } catch {
     const error = new Error('Model output is not valid JSON') as Error & { retryable?: boolean };
     error.retryable = false;
