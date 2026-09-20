@@ -7,7 +7,14 @@ export type AssistantMessageEvent =
   | { type: 'tool_call_delta'; toolCallId: string; argsDelta: string }
   | { type: 'tool_call_end'; toolCall: ToolCallContent }
   | { type: 'usage'; usage: Usage }
-  | { type: 'error'; error: string };
+  | {
+      type: 'error';
+      error: string;
+      code?: string;
+      retryable?: boolean;
+      provider?: string;
+      status?: number;
+    };
 
 export type AgentEvent =
   | { type: 'agent_start' }

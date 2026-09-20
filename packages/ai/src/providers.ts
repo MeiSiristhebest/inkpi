@@ -1,5 +1,5 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage, ThinkingLevel } from '@inkpi/protocol';
-import { ProviderNotImplementedError } from './errors.js';
+import { ProviderError, ProviderNotImplementedError, classifyProviderError, providerHttpError } from './errors.js';
 import { getHttpClient } from './http-client.js';
 import { sanitizeMessagesForProvider } from './sanitize.js';
 import { AssistantEventStream } from './stream.js';
@@ -450,8 +450,13 @@ export function resolveProviderBaseUrl(provider: string, explicitUrl?: string): 
 function parseJsonStreamEvent(payload: string, provider: string): any {
   try {
     return JSON.parse(payload);
-  } catch (error) {
-    throw new Error(`Malformed ${provider} stream event: ${payload.slice(0, 160)}`, { cause: error });
+  } catch {
+    throw new ProviderError({
+      code: 'malformed_response',
+      provider,
+      message: `Malformed ${provider} stream event`,
+      retryable: false
+    });
   }
 }
 
@@ -552,9 +557,13 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
   if (!apiKey) {
     queueMicrotask(() => {
       stream.error(
-        apiKeyEnv
-          ? `Missing API key for provider '${model.provider}'. Set model.apiKey or ${apiKeyEnv}.`
-          : `Missing API key for provider '${model.provider}'. Set model.apiKey explicitly.`
+        new ProviderError({
+          code: 'authentication',
+          provider: model.provider,
+          message: apiKeyEnv
+            ? `Missing API key for provider '${model.provider}'. Set model.apiKey or ${apiKeyEnv}.`
+            : `Missing API key for provider '${model.provider}'. Set model.apiKey explicitly.`
+        })
       );
     });
     return stream;
@@ -645,7 +654,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
       }
 
       if (!response.ok) {
-        stream.error(`${model.provider} API Error: ${response.status} ${response.statusText}`);
+        stream.error(providerHttpError(model.provider, response.status, response.statusText));
         return;
       }
 
@@ -831,11 +840,11 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         return;
       }
       stream.end();
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
         stream.abort();
       } else {
-        stream.error(err.message || `${model.provider} network error`);
+        stream.error(classifyProviderError(err, { provider: model.provider }));
       }
     }
   })();
@@ -853,7 +862,13 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
 
   if (!apiKey) {
     queueMicrotask(() => {
-      stream.error('Missing API key for Anthropic provider. Please set ANTHROPIC_API_KEY.');
+      stream.error(
+        new ProviderError({
+          code: 'authentication',
+          provider: 'anthropic',
+          message: 'Missing API key for Anthropic provider. Please set ANTHROPIC_API_KEY.'
+        })
+      );
     });
     return stream;
   }
@@ -930,7 +945,7 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
       });
 
       if (!response.ok) {
-        stream.error(`Anthropic API Error: ${response.status} ${response.statusText}`);
+        stream.error(providerHttpError('Anthropic', response.status, response.statusText));
         return;
       }
 
@@ -1066,11 +1081,11 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
         return;
       }
       stream.end();
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
         stream.abort();
       } else {
-        stream.error(err.message || 'Anthropic network error');
+        stream.error(classifyProviderError(err, { provider: 'anthropic' }));
       }
     }
   })();
@@ -1087,7 +1102,13 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
 
   if (!apiKey) {
     queueMicrotask(() => {
-      stream.error('Missing API key for Gemini. Please set GEMINI_API_KEY.');
+      stream.error(
+        new ProviderError({
+          code: 'authentication',
+          provider: 'gemini',
+          message: 'Missing API key for Gemini. Please set GEMINI_API_KEY.'
+        })
+      );
     });
     return stream;
   }
@@ -1136,7 +1157,7 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
       });
 
       if (!response.ok) {
-        stream.error(`Gemini API Error: ${response.status} ${response.statusText}`);
+        stream.error(providerHttpError('Gemini', response.status, response.statusText));
         return;
       }
 
@@ -1219,11 +1240,11 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
         return;
       }
       stream.end();
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
         stream.abort();
       } else {
-        stream.error(err.message || 'Gemini network error');
+        stream.error(classifyProviderError(err, { provider: 'gemini' }));
       }
     }
   })();
@@ -1257,7 +1278,7 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
       });
 
       if (!response.ok) {
-        stream.error(`Ollama Error: ${response.status} ${response.statusText}`);
+        stream.error(providerHttpError('Ollama', response.status, response.statusText));
         return;
       }
 
@@ -1315,17 +1336,27 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
         return;
       }
       stream.end();
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
         stream.abort();
       } else {
-        stream.error(`Ollama connection error: ${err.message || `Ensure Ollama is running at ${baseUrl}`}`);
+        const message = err instanceof Error ? err.message : String(err);
+        stream.error(
+          new ProviderError({
+            code: 'transient_transport',
+            provider: 'ollama',
+            message: `Ollama connection error: ${message || `Ensure Ollama is running at ${baseUrl}`}`
+          })
+        );
       }
     }
   })();
-
   return stream;
 };
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { name?: unknown }).name === 'AbortError');
+}
 
 // ----------------------------------------------------------------------
 // Provider Registry

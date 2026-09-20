@@ -6,6 +6,7 @@ import type {
   ToolCallContent,
   Usage
 } from '@inkpi/protocol';
+import { ProviderError, classifyProviderError } from './errors.js';
 import type { EventStream } from './types.js';
 
 export class AssistantEventStream implements EventStream<AssistantMessageEvent> {
@@ -16,7 +17,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
   private resolvers: Array<(value: IteratorResult<AssistantMessageEvent>) => void> = [];
   private isEnded = false;
   private aborted = false;
-  private currentError?: string;
+  private currentError?: Extract<AssistantMessageEvent, { type: 'error' }>;
 
   public push(event: AssistantMessageEvent): void {
     if (this.isEnded || this.aborted) return;
@@ -46,9 +47,22 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     }
   }
 
-  public error(errorMessage: string): void {
-    this.currentError = errorMessage;
-    this.push({ type: 'error', error: errorMessage });
+  public error(
+    error: string | { message: string; code?: string; retryable?: boolean; provider?: string; status?: number }
+  ): void {
+    const event: Extract<AssistantMessageEvent, { type: 'error' }> =
+      typeof error === 'string'
+        ? { type: 'error', error }
+        : {
+            type: 'error',
+            error: error.message,
+            ...(error.code ? { code: error.code } : {}),
+            ...(error.retryable !== undefined ? { retryable: error.retryable } : {}),
+            ...(error.provider ? { provider: error.provider } : {}),
+            ...(error.status !== undefined ? { status: error.status } : {})
+          };
+    this.currentError = event;
+    this.push(event);
     this.end();
   }
 
@@ -113,7 +127,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     const toolCallsMap = new Map<string, { id: string; name: string; argsStr: string; ended: boolean }>();
     let finalUsage: Usage | undefined;
     let hasError = Boolean(this.currentError);
-    let errorMessage: string | undefined = this.currentError;
+    let errorMessage: string | undefined = this.currentError?.error;
 
     const fail = (message: string): void => {
       hasError = true;
@@ -295,7 +309,8 @@ export async function retryAssistantStream<T>(fn: () => Promise<T>, options: Ret
       return await fn();
     } catch (err) {
       lastError = err;
-      if (attempt >= maxRetries) break;
+      const normalized = classifyProviderError(err);
+      if ((err instanceof ProviderError && !normalized.retryable) || attempt >= maxRetries) break;
       if (options.signal?.aborted) throw abortError(options.signal);
 
       const jitter = delay * (0.8 + Math.random() * 0.4);
@@ -314,7 +329,7 @@ export async function retryAssistantStream<T>(fn: () => Promise<T>, options: Ret
 }
 
 export interface ResilientStreamOptions extends RetryOptions {
-  isRetryable?: (error: string) => boolean;
+  isRetryable?: (error: string, event?: Extract<AssistantMessageEvent, { type: 'error' }>) => boolean;
 }
 
 /**
@@ -332,13 +347,13 @@ export function createResilientStream(
   async function runStream(): Promise<void> {
     attempt++;
     let shouldRetry = false;
-    let retryError: any = null;
+    let retryError: unknown = null;
 
     try {
       const inner = await factory(attempt);
       for await (const event of inner) {
         if (event.type === 'error') {
-          const retryable = options.isRetryable ? options.isRetryable(event.error) : true;
+          const retryable = options.isRetryable ? options.isRetryable(event.error, event) : (event.retryable ?? true);
           if (retryable && attempt < maxRetries) {
             shouldRetry = true;
             retryError = new Error(event.error);
@@ -356,13 +371,14 @@ export function createResilientStream(
       }
 
       outerStream.end();
-    } catch (err: any) {
-      if (attempt < maxRetries) {
+    } catch (err: unknown) {
+      const normalized = classifyProviderError(err);
+      if (normalized.retryable && attempt < maxRetries) {
         const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
-        options.onRetry?.(attempt, err, delay);
+        options.onRetry?.(attempt, normalized, delay);
         scheduleRetry(delay);
       } else {
-        outerStream.error(err?.message || String(err));
+        outerStream.error(normalized);
       }
     }
   }
