@@ -17,6 +17,7 @@ interface SqliteModule {
 // compatible synchronous API as `bun:sqlite`. Keep the specifier dynamic so a
 // Bun-compiled standalone daemon never tries to load Node's unsupported module.
 const sqliteModuleName = process.versions.bun ? 'bun:sqlite' : 'node:sqlite';
+// SAFETY: both supported SQLite modules expose the synchronous methods modeled by SqliteModule.
 const sqliteModule = (await import(sqliteModuleName)) as unknown as SqliteModule;
 const SqliteDatabase = (() => {
   const database = process.versions.bun ? sqliteModule.Database : sqliteModule.DatabaseSync;
@@ -47,6 +48,7 @@ export class InkDb implements IDb {
     this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
     this.ensureColumn('task_executions', 'resume_token_json', 'TEXT');
     this.ensureColumn('task_executions', 'steering_json', 'TEXT');
+    this.ensureColumn('writer_leases', 'fencing_token', 'INTEGER NOT NULL DEFAULT 0');
     const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
     const addedBaseDelta = this.ensureColumn('branch_tips', 'base_delta_id', 'INTEGER NOT NULL DEFAULT 0');
     if (addedBaseSnapshot || addedBaseDelta) {
@@ -62,7 +64,7 @@ export class InkDb implements IDb {
   }
 
   private ensureColumn(
-    table: 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions',
+    table: 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions' | 'writer_leases',
     column: string,
     definition: string
   ): boolean {
@@ -82,13 +84,19 @@ export class InkDb implements IDb {
     for (const row of rows) {
       const existing = String(row.checksum ?? '');
       if (existing) continue;
+      let changes: unknown;
+      try {
+        changes = JSON.parse(String(row.changes_json));
+      } catch (error) {
+        throw new Error(`Invalid domain change set JSON for ${String(row.id)}`, { cause: error });
+      }
       const changeSet = {
         id: String(row.id),
         workspaceId: String(row.workspace_id),
         sourceDeviceId: String(row.source_device_id),
         baseRevision: Number(row.base_revision),
         revision: Number(row.revision),
-        changes: JSON.parse(String(row.changes_json)),
+        changes,
         createdAt: Number(row.created_at)
       } as Omit<DomainChangeSet, 'checksum'>;
       update.run(calculateDomainChangeSetChecksum(changeSet), changeSet.id);
@@ -119,7 +127,10 @@ export class InkDb implements IDb {
     } catch (err) {
       try {
         this.db.exec('ROLLBACK;');
-      } catch {}
+      } catch (rollbackError) {
+        this.inTransaction = false;
+        throw new AggregateError([err, rollbackError], 'SQLite transaction failed and rollback also failed');
+      }
       this.inTransaction = false;
       throw err;
     }

@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS writer_leases (
   holder_id TEXT NOT NULL,
   acquired_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
+  fencing_token INTEGER NOT NULL DEFAULT 0,
   metadata TEXT
 );
 

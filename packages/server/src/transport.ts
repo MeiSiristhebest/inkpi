@@ -6,14 +6,9 @@
  * RPC 监听/连接的默认主机。仅回环地址——守护进程默认不暴露到外部网卡。
  * 需要对外暴露时必须在调用点显式传入 host（安全默认，而非散落的字面量）。
  */
-export const DEFAULT_RPC_HOST = '127.0.0.1';
+import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from '@inkpi/protocol';
 
-/**
- * 守护进程 TCP 监听的默认端口。此前该数字以字面量形式重复出现在
- * `daemon.ts` 的构造函数与 `startWebSocket()` 的默认参数里，改一处会漏另一处。
- * 生产使用应通过 `DaemonOptions.port` 显式注入；此常量只作为"未指定时的兜底"。
- */
-export const DEFAULT_RPC_PORT = 41829;
+export { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from '@inkpi/protocol';
 
 export interface RpcTransport {
   send(message: string): Promise<void> | void;

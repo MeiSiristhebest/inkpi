@@ -1,4 +1,4 @@
-import { DocumentMutationQueue, InkDb } from '@inkpi/storage';
+import { DocumentMutationQueue, InkDb, MutationLeaseLostError } from '@inkpi/storage';
 import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
@@ -58,6 +58,32 @@ describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
     await expect(queue.enqueue('ch_locked', 'internal_agent', async () => 'should not run')).rejects.toThrow(
       'currently locked by another active writer'
     );
+
+    db.close();
+  });
+
+  it('rejects a stale mutation and recovers the same document queue with a new fence', async () => {
+    const db = new InkDb(':memory:');
+    const queue = new DocumentMutationQueue(db, 1000);
+    let firstToken = 0;
+    let secondToken = 0;
+
+    const staleMutation = queue.enqueue('ch_fenced', 'writer-a', async (context) => {
+      firstToken = context.fencingToken;
+      expect(queue.getLeaseManager().release(context.leaseId, context.holderId, context.fencingToken)).toBe(true);
+      expect(() => context.assertActive()).toThrow(MutationLeaseLostError);
+      throw new Error('stale mutation must not settle');
+    });
+    const recoveredMutation = queue.enqueue('ch_fenced', 'writer-b', async (context) => {
+      secondToken = context.fencingToken;
+      context.assertActive();
+      return 'recovered-after-fence-loss';
+    });
+
+    await expect(staleMutation).rejects.toThrow('stale mutation must not settle');
+    await expect(recoveredMutation).resolves.toBe('recovered-after-fence-loss');
+    expect(secondToken).toBeGreaterThan(firstToken);
+    expect(queue.isDocumentBusy('ch_fenced')).toBe(false);
 
     db.close();
   });

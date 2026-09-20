@@ -122,16 +122,17 @@ async function main() {
     case 'daemon':
     case 'server': {
       const portIdx = args.indexOf('--port');
-      const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 8848;
       const wsPortIdx = args.indexOf('--ws-port');
-      const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
 
       const {
         InkPiDaemon,
+        DEFAULT_RPC_PORT,
         createDaemonPersistence,
         createJsonlObservationSink,
-        readObservabilitySampleRate
+        readObservabilitySampleRate,
       } = await import('@inkpi/server');
+      const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : DEFAULT_RPC_PORT;
+      const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
       const { findModelInCatalog, getModelPreset, modelCatalogEntryToCapabilityDeclaration } = await import('@inkpi/ai');
       const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
       const stateDbPath = stateDbFlag ? readRequiredArg(args, args.indexOf(stateDbFlag), stateDbFlag) : undefined;

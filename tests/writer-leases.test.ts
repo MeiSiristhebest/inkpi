@@ -1,5 +1,5 @@
 import { InkDb, WriterLeaseManager } from '@inkpi/storage';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('@inkpi/storage -> WriterLeaseManager (Multi-process Concurrency Safety, 1:1 Ported from repos/pi)', () => {
   it('should acquire, renew, release, and detect lease collisions across processes', () => {
@@ -48,5 +48,49 @@ describe('@inkpi/storage -> WriterLeaseManager (Multi-process Concurrency Safety
     expect(leases.release('non_existent', 'nobody')).toBe(false);
 
     db.close();
+  });
+
+  it('fences stale grants after a lease is released and reacquired', () => {
+    const db = new InkDb(':memory:');
+    const leases = new WriterLeaseManager(db, 1000);
+
+    const grantA = leases.acquireLease('document_lock', 'writer-a');
+    expect(grantA?.fencingToken).toBe(1);
+    expect(grantA && leases.release('document_lock', 'writer-a', grantA.fencingToken)).toBe(true);
+
+    const grantB = leases.acquireLease('document_lock', 'writer-b');
+    expect(grantB?.fencingToken).toBe(2);
+    expect(leases.renew('document_lock', 'writer-a', 1000, grantA?.fencingToken)).toBe(false);
+    expect(leases.release('document_lock', 'writer-a', grantA?.fencingToken)).toBe(false);
+    expect(leases.getLease('document_lock')).toMatchObject({
+      holderId: 'writer-b',
+      fencingToken: 2
+    });
+
+    db.close();
+  });
+
+  it('allows a new holder only after expiry and keeps fencing monotonic', () => {
+    vi.useFakeTimers();
+    try {
+      const db = new InkDb(':memory:');
+      const leases = new WriterLeaseManager(db, 100);
+      const grantA = leases.acquireLease('expiring_lock', 'writer-a');
+
+      expect(grantA?.fencingToken).toBe(1);
+      expect(leases.acquireLease('expiring_lock', 'writer-b')).toBeUndefined();
+
+      vi.advanceTimersByTime(101);
+      expect(leases.isLockedByOther('expiring_lock', 'writer-b')).toBe(false);
+
+      const grantB = leases.acquireLease('expiring_lock', 'writer-b');
+      expect(grantB?.fencingToken).toBe(2);
+      expect(leases.isLeaseActive('expiring_lock', 'writer-b', grantB!.fencingToken)).toBe(true);
+      expect(leases.renew('expiring_lock', 'writer-a', 100, grantA!.fencingToken)).toBe(false);
+
+      db.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

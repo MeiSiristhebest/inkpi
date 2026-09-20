@@ -19,3 +19,4 @@ export * from './validation.js';
 export * from './cbor/index.js';
 export * from './framing.js';
 export * from './codec.js';
+export * from './runtime-contract.js';

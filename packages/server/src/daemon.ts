@@ -1,4 +1,4 @@
-import type * as net from "node:net";
+import type * as net from 'node:net';
 import {
   ContextPipeline,
   type InstructionDefinition,
@@ -15,11 +15,15 @@ import {
   TaskObservability,
   type TaskObservabilityOptions,
   TaskRouter,
-  type TaskRunObserver,
-  type TaskSchedulerPersistence,
-} from "@inkpi/agent-core";
+  type TaskRunObserver
+} from '@inkpi/agent-core';
+import {
+  RUNTIME_CAPABILITIES,
+  RUNTIME_IMPLEMENTATION_VERSION,
+  assertRuntimeHandshakeRequest,
+  createRuntimeHandshakeResponse
+} from '@inkpi/protocol';
 import type {
-  Artifact,
   ArtifactGetParams,
   ArtifactListParams,
   ArtifactSaveParams,
@@ -33,7 +37,6 @@ import type {
   DomainSyncRestoreParams,
   DomainSyncSnapshotParams,
   InstructionListParams,
-  InstructionRegisterParams,
   InstructionRegisterResult,
   InstructionRegistrationStatus,
   InstructionRegistryStatus,
@@ -57,28 +60,24 @@ import type {
   TaskSteerParams,
   TaskSubmitParams,
   ToolExecuteParams,
-  ToolResultMessage,
-} from "@inkpi/protocol";
-import type { ProposalProjectionStore } from "@inkpi/storage";
-import { resolveDaemonCachePersistenceTargets } from "./daemon-cache-persistence.js";
-import type { RuntimeCachePersistence } from "./daemon-cache-persistence.js";
+  ToolResultMessage
+} from '@inkpi/protocol';
+import type { RuntimeCapability } from '@inkpi/protocol';
+import type { ProposalProjectionStore } from '@inkpi/storage';
+import { createConversationHistoryProvider } from './conversation-history-provider.js';
+import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
+import type { RuntimeCachePersistence } from './daemon-cache-persistence.js';
 import {
   type FirstPartyPluginRuntimeRegistration,
-  registerFirstPartyPluginRuntime,
-} from "./first-party-plugin-runtime.js";
-import { JitContextProvider } from "./jit-context-provider.js";
-import type {
-  CapabilityRouter,
-  ModelCapabilities,
-  ModelRoute,
-} from "./model-capability-router.js";
-import { createSerializedCreativeContextProviders } from "./serialized-creative-context-provider.js";
-import { createConversationHistoryProvider } from "./conversation-history-provider.js";
-import { InkRpcServer, type ServerContext } from "./server.js";
-import { TaskModelHandler } from "./task-model-handler.js";
-import { TcpSocketTransport } from "./tcp-transport.js";
-import type { RpcTransport } from "./transport.js";
-import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from "./transport.js";
+  registerFirstPartyPluginRuntime
+} from './first-party-plugin-runtime.js';
+import { JitContextProvider } from './jit-context-provider.js';
+import type { CapabilityRouter, ModelCapabilities, ModelRoute } from './model-capability-router.js';
+import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
+import { InkRpcServer, type ServerContext } from './server.js';
+import { TaskModelHandler } from './task-model-handler.js';
+import type { RpcTransport } from './transport.js';
+import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -91,7 +90,7 @@ export interface DaemonOptions {
   instructionRegistry?: InstructionRegistry;
   skillRuntime?: ProgressiveSkillRuntime;
   skillSearchDirs?: readonly string[];
-  skillActivators?: ProgressiveSkillRuntimeOptions["skillActivators"];
+  skillActivators?: ProgressiveSkillRuntimeOptions['skillActivators'];
   observer?: TaskRunObserver;
   observability?: TaskObservabilityOptions;
   cacheCoordinator?: RuntimeCacheCoordinatorPort;
@@ -102,8 +101,8 @@ export interface DaemonOptions {
 
 export type {
   DaemonRuntimeCachePersistenceTargets,
-  RuntimeCachePersistence,
-} from "./daemon-cache-persistence.js";
+  RuntimeCachePersistence
+} from './daemon-cache-persistence.js';
 
 export interface DaemonStatus {
   running: boolean;
@@ -142,16 +141,13 @@ export class InkPiDaemon {
     this.options = {
       port: DEFAULT_RPC_PORT,
       host: DEFAULT_RPC_HOST,
-      ...options,
+      ...options
     };
-    this.cacheCoordinator =
-      options.cacheCoordinator ?? new RuntimeCacheCoordinator();
+    this.cacheCoordinator = options.cacheCoordinator ?? new RuntimeCacheCoordinator();
     this.taskObservability = new TaskObservability(options.observability);
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
     this.instructionRegistry =
-      options.instructionRegistry ??
-      options.context?.instructionRegistry ??
-      new InstructionRegistry();
+      options.instructionRegistry ?? options.context?.instructionRegistry ?? new InstructionRegistry();
     const contextPipeline =
       options.context?.taskRouter?.contextPipeline ??
       options.context?.contextPipeline ??
@@ -159,27 +155,18 @@ export class InkPiDaemon {
     const contextProviders = [
       ...(options.context?.contextProviders ?? []),
       ...createSerializedCreativeContextProviders(),
-      createConversationHistoryProvider(),
+      createConversationHistoryProvider()
     ];
     for (const provider of contextProviders) {
-      if (
-        !contextPipeline
-          .list()
-          .some((registered) => registered.id === provider.id)
-      ) {
+      if (!contextPipeline.list().some((registered) => registered.id === provider.id)) {
         contextPipeline.register(provider);
       }
     }
-    if (
-      options.context?.jitRetriever &&
-      !contextPipeline
-        .list()
-        .some((provider) => provider.id === "retrieval.jit")
-    ) {
+    if (options.context?.jitRetriever && !contextPipeline.list().some((provider) => provider.id === 'retrieval.jit')) {
       contextPipeline.register(
         new JitContextProvider(options.context.jitRetriever, {
-          cacheCoordinator: this.cacheCoordinator,
-        }),
+          cacheCoordinator: this.cacheCoordinator
+        })
       );
     }
     this.taskRouter =
@@ -191,22 +178,18 @@ export class InkPiDaemon {
         contextPipeline,
         instructionRegistry: this.instructionRegistry,
         observer: options.observer ?? this.taskObservability,
-        cacheCoordinator: this.cacheCoordinator,
+        cacheCoordinator: this.cacheCoordinator
       });
     if (
-      (options.defaultModel ||
-        options.modelRoutes?.length ||
-        options.capabilityRouter) &&
-      !this.taskRouter.registry
-        .list()
-        .some((handler) => handler.id === "runtime.model")
+      (options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) &&
+      !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')
     ) {
       const modelHandler = new TaskModelHandler({
         model: options.defaultModel,
         defaultModelCapabilities: options.defaultModelCapabilities,
         routes: options.modelRoutes,
         capabilityRouter: options.capabilityRouter,
-        cacheCoordinator: this.cacheCoordinator,
+        cacheCoordinator: this.cacheCoordinator
       });
       this.capabilityRouter = modelHandler.getCapabilityRouter();
       this.taskRouter.registry.register(modelHandler);
@@ -216,51 +199,37 @@ export class InkPiDaemon {
     this.skillRuntime =
       options.skillRuntime ??
       new ProgressiveSkillRuntime({
-        searchDirs: options.skillSearchDirs
-          ? [...options.skillSearchDirs]
-          : undefined,
+        searchDirs: options.skillSearchDirs ? [...options.skillSearchDirs] : undefined,
         extensionHost: options.context?.extensionHost,
         toolRegistry: this.taskRouter.toolRegistry,
         taskRegistry: this.taskRouter.registry,
         contextPipeline: this.taskRouter.contextPipeline,
         instructionRegistry: this.instructionRegistry,
-        skillActivators: options.skillActivators,
+        skillActivators: options.skillActivators
       });
     if (this.skillRuntime.toolRegistry !== this.taskRouter.toolRegistry) {
-      throw new Error(
-        "Daemon skill runtime must use the TaskRouter ToolRegistry",
-      );
+      throw new Error('Daemon skill runtime must use the TaskRouter ToolRegistry');
     }
-    if (
-      this.skillRuntime.taskRegistry &&
-      this.skillRuntime.taskRegistry !== this.taskRouter.registry
-    ) {
-      throw new Error(
-        "Daemon skill runtime must use the TaskRouter TaskRegistry",
-      );
+    if (this.skillRuntime.taskRegistry && this.skillRuntime.taskRegistry !== this.taskRouter.registry) {
+      throw new Error('Daemon skill runtime must use the TaskRouter TaskRegistry');
     }
-    if (
-      this.skillRuntime.contextPipeline &&
-      this.skillRuntime.contextPipeline !== this.taskRouter.contextPipeline
-    ) {
-      throw new Error(
-        "Daemon skill runtime must use the TaskRouter ContextPipeline",
-      );
+    if (this.skillRuntime.contextPipeline && this.skillRuntime.contextPipeline !== this.taskRouter.contextPipeline) {
+      throw new Error('Daemon skill runtime must use the TaskRouter ContextPipeline');
     }
     this.firstPartyPluginRuntime = registerFirstPartyPluginRuntime({
       toolRegistry: this.taskRouter.toolRegistry,
       taskRegistry: this.taskRouter.registry,
-      extensionHost: this.skillRuntime.extensionHost,
+      extensionHost: this.skillRuntime.extensionHost
     });
     this.rpcServer = new InkRpcServer({
       ...options.context,
       taskRouter: this.taskRouter,
       instructionRegistry: this.instructionRegistry,
       extensionHost: this.skillRuntime.extensionHost,
-      skillRuntime: this.skillRuntime,
+      skillRuntime: this.skillRuntime
     } as ServerContext);
     this.taskRouter.subscribe((event) => {
-      this.rpcServer.notify("task.event", event);
+      this.rpcServer.notify('task.event', event);
     });
     this.registerDaemonMethods();
   }
@@ -308,160 +277,117 @@ export class InkPiDaemon {
   }
 
   private registerDaemonMethods(): void {
-    this.rpcServer.registerMethod(
-      "domain.sync.push",
-      (params: DomainSyncPushParams) => {
-        return this.withDomainProjection().apply(params.changeSet);
-      },
-    );
+    this.rpcServer.registerMethod('domain.sync.push', (params: DomainSyncPushParams) => {
+      return this.withDomainProjection().apply(params.changeSet);
+    });
 
-    this.rpcServer.registerMethod(
-      "domain.sync.pull",
-      (params: DomainSyncPullParams) => {
-        return this.withDomainProjection().list(
-          params.workspaceId,
-          params.afterRevision,
-        );
-      },
-    );
+    this.rpcServer.registerMethod('domain.sync.pull', (params: DomainSyncPullParams) => {
+      return this.withDomainProjection().list(params.workspaceId, params.afterRevision);
+    });
 
-    this.rpcServer.registerMethod(
-      "domain.sync.snapshot",
-      (params: DomainSyncSnapshotParams) => {
-        return this.withDomainProjection().createSnapshot(params.workspaceId);
-      },
-    );
+    this.rpcServer.registerMethod('domain.sync.snapshot', (params: DomainSyncSnapshotParams) => {
+      return this.withDomainProjection().createSnapshot(params.workspaceId);
+    });
 
-    this.rpcServer.registerMethod(
-      "domain.sync.restore",
-      (params: DomainSyncRestoreParams) => {
-        return this.withDomainProjection().restoreSnapshot(params.snapshot);
-      },
-    );
+    this.rpcServer.registerMethod('domain.sync.restore', (params: DomainSyncRestoreParams) => {
+      return this.withDomainProjection().restoreSnapshot(params.snapshot);
+    });
 
-    this.rpcServer.registerMethod(
-      "proposal.sync.push",
-      (params: ProposalSyncPushParams) => {
-        return this.withProposalProjection().apply(params);
-      },
-    );
+    this.rpcServer.registerMethod('proposal.sync.push', (params: ProposalSyncPushParams) => {
+      return this.withProposalProjection().apply(params);
+    });
 
-    this.rpcServer.registerMethod(
-      "proposal.sync.snapshot",
-      (params: ProposalSyncSnapshotParams) => {
-        return this.withProposalProjection().snapshot(params.workspaceId);
-      },
-    );
+    this.rpcServer.registerMethod('proposal.sync.snapshot', (params: ProposalSyncSnapshotParams) => {
+      return this.withProposalProjection().snapshot(params.workspaceId);
+    });
 
-    this.rpcServer.registerMethod(
-      "artifact.save",
-      async (params: ArtifactSaveParams): Promise<ArtifactSaveResult> => {
-        await this.withArtifactStore().save(params.artifact);
-        return { saved: true, id: params.artifact.id };
-      },
-    );
+    this.rpcServer.registerMethod('artifact.save', async (params: ArtifactSaveParams): Promise<ArtifactSaveResult> => {
+      await this.withArtifactStore().save(params.artifact);
+      return { saved: true, id: params.artifact.id };
+    });
 
-    this.rpcServer.registerMethod(
-      "artifact.get",
-      (params: ArtifactGetParams) => {
-        return this.withArtifactStore().get(params.id);
-      },
-    );
+    this.rpcServer.registerMethod('artifact.get', (params: ArtifactGetParams) => {
+      return this.withArtifactStore().get(params.id);
+    });
 
-    this.rpcServer.registerMethod(
-      "artifact.list",
-      async (params: ArtifactListParams = {}) => {
-        const store = this.withArtifactStore();
-        if (params.type && !params.taskId && store.listByType)
-          return store.listByType(params.type, params.workspaceId);
-        const artifacts = await store.list(params.taskId, params.workspaceId);
-        return params.type
-          ? artifacts.filter((artifact) => artifact.type === params.type)
-          : artifacts;
-      },
-    );
+    this.rpcServer.registerMethod('artifact.list', async (params: ArtifactListParams = {}) => {
+      const store = this.withArtifactStore();
+      if (params.type && !params.taskId && store.listByType) return store.listByType(params.type, params.workspaceId);
+      const artifacts = await store.list(params.taskId, params.workspaceId);
+      return params.type ? artifacts.filter((artifact) => artifact.type === params.type) : artifacts;
+    });
 
     // P0-2: System-wide Workspace Purge RPC
-    this.rpcServer.registerMethod(
-      "workspace.purge",
-      async (params: { workspaceId: string }) => {
-        const workspaceId = params?.workspaceId;
-        if (!workspaceId || typeof workspaceId !== "string") {
-          throw new Error("workspace.purge requires a valid workspaceId");
-        }
+    this.rpcServer.registerMethod('workspace.purge', async (params: { workspaceId: string }) => {
+      const workspaceId = params?.workspaceId;
+      if (!workspaceId || typeof workspaceId !== 'string') {
+        throw new Error('workspace.purge requires a valid workspaceId');
+      }
 
-        const context = this.rpcServer.getContext();
-        let repoPurge = {
-          documents: 0,
-          folders: 0,
-          documentSnapshots: 0,
-          documentDeltas: 0,
-        };
-        let domainSetsPurged = 0;
-        let artifactsPurged = 0;
-        let lanesPurged = 0;
+      const context = this.rpcServer.getContext();
+      let repoPurge = {
+        documents: 0,
+        folders: 0,
+        documentSnapshots: 0,
+        documentDeltas: 0
+      };
+      let domainSetsPurged = 0;
+      let artifactsPurged = 0;
+      let lanesPurged = 0;
 
-        if (context.laneManager?.purgeWorkspace) {
-          lanesPurged = context.laneManager.purgeWorkspace(workspaceId);
-        }
-        if (context.domainProjection?.purgeWorkspace) {
-          domainSetsPurged =
-            context.domainProjection.purgeWorkspace(workspaceId);
-        }
-        if (context.proposalProjection?.purgeWorkspace) {
-          context.proposalProjection.purgeWorkspace(workspaceId);
-        }
-        if (context.artifactStore?.purgeWorkspace) {
-          artifactsPurged =
-            await context.artifactStore.purgeWorkspace(workspaceId);
-        }
-        if (context.storage?.purgeWorkspace) {
-          repoPurge = context.storage.purgeWorkspace(workspaceId);
-        }
+      if (context.laneManager?.purgeWorkspace) {
+        lanesPurged = context.laneManager.purgeWorkspace(workspaceId);
+      }
+      if (context.domainProjection?.purgeWorkspace) {
+        domainSetsPurged = context.domainProjection.purgeWorkspace(workspaceId);
+      }
+      if (context.proposalProjection?.purgeWorkspace) {
+        context.proposalProjection.purgeWorkspace(workspaceId);
+      }
+      if (context.artifactStore?.purgeWorkspace) {
+        artifactsPurged = await context.artifactStore.purgeWorkspace(workspaceId);
+      }
+      if (context.storage?.purgeWorkspace) {
+        repoPurge = context.storage.purgeWorkspace(workspaceId);
+      }
 
-        // Invalidate retrieval cache for workspace
-        this.cacheCoordinator.invalidate({
-          layers: ["retrieval"],
-          reason: "manual",
-        });
+      // Invalidate retrieval cache for workspace
+      this.cacheCoordinator.invalidate({
+        layers: ['retrieval'],
+        reason: 'manual'
+      });
 
-        return {
-          success: true,
-          workspaceId,
-          purgedRecords: {
-            ...repoPurge,
-            domainChangeSets: domainSetsPurged,
-            artifacts: artifactsPurged,
-            lanes: lanesPurged,
-          },
-        };
-      },
-    );
+      return {
+        success: true,
+        workspaceId,
+        purgedRecords: {
+          ...repoPurge,
+          domainChangeSets: domainSetsPurged,
+          artifacts: artifactsPurged,
+          lanes: lanesPurged
+        }
+      };
+    });
 
-    const discoverSkills = (): SkillDiscoverResult =>
-      this.skillRuntime.discoverManifests();
-    this.rpcServer.registerMethod("skill.discover", discoverSkills);
+    const discoverSkills = (): SkillDiscoverResult => this.skillRuntime.discoverManifests();
+    this.rpcServer.registerMethod('skill.discover', discoverSkills);
     // A short alias keeps the catalog operation easy to discover for clients.
-    this.rpcServer.registerMethod("skill.list", discoverSkills);
+    this.rpcServer.registerMethod('skill.list', discoverSkills);
     this.rpcServer.registerMethod(
-      "skill.resolve",
-      (params: SkillResolveQuery = {}): SkillResolveResult =>
-        this.skillRuntime.resolve(params),
+      'skill.resolve',
+      (params: SkillResolveQuery = {}): SkillResolveResult => this.skillRuntime.resolve(params)
     );
+    this.rpcServer.registerMethod('skill.load', (params: SkillLoadParams): SkillLoadResult => {
+      const skillId = requiredSkillId(params);
+      this.skillRuntime.load(skillId);
+      return {
+        loaded: true,
+        skill: this.skillRuntime.getManifest(skillId),
+        snapshot: this.skillRuntime.getRegistrationSnapshot()
+      };
+    });
     this.rpcServer.registerMethod(
-      "skill.load",
-      (params: SkillLoadParams): SkillLoadResult => {
-        const skillId = requiredSkillId(params);
-        this.skillRuntime.load(skillId);
-        return {
-          loaded: true,
-          skill: this.skillRuntime.getManifest(skillId),
-          snapshot: this.skillRuntime.getRegistrationSnapshot(),
-        };
-      },
-    );
-    this.rpcServer.registerMethod(
-      "skill.activate",
+      'skill.activate',
       async (params: SkillActivateParams): Promise<SkillActivationResult> => {
         const skillId = requiredSkillId(params);
         await this.skillRuntime.activate(skillId);
@@ -469,186 +395,167 @@ export class InkPiDaemon {
           activated: true,
           loaded: true,
           skill: this.skillRuntime.getManifest(skillId),
-          snapshot: this.skillRuntime.getRegistrationSnapshot(),
+          snapshot: this.skillRuntime.getRegistrationSnapshot()
         };
-      },
+      }
     );
     const skillStatus = () => this.skillRuntime.getRegistrationSnapshot();
-    this.rpcServer.registerMethod("skill.status", skillStatus);
-    this.rpcServer.registerMethod("skill.snapshot", skillStatus);
+    this.rpcServer.registerMethod('skill.status', skillStatus);
+    this.rpcServer.registerMethod('skill.snapshot', skillStatus);
 
-    this.rpcServer.registerMethod("instruction.register", (params: unknown) => {
+    this.rpcServer.registerMethod('instruction.register', (params: unknown) => {
       return this.registerInstructions(params);
     });
 
-    this.rpcServer.registerMethod(
-      "instruction.list",
-      (params: InstructionListParams = {}) => {
-        const entries = this.instructionRegistry.list();
-        if (!params.taskKind) return entries;
-        return entries.filter((entry) =>
-          entry.tags?.includes(`task:${params.taskKind}`),
-        );
-      },
-    );
+    this.rpcServer.registerMethod('instruction.list', (params: InstructionListParams = {}) => {
+      const entries = this.instructionRegistry.list();
+      if (!params.taskKind) return entries;
+      return entries.filter((entry) => entry.tags?.includes(`task:${params.taskKind}`));
+    });
 
-    this.rpcServer.registerMethod("instruction.status", () => {
+    this.rpcServer.registerMethod('instruction.status', () => {
       const entries = this.instructionRegistry.list();
       return {
         ready: true,
         version: this.instructionRegistry.version(),
         count: entries.length,
         instructionIds: entries.map((entry) => entry.id),
-        instructions: this.instructionRegistry.listReferences(),
+        instructions: this.instructionRegistry.listReferences()
       } satisfies InstructionRegistryStatus;
     });
 
-    this.rpcServer.registerMethod("tool.list", () => {
+    this.rpcServer.registerMethod('tool.list', () => {
       const exposed = new Set(this.firstPartyPluginRuntime.toolNames);
-      return this.taskRouter.toolRegistry
-        .getRegistrations()
-        .filter((registration) => exposed.has(registration.name));
+      return this.taskRouter.toolRegistry.getRegistrations().filter((registration) => exposed.has(registration.name));
     });
 
-    this.rpcServer.registerMethod(
-      "tool.execute",
-      async (params: ToolExecuteParams): Promise<ToolResultMessage> => {
-        const toolName = requiredToolName(params?.toolName);
-        if (!this.firstPartyPluginRuntime.toolNames.includes(toolName)) {
-          throw new Error(
-            `Tool '${toolName}' is not exposed through the Desktop Runtime boundary`,
-          );
-        }
-        if (!isRecord(params?.arguments)) {
-          throw new Error("tool.execute arguments must be an object");
-        }
-        return this.taskRouter.toolRegistry.executeTool({
-          type: "toolCall",
-          id: requiredToolCallId(params?.toolCallId),
-          name: toolName,
-          arguments: params.arguments,
-        });
-      },
-    );
+    this.rpcServer.registerMethod('tool.execute', async (params: ToolExecuteParams): Promise<ToolResultMessage> => {
+      const toolName = requiredToolName(params?.toolName);
+      if (!this.firstPartyPluginRuntime.toolNames.includes(toolName)) {
+        throw new Error(`Tool '${toolName}' is not exposed through the Desktop Runtime boundary`);
+      }
+      if (!isRecord(params?.arguments)) {
+        throw new Error('tool.execute arguments must be an object');
+      }
+      return this.taskRouter.toolRegistry.executeTool({
+        type: 'toolCall',
+        id: requiredToolCallId(params?.toolCallId),
+        name: toolName,
+        arguments: params.arguments
+      });
+    });
 
-    this.rpcServer.registerMethod("task.submit", (params: TaskSubmitParams) => {
+    this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
       const handler = this.taskRouter.registry.resolve(params.task);
-      if (handler.id === "runtime.model") {
+      if (handler.id === 'runtime.model') {
         this.capabilityRouter?.resolve(params.task);
       }
       return this.taskRouter.submit(params.task);
     });
 
-    this.rpcServer.registerMethod("task.cancel", (params: TaskCancelParams) => {
+    this.rpcServer.registerMethod('task.cancel', (params: TaskCancelParams) => {
       return this.taskRouter.cancel(params.taskId);
     });
 
-    this.rpcServer.registerMethod("task.status", (params: TaskStatusParams) => {
+    this.rpcServer.registerMethod('task.status', (params: TaskStatusParams) => {
       return this.taskRouter.status(params.taskId);
     });
 
     this.rpcServer.registerMethod(
-      "task.execution",
+      'task.execution',
       async (params: TaskExecutionParams): Promise<TaskExecutionSnapshot> => {
         await this.taskRouter.ready;
         return this.taskRouter.execution(params.taskId);
-      },
+      }
     );
-
-    this.rpcServer.registerMethod("cache.status", (): CacheStatus => ({
-      version: 1,
-      stats: this.cacheCoordinator.stats(),
-    }));
 
     this.rpcServer.registerMethod(
-      "cache.invalidate",
-      (params: unknown): CacheInvalidateResult => {
-        this.cacheCoordinator.invalidate(normalizeCacheInvalidation(params));
-        return {
-          accepted: true,
-          status: { version: 1, stats: this.cacheCoordinator.stats() },
-        };
-      },
+      'cache.status',
+      (): CacheStatus => ({
+        version: 1,
+        stats: this.cacheCoordinator.stats()
+      })
     );
 
-    this.rpcServer.registerMethod("task.steer", (params: TaskSteerParams) => {
+    this.rpcServer.registerMethod('cache.invalidate', (params: unknown): CacheInvalidateResult => {
+      this.cacheCoordinator.invalidate(normalizeCacheInvalidation(params));
+      return {
+        accepted: true,
+        status: { version: 1, stats: this.cacheCoordinator.stats() }
+      };
+    });
+
+    this.rpcServer.registerMethod('task.steer', (params: TaskSteerParams) => {
       return this.taskRouter.steer(params.taskId, params.input);
     });
 
-    this.rpcServer.registerMethod("task.resume", (params: TaskResumeParams) => {
+    this.rpcServer.registerMethod('task.resume', (params: TaskResumeParams) => {
       return this.taskRouter.resume(params.taskId);
     });
 
-    this.rpcServer.registerMethod("task.replay", (params: TaskReplayParams) => {
+    this.rpcServer.registerMethod('task.replay', (params: TaskReplayParams) => {
       return this.taskRouter.replay(params.taskId, params.replayTaskId);
     });
 
-    this.rpcServer.registerMethod("task.fork", (params: TaskForkParams) => {
-      return this.taskRouter.fork(
-        params.taskId,
-        params.forkTaskId,
-        params.patch,
-      );
+    this.rpcServer.registerMethod('task.fork', (params: TaskForkParams) => {
+      return this.taskRouter.fork(params.taskId, params.forkTaskId, params.patch);
+    });
+
+    // Runtime contract must be negotiated before Desktop uses any product RPC.
+    // A mismatch is reported as an explicit rejected result; the Desktop side
+    // treats it as a hard compatibility failure and stays offline.
+    this.rpcServer.registerMethod('runtime.handshake', (params: unknown) => {
+      assertRuntimeHandshakeRequest(params);
+      return createRuntimeHandshakeResponse({
+        runtimeVersion: RUNTIME_IMPLEMENTATION_VERSION,
+        capabilities: this.getRuntimeCapabilities(),
+        request: params
+      });
     });
 
     // 1. Session Management RPCs
-    this.rpcServer.registerMethod("daemon.status", () => this.getStatus());
+    this.rpcServer.registerMethod('daemon.status', () => this.getStatus());
 
-    this.rpcServer.registerMethod(
-      "session.create",
-      (params: SessionCreateOptions) => {
-        const session = this.sessionManager.createSession(params);
-        // Hook session agent events to broadcast
-        session.agent.subscribe((event) => {
-          this.rpcServer.notify("session.event", {
-            sessionId: session.sessionId,
-            event,
-          });
-        });
-        return {
+    this.rpcServer.registerMethod('session.create', (params: SessionCreateOptions) => {
+      const session = this.sessionManager.createSession(params);
+      // Hook session agent events to broadcast
+      session.agent.subscribe((event) => {
+        this.rpcServer.notify('session.event', {
           sessionId: session.sessionId,
-          createdAt: session.createdAt,
-          messageCount: session.agent.state.messages.length,
-        };
-      },
-    );
+          event
+        });
+      });
+      return {
+        sessionId: session.sessionId,
+        createdAt: session.createdAt,
+        messageCount: session.agent.state.messages.length
+      };
+    });
 
-    this.rpcServer.registerMethod("session.list", () => {
+    this.rpcServer.registerMethod('session.list', () => {
       return this.sessionManager.listSessions();
     });
 
-    this.rpcServer.registerMethod(
-      "session.close",
-      (params: { sessionId: string }) => {
-        return { success: this.sessionManager.closeSession(params?.sessionId) };
-      },
-    );
+    this.rpcServer.registerMethod('session.close', (params: { sessionId: string }) => {
+      return { success: this.sessionManager.closeSession(params?.sessionId) };
+    });
 
-    this.rpcServer.registerMethod(
-      "session.prompt",
-      async (params: { sessionId: string; prompt: string }) => {
-        const session = this.withSession(params?.sessionId);
-        await session.agent.prompt(params.prompt);
-        return {
-          success: true,
-          sessionId: session.sessionId,
-          messageCount: session.agent.state.messages.length,
-          lastMessage:
-            session.agent.state.messages[
-              session.agent.state.messages.length - 1
-            ],
-        };
-      },
-    );
+    this.rpcServer.registerMethod('session.prompt', async (params: { sessionId: string; prompt: string }) => {
+      const session = this.withSession(params?.sessionId);
+      await session.agent.prompt(params.prompt);
+      return {
+        success: true,
+        sessionId: session.sessionId,
+        messageCount: session.agent.state.messages.length,
+        lastMessage: session.agent.state.messages[session.agent.state.messages.length - 1]
+      };
+    });
 
-    this.rpcServer.registerMethod(
-      "session.abort",
-      (params: { sessionId: string }) => {
-        const session = this.withSession(params?.sessionId);
-        session.agent.abort();
-        return { success: true };
-      },
-    );
+    this.rpcServer.registerMethod('session.abort', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      session.agent.abort();
+      return { success: true };
+    });
 
     const getStateHandler = (params: { sessionId: string }) => {
       const session = this.withSession(params?.sessionId);
@@ -658,77 +565,68 @@ export class InkPiDaemon {
         isStreaming: session.agent.state.isStreaming,
         editorText: session.editor.getText(),
         hasGhostText: session.ghost.hasGhostText(),
-        ghostText: session.ghost.getGhostText(),
+        ghostText: session.ghost.getGhostText()
       };
     };
     // session.getState 为 client SDK 兼容别名
-    this.rpcServer.registerMethod("session.get_state", getStateHandler);
-    this.rpcServer.registerMethod("session.getState", getStateHandler);
+    this.rpcServer.registerMethod('session.get_state', getStateHandler);
+    this.rpcServer.registerMethod('session.getState', getStateHandler);
 
     // 2. Editor Multi-session RPCs
     this.rpcServer.registerMethod(
-      "session.editor.insert",
+      'session.editor.insert',
       (params: { sessionId: string; pos: number; text: string }) => {
         const session = this.withSession(params?.sessionId);
         session.editor.insertText(params.pos, params.text);
         return {
           text: session.editor.getText(),
-          version: session.editor.getVersion(),
+          version: session.editor.getVersion()
         };
-      },
+      }
     );
 
-    this.rpcServer.registerMethod(
-      "session.editor.undo",
-      (params: { sessionId: string }) => {
-        const session = this.withSession(params?.sessionId);
-        const success = session.editor.undo();
-        return { success, text: session.editor.getText() };
-      },
-    );
+    this.rpcServer.registerMethod('session.editor.undo', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      const success = session.editor.undo();
+      return { success, text: session.editor.getText() };
+    });
+
+    this.rpcServer.registerMethod('session.editor.redo', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      const success = session.editor.redo();
+      return { success, text: session.editor.getText() };
+    });
 
     this.rpcServer.registerMethod(
-      "session.editor.redo",
-      (params: { sessionId: string }) => {
-        const session = this.withSession(params?.sessionId);
-        const success = session.editor.redo();
-        return { success, text: session.editor.getText() };
-      },
-    );
-
-    this.rpcServer.registerMethod(
-      "session.ghost.suggest",
+      'session.ghost.suggest',
       (params: { sessionId: string; text: string; pos?: number }) => {
         const session = this.withSession(params?.sessionId);
         const suggestion = session.ghost.suggest(params.text, params.pos);
         return suggestion;
-      },
+      }
     );
 
     this.rpcServer.registerMethod(
-      "session.ghost.accept",
-      (params: { sessionId: string; mode?: "all" | "word" | "line" }) => {
+      'session.ghost.accept',
+      (params: { sessionId: string; mode?: 'all' | 'word' | 'line' }) => {
         const session = this.withSession(params?.sessionId);
         let accepted = false;
-        if (params.mode === "word") {
+        if (params.mode === 'word') {
           accepted = session.ghost.acceptWord();
-        } else if (params.mode === "line") {
+        } else if (params.mode === 'line') {
           accepted = session.ghost.acceptLine();
         } else {
           accepted = session.ghost.acceptGhostText();
         }
         return { accepted, text: session.editor.getText() };
-      },
+      }
     );
 
-    this.rpcServer.registerMethod(
-      "session.ghost.dismiss",
-      (params: { sessionId: string }) => {
-        const session = this.withSession(params?.sessionId);
-        session.ghost.dismiss();
-        return { success: true };
-      },
-    );
+    this.rpcServer.registerMethod('session.ghost.dismiss', (params: { sessionId: string }) => {
+      const session = this.withSession(params?.sessionId);
+      session.ghost.dismiss();
+      return { success: true };
+    });
   }
 
   /**
@@ -744,25 +642,20 @@ export class InkPiDaemon {
   }
 
   private withDomainProjection() {
-    const projection = (this.options.context as ServerContext | undefined)
-      ?.domainProjection;
-    if (!projection)
-      throw new Error("Domain projection storage is not configured");
+    const projection = (this.options.context as ServerContext | undefined)?.domainProjection;
+    if (!projection) throw new Error('Domain projection storage is not configured');
     return projection;
   }
 
   private withProposalProjection(): ProposalProjectionStore {
-    const projection = (this.options.context as ServerContext | undefined)
-      ?.proposalProjection;
-    if (!projection)
-      throw new Error("Proposal projection storage is not configured");
+    const projection = (this.options.context as ServerContext | undefined)?.proposalProjection;
+    if (!projection) throw new Error('Proposal projection storage is not configured');
     return projection;
   }
 
   private withArtifactStore() {
-    const store = (this.options.context as ServerContext | undefined)
-      ?.artifactStore;
-    if (!store) throw new Error("Artifact storage is not configured");
+    const store = (this.options.context as ServerContext | undefined)?.artifactStore;
+    if (!store) throw new Error('Artifact storage is not configured');
     return store;
   }
 
@@ -775,19 +668,15 @@ export class InkPiDaemon {
 
     for (const definition of definitions) {
       const entry = instructionEntry(definition);
-      const existing = this.instructionRegistry
-        .list()
-        .find((candidate) => candidate.id === entry.id);
+      const existing = this.instructionRegistry.list().find((candidate) => candidate.id === entry.id);
       if (!existing) {
         this.instructionRegistry.register(entry);
         added.push(entry.id);
         results.push({
           id: entry.id,
           version: definition.version,
-          status: "added",
-          ...(definition.provenance
-            ? { provenance: definition.provenance }
-            : {}),
+          status: 'added',
+          ...(definition.provenance ? { provenance: definition.provenance } : {})
         });
         continue;
       }
@@ -797,10 +686,8 @@ export class InkPiDaemon {
         results.push({
           id: entry.id,
           version: definition.version,
-          status: "unchanged",
-          ...(definition.provenance
-            ? { provenance: definition.provenance }
-            : {}),
+          status: 'unchanged',
+          ...(definition.provenance ? { provenance: definition.provenance } : {})
         });
         continue;
       }
@@ -810,8 +697,8 @@ export class InkPiDaemon {
       results.push({
         id: entry.id,
         version: definition.version,
-        status: "updated",
-        ...(definition.provenance ? { provenance: definition.provenance } : {}),
+        status: 'updated',
+        ...(definition.provenance ? { provenance: definition.provenance } : {})
       });
     }
 
@@ -824,14 +711,11 @@ export class InkPiDaemon {
       updated,
       unchanged,
       results,
-      version: this.instructionRegistry.version(),
+      version: this.instructionRegistry.version()
     };
   }
 
-  public async start(
-    port = this.options.port,
-    host = this.options.host,
-  ): Promise<this> {
+  public async start(port = this.options.port, host = this.options.host): Promise<this> {
     if (this.running) return this;
     await this.restorePersistedCaches();
     // Do not expose a listener until persisted task records have been
@@ -843,7 +727,7 @@ export class InkPiDaemon {
     // When binding to port 0 the OS assigns a free port; record the real one so
     // clients (and tests) can discover it instead of assuming the requested port.
     const addr = this.tcpServer.address();
-    if (addr && typeof addr === "object") {
+    if (addr && typeof addr === 'object') {
       this.options.port = addr.port;
     } else {
       this.options.port = port;
@@ -858,7 +742,7 @@ export class InkPiDaemon {
    */
   public async startWebSocket(
     wsPort = this.options.wsPort ?? (this.options.port ?? DEFAULT_RPC_PORT) + 1,
-    host = this.options.host,
+    host = this.options.host
   ): Promise<this> {
     this.wsPort = wsPort;
     this.options.wsPort = wsPort;
@@ -887,10 +771,7 @@ export class InkPiDaemon {
   private async restorePersistedCaches(): Promise<void> {
     if (!this.options.cachePersistence || this.cachePersistenceRestored) return;
     await this.options.cachePersistence.restore(
-      resolveDaemonCachePersistenceTargets(
-        this.cacheCoordinator,
-        this.taskRouter,
-      ),
+      resolveDaemonCachePersistenceTargets(this.cacheCoordinator, this.taskRouter)
     );
     this.cachePersistenceRestored = true;
   }
@@ -898,10 +779,7 @@ export class InkPiDaemon {
   private async savePersistedCaches(): Promise<void> {
     if (!this.options.cachePersistence) return;
     await this.options.cachePersistence.save(
-      resolveDaemonCachePersistenceTargets(
-        this.cacheCoordinator,
-        this.taskRouter,
-      ),
+      resolveDaemonCachePersistenceTargets(this.cacheCoordinator, this.taskRouter)
     );
   }
 
@@ -912,14 +790,41 @@ export class InkPiDaemon {
       host: this.options.host,
       wsPort: this.wsPort,
       activeSessions: this.sessionManager.size,
-      uptimeMs: this.running ? Date.now() - this.startTime : 0,
+      uptimeMs: this.running ? Date.now() - this.startTime : 0
     };
+  }
+
+  private getRuntimeCapabilities(): RuntimeCapability[] {
+    const capabilities = new Set<string>(RUNTIME_CAPABILITIES);
+    const context = this.rpcServer.getContext();
+
+    if (!context.domainProjection) {
+      removeCapabilities(capabilities, [
+        'domain.sync.push',
+        'domain.sync.pull',
+        'domain.sync.snapshot',
+        'domain.sync.restore'
+      ]);
+    }
+    if (!context.proposalProjection) {
+      removeCapabilities(capabilities, ['proposal.sync.push', 'proposal.sync.snapshot']);
+    }
+    if (!context.artifactStore) {
+      removeCapabilities(capabilities, ['artifact.save', 'artifact.get', 'artifact.list']);
+    }
+    if (this.firstPartyPluginRuntime.toolNames.length === 0) {
+      removeCapabilities(capabilities, ['tool.list', 'tool.execute']);
+    }
+
+    return [...capabilities].sort() as RuntimeCapability[];
   }
 }
 
-function normalizeInstructionDefinitions(
-  params: unknown,
-): InstructionDefinition[] {
+function removeCapabilities(capabilities: Set<string>, values: readonly string[]): void {
+  for (const value of values) capabilities.delete(value);
+}
+
+function normalizeInstructionDefinitions(params: unknown): InstructionDefinition[] {
   const rawDefinitions = Array.isArray(params)
     ? params
     : isRecord(params) && Array.isArray(params.instructions)
@@ -930,167 +835,140 @@ function normalizeInstructionDefinitions(
           ? [params]
           : [];
   if (rawDefinitions.length === 0) {
-    throw new Error(
-      "instruction.register requires an instruction or instructions array",
-    );
+    throw new Error('instruction.register requires an instruction or instructions array');
   }
   return rawDefinitions.map((raw) => normalizeInstructionDefinition(raw));
 }
 
 function normalizeInstructionDefinition(raw: unknown): InstructionDefinition {
-  if (!isRecord(raw))
-    throw new Error("Instruction definition must be an object");
-  const id = requiredString(raw.id, "id");
-  const version = requiredString(raw.version, "version");
-  const systemInstruction = requiredString(
-    raw.systemInstruction,
-    "systemInstruction",
-  );
+  if (!isRecord(raw)) throw new Error('Instruction definition must be an object');
+  const id = requiredString(raw.id, 'id');
+  const version = requiredString(raw.version, 'version');
+  const systemInstruction = requiredString(raw.systemInstruction, 'systemInstruction');
   const taskKind =
-    typeof raw.taskKind === "string" && raw.taskKind.trim().length > 0
-      ? raw.taskKind.trim()
-      : inferTaskKind(id);
+    typeof raw.taskKind === 'string' && raw.taskKind.trim().length > 0 ? raw.taskKind.trim() : inferTaskKind(id);
   const provenance = normalizeInstructionProvenance(raw.provenance);
   return {
     id,
     version,
     taskKind,
     systemInstruction,
-    ...(provenance ? { provenance } : {}),
+    ...(provenance ? { provenance } : {})
   };
 }
 
-function normalizeInstructionProvenance(
-  value: unknown,
-): InstructionDefinition["provenance"] | undefined {
+function normalizeInstructionProvenance(value: unknown): InstructionDefinition['provenance'] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value))
-    throw new Error("Instruction provenance must be an object");
+  if (!isRecord(value)) throw new Error('Instruction provenance must be an object');
   const optional = (field: string): string | undefined => {
     if (value[field] === undefined) return undefined;
     return requiredString(value[field], `provenance.${field}`);
   };
-  const source = requiredString(value.source, "provenance.source");
-  const skillId = optional("skillId");
-  const skillVersion = optional("skillVersion");
-  const extensionId = optional("extensionId");
-  const extensionVersion = optional("extensionVersion");
+  const source = requiredString(value.source, 'provenance.source');
+  const skillId = optional('skillId');
+  const skillVersion = optional('skillVersion');
+  const extensionId = optional('extensionId');
+  const extensionVersion = optional('extensionVersion');
   return {
     source,
     ...(skillId ? { skillId } : {}),
     ...(skillVersion ? { skillVersion } : {}),
     ...(extensionId ? { extensionId } : {}),
-    ...(extensionVersion ? { extensionVersion } : {}),
+    ...(extensionVersion ? { extensionVersion } : {})
   };
 }
 
 function instructionEntry(definition: InstructionDefinition): InstructionEntry {
   return {
     id: definition.id,
-    scope: "task",
+    scope: 'task',
     content: definition.systemInstruction,
     version: definition.version,
     source: `task:${definition.taskKind}`,
     tags: [`task:${definition.taskKind}`],
-    ...(definition.provenance ? { provenance: definition.provenance } : {}),
+    ...(definition.provenance ? { provenance: definition.provenance } : {})
   };
 }
 
-function sameInstruction(
-  left: InstructionEntry,
-  right: InstructionEntry,
-): boolean {
+function sameInstruction(left: InstructionEntry, right: InstructionEntry): boolean {
   return (
     left.scope === right.scope &&
     left.content === right.content &&
     left.version === right.version &&
     left.source === right.source &&
     JSON.stringify(left.tags ?? []) === JSON.stringify(right.tags ?? []) &&
-    JSON.stringify(left.provenance ?? {}) ===
-      JSON.stringify(right.provenance ?? {})
+    JSON.stringify(left.provenance ?? {}) === JSON.stringify(right.provenance ?? {})
   );
 }
 
 function inferTaskKind(id: string): string {
-  const versionSeparator = id.lastIndexOf(":");
+  const versionSeparator = id.lastIndexOf(':');
   return versionSeparator > 0 ? id.slice(0, versionSeparator) : id;
 }
 
 function requiredString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Instruction ${field} must be a non-empty string`);
   }
   return value.trim();
 }
 
-function requiredSkillId(
-  params: { skillId?: unknown } | null | undefined,
-): string {
-  return requiredString(params?.skillId, "skillId");
+function requiredSkillId(params: { skillId?: unknown } | null | undefined): string {
+  return requiredString(params?.skillId, 'skillId');
 }
 
 function requiredToolName(value: unknown): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error("tool.execute toolName must be a non-empty string");
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error('tool.execute toolName must be a non-empty string');
   }
   return value.trim();
 }
 
 function requiredToolCallId(value: unknown): string {
   if (value === undefined) return `rpc-tool-${Date.now()}`;
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error("tool.execute toolCallId must be a non-empty string");
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error('tool.execute toolCallId must be a non-empty string');
   }
   return value.trim();
 }
 
 function normalizeCacheInvalidation(params: unknown): CacheInvalidateParams {
-  if (!isRecord(params)) throw new Error("cache.invalidate requires an object");
-  if (params.reason !== "manual" && params.reason !== "revision") {
-    throw new Error("cache.invalidate reason must be manual or revision");
+  if (!isRecord(params)) throw new Error('cache.invalidate requires an object');
+  if (params.reason !== 'manual' && params.reason !== 'revision') {
+    throw new Error('cache.invalidate reason must be manual or revision');
   }
   if (
     params.projectRevision !== undefined &&
-    (typeof params.projectRevision !== "number" ||
+    (typeof params.projectRevision !== 'number' ||
       !Number.isSafeInteger(params.projectRevision) ||
       params.projectRevision < 0)
   ) {
-    throw new Error(
-      "cache.invalidate projectRevision must be a non-negative integer",
-    );
+    throw new Error('cache.invalidate projectRevision must be a non-negative integer');
   }
-  if (params.reason === "revision" && params.projectRevision === undefined) {
-    throw new Error("cache.invalidate revision requires projectRevision");
+  if (params.reason === 'revision' && params.projectRevision === undefined) {
+    throw new Error('cache.invalidate revision requires projectRevision');
   }
-  const layers =
-    params.layers === undefined
-      ? undefined
-      : normalizeCacheLayers(params.layers);
+  const layers = params.layers === undefined ? undefined : normalizeCacheLayers(params.layers);
   return {
     reason: params.reason,
-    ...(params.projectRevision === undefined
-      ? {}
-      : { projectRevision: params.projectRevision }),
-    ...(layers === undefined ? {} : { layers }),
+    ...(params.projectRevision === undefined ? {} : { projectRevision: params.projectRevision }),
+    ...(layers === undefined ? {} : { layers })
   };
 }
 
 function normalizeCacheLayers(value: unknown): CacheLayer[] {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new Error("cache.invalidate layers must be a non-empty array");
+    throw new Error('cache.invalidate layers must be a non-empty array');
   }
   const layers = [...new Set(value)];
   if (
-    !layers.every(
-      (layer): layer is CacheLayer =>
-        layer === "provider" || layer === "context" || layer === "retrieval",
-    )
+    !layers.every((layer): layer is CacheLayer => layer === 'provider' || layer === 'context' || layer === 'retrieval')
   ) {
-    throw new Error("cache.invalidate contains an unknown layer");
+    throw new Error('cache.invalidate contains an unknown layer');
   }
   return layers;
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
