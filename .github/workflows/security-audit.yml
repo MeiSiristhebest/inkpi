@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack prepare pnpm@11.22.0 --activate
 
       - name: Setup Node.js 22.x with pnpm Cache
         uses: actions/setup-node@v4

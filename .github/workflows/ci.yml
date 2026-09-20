@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           corepack enable
-          corepack prepare pnpm@9.15.5 --activate
+          corepack prepare pnpm@11.22.0 --activate
 
       - name: Setup Node.js ${{ matrix.node-version }} with pnpm Cache
         uses: actions/setup-node@v4
