@@ -15,8 +15,8 @@ import type {
   Folder,
   OperationRecord,
   SessionEntry,
-  Workspace,
-} from "@inkpi/protocol";
+  Workspace
+} from '@inkpi/protocol';
 
 /**
  * A prepared statement returned by {@link IDb.prepare}. Mirrors the structural
