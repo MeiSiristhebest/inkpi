@@ -42,6 +42,7 @@ describe('first-party skill activation', () => {
     const characterVoiceTool: AgentTool = {
       name: 'first-party.character-voice',
       description: 'Apply the first-party character voice constraints.',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'voice checked' }] })
     };
     const timelineProvider: ContextProvider = {

@@ -56,6 +56,7 @@ describe('ProgressiveSkillRuntime lifecycle bridge', () => {
     const tool = {
       name: 'skill_lookup',
       description: 'Lookup skill data',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text' as const, text: 'ok' }] })
     };
     const task: TaskHandler = {
@@ -119,6 +120,7 @@ describe('ProgressiveSkillRuntime lifecycle bridge', () => {
     const tool = {
       name: 'retry_tool',
       description: 'Retry tool',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text' as const, text: 'ok' }] })
     };
     const task: TaskHandler = {

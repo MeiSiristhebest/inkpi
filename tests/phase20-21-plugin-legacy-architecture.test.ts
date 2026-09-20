@@ -178,6 +178,7 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
     const tool = {
       name: 'phase20-21-audit-tool',
       description: 'in-memory audit tool',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text' as const, text: 'ok' }] })
     };
 

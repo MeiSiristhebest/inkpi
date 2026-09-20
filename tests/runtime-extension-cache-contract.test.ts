@@ -50,6 +50,7 @@ describe('Runtime extension and cache boundary contracts', () => {
     const tool: AgentTool = {
       name: 'contract-tool',
       description: 'Runtime-owned tool',
+      parameters: { type: 'object', properties: {} },
       execute: async () => ({ content: [{ type: 'text', text: 'ok' }] })
     };
     const runtime = new ProgressiveSkillRuntime({ extensionHost, toolRegistry });
