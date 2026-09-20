@@ -588,8 +588,34 @@ function resolveWithRuntimeState(router: CapabilityRouter, task: AiTask): Resolv
 }
 
 function resolveCandidatesWithRuntimeState(router: CapabilityRouter, task: AiTask): ResolvedModelRoute[] {
-  return evaluateRoutes(router, task)
-    .filter((evaluation) => evaluation.missing.length === 0)
+  let candidates = evaluateRoutes(router, task).filter((evaluation) => evaluation.missing.length === 0);
+
+  // Honor an explicit, user-carried model preference (provider/model) when the
+  // desktop dispatches with `metadata.modelRoute`. This is contract-safe: the
+  // preference rides in AiTask.metadata (Record<string, unknown>) with no protocol
+  // schema change, and when absent the resolution is unchanged.
+  const preference = readTaskModelPreference(task);
+  if (preference) {
+    const preferred = candidates.filter((evaluation) =>
+      routeMatchesPreference(evaluation.route, preference)
+    );
+    if (preferred.length > 0) {
+      candidates = preferred;
+    } else if (preference.required) {
+      const requirements = task.requirements ?? {};
+      throw new CapabilityMismatchError({
+        taskId: task.id,
+        requirements,
+        outputContract: task.outputContract,
+        routes: candidates.map((evaluation) => ({
+          routeId: evaluation.route.id,
+          missing: ['preferred-model-unavailable']
+        }))
+      });
+    }
+  }
+
+  return candidates
     .sort((left, right) => compareEvaluatedRoutes(left, right))
     .map((evaluation) => evaluation.route);
 }
@@ -698,4 +724,38 @@ function compareDescending(left: number, right: number): number {
 function compareStrings(left: string, right: string): number {
   if (left === right) return 0;
   return left < right ? -1 : 1;
+}
+
+export interface ModelRoutePreference {
+  /** Target model id exactly matching a route `model.id`. */
+  modelId?: string;
+  /** Target provider exactly matching a route `model.provider`. */
+  providerId?: string;
+  /** When true, fail closed if no route matches the preferred provider/model. */
+  required?: boolean;
+}
+
+/**
+ * Reads an optional user-carried model preference from `task.metadata.modelRoute`.
+ * The key rides in the already-serializable AiTask.metadata (Record<string, unknown>),
+ * so honoring it requires no protocol schema change.
+ */
+export function readTaskModelPreference(task: AiTask): ModelRoutePreference | undefined {
+  const raw = task.metadata?.modelRoute;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const record = raw as Record<string, unknown>;
+  const modelId = typeof record.modelId === 'string' && record.modelId ? record.modelId : undefined;
+  const providerId =
+    typeof record.providerId === 'string' && record.providerId ? record.providerId : undefined;
+  if (!modelId && !providerId) return undefined;
+  return { modelId, providerId, required: record.required === true };
+}
+
+function routeMatchesPreference(
+  route: ResolvedModelRoute,
+  preference: ModelRoutePreference
+): boolean {
+  if (preference.modelId && route.model.id !== preference.modelId) return false;
+  if (preference.providerId && route.model.provider !== preference.providerId) return false;
+  return true;
 }

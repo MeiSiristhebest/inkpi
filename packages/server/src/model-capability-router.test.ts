@@ -385,4 +385,40 @@ describe('capability-aware model routing', () => {
     });
     expect(() => daemon.getTaskRouter().status('mismatch-task')).toThrow('Unknown task');
   });
+
+  it('honors a task-carried model preference from metadata.modelRoute', () => {
+    const base: Omit<ModelRoute, 'id' | 'model'> = {
+      capabilities: {
+        outputFormats: ['structured'],
+        structuredOutput: true
+      }
+    };
+    const routes: ModelRoute[] = [
+      { ...base, id: 'route-a', model: { ...baseModel, id: 'model-a', provider: 'deepseek' } },
+      { ...base, id: 'route-b', model: { ...baseModel, id: 'model-b', provider: 'openai' } }
+    ];
+    const router = new CapabilityRouter(routes);
+
+    // Preferred provider wins even when it would otherwise sort second alphabetically.
+    const chosen = router.resolve(
+      task({
+        id: 'pref-task',
+        metadata: { modelRoute: { providerId: 'openai', modelId: 'model-b' } }
+      })
+    );
+    expect(chosen.id).toBe('route-b');
+
+    // No preference -> deterministic order unchanged (deepseek sorts before openai).
+    expect(router.resolve(task({ id: 'no-pref' })).id).toBe('route-a');
+
+    // Fail-closed: an explicitly required but unavailable preference is an error.
+    expect(() =>
+      router.resolve(
+        task({
+          id: 'required-pref',
+          metadata: { modelRoute: { providerId: 'faux-zzz', required: true } }
+        })
+      )
+    ).toThrow(CapabilityMismatchError);
+  });
 });
