@@ -5,6 +5,7 @@ export * from './sanitize.js';
 export * from './providers.js';
 export * from './presets.js';
 export * from './catalog.js';
+export * from './catalog-v2.js';
 export * from './usage.js';
 export * from './prompt-caching.js';
 export * from './models.generated.js';
