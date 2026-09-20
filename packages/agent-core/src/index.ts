@@ -27,6 +27,7 @@ export * from './artifacts/index.js';
 export * from './instructions/index.js';
 export * from './lifecycle/index.js';
 export * from './branch-what-if.js';
+export * from './execution-snapshot.js';
 export * from './package-manager/package-manager.js';
 export * from './package-manager/dynamic-loader.js';
 export * from './trust/project-trust.js';
