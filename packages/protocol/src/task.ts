@@ -1,3 +1,5 @@
+import type { ExecutionSnapshot } from './execution.js';
+
 /**
  * Domain-neutral task contracts shared by desktop clients and the AI runtime.
  * Creative task kinds stay open strings so the runtime does not import a
@@ -233,6 +235,7 @@ export interface TaskExecutionSnapshot {
   steps?: TaskExecutionStep[];
   executionAttempts?: TaskExecutionAttempt[];
   resumeToken?: TaskExecutionResumeToken;
+  executionSnapshot?: ExecutionSnapshot;
   steering?: unknown[];
 }
 

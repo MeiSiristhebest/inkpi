@@ -129,6 +129,66 @@ describe('TaskModelHandler structured output failures', () => {
     expect(prompt).not.toContain('must appear through providers only');
   });
 
+  it('returns a secret-free execution snapshot for the selected route', async () => {
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register({
+      name: 'lookup',
+      description: 'Lookup',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => ({ content: [{ type: 'text', text: 'tool value' }] })
+    });
+    const handler = new TaskModelHandler({
+      model: { ...model, baseUrl: 'https://gateway.example.test/v1?api_key=secret', apiKey: 'sk-secret' },
+      toolRegistry,
+      stream: (_model, _messages) => {
+        const result = new AssistantEventStream();
+        queueMicrotask(() => {
+          result.push({ type: 'text_delta', textDelta: 'answer' });
+          result.end();
+        });
+        return result;
+      },
+      defaultModelCapabilities: { outputFormats: ['text'], structuredOutput: true }
+    });
+
+    const result = await handler.execute({
+      task: {
+        id: 'snapshot-task',
+        kind: 'test.snapshot',
+        input: {},
+        executionPolicy: { timeoutMs: 1000, maxAttempts: 2 },
+        outputContract: { format: 'text' }
+      },
+      context: {
+        fragments: [],
+        text: '',
+        tokenEstimate: 4,
+        fingerprint: 'snapshot-context',
+        truncated: false
+      },
+      signal: new AbortController().signal,
+      executionRunId: 'run:snapshot-task',
+      attempt: 1,
+      consumeSteering: () => [],
+      saveCheckpoint: async () => undefined,
+      reportProgress: () => undefined
+    });
+
+    expect(result.executionSnapshot).toMatchObject({
+      version: 1,
+      taskId: 'snapshot-task',
+      model: {
+        provider: 'faux',
+        modelId: 'structured-failure-model',
+        baseUrl: 'https://gateway.example.test/v1'
+      },
+      context: { estimatedTokens: 4, fingerprint: 'f7dc67e4' },
+      policy: { timeoutMs: 1000, maxAttempts: 2 },
+      metadata: { routeId: 'default-model', contextFingerprint: 'snapshot-context' }
+    });
+    expect(JSON.stringify(result.executionSnapshot)).not.toContain('sk-secret');
+  });
+
   it('does not send tool schemas when the selected route disables tools', async () => {
     let observedTools: StreamOptions['tools'];
     const toolRegistry = new ToolRegistry();

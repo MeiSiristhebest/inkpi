@@ -1,5 +1,6 @@
 import type {
   AiTask,
+  ExecutionSnapshot,
   TaskCancelResult,
   TaskError,
   TaskResult,
@@ -73,6 +74,7 @@ interface TaskRecord {
   executionSteps: ExecutionStep[];
   executionAttempts: ExecutionAttempt[];
   resumeToken?: ResumeToken;
+  executionSnapshot?: ExecutionSnapshot;
   steering: unknown[];
   persistenceFailed?: boolean;
   scheduled?: { id: string; cancel: () => boolean };
@@ -472,6 +474,9 @@ export class TaskRouter {
         })
       );
       if (isInterrupted(record)) return;
+      if (handlerResult.executionSnapshot) {
+        record.executionSnapshot = cloneValue(handlerResult.executionSnapshot);
+      }
       if (record.controller.signal.aborted) {
         this.finishCancelled(record, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
@@ -796,6 +801,7 @@ export class TaskRouter {
       executionSteps: stored.steps ? cloneValue(stored.steps) : [],
       executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
       resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
+      executionSnapshot: stored.executionSnapshot ? cloneValue(stored.executionSnapshot) : undefined,
       steering: stored.steering ? cloneValue(stored.steering) : [],
       scheduleSequence: 0
     };
@@ -869,6 +875,7 @@ export class TaskRouter {
         error: attempt.error ? sanitizeTaskError(attempt.error) : undefined
       })),
       resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
+      executionSnapshot: record.executionSnapshot ? cloneValue(record.executionSnapshot) : undefined,
       steering: cloneValue(record.steering)
     };
   }

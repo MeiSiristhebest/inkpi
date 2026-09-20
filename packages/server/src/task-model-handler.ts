@@ -4,11 +4,12 @@ import {
   type TaskHandlerContext,
   type TaskHandlerResult,
   type ToolRegistry,
+  createExecutionSnapshot,
   createRuntimeCacheKey,
   stableSerialize
 } from '@inkpi/agent-core';
 import { type ModelConfig, streamAi } from '@inkpi/ai';
-import type { AgentMessage, AssistantMessage, TaskOutput, ToolCallContent } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessage, JsonObject, TaskOutput, ToolCallContent } from '@inkpi/protocol';
 import {
   CapabilityRouter,
   type ModelCapabilities,
@@ -205,8 +206,27 @@ export class TaskModelHandler implements TaskHandler {
       this.providerResponseCache.set(providerCacheKey, finalAssistant, context.context.projectRevision);
     }
     context.reportProgress(1);
+    const executionSnapshot = createExecutionSnapshot({
+      id: `${context.executionRunId}:attempt:${context.attempt}`,
+      taskId: context.task.id,
+      createdAt: startedAt,
+      model: route.model,
+      canonicalModelId: route.model.id,
+      systemPrompt: route.systemPrompt ?? this.systemPrompt,
+      tools: toolRegistry?.getAll() ?? [],
+      messages,
+      estimatedTokens: context.context.tokenEstimate,
+      policy: executionPolicySnapshot(context.task.executionPolicy),
+      metadata: {
+        routeId: route.id,
+        contextFingerprint: context.context.fingerprint,
+        instructionVersion: context.instructions?.version ?? 0,
+        ...(context.instructions ? { instructionIds: [...context.instructions.entryIds] } : {})
+      }
+    });
     return {
       output,
+      executionSnapshot,
       provenance: {
         selectedRoute: route.id,
         routeId: route.id,
@@ -317,6 +337,21 @@ function buildPrompt(context: TaskHandlerContext): string {
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+function executionPolicySnapshot(policy: TaskHandlerContext['task']['executionPolicy']): JsonObject | undefined {
+  if (!policy) return undefined;
+  return {
+    ...(policy.strategy !== undefined ? { strategy: policy.strategy } : {}),
+    ...(policy.mode !== undefined ? { mode: policy.mode } : {}),
+    ...(policy.scheduling !== undefined ? { scheduling: policy.scheduling } : {}),
+    ...(policy.priority !== undefined ? { priority: policy.priority } : {}),
+    ...(policy.timeoutMs !== undefined ? { timeoutMs: policy.timeoutMs } : {}),
+    ...(policy.maxAttempts !== undefined ? { maxAttempts: policy.maxAttempts } : {}),
+    ...(policy.cancellable !== undefined ? { cancellable: policy.cancellable } : {}),
+    ...(policy.checkpointIntervalMs !== undefined ? { checkpointIntervalMs: policy.checkpointIntervalMs } : {}),
+    ...(policy.checkpoint ? { checkpoint: { ...policy.checkpoint } } : {})
+  } as JsonObject;
 }
 
 function withoutCompiledContext(payload: unknown): unknown {
