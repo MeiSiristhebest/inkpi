@@ -1,18 +1,13 @@
-import type { AiTask } from "@inkpi/protocol";
+import type { AiTask } from '@inkpi/protocol';
 import {
   type CacheInvalidationEvent,
   type RuntimeCacheCoordinatorPort,
   createRuntimeCacheKey,
   shouldInvalidateCacheEntry,
   stableSerialize,
-  validateRuntimeCacheLayerStats,
-} from "./cache-contract.js";
-import type {
-  ContextFragment,
-  ContextPacket,
-  ContextProvider,
-  ContextRequest,
-} from "./types.js";
+  validateRuntimeCacheLayerStats
+} from './cache-contract.js';
+import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
 const DEFAULT_MAX_TOKENS = 16_000;
 const DEFAULT_CONTEXT_CACHE_ENTRIES = 64;
@@ -69,21 +64,18 @@ export class ContextPipeline {
   constructor(options: ContextPipelineOptions = {}) {
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
     this.cacheEnabled = options.cache?.enabled ?? true;
-    const maxEntries =
-      options.cache?.maxEntries ?? DEFAULT_CONTEXT_CACHE_ENTRIES;
+    const maxEntries = options.cache?.maxEntries ?? DEFAULT_CONTEXT_CACHE_ENTRIES;
     this.cacheMaxEntries = Number.isFinite(maxEntries)
       ? Math.max(0, Math.floor(maxEntries))
       : DEFAULT_CONTEXT_CACHE_ENTRIES;
     this.cacheCoordinator = options.cacheCoordinator;
-    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate(
-      "context",
-      (event) => this.clearCache(event),
+    this.cacheInvalidationUnsubscribe = this.cacheCoordinator?.onInvalidate('context', (event) =>
+      this.clearCache(event)
     );
   }
 
   register(provider: ContextProvider): void {
-    if (!provider.id.trim())
-      throw new Error("Context provider id must not be empty");
+    if (!provider.id.trim()) throw new Error('Context provider id must not be empty');
     if (this.providers.has(provider.id)) {
       throw new Error(`Context provider already registered: ${provider.id}`);
     }
@@ -121,7 +113,7 @@ export class ContextPipeline {
       hits: this.cacheHits,
       misses: this.cacheMisses,
       evictions: this.cacheEvictions,
-      invalidations: this.cacheInvalidations,
+      invalidations: this.cacheInvalidations
     };
   }
 
@@ -131,28 +123,21 @@ export class ContextPipeline {
       entries: [...this.cache].map(([key, entry]) => ({
         key,
         packet: clonePacket(entry.packet),
-        projectRevision: entry.projectRevision,
+        projectRevision: entry.projectRevision
       })),
-      stats: this.cacheStats(),
+      stats: this.cacheStats()
     };
   }
 
   restore(snapshot: ContextPipelineSnapshot): void {
-    if (
-      !snapshot ||
-      snapshot.version !== 1 ||
-      !Array.isArray(snapshot.entries)
-    ) {
-      throw new Error("Context pipeline snapshot is unsupported");
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.entries)) {
+      throw new Error('Context pipeline snapshot is unsupported');
     }
     validateRuntimeCacheLayerStats(snapshot.stats);
-    const entries = snapshot.entries.map((entry) =>
-      validateContextCacheEntry(entry),
-    );
+    const entries = snapshot.entries.map((entry) => validateContextCacheEntry(entry));
     const duplicateKeys = new Set<string>();
     for (const entry of entries) {
-      if (duplicateKeys.has(entry.key))
-        throw new Error(`Context pipeline snapshot repeats key: ${entry.key}`);
+      if (duplicateKeys.has(entry.key)) throw new Error(`Context pipeline snapshot repeats key: ${entry.key}`);
       duplicateKeys.add(entry.key);
     }
 
@@ -166,7 +151,7 @@ export class ContextPipeline {
     for (const entry of entries.slice(-this.cacheMaxEntries)) {
       this.cache.set(entry.key, {
         packet: clonePacket(entry.packet),
-        projectRevision: entry.projectRevision,
+        projectRevision: entry.projectRevision
       });
     }
   }
@@ -185,27 +170,23 @@ export class ContextPipeline {
 
     const maxTokens = normalizeNonNegativeInteger(
       task.contextPolicy?.maxTokens ?? this.maxTokens,
-      "Context token budget",
+      'Context token budget'
     );
     const maxFragments =
       task.contextPolicy?.maxFragments === undefined
         ? undefined
-        : normalizeNonNegativeInteger(
-            task.contextPolicy.maxFragments,
-            "Context fragment limit",
-          );
+        : normalizeNonNegativeInteger(task.contextPolicy.maxFragments, 'Context fragment limit');
     const request: ContextRequest = {
       task,
       signal,
       purpose: task.kind,
       projectRevision: projectRevisionFor(task),
-      metadata: task.contextPolicy?.metadata,
+      metadata: task.contextPolicy?.metadata
     };
     const requestedProviders = task.contextPolicy?.providerIds;
     const activeProviders: ContextProvider[] = [];
     for (const provider of this.providers.values()) {
-      if (requestedProviders && !requestedProviders.includes(provider.id))
-        continue;
+      if (requestedProviders && !requestedProviders.includes(provider.id)) continue;
       if (provider.supports && !(await provider.supports(request))) continue;
       activeProviders.push(provider);
     }
@@ -217,10 +198,7 @@ export class ContextPipeline {
       // Budget bucket protection: when other providers are active, clamp task-input to prevent starving story/JIT memory
       if (activeProviders.length > 0 && maxTokens >= 16) {
         const maxInputTokens = Math.max(1, Math.floor(maxTokens * 0.5));
-        const estimated = Math.max(
-          1,
-          Math.ceil(inputText.length / CHARS_PER_TOKEN),
-        );
+        const estimated = Math.max(1, Math.ceil(inputText.length / CHARS_PER_TOKEN));
         if (estimated > maxInputTokens) {
           inputText = inputText.slice(0, maxInputTokens * CHARS_PER_TOKEN);
           inputTruncated = true;
@@ -232,13 +210,13 @@ export class ContextPipeline {
           stableSerialize({
             documentId: task.input.documentId,
             selection: task.input.selection,
-            text: inputText,
-          }),
+            text: inputText
+          })
         )}`,
-        source: "task-input",
-        kind: "input",
+        source: 'task-input',
+        kind: 'input',
         text: inputText,
-        priority: Number.MAX_SAFE_INTEGER,
+        priority: Number.MAX_SAFE_INTEGER
       });
     }
 
@@ -254,11 +232,7 @@ export class ContextPipeline {
     }
     if (maxFragments !== undefined && packet.fragments.length > maxFragments) {
       const limited = packet.fragments.slice(0, maxFragments);
-      const limitedPacket = buildPacket(
-        limited,
-        maxTokens,
-        request.projectRevision,
-      );
+      const limitedPacket = buildPacket(limited, maxTokens, request.projectRevision);
       limitedPacket.truncated = true;
       limitedPacket.metadata = task.contextPolicy?.metadata;
       this.setCached(cacheKey, limitedPacket);
@@ -270,11 +244,7 @@ export class ContextPipeline {
   }
 
   private getCacheKey(task: AiTask): string {
-    return createContextCacheKey(
-      task,
-      [...this.providers.keys()],
-      this.maxTokens,
-    );
+    return createContextCacheKey(task, [...this.providers.keys()], this.maxTokens);
   }
 
   private getCached(cacheKey: string): ContextPacket | undefined {
@@ -282,11 +252,11 @@ export class ContextPipeline {
     const entry = this.cache.get(cacheKey);
     if (!entry) {
       this.cacheMisses += 1;
-      this.cacheCoordinator?.record("context", "miss");
+      this.cacheCoordinator?.record('context', 'miss');
       return undefined;
     }
     this.cacheHits += 1;
-    this.cacheCoordinator?.record("context", "hit");
+    this.cacheCoordinator?.record('context', 'hit');
     this.cache.delete(cacheKey);
     this.cache.set(cacheKey, entry);
     return clonePacket(entry.packet);
@@ -297,14 +267,14 @@ export class ContextPipeline {
     this.cache.delete(cacheKey);
     this.cache.set(cacheKey, {
       packet: clonePacket(packet),
-      projectRevision: packet.projectRevision,
+      projectRevision: packet.projectRevision
     });
     while (this.cache.size > this.cacheMaxEntries) {
       const oldest = this.cache.keys().next().value;
       if (oldest === undefined) break;
       this.cache.delete(oldest);
       this.cacheEvictions += 1;
-      this.cacheCoordinator?.record("context", "eviction");
+      this.cacheCoordinator?.record('context', 'eviction');
     }
   }
 }
@@ -314,38 +284,21 @@ export class ContextPipeline {
  * skill versions remain explicit so a registration update cannot reuse an old
  * compiled packet.
  */
-export function createContextCacheKey(
-  task: AiTask,
-  providerIds: readonly string[],
-  maxTokens: number,
-): string {
+export function createContextCacheKey(task: AiTask, providerIds: readonly string[], maxTokens: number): string {
   const metadata = asRecord(task.metadata);
   const contextMetadata = asRecord(task.contextPolicy?.metadata);
   const projectRevision = projectRevisionFor(task);
-  const instructionVersion = firstString(
-    metadata?.instructionVersion,
-    contextMetadata?.instructionVersion,
-  );
-  const skillVersion = firstString(
-    metadata?.skillVersion,
-    contextMetadata?.skillVersion,
-  );
+  const instructionVersion = firstString(metadata?.instructionVersion, contextMetadata?.instructionVersion);
+  const skillVersion = firstString(metadata?.skillVersion, contextMetadata?.skillVersion);
   const inputFingerprint = hash(stableSerialize(task.input));
   const intentFingerprint = hash(stableSerialize(task.intent));
   const contextFingerprint =
-    firstString(
-      metadata?.contextFingerprint,
-      contextMetadata?.contextFingerprint,
-    ) ?? hash(stableSerialize({ input: task.input, intent: task.intent }));
-  const model = firstString(
-    metadata?.model,
-    metadata?.modelId,
-    contextMetadata?.model,
-    contextMetadata?.modelId,
-  );
+    firstString(metadata?.contextFingerprint, contextMetadata?.contextFingerprint) ??
+    hash(stableSerialize({ input: task.input, intent: task.intent }));
+  const model = firstString(metadata?.model, metadata?.modelId, contextMetadata?.model, contextMetadata?.modelId);
 
   return createRuntimeCacheKey({
-    layer: "context",
+    layer: 'context',
     taskKind: task.kind,
     instructionVersion,
     skillVersion,
@@ -359,13 +312,13 @@ export function createContextCacheKey(
         maxFragments: task.contextPolicy?.maxFragments,
         maxTokens: task.contextPolicy?.maxTokens,
         metadata: contextMetadata,
-        providerIds: task.contextPolicy?.providerIds,
+        providerIds: task.contextPolicy?.providerIds
       },
       inputFingerprint,
       intentFingerprint,
       maxTokens,
-      providers: [...providerIds],
-    },
+      providers: [...providerIds]
+    }
   });
 }
 
@@ -375,7 +328,7 @@ function clonePacket(packet: ContextPacket): ContextPacket {
   } catch {
     return {
       ...packet,
-      fragments: packet.fragments.map((fragment) => ({ ...fragment })),
+      fragments: packet.fragments.map((fragment) => ({ ...fragment }))
     };
   }
 }
@@ -385,53 +338,35 @@ function validateContextCacheEntry(value: unknown): {
   packet: ContextPacket;
   projectRevision?: number;
 } {
-  if (
-    !isRecord(value) ||
-    typeof value.key !== "string" ||
-    value.key.length === 0
-  ) {
-    throw new Error("Context pipeline snapshot contains an invalid cache key");
+  if (!isRecord(value) || typeof value.key !== 'string' || value.key.length === 0) {
+    throw new Error('Context pipeline snapshot contains an invalid cache key');
   }
   if (
     !isRecord(value.packet) ||
     !Array.isArray(value.packet.fragments) ||
-    typeof value.packet.text !== "string" ||
-    typeof value.packet.tokenEstimate !== "number" ||
+    typeof value.packet.text !== 'string' ||
+    typeof value.packet.tokenEstimate !== 'number' ||
     !Number.isFinite(value.packet.tokenEstimate) ||
-    typeof value.packet.fingerprint !== "string" ||
-    typeof value.packet.truncated !== "boolean" ||
+    typeof value.packet.fingerprint !== 'string' ||
+    typeof value.packet.truncated !== 'boolean' ||
     !value.packet.fragments.every(
-      (fragment) =>
-        isRecord(fragment) &&
-        typeof fragment.id === "string" &&
-        typeof fragment.source === "string",
+      (fragment) => isRecord(fragment) && typeof fragment.id === 'string' && typeof fragment.source === 'string'
     )
   ) {
-    throw new Error(
-      `Context pipeline snapshot contains an invalid packet for key: ${value.key}`,
-    );
+    throw new Error(`Context pipeline snapshot contains an invalid packet for key: ${value.key}`);
   }
-  if (
-    value.projectRevision !== undefined &&
-    !isFiniteNumber(value.projectRevision)
-  ) {
-    throw new Error(
-      `Context pipeline snapshot contains an invalid revision for key: ${value.key}`,
-    );
+  if (value.projectRevision !== undefined && !isFiniteNumber(value.projectRevision)) {
+    throw new Error(`Context pipeline snapshot contains an invalid revision for key: ${value.key}`);
   }
   // SAFETY: value.packet structure and its required fields have been validated above
   return {
     key: value.key,
     packet: value.packet as unknown as ContextPacket,
-    projectRevision: value.projectRevision as number | undefined,
+    projectRevision: value.projectRevision as number | undefined
   };
 }
 
-function buildPacket(
-  input: ContextFragment[],
-  maxTokens: number,
-  projectRevision?: number,
-): ContextPacket {
+function buildPacket(input: ContextFragment[], maxTokens: number, projectRevision?: number): ContextPacket {
   const limit = Math.max(0, Math.floor(maxTokens));
   const unique = new Map<string, ContextFragment>();
   for (const fragment of input) {
@@ -439,10 +374,7 @@ function buildPacket(
     unique.set(fragment.id, {
       ...fragment,
       priority: fragment.priority ?? 0,
-      tokenEstimate:
-        fragment.tokenEstimate ??
-        fragment.estimatedTokens ??
-        estimateTokens(fragment),
+      tokenEstimate: fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment)
     });
   }
 
@@ -460,10 +392,7 @@ function buildPacket(
       truncated = true;
       break;
     }
-    const fragmentTokens =
-      fragment.tokenEstimate ??
-      fragment.estimatedTokens ??
-      estimateTokens(fragment);
+    const fragmentTokens = fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment);
     if (fragmentTokens <= remaining) {
       accepted.push(fragment);
       tokenEstimate += fragmentTokens;
@@ -475,7 +404,7 @@ function buildPacket(
       accepted.push({
         ...fragment,
         text,
-        tokenEstimate: estimateTokens({ text }),
+        tokenEstimate: estimateTokens({ text })
       });
       tokenEstimate += estimateTokens({ text });
     }
@@ -484,33 +413,27 @@ function buildPacket(
   }
 
   const text = accepted
-    .map(
-      (fragment) =>
-        fragment.text ?? serializeData(fragment.data ?? fragment.content),
-    )
+    .map((fragment) => fragment.text ?? serializeData(fragment.data ?? fragment.content))
     .filter(Boolean)
-    .join("\n\n");
+    .join('\n\n');
   return {
     fragments: accepted,
     text,
     tokenEstimate,
     fingerprint: fingerprint(accepted, projectRevision),
     truncated,
-    projectRevision,
+    projectRevision
   };
 }
 
-function estimateTokens(
-  fragment: Pick<ContextFragment, "text" | "data" | "content">,
-): number {
-  const value =
-    fragment.text ?? serializeData(fragment.data ?? fragment.content);
+function estimateTokens(fragment: Pick<ContextFragment, 'text' | 'data' | 'content'>): number {
+  const value = fragment.text ?? serializeData(fragment.data ?? fragment.content);
   return value ? Math.max(1, Math.ceil(value.length / CHARS_PER_TOKEN)) : 0;
 }
 
 function serializeData(data: unknown): string {
-  if (data === undefined) return "";
-  if (typeof data === "string") return data;
+  if (data === undefined) return '';
+  if (typeof data === 'string') return data;
   try {
     return stableSerialize(data);
   } catch {
@@ -533,35 +456,29 @@ function hash(value: string): string {
     result ^= value.charCodeAt(index);
     result = Math.imul(result, 0x01000193);
   }
-  return (result >>> 0).toString(16).padStart(8, "0");
+  return (result >>> 0).toString(16).padStart(8, '0');
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function firstString(...values: unknown[]): string | undefined {
-  return values.find(
-    (value): value is string =>
-      typeof value === "string" && value.trim().length > 0,
-  );
+  return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
 }
 
 function firstNumber(...values: unknown[]): number | undefined {
-  return values.find(
-    (value): value is number =>
-      typeof value === "number" && Number.isFinite(value),
-  );
+  return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value));
 }
 
 function projectRevisionFor(task: AiTask): number | undefined {
@@ -571,7 +488,7 @@ function projectRevisionFor(task: AiTask): number | undefined {
     task.scope?.workspaceRevision,
     task.input.selection?.revision,
     metadata?.projectRevision,
-    contextMetadata?.projectRevision,
+    contextMetadata?.projectRevision
   );
 }
 
@@ -582,10 +499,7 @@ function normalizeNonNegativeInteger(value: number, label: string): number {
   return Math.floor(value);
 }
 
-function fingerprint(
-  fragments: ContextFragment[],
-  projectRevision?: number,
-): string {
+function fingerprint(fragments: ContextFragment[], projectRevision?: number): string {
   const value = `${fragments
     .map((fragment) =>
       stableSerialize({
@@ -598,23 +512,20 @@ function fingerprint(
         relevance: fragment.relevance ?? 0,
         recency: fragment.recency ?? 0,
         dependency: fragment.dependency ?? 0,
-        tokenEstimate:
-          fragment.tokenEstimate ??
-          fragment.estimatedTokens ??
-          estimateTokens(fragment),
-      }),
+        tokenEstimate: fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment)
+      })
     )
-    .join("\u0001")}\u0002revision:${projectRevision ?? ""}`;
+    .join('\u0001')}\u0002revision:${projectRevision ?? ''}`;
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193);
   }
-  return (hash >>> 0).toString(16).padStart(8, "0");
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 function abortError(): Error {
-  const error = new Error("Context building was cancelled");
-  error.name = "AbortError";
+  const error = new Error('Context building was cancelled');
+  error.name = 'AbortError';
   return error;
 }

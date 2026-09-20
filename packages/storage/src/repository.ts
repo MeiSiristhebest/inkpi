@@ -5,9 +5,9 @@ import type {
   Folder,
   OperationRecord,
   SessionEntry,
-  Workspace,
-} from "@inkpi/protocol";
-import type { IDb, IRepository } from "./ports.js";
+  Workspace
+} from '@inkpi/protocol';
+import type { IDb, IRepository } from './ports.js';
 
 export class InkRepository implements IRepository {
   private db: IDb;
@@ -26,18 +26,18 @@ export class InkRepository implements IRepository {
       ws.id,
       ws.title,
       ws.owner,
-      ws.category || "general",
+      ws.category || 'general',
       ws.targetSize || 0,
       ws.description || null,
       ws.coverImage || null,
       metaStr,
       ws.createdAt,
-      ws.updatedAt,
+      ws.updatedAt
     );
   }
 
   public getWorkspace(id: string): Workspace | undefined {
-    const stmt = this.db.prepare("SELECT * FROM workspaces WHERE id = ?");
+    const stmt = this.db.prepare('SELECT * FROM workspaces WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     let meta: Record<string, unknown> | undefined;
@@ -58,7 +58,7 @@ export class InkRepository implements IRepository {
       coverImage: row.cover_image,
       metadata: meta,
       createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
@@ -74,14 +74,12 @@ export class InkRepository implements IRepository {
       volume.orderIndex,
       volume.summary || null,
       volume.createdAt,
-      volume.updatedAt,
+      volume.updatedAt
     );
   }
 
   public getFolders(workspaceId: string): Folder[] {
-    const stmt = this.db.prepare(
-      "SELECT * FROM folders WHERE workspace_id = ? ORDER BY order_index ASC",
-    );
+    const stmt = this.db.prepare('SELECT * FROM folders WHERE workspace_id = ? ORDER BY order_index ASC');
     const rows = stmt.all(workspaceId) as any[];
     return rows.map((r) => ({
       id: r.id,
@@ -90,7 +88,7 @@ export class InkRepository implements IRepository {
       orderIndex: Number(r.order_index),
       summary: r.summary,
       createdAt: Number(r.created_at),
-      updatedAt: Number(r.updated_at),
+      updatedAt: Number(r.updated_at)
     }));
   }
 
@@ -109,12 +107,12 @@ export class InkRepository implements IRepository {
       chapter.contentSize,
       chapter.status,
       chapter.createdAt,
-      chapter.updatedAt,
+      chapter.updatedAt
     );
   }
 
   public getDocument(id: string): Document | undefined {
-    const stmt = this.db.prepare("SELECT * FROM documents WHERE id = ?");
+    const stmt = this.db.prepare('SELECT * FROM documents WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     return {
@@ -127,14 +125,12 @@ export class InkRepository implements IRepository {
       contentSize: Number(row.content_size),
       status: row.status,
       createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
   public getDocuments(folderId: string): Document[] {
-    const stmt = this.db.prepare(
-      "SELECT * FROM documents WHERE folder_id = ? ORDER BY order_index ASC",
-    );
+    const stmt = this.db.prepare('SELECT * FROM documents WHERE folder_id = ? ORDER BY order_index ASC');
     const rows = stmt.all(folderId) as any[];
     return rows.map((r) => ({
       id: r.id,
@@ -146,7 +142,7 @@ export class InkRepository implements IRepository {
       contentSize: Number(r.content_size),
       status: r.status,
       createdAt: Number(r.created_at),
-      updatedAt: Number(r.updated_at),
+      updatedAt: Number(r.updated_at)
     }));
   }
 
@@ -155,12 +151,7 @@ export class InkRepository implements IRepository {
       INSERT INTO document_deltas (document_id, step_json, client_timestamp, created_at)
       VALUES (?, ?, ?, ?)
     `);
-    const res = stmt.run(
-      delta.documentId,
-      delta.stepJson,
-      delta.clientTimestamp,
-      delta.createdAt,
-    );
+    const res = stmt.run(delta.documentId, delta.stepJson, delta.clientTimestamp, delta.createdAt);
     return Number(res.lastInsertRowid);
   }
 
@@ -180,7 +171,7 @@ export class InkRepository implements IRepository {
       documentId: r.document_id,
       stepJson: r.step_json,
       clientTimestamp: Number(r.client_timestamp),
-      createdAt: Number(r.created_at),
+      createdAt: Number(r.created_at)
     }));
   }
 
@@ -188,10 +179,7 @@ export class InkRepository implements IRepository {
    * 按创建时间过滤增量，仅供快照压缩（Compaction）回放使用。
    * 与 `getDeltas` 的 id 契约区分开，避免把时间戳误当作增量 id。
    */
-  public getDeltasSince(
-    documentId: string,
-    sinceTimestamp: number,
-  ): DocumentDelta[] {
+  public getDeltasSince(documentId: string, sinceTimestamp: number): DocumentDelta[] {
     const stmt = this.db.prepare(`
       SELECT * FROM document_deltas
       WHERE document_id = ? AND created_at > ?
@@ -203,7 +191,7 @@ export class InkRepository implements IRepository {
       documentId: r.document_id,
       stepJson: r.step_json,
       clientTimestamp: Number(r.client_timestamp),
-      createdAt: Number(r.created_at),
+      createdAt: Number(r.created_at)
     }));
   }
 
@@ -216,10 +204,7 @@ export class InkRepository implements IRepository {
     return Number(res.changes);
   }
 
-  public deleteDeltasBefore(
-    documentId: string,
-    beforeTimestamp: number,
-  ): number {
+  public deleteDeltasBefore(documentId: string, beforeTimestamp: number): number {
     const stmt = this.db.prepare(`
       DELETE FROM document_deltas
       WHERE document_id = ? AND created_at <= ?
@@ -245,14 +230,12 @@ export class InkRepository implements IRepository {
       snapshot.contentJson,
       snapshot.contentMarkdown,
       snapshot.contentSize,
-      snapshot.updatedAt,
+      snapshot.updatedAt
     );
   }
 
   public getSnapshot(documentId: string): DocumentSnapshot | undefined {
-    const stmt = this.db.prepare(
-      "SELECT * FROM document_snapshots WHERE document_id = ?",
-    );
+    const stmt = this.db.prepare('SELECT * FROM document_snapshots WHERE document_id = ?');
     const row = stmt.get(documentId) as any;
     if (!row) return undefined;
     return {
@@ -261,7 +244,7 @@ export class InkRepository implements IRepository {
       contentJson: row.content_json,
       contentMarkdown: row.content_markdown,
       contentSize: Number(row.content_size),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
@@ -282,17 +265,15 @@ export class InkRepository implements IRepository {
       record.type,
       record.state,
       record.intent !== undefined ? JSON.stringify(record.intent) : null,
-      record.settlement !== undefined
-        ? JSON.stringify(record.settlement)
-        : null,
+      record.settlement !== undefined ? JSON.stringify(record.settlement) : null,
       record.error || null,
       record.createdAt,
-      record.updatedAt,
+      record.updatedAt
     );
   }
 
   public getOperation(id: string): OperationRecord | undefined {
-    const stmt = this.db.prepare("SELECT * FROM operations WHERE id = ?");
+    const stmt = this.db.prepare('SELECT * FROM operations WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     return {
@@ -301,19 +282,15 @@ export class InkRepository implements IRepository {
       type: row.type,
       state: row.state,
       intent: row.intent_json ? JSON.parse(row.intent_json) : undefined,
-      settlement: row.settlement_json
-        ? JSON.parse(row.settlement_json)
-        : undefined,
+      settlement: row.settlement_json ? JSON.parse(row.settlement_json) : undefined,
       error: row.error || undefined,
       createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
   public getOperations(sessionId: string): OperationRecord[] {
-    const stmt = this.db.prepare(
-      "SELECT * FROM operations WHERE session_id = ? ORDER BY created_at ASC",
-    );
+    const stmt = this.db.prepare('SELECT * FROM operations WHERE session_id = ? ORDER BY created_at ASC');
     const rows = stmt.all(sessionId) as any[];
     return rows.map((row) => ({
       id: row.id,
@@ -321,12 +298,10 @@ export class InkRepository implements IRepository {
       type: row.type,
       state: row.state,
       intent: row.intent_json ? JSON.parse(row.intent_json) : undefined,
-      settlement: row.settlement_json
-        ? JSON.parse(row.settlement_json)
-        : undefined,
+      settlement: row.settlement_json ? JSON.parse(row.settlement_json) : undefined,
       error: row.error || undefined,
       createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     }));
   }
 
@@ -354,14 +329,12 @@ export class InkRepository implements IRepository {
       entry.type,
       JSON.stringify(entry.payload),
       entry.timestamp,
-      entry.version || 1,
+      entry.version || 1
     );
   }
 
   public getSessionEntries(sessionId: string): SessionEntry[] {
-    const stmt = this.db.prepare(
-      "SELECT * FROM session_entries WHERE session_id = ? ORDER BY seq ASC",
-    );
+    const stmt = this.db.prepare('SELECT * FROM session_entries WHERE session_id = ? ORDER BY seq ASC');
     const rows = stmt.all(sessionId) as any[];
     return rows.map((row) => ({
       id: row.id,
@@ -373,7 +346,7 @@ export class InkRepository implements IRepository {
       type: row.type,
       payload: JSON.parse(row.payload_json),
       timestamp: Number(row.timestamp),
-      version: Number(row.version) || 1,
+      version: Number(row.version) || 1
     }));
   }
 
@@ -385,9 +358,9 @@ export class InkRepository implements IRepository {
   } {
     return this.db.transaction(() => {
       // Find documents in workspace
-      const docRows = this.db
-        .prepare("SELECT id FROM documents WHERE workspace_id = ?")
-        .all(workspaceId) as Array<{ id: string }>;
+      const docRows = this.db.prepare('SELECT id FROM documents WHERE workspace_id = ?').all(workspaceId) as Array<{
+        id: string;
+      }>;
       const docIds = docRows.map((r) => r.id);
 
       let snapshotsPurged = 0;
@@ -397,39 +370,31 @@ export class InkRepository implements IRepository {
         // Delete snapshots and deltas
         const snapRes = this.db
           .prepare(
-            `DELETE FROM document_snapshots WHERE document_id IN (SELECT id FROM documents WHERE workspace_id = ?)`,
+            'DELETE FROM document_snapshots WHERE document_id IN (SELECT id FROM documents WHERE workspace_id = ?)'
           )
           .run(workspaceId);
         snapshotsPurged = Number(snapRes.changes);
 
         const deltaRes = this.db
-          .prepare(
-            `DELETE FROM document_deltas WHERE document_id IN (SELECT id FROM documents WHERE workspace_id = ?)`,
-          )
+          .prepare('DELETE FROM document_deltas WHERE document_id IN (SELECT id FROM documents WHERE workspace_id = ?)')
           .run(workspaceId);
         deltasPurged = Number(deltaRes.changes);
 
         // Delete from FTS index
         this.db
-          .prepare(
-            `DELETE FROM documents_fts WHERE document_id IN (SELECT id FROM documents WHERE workspace_id = ?)`,
-          )
+          .prepare('DELETE FROM documents_fts WHERE document_id IN (SELECT id FROM documents WHERE workspace_id = ?)')
           .run(workspaceId);
       }
 
-      const docsRes = this.db
-        .prepare("DELETE FROM documents WHERE workspace_id = ?")
-        .run(workspaceId);
-      const foldersRes = this.db
-        .prepare("DELETE FROM folders WHERE workspace_id = ?")
-        .run(workspaceId);
-      this.db.prepare("DELETE FROM workspaces WHERE id = ?").run(workspaceId);
+      const docsRes = this.db.prepare('DELETE FROM documents WHERE workspace_id = ?').run(workspaceId);
+      const foldersRes = this.db.prepare('DELETE FROM folders WHERE workspace_id = ?').run(workspaceId);
+      this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId);
 
       return {
         documents: Number(docsRes.changes),
         folders: Number(foldersRes.changes),
         documentSnapshots: snapshotsPurged,
-        documentDeltas: deltasPurged,
+        documentDeltas: deltasPurged
       };
     });
   }

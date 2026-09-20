@@ -53,10 +53,10 @@ export function createConversationHistoryProvider(): ContextProvider {
           kind: 'conversation-history',
           data: { turns },
           priority: 850,
-          dependency: 0,
-        },
+          dependency: 0
+        }
       ];
-    },
+    }
   };
 }
 

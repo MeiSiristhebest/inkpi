@@ -65,9 +65,7 @@ describe('context overflow reliability boundary', () => {
     const pipeline = new ContextPipeline({ maxTokens: 200 });
     pipeline.register({
       id: 'retrieval.jit',
-      provide: () => [
-        { id: 'lore-1', source: 'fts', text: '上古秘辛：玄阴古玉的真正主人是天机阁主。', priority: 500 }
-      ]
+      provide: () => [{ id: 'lore-1', source: 'fts', text: '上古秘辛：玄阴古玉的真正主人是天机阁主。', priority: 500 }]
     });
 
     const longTask: AiTask = {

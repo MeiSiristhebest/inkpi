@@ -1,11 +1,6 @@
-import type {
-  FtsSearchResult,
-  JitContextQuery,
-  JitContextResult,
-  StateLedger,
-} from "@inkpi/protocol";
-import type { FtsSearchEngine } from "./fts.js";
-import type { InkRepository } from "./repository.js";
+import type { FtsSearchResult, JitContextQuery, JitContextResult, StateLedger } from '@inkpi/protocol';
+import type { FtsSearchEngine } from './fts.js';
+import type { InkRepository } from './repository.js';
 
 export interface JitMemoryRetrieverOptions {
   repository: InkRepository;
@@ -17,15 +12,12 @@ export interface JitMemoryRetrieverOptions {
     activeEntities: string[],
     activeAssets: string[],
     activeLocations?: string[],
-    activeTracks?: string[],
+    activeTracks?: string[]
   ) => string[];
   /** Format the structured retrieval result for a downstream consumer. */
-  formatContext?: (
-    result: Omit<JitContextResult, "assembledPromptBlock">,
-  ) => string;
+  formatContext?: (result: Omit<JitContextResult, 'assembledPromptBlock'>) => string;
   /** Decide what to do when a real FTS search fails. Defaults to throwing. */
-  onSearchError?:
-    "throw" | "ignore" | ((error: unknown, keyword: string) => void);
+  onSearchError?: 'throw' | 'ignore' | ((error: unknown, keyword: string) => void);
 }
 
 /**
@@ -35,29 +27,22 @@ export interface JitMemoryRetrieverOptions {
 export class JitMemoryRetriever {
   private repo: InkRepository;
   private fts: FtsSearchEngine;
-  private keywordSelector: NonNullable<
-    JitMemoryRetrieverOptions["keywordSelector"]
-  >;
-  private formatContext?: JitMemoryRetrieverOptions["formatContext"];
-  private onSearchError: NonNullable<
-    JitMemoryRetrieverOptions["onSearchError"]
-  >;
+  private keywordSelector: NonNullable<JitMemoryRetrieverOptions['keywordSelector']>;
+  private formatContext?: JitMemoryRetrieverOptions['formatContext'];
+  private onSearchError: NonNullable<JitMemoryRetrieverOptions['onSearchError']>;
 
   constructor(options: JitMemoryRetrieverOptions) {
     this.repo = options.repository;
     this.fts = options.ftsEngine;
     this.keywordSelector = options.keywordSelector || defaultKeywordSelector;
     this.formatContext = options.formatContext;
-    this.onSearchError = options.onSearchError || "throw";
+    this.onSearchError = options.onSearchError || 'throw';
   }
 
   /**
    * 执行 JIT 3 级分层记忆装配
    */
-  public async retrieve(
-    query: JitContextQuery,
-    currentLedger?: StateLedger,
-  ): Promise<JitContextResult> {
+  public async retrieve(query: JitContextQuery, currentLedger?: StateLedger): Promise<JitContextResult> {
     // -------------------------------------------------------------
     // L1: 工作记忆 (Working Memory)
     // -------------------------------------------------------------
@@ -66,35 +51,29 @@ export class JitMemoryRetriever {
       assets: [],
       tracks: [],
       locations: [],
-      modifiedResources: [],
+      modifiedResources: []
     };
 
-    const suppliedReferences =
-      query.activeReferences || query.activeEntities || [];
-    const textToScan = `${query.currentText || query.currentDraftText || ""} ${suppliedReferences.join(" ")}`;
+    const suppliedReferences = query.activeReferences || query.activeEntities || [];
+    const textToScan = `${query.currentText || query.currentDraftText || ''} ${suppliedReferences.join(' ')}`;
     const activeEntities = (activeLedger.entities || [])
-      .filter((c: StateLedger["entities"][number]) =>
-        textToScan.includes(c.name),
-      )
-      .map((c: StateLedger["entities"][number]) => c.name);
+      .filter((c: StateLedger['entities'][number]) => textToScan.includes(c.name))
+      .map((c: StateLedger['entities'][number]) => c.name);
 
     const activeAssets = (activeLedger.assets || [])
-      .filter((i: StateLedger["assets"][number]) => textToScan.includes(i.name))
-      .map((i: StateLedger["assets"][number]) => i.name);
+      .filter((i: StateLedger['assets'][number]) => textToScan.includes(i.name))
+      .map((i: StateLedger['assets'][number]) => i.name);
 
     const activeLocations = (activeLedger.locations || [])
-      .filter(
-        (l: StateLedger["locations"][number]) =>
-          l.name && textToScan.includes(l.name),
-      )
-      .map((l: StateLedger["locations"][number]) => l.name);
+      .filter((l: StateLedger['locations'][number]) => l.name && textToScan.includes(l.name))
+      .map((l: StateLedger['locations'][number]) => l.name);
 
     const activeTracks = (activeLedger.tracks || [])
-      .filter((t: StateLedger["tracks"][number]) => {
+      .filter((t: StateLedger['tracks'][number]) => {
         const clue = t.clue || t.summary;
         return clue && textToScan.includes(clue);
       })
-      .map((t: StateLedger["tracks"][number]) => t.clue || t.summary || "");
+      .map((t: StateLedger['tracks'][number]) => t.clue || t.summary || '');
 
     // -------------------------------------------------------------
     // L2: Recent document summaries
@@ -123,9 +102,7 @@ export class JitMemoryRetriever {
       // Retrieve the nearest preceding documents by their explicit order.
       let targetIndex = allDocuments.length;
       if (query.currentDocumentId) {
-        const idx = allDocuments.findIndex(
-          (c) => c.id === query.currentDocumentId,
-        );
+        const idx = allDocuments.findIndex((c) => c.id === query.currentDocumentId);
         if (idx !== -1) targetIndex = idx;
       }
 
@@ -138,7 +115,7 @@ export class JitMemoryRetriever {
           l2RecentSummaries.push({
             documentId: ch.id,
             title: ch.title,
-            summary: ch.synopsis.trim(),
+            summary: ch.synopsis.trim()
           });
         }
       }
@@ -149,18 +126,9 @@ export class JitMemoryRetriever {
     // -------------------------------------------------------------
     const l3GlobalLore: FtsSearchResult[] = [];
     const uniqueKeywords = Array.from(
-      new Set(
-        this.keywordSelector(
-          query,
-          activeLedger,
-          activeEntities,
-          activeAssets,
-          activeLocations,
-          activeTracks,
-        ),
-      ),
+      new Set(this.keywordSelector(query, activeLedger, activeEntities, activeAssets, activeLocations, activeTracks))
     )
-      .filter((k) => typeof k === "string" && k.trim().length >= 2)
+      .filter((k) => typeof k === 'string' && k.trim().length >= 2)
       .map((k) => k.trim());
 
     if (uniqueKeywords.length > 0) {
@@ -169,24 +137,19 @@ export class JitMemoryRetriever {
           const searchResults = this.fts.search({
             query: kw,
             workspaceId: query.workspaceId,
-            limit: query.maxFtsResults ?? 4,
+            limit: query.maxFtsResults ?? 4
           });
           for (const res of searchResults) {
-            if (
-              query.currentDocumentId &&
-              res.documentId === query.currentDocumentId
-            ) {
+            if (query.currentDocumentId && res.documentId === query.currentDocumentId) {
               continue; // 过滤当前正在编辑的文档自身
             }
-            if (
-              !l3GlobalLore.some((item) => item.documentId === res.documentId)
-            ) {
+            if (!l3GlobalLore.some((item) => item.documentId === res.documentId)) {
               l3GlobalLore.push(res);
             }
           }
         } catch (err) {
-          if (this.onSearchError === "throw") throw err;
-          if (this.onSearchError === "ignore") continue;
+          if (this.onSearchError === 'throw') throw err;
+          if (this.onSearchError === 'ignore') continue;
           this.onSearchError(err, kw);
         }
       }
@@ -195,21 +158,17 @@ export class JitMemoryRetriever {
     const structuredResult = {
       l1WorkingMemory: {
         activeLedger,
-        activeReferences: [
-          ...new Set([...activeEntities, ...activeAssets, ...activeLocations]),
-        ],
+        activeReferences: [...new Set([...activeEntities, ...activeAssets, ...activeLocations])],
         activeEntities,
-        activeAssets,
+        activeAssets
       },
       l2RecentSummaries,
-      l3GlobalLore,
+      l3GlobalLore
     };
 
     return {
       ...structuredResult,
-      assembledPromptBlock: this.formatContext
-        ? this.formatContext(structuredResult)
-        : "",
+      assembledPromptBlock: this.formatContext ? this.formatContext(structuredResult) : ''
     };
   }
 }
@@ -220,7 +179,7 @@ function defaultKeywordSelector(
   activeEntities: string[],
   activeAssets: string[],
   activeLocations: string[] = [],
-  activeTracks: string[] = [],
+  activeTracks: string[] = []
 ): string[] {
   return [
     ...(query.keywords || []),
@@ -228,45 +187,41 @@ function defaultKeywordSelector(
     ...activeEntities,
     ...activeAssets,
     ...activeLocations,
-    ...activeTracks,
+    ...activeTracks
   ];
 }
 
 /** Optional neutral text formatter for consumers that need a prompt block. */
-export function formatJitContextAsPrompt(
-  result: Omit<JitContextResult, "assembledPromptBlock">,
-): string {
-  const sections: string[] = ["=== Retrieved Context: Working State ==="];
+export function formatJitContextAsPrompt(result: Omit<JitContextResult, 'assembledPromptBlock'>): string {
+  const sections: string[] = ['=== Retrieved Context: Working State ==='];
   const { activeLedger } = result.l1WorkingMemory;
   if (activeLedger.entities?.length) {
     sections.push(
-      `Entities: ${activeLedger.entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ""}`).join(", ")}`,
+      `Entities: ${activeLedger.entities.map((entity) => `${entity.name}${entity.status ? `(${entity.status})` : ''}`).join(', ')}`
     );
   }
   if (activeLedger.assets?.length) {
     sections.push(
-      `Assets: ${activeLedger.assets.map((asset) => `${asset.name}${asset.holder ? `[Holder:${asset.holder}]` : ""}`).join(", ")}`,
+      `Assets: ${activeLedger.assets.map((asset) => `${asset.name}${asset.holder ? `[Holder:${asset.holder}]` : ''}`).join(', ')}`
     );
   }
   if (activeLedger.tracks?.length) {
     sections.push(
-      `Tracks: ${activeLedger.tracks.map((track) => `${track.clue || track.summary || track.id || "track"}${track.status ? `(${track.status})` : ""}`).join("; ")}`,
+      `Tracks: ${activeLedger.tracks.map((track) => `${track.clue || track.summary || track.id || 'track'}${track.status ? `(${track.status})` : ''}`).join('; ')}`
     );
   }
   if (activeLedger.locations?.length) {
     sections.push(
-      `Locations: ${activeLedger.locations.map((loc) => `${loc.name}${loc.description ? `(${loc.description})` : ""}`).join(", ")}`,
+      `Locations: ${activeLedger.locations.map((loc) => `${loc.name}${loc.description ? `(${loc.description})` : ''}`).join(', ')}`
     );
   }
   if (result.l2RecentSummaries.length) {
-    sections.push("=== Recent Document Summaries ===");
-    for (const item of result.l2RecentSummaries)
-      sections.push(`[${item.title}]: ${item.summary}`);
+    sections.push('=== Recent Document Summaries ===');
+    for (const item of result.l2RecentSummaries) sections.push(`[${item.title}]: ${item.summary}`);
   }
   if (result.l3GlobalLore.length) {
-    sections.push("=== Full-Text Matches ===");
-    for (const item of result.l3GlobalLore)
-      sections.push(`[${item.title}]: ${item.snippet.replace(/\n+/g, " ")}`);
+    sections.push('=== Full-Text Matches ===');
+    for (const item of result.l3GlobalLore) sections.push(`[${item.title}]: ${item.snippet.replace(/\n+/g, ' ')}`);
   }
-  return sections.join("\n");
+  return sections.join('\n');
 }

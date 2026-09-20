@@ -1,4 +1,4 @@
-import type { InkDb } from "./db.js";
+import type { InkDb } from './db.js';
 
 export interface Lane {
   id: string;
@@ -38,9 +38,7 @@ export class LaneManager {
     this.db.transaction(() => {
       if (lane.isDefault) {
         // Clear previous default
-        const clearStmt = this.db.prepare(
-          "UPDATE lanes SET is_default = 0 WHERE workspace_id = ?",
-        );
+        const clearStmt = this.db.prepare('UPDATE lanes SET is_default = 0 WHERE workspace_id = ?');
         clearStmt.run(lane.workspaceId);
       }
 
@@ -56,13 +54,13 @@ export class LaneManager {
         lane.parentLaneId || null,
         lane.isDefault ? 1 : 0,
         lane.createdAt,
-        lane.updatedAt,
+        lane.updatedAt
       );
     });
   }
 
   public getLane(id: string): Lane | undefined {
-    const stmt = this.db.prepare("SELECT * FROM lanes WHERE id = ?");
+    const stmt = this.db.prepare('SELECT * FROM lanes WHERE id = ?');
     const row = stmt.get(id) as any;
     if (!row) return undefined;
     return {
@@ -73,14 +71,12 @@ export class LaneManager {
       parentLaneId: row.parent_lane_id || undefined,
       isDefault: Boolean(row.is_default),
       createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
   public getLanes(workspaceId: string): Lane[] {
-    const stmt = this.db.prepare(
-      "SELECT * FROM lanes WHERE workspace_id = ? ORDER BY is_default DESC, created_at ASC",
-    );
+    const stmt = this.db.prepare('SELECT * FROM lanes WHERE workspace_id = ? ORDER BY is_default DESC, created_at ASC');
     const rows = stmt.all(workspaceId) as any[];
     return rows.map((r) => ({
       id: r.id,
@@ -90,7 +86,7 @@ export class LaneManager {
       parentLaneId: r.parent_lane_id || undefined,
       isDefault: Boolean(r.is_default),
       createdAt: Number(r.created_at),
-      updatedAt: Number(r.updated_at),
+      updatedAt: Number(r.updated_at)
     }));
   }
 
@@ -98,16 +94,10 @@ export class LaneManager {
     this.db.transaction(() => {
       const lane = this.getLane(laneId);
       if (!lane || lane.workspaceId !== workspaceId) {
-        throw new Error(
-          `Lane '${laneId}' not found in workspace '${workspaceId}'`,
-        );
+        throw new Error(`Lane '${laneId}' not found in workspace '${workspaceId}'`);
       }
-      this.db
-        .prepare("UPDATE lanes SET is_default = 0 WHERE workspace_id = ?")
-        .run(workspaceId);
-      this.db
-        .prepare("UPDATE lanes SET is_default = 1 WHERE id = ?")
-        .run(laneId);
+      this.db.prepare('UPDATE lanes SET is_default = 0 WHERE workspace_id = ?').run(workspaceId);
+      this.db.prepare('UPDATE lanes SET is_default = 1 WHERE id = ?').run(laneId);
     });
   }
 
@@ -121,14 +111,12 @@ export class LaneManager {
       SELECT id, workspace_id AS workspaceId
       FROM documents
       WHERE id = ?
-    `,
+    `
       )
       .get(tip.documentId) as { id: string; workspaceId: string } | undefined;
     if (!document) throw new Error(`Document '${tip.documentId}' not found`);
     if (document.workspaceId !== lane.workspaceId) {
-      throw new Error(
-        `Document '${tip.documentId}' does not belong to lane workspace '${lane.workspaceId}'`,
-      );
+      throw new Error(`Document '${tip.documentId}' does not belong to lane workspace '${lane.workspaceId}'`);
     }
 
     const stmt = this.db.prepare(`
@@ -149,17 +137,12 @@ export class LaneManager {
       tip.lastDeltaId,
       tip.baseSnapshotVersion ?? tip.headSnapshotVersion,
       tip.baseDeltaId ?? tip.lastDeltaId,
-      tip.updatedAt,
+      tip.updatedAt
     );
   }
 
-  public getBranchTip(
-    laneId: string,
-    documentId: string,
-  ): BranchTip | undefined {
-    const stmt = this.db.prepare(
-      "SELECT * FROM branch_tips WHERE lane_id = ? AND document_id = ?",
-    );
+  public getBranchTip(laneId: string, documentId: string): BranchTip | undefined {
+    const stmt = this.db.prepare('SELECT * FROM branch_tips WHERE lane_id = ? AND document_id = ?');
     const row = stmt.get(laneId, documentId) as any;
     if (!row) return undefined;
     return {
@@ -167,43 +150,34 @@ export class LaneManager {
       documentId: row.document_id,
       headSnapshotVersion: Number(row.head_snapshot_version),
       lastDeltaId: Number(row.last_delta_id),
-      baseSnapshotVersion: Number(
-        row.base_snapshot_version ?? row.head_snapshot_version,
-      ),
+      baseSnapshotVersion: Number(row.base_snapshot_version ?? row.head_snapshot_version),
       baseDeltaId: Number(row.base_delta_id ?? row.last_delta_id),
-      updatedAt: Number(row.updated_at),
+      updatedAt: Number(row.updated_at)
     };
   }
 
   public getBranchTips(laneId: string): BranchTip[] {
-    const stmt = this.db.prepare("SELECT * FROM branch_tips WHERE lane_id = ?");
+    const stmt = this.db.prepare('SELECT * FROM branch_tips WHERE lane_id = ?');
     const rows = stmt.all(laneId) as any[];
     return rows.map((r) => ({
       laneId: r.lane_id,
       documentId: r.document_id,
       headSnapshotVersion: Number(r.head_snapshot_version),
       lastDeltaId: Number(r.last_delta_id),
-      baseSnapshotVersion: Number(
-        r.base_snapshot_version ?? r.head_snapshot_version,
-      ),
+      baseSnapshotVersion: Number(r.base_snapshot_version ?? r.head_snapshot_version),
       baseDeltaId: Number(r.base_delta_id ?? r.last_delta_id),
-      updatedAt: Number(r.updated_at),
+      updatedAt: Number(r.updated_at)
     }));
   }
 
   /**
    * 从指定源泳道派生 (Fork) 出新的平行分支泳道，并克隆所有最新游标
    */
-  public forkLane(
-    sourceLaneId: string,
-    targetLaneId: string,
-    targetName: string,
-    description?: string,
-  ): Lane {
+  public forkLane(sourceLaneId: string, targetLaneId: string, targetName: string, description?: string): Lane {
     const sourceLane = this.getLane(sourceLaneId);
     if (!sourceLane) throw new Error(`Source lane '${sourceLaneId}' not found`);
     if (sourceLaneId === targetLaneId) {
-      throw new Error("Source and target lane IDs must differ");
+      throw new Error('Source and target lane IDs must differ');
     }
     if (this.getLane(targetLaneId)) {
       throw new Error(`Target lane '${targetLaneId}' already exists`);
@@ -218,7 +192,7 @@ export class LaneManager {
       parentLaneId: sourceLaneId,
       isDefault: false,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     };
 
     this.db.transaction(() => {
@@ -232,7 +206,7 @@ export class LaneManager {
           lastDeltaId: tip.lastDeltaId,
           baseSnapshotVersion: tip.headSnapshotVersion,
           baseDeltaId: tip.lastDeltaId,
-          updatedAt: now,
+          updatedAt: now
         });
       }
     });
@@ -246,25 +220,20 @@ export class LaneManager {
    * The target must still equal the tip recorded at fork time. This is a
    * compare-and-set check: concurrent target edits are reported as conflicts.
    */
-  public mergeLane(
-    sourceLaneId: string,
-    targetLaneId: string,
-  ): { mergedCount: number } {
+  public mergeLane(sourceLaneId: string, targetLaneId: string): { mergedCount: number } {
     const sourceLane = this.getLane(sourceLaneId);
     const targetLane = this.getLane(targetLaneId);
     if (!sourceLane) throw new Error(`Source lane '${sourceLaneId}' not found`);
     if (!targetLane) throw new Error(`Target lane '${targetLaneId}' not found`);
     if (sourceLaneId === targetLaneId) {
-      throw new Error("Source and target lane IDs must differ");
+      throw new Error('Source and target lane IDs must differ');
     }
     if (sourceLane.workspaceId !== targetLane.workspaceId) {
-      throw new Error(
-        "Source and target lanes must belong to the same workspace",
-      );
+      throw new Error('Source and target lanes must belong to the same workspace');
     }
     if (sourceLane.parentLaneId !== targetLaneId) {
       throw new Error(
-        `Lane '${sourceLaneId}' can only fast-forward into its parent lane '${sourceLane.parentLaneId || "(none)"}'`,
+        `Lane '${sourceLaneId}' can only fast-forward into its parent lane '${sourceLane.parentLaneId || '(none)'}'`
       );
     }
 
@@ -276,20 +245,12 @@ export class LaneManager {
       for (const tip of sourceTips) {
         const targetTip = this.getBranchTip(targetLaneId, tip.documentId);
         if (!targetTip) {
-          throw new Error(
-            `Lane merge conflict for document '${tip.documentId}': target has no fork baseline`,
-          );
+          throw new Error(`Lane merge conflict for document '${tip.documentId}': target has no fork baseline`);
         }
-        const expectedSnapshot =
-          targetTip.baseSnapshotVersion ?? targetTip.headSnapshotVersion;
+        const expectedSnapshot = targetTip.baseSnapshotVersion ?? targetTip.headSnapshotVersion;
         const expectedDelta = targetTip.baseDeltaId ?? targetTip.lastDeltaId;
-        if (
-          targetTip.headSnapshotVersion !== expectedSnapshot ||
-          targetTip.lastDeltaId !== expectedDelta
-        ) {
-          throw new Error(
-            `Lane merge conflict for document '${tip.documentId}': target changed after fork`,
-          );
+        if (targetTip.headSnapshotVersion !== expectedSnapshot || targetTip.lastDeltaId !== expectedDelta) {
+          throw new Error(`Lane merge conflict for document '${tip.documentId}': target changed after fork`);
         }
         this.setBranchTip({
           laneId: targetLaneId,
@@ -298,7 +259,7 @@ export class LaneManager {
           lastDeltaId: tip.lastDeltaId,
           baseSnapshotVersion: targetTip.baseSnapshotVersion,
           baseDeltaId: targetTip.baseDeltaId,
-          updatedAt: now,
+          updatedAt: now
         });
         mergedCount++;
       }
@@ -314,12 +275,10 @@ export class LaneManager {
           `
         DELETE FROM branch_tips
         WHERE lane_id IN (SELECT id FROM lanes WHERE workspace_id = ?)
-      `,
+      `
         )
         .run(workspaceId);
-      const res = this.db
-        .prepare("DELETE FROM lanes WHERE workspace_id = ?")
-        .run(workspaceId);
+      const res = this.db.prepare('DELETE FROM lanes WHERE workspace_id = ?').run(workspaceId);
       return Number(res.changes);
     });
   }
