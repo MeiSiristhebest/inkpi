@@ -165,6 +165,26 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
         contextFingerprint: 'ctx-1',
         issuedAt: 10
       },
+      executionSnapshot: {
+        version: 1,
+        id: 'execution-task:snapshot',
+        taskId: 'execution-task',
+        createdAt: 10,
+        model: {
+          provider: 'faux',
+          modelId: 'test-model',
+          displayName: 'Test Model'
+        },
+        instructions: { systemPrompt: 'test instructions' },
+        tools: [],
+        context: {
+          messageCount: 0,
+          messageIds: [],
+          fingerprint: '00000000'
+        },
+        policy: { timeoutMs: 1000 },
+        metadata: { routeId: 'default-model' }
+      },
       steering: [{ direction: 'continue' }]
     };
 

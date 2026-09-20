@@ -289,6 +289,43 @@ export const TaskExecutionAttemptSchema = Type.Object({
   error: Type.Optional(TaskErrorSchema)
 });
 
+export const ExecutionSnapshotSchema = Type.Object({
+  version: Type.Literal(1),
+  id: IdSchema,
+  taskId: Type.Optional(IdSchema),
+  createdAt: TimestampSchema,
+  model: Type.Object({
+    canonicalId: Type.Optional(Type.String()),
+    provider: Type.String({ minLength: 1 }),
+    modelId: Type.String({ minLength: 1 }),
+    displayName: Type.Optional(Type.String()),
+    baseUrl: Type.Optional(Type.String()),
+    thinkingLevel: Type.Optional(Type.String())
+  }),
+  instructions: Type.Object({
+    systemPrompt: Type.String(),
+    thinkingLevel: Type.Optional(Type.String())
+  }),
+  tools: Type.Array(
+    Type.Object({
+      name: Type.String({ minLength: 1 }),
+      label: Type.Optional(Type.String()),
+      description: Type.String(),
+      parameters: Type.Optional(JsonValueSchema),
+      executionMode: Type.Optional(Type.Union([Type.Literal('parallel'), Type.Literal('sequential')])),
+      replay: Type.Optional(Type.Union([Type.Literal('safe'), Type.Literal('never')]))
+    })
+  ),
+  context: Type.Object({
+    messageCount: Type.Integer({ minimum: 0 }),
+    messageIds: Type.Array(Type.String()),
+    fingerprint: Type.String({ minLength: 1 }),
+    estimatedTokens: Type.Optional(Type.Number({ minimum: 0 }))
+  }),
+  policy: Type.Optional(Type.Record(Type.String(), JsonValueSchema)),
+  metadata: Type.Optional(Type.Record(Type.String(), JsonValueSchema))
+});
+
 export const TaskExecutionSnapshotSchema = Type.Object({
   task: Type.Object({
     id: IdSchema,
@@ -302,6 +339,7 @@ export const TaskExecutionSnapshotSchema = Type.Object({
   steps: Type.Optional(Type.Array(TaskExecutionStepSchema)),
   executionAttempts: Type.Optional(Type.Array(TaskExecutionAttemptSchema)),
   resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
+  executionSnapshot: Type.Optional(ExecutionSnapshotSchema),
   steering: Type.Optional(Type.Array(Type.Any()))
 });
 
