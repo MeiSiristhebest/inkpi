@@ -251,6 +251,7 @@ CREATE TABLE IF NOT EXISTS task_executions (
   steps_json TEXT,
   execution_attempts_json TEXT,
   resume_token_json TEXT,
+  execution_snapshot_json TEXT,
   steering_json TEXT
 );
 

@@ -24,6 +24,17 @@ describe('SqliteTaskExecutionStore', () => {
       steps: [{ id: 'step:1', runId: 'run:1', step: 'draft', status: 'interrupted', startedAt: 10 }],
       executionAttempts: [{ runId: 'run:1', attempt: 2, startedAt: 11, status: 'interrupted' }],
       resumeToken: { taskId: task.id, checkpointStep: 'draft', contextFingerprint: 'ctx', issuedAt: 12 },
+      executionSnapshot: {
+        version: 1,
+        id: 'snapshot:1',
+        taskId: task.id,
+        createdAt: 13,
+        model: { provider: 'openai', modelId: 'gpt-5', displayName: 'GPT-5' },
+        instructions: { systemPrompt: 'system-hash' },
+        tools: [],
+        context: { messageCount: 0, messageIds: [], fingerprint: 'ctx' },
+        policy: { maxTokens: 100 }
+      },
       steering: [{ input: 'continue' }]
     };
     const store = new SqliteTaskExecutionStore(db);

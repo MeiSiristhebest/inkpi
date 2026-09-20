@@ -47,6 +47,7 @@ export class InkDb implements IDb {
     this.ensureColumn('task_executions', 'steps_json', 'TEXT');
     this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
     this.ensureColumn('task_executions', 'resume_token_json', 'TEXT');
+    this.ensureColumn('task_executions', 'execution_snapshot_json', 'TEXT');
     this.ensureColumn('task_executions', 'steering_json', 'TEXT');
     this.ensureColumn('writer_leases', 'fencing_token', 'INTEGER NOT NULL DEFAULT 0');
     const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
