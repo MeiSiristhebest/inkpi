@@ -141,6 +141,71 @@ describe('@inkpi/ai', () => {
     expect(msg.stopReason).toBe('aborted');
   });
 
+  it('should drain buffered events in FIFO order and finish after the terminal event', async () => {
+    const stream = new AssistantEventStream();
+    const iterator = stream[Symbol.asyncIterator]();
+    const events: AssistantMessageEvent[] = [
+      { type: 'text_delta', textDelta: 'one' },
+      { type: 'thinking_delta', thinkingDelta: 'two' },
+      { type: 'text_delta', textDelta: 'three' }
+    ];
+
+    for (const event of events) stream.push(event);
+    stream.end();
+
+    await expect(iterator.next()).resolves.toEqual({ value: events[0], done: false });
+    await expect(iterator.next()).resolves.toEqual({ value: events[1], done: false });
+    await expect(iterator.next()).resolves.toEqual({ value: events[2], done: false });
+    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+  });
+
+  it('should preserve terminal error ordering and ignore events after termination', async () => {
+    const stream = new AssistantEventStream();
+    const iterator = stream[Symbol.asyncIterator]();
+
+    stream.error('provider failed');
+    stream.push({ type: 'text_delta', textDelta: 'must be ignored' });
+
+    await expect(iterator.next()).resolves.toEqual({
+      value: { type: 'error', error: 'provider failed' },
+      done: false
+    });
+    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+  });
+
+  it('should settle a pending iterator when aborted', async () => {
+    const stream = new AssistantEventStream();
+    const iterator = stream[Symbol.asyncIterator]();
+    const pending = iterator.next();
+
+    stream.abort();
+
+    await expect(pending).resolves.toEqual({ value: undefined, done: true });
+    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+  });
+
+  it('should wait for asynchronous listeners and expose an unsubscribe disposer', async () => {
+    const stream = new AssistantEventStream();
+    let releaseListener!: () => void;
+    const listenerReady = new Promise<void>((resolve) => {
+      releaseListener = resolve;
+    });
+    const listener = vi.fn(async () => listenerReady);
+    const unsubscribe = stream.on(listener);
+
+    stream.push({ type: 'text_delta', textDelta: 'tracked' });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    const waiting = stream.waitForListeners();
+    releaseListener();
+    await expect(waiting).resolves.toBeUndefined();
+
+    unsubscribe();
+    stream.push({ type: 'text_delta', textDelta: 'untracked' });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('should convert AgentMessages to StandardLlmMessages', () => {
     const msgs: AgentMessage[] = [
       { role: 'user', content: '开篇怎么写？' },

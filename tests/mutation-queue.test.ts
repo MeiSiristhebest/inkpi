@@ -1,5 +1,5 @@
 import { DocumentMutationQueue, InkDb, MutationLeaseLostError } from '@inkpi/storage';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
   it('should serialize concurrent mutations to the same document and execute atomically', async () => {
@@ -86,5 +86,34 @@ describe('@inkpi/storage -> DocumentMutationQueue & Concurrency Leases', () => {
     expect(queue.isDocumentBusy('ch_fenced')).toBe(false);
 
     db.close();
+  });
+
+  it('rejects a long mutation when its lease heartbeat is lost before settlement', async () => {
+    vi.useFakeTimers();
+    const db = new InkDb(':memory:');
+    const queue = new DocumentMutationQueue(db, 30);
+    const renewSpy = vi.spyOn(queue.getLeaseManager(), 'renew').mockReturnValue(false);
+    let releaseMutation!: () => void;
+    const mutationReady = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+
+    try {
+      const mutation = queue.enqueue('ch_heartbeat', 'writer-heartbeat', async () => {
+        await mutationReady;
+        return 'must-not-settle';
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      releaseMutation();
+
+      await expect(mutation).rejects.toBeInstanceOf(MutationLeaseLostError);
+      expect(renewSpy).toHaveBeenCalledTimes(1);
+      expect(queue.isDocumentBusy('ch_heartbeat')).toBe(false);
+    } finally {
+      renewSpy.mockRestore();
+      db.close();
+      vi.useRealTimers();
+    }
   });
 });

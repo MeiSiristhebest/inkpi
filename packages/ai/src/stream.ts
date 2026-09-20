@@ -10,6 +10,7 @@ import type { EventStream } from './types.js';
 
 export class AssistantEventStream implements EventStream<AssistantMessageEvent> {
   private queue: AssistantMessageEvent[] = [];
+  private queueHead = 0;
   private listeners: Array<(event: AssistantMessageEvent) => void | Promise<void>> = [];
   private listenerPromises = new Set<Promise<void>>();
   private resolvers: Array<(value: IteratorResult<AssistantMessageEvent>) => void> = [];
@@ -89,7 +90,11 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     return {
       next: (): Promise<IteratorResult<AssistantMessageEvent>> => {
         if (this.queue.length > 0) {
-          const value = this.queue.shift()!;
+          const value = this.queue[this.queueHead++];
+          if (this.queueHead === this.queue.length) {
+            this.queue = [];
+            this.queueHead = 0;
+          }
           return Promise.resolve({ value, done: false });
         }
         if (this.isEnded) {
