@@ -22,3 +22,19 @@ export * from './cbor/index.js';
 export * from './framing.js';
 export * from './codec.js';
 export * from './runtime-contract.js';
+export type {
+  RuntimeModelNetworkCapability,
+  RuntimeModelRegistrationConfig,
+  RuntimeModelRouteCapabilities,
+  RuntimeModelRouteHealthParams,
+  RuntimeModelRouteHealthResult,
+  RuntimeModelRouteHealthState,
+  RuntimeModelRouteRanking,
+  RuntimeModelRouteRegistration,
+  RuntimeModelRouteRemoveParams,
+  RuntimeModelRouteRemoveResult,
+  RuntimeModelRouteSummary,
+  RuntimeModelRoutesConfigureParams,
+  RuntimeModelRoutesConfigureResult,
+  RuntimeModelSummary
+} from './runtime-model.js';

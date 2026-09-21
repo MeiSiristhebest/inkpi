@@ -201,7 +201,7 @@ export class CapabilityMismatchError extends Error {
 const routeOptions = new WeakMap<CapabilityRouter, CapabilityRouterOptions>();
 
 export class CapabilityRouter {
-  private readonly routes: ResolvedModelRoute[];
+  private routes: ResolvedModelRoute[];
 
   constructor(routes: readonly ModelRoute[] = [], options: CapabilityRouterOptions = {}) {
     this.routes = routes.map((route) => normalizeRoute(route));
@@ -210,6 +210,20 @@ export class CapabilityRouter {
     // through the injected runtime-state evaluator.
     this.resolve = (task) => resolveWithRuntimeState(this, task);
     this.resolveCandidates = (task) => resolveCandidatesWithRuntimeState(this, task);
+  }
+
+  /** Replace the route table without replacing the Runtime-owned router. */
+  replaceRoutes(routes: readonly ModelRoute[]): void {
+    this.routes = routes.map((route) => normalizeRoute(route));
+  }
+
+  /** Attach a Runtime-owned mutable state source for route health updates. */
+  setRuntimeStateSource(
+    routeStates: ReadonlyMap<string, ModelRouteRuntimeState> | Readonly<Record<string, ModelRouteRuntimeState>>
+  ): void {
+    const options = routeOptions.get(this) ?? {};
+    options.routeStates = routeStates;
+    routeOptions.set(this, options);
   }
 
   list(): ResolvedModelRoute[] {
@@ -317,7 +331,7 @@ function validateRouteRanking(routeId: string, ranking: ModelRouteRanking | unde
   }
 }
 
-function validateRuntimeState(routeId: string, state: ModelRouteRuntimeState): void {
+export function validateModelRouteRuntimeState(routeId: string, state: ModelRouteRuntimeState): void {
   if (state.availability !== undefined && !['available', 'degraded', 'unavailable'].includes(state.availability)) {
     throw new Error(`Invalid availability state for model route '${routeId}'`);
   }
@@ -596,9 +610,7 @@ function resolveCandidatesWithRuntimeState(router: CapabilityRouter, task: AiTas
   // schema change, and when absent the resolution is unchanged.
   const preference = readTaskModelPreference(task);
   if (preference) {
-    const preferred = candidates.filter((evaluation) =>
-      routeMatchesPreference(evaluation.route, preference)
-    );
+    const preferred = candidates.filter((evaluation) => routeMatchesPreference(evaluation.route, preference));
     if (preferred.length > 0) {
       candidates = preferred;
     } else if (preference.required) {
@@ -615,9 +627,7 @@ function resolveCandidatesWithRuntimeState(router: CapabilityRouter, task: AiTas
     }
   }
 
-  return candidates
-    .sort((left, right) => compareEvaluatedRoutes(left, right))
-    .map((evaluation) => evaluation.route);
+  return candidates.sort((left, right) => compareEvaluatedRoutes(left, right)).map((evaluation) => evaluation.route);
 }
 
 function evaluateRoutes(router: CapabilityRouter, task: AiTask): EvaluatedRoute[] {
@@ -645,7 +655,7 @@ function getInjectedRouteState(
   const injected = options.getRouteState?.(route, task);
   if (configured === undefined && injected === undefined) return undefined;
   const state = { ...configured, ...injected };
-  validateRuntimeState(route.id, state);
+  validateModelRouteRuntimeState(route.id, state);
   return state;
 }
 
@@ -745,16 +755,12 @@ export function readTaskModelPreference(task: AiTask): ModelRoutePreference | un
   if (!raw || typeof raw !== 'object') return undefined;
   const record = raw as Record<string, unknown>;
   const modelId = typeof record.modelId === 'string' && record.modelId ? record.modelId : undefined;
-  const providerId =
-    typeof record.providerId === 'string' && record.providerId ? record.providerId : undefined;
+  const providerId = typeof record.providerId === 'string' && record.providerId ? record.providerId : undefined;
   if (!modelId && !providerId) return undefined;
   return { modelId, providerId, required: record.required === true };
 }
 
-function routeMatchesPreference(
-  route: ResolvedModelRoute,
-  preference: ModelRoutePreference
-): boolean {
+function routeMatchesPreference(route: ResolvedModelRoute, preference: ModelRoutePreference): boolean {
   if (preference.modelId && route.model.id !== preference.modelId) return false;
   if (preference.providerId && route.model.provider !== preference.providerId) return false;
   return true;

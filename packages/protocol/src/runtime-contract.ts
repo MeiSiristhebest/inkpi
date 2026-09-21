@@ -47,7 +47,11 @@ export const RUNTIME_CAPABILITIES = [
   'artifact.list',
   'workspace.purge',
   'tool.list',
-  'tool.execute'
+  'tool.execute',
+  'model.routes.list',
+  'model.routes.configure',
+  'model.routes.remove',
+  'model.routes.health'
 ] as const;
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number];
@@ -65,7 +69,11 @@ export const DESKTOP_REQUIRED_RUNTIME_CAPABILITIES = [
   'task.steer',
   'task.resume',
   'cache.status',
-  'cache.invalidate'
+  'cache.invalidate',
+  'model.routes.list',
+  'model.routes.configure',
+  'model.routes.remove',
+  'model.routes.health'
 ] as const satisfies readonly RuntimeCapability[];
 
 export interface RuntimeHandshakeRequest {

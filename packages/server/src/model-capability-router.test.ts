@@ -386,6 +386,74 @@ describe('capability-aware model routing', () => {
     expect(() => daemon.getTaskRouter().status('mismatch-task')).toThrow('Unknown task');
   });
 
+  it('configures secret-free Runtime model route summaries and health state', async () => {
+    const daemon = new InkPiDaemon({ defaultModel: baseModel });
+    daemons.push(daemon);
+
+    const configured = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 10,
+      method: 'model.routes.configure',
+      params: {
+        routes: [
+          {
+            id: 'desktop:openai:writer',
+            model: {
+              id: 'writer',
+              name: 'Writer',
+              provider: 'openai',
+              baseUrl: 'https://api.openai.com/v1',
+              apiKey: 'secret-route-key'
+            },
+            capabilities: { outputFormats: ['text'], streaming: true },
+            priority: 20
+          }
+        ]
+      }
+    });
+
+    expect(configured.error).toBeUndefined();
+    expect(configured).toMatchObject({
+      result: { configured: ['desktop:openai:writer'] }
+    });
+    const configuredRoutes = (configured as { result: { routes: Array<Record<string, unknown>> } }).result.routes;
+    const configuredRoute = configuredRoutes.find((route) => route.id === 'desktop:openai:writer');
+    expect(configuredRoute).toMatchObject({
+      id: 'desktop:openai:writer',
+      model: { id: 'writer', provider: 'openai' }
+    });
+    expect(JSON.stringify(configured)).not.toContain('secret-route-key');
+
+    const health = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 11,
+      method: 'model.routes.health',
+      params: {
+        routeId: 'desktop:openai:writer',
+        state: { availability: 'degraded', health: 'degraded', latencyMs: 240 }
+      }
+    });
+    expect(health).toMatchObject({
+      result: {
+        routeId: 'desktop:openai:writer',
+        exists: true,
+        credentialConfigured: true,
+        state: { availability: 'degraded', health: 'degraded', latencyMs: 240 },
+        model: { id: 'writer', provider: 'openai' }
+      }
+    });
+
+    const removed = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 12,
+      method: 'model.routes.remove',
+      params: { routeId: 'desktop:openai:writer' }
+    });
+    expect(removed).toMatchObject({
+      result: { routeId: 'desktop:openai:writer', removed: true }
+    });
+  });
+
   it('honors a task-carried model preference from metadata.modelRoute', () => {
     const base: Omit<ModelRoute, 'id' | 'model'> = {
       capabilities: {

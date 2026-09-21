@@ -17,6 +17,7 @@ import {
   TaskRouter,
   type TaskRunObserver
 } from '@inkpi/agent-core';
+import type { ModelConfig as AiModelConfig } from '@inkpi/ai';
 import {
   RUNTIME_CAPABILITIES,
   RUNTIME_IMPLEMENTATION_VERSION,
@@ -43,6 +44,14 @@ import type {
   ModelConfig,
   ProposalSyncPushParams,
   ProposalSyncSnapshotParams,
+  RuntimeModelRouteHealthParams,
+  RuntimeModelRouteHealthResult,
+  RuntimeModelRouteRegistration,
+  RuntimeModelRouteRemoveParams,
+  RuntimeModelRouteRemoveResult,
+  RuntimeModelRouteSummary,
+  RuntimeModelRoutesConfigureParams,
+  RuntimeModelRoutesConfigureResult,
   SkillActivateParams,
   SkillActivationResult,
   SkillDiscoverResult,
@@ -72,7 +81,13 @@ import {
   registerFirstPartyPluginRuntime
 } from './first-party-plugin-runtime.js';
 import { JitContextProvider } from './jit-context-provider.js';
-import type { CapabilityRouter, ModelCapabilities, ModelRoute } from './model-capability-router.js';
+import {
+  type CapabilityRouter,
+  type ModelCapabilities,
+  type ModelRoute,
+  type ModelRouteRuntimeState,
+  validateModelRouteRuntimeState
+} from './model-capability-router.js';
 import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TaskModelHandler } from './task-model-handler.js';
@@ -131,7 +146,12 @@ export class InkPiDaemon {
   private options: DaemonOptions;
   private readonly instructionRegistry: InstructionRegistry;
   private readonly skillRuntime: ProgressiveSkillRuntime;
-  private readonly capabilityRouter?: CapabilityRouter;
+  private capabilityRouter?: CapabilityRouter;
+  private modelHandler?: TaskModelHandler;
+  private readonly baseModelRoutes = new Map<string, ModelRoute>();
+  private readonly dynamicModelRoutes = new Map<string, ModelRoute>();
+  private readonly removedBaseModelRoutes = new Set<string>();
+  private readonly modelRouteStates = new Map<string, import('./model-capability-router.js').ModelRouteRuntimeState>();
   private readonly taskObservability: TaskObservability;
   private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
   private readonly firstPartyPluginRuntime: FirstPartyPluginRuntimeRegistration;
@@ -180,10 +200,8 @@ export class InkPiDaemon {
         observer: options.observer ?? this.taskObservability,
         cacheCoordinator: this.cacheCoordinator
       });
-    if (
-      (options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) &&
-      !this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.model')
-    ) {
+    const existingModelHandler = this.taskRouter.registry.list().find((handler) => handler.id === 'runtime.model');
+    if ((options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) && !existingModelHandler) {
       const modelHandler = new TaskModelHandler({
         model: options.defaultModel,
         defaultModelCapabilities: options.defaultModelCapabilities,
@@ -191,10 +209,16 @@ export class InkPiDaemon {
         capabilityRouter: options.capabilityRouter,
         cacheCoordinator: this.cacheCoordinator
       });
+      this.modelHandler = modelHandler;
       this.capabilityRouter = modelHandler.getCapabilityRouter();
       this.taskRouter.registry.register(modelHandler);
     } else {
-      this.capabilityRouter = options.capabilityRouter;
+      this.modelHandler = existingModelHandler instanceof TaskModelHandler ? existingModelHandler : undefined;
+      this.capabilityRouter = this.modelHandler?.getCapabilityRouter() ?? options.capabilityRouter;
+    }
+    if (this.capabilityRouter) {
+      for (const route of this.capabilityRouter.list()) this.baseModelRoutes.set(route.id, route);
+      this.capabilityRouter.setRuntimeStateSource(this.modelRouteStates);
     }
     this.skillRuntime =
       options.skillRuntime ??
@@ -445,6 +469,22 @@ export class InkPiDaemon {
       });
     });
 
+    this.rpcServer.registerMethod('model.routes.list', () => this.listRuntimeModelRoutes());
+    this.rpcServer.registerMethod(
+      'model.routes.configure',
+      (params: RuntimeModelRoutesConfigureParams): RuntimeModelRoutesConfigureResult =>
+        this.configureRuntimeModelRoutes(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.routes.remove',
+      (params: RuntimeModelRouteRemoveParams): RuntimeModelRouteRemoveResult => this.removeRuntimeModelRoute(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.routes.health',
+      (params: RuntimeModelRouteHealthParams): RuntimeModelRouteHealthResult =>
+        this.updateRuntimeModelRouteHealth(params)
+    );
+
     this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
       const handler = this.taskRouter.registry.resolve(params.task);
       if (handler.id === 'runtime.model') {
@@ -627,6 +667,114 @@ export class InkPiDaemon {
       session.ghost.dismiss();
       return { success: true };
     });
+  }
+
+  private listRuntimeModelRoutes(): RuntimeModelRouteSummary[] {
+    return this.currentModelRoutes().map(summarizeRuntimeModelRoute);
+  }
+
+  private configureRuntimeModelRoutes(params: RuntimeModelRoutesConfigureParams): RuntimeModelRoutesConfigureResult {
+    if (!params || !Array.isArray(params.routes)) {
+      throw new Error('model.routes.configure requires a routes array');
+    }
+
+    const nextRoutes = new Map<string, ModelRoute>();
+    for (const entry of params.routes) {
+      const route = runtimeRegistrationToModelRoute(entry);
+      if (nextRoutes.has(route.id)) {
+        throw new Error(`Duplicate model route id '${route.id}'`);
+      }
+      nextRoutes.set(route.id, route);
+    }
+
+    const previousIds = [...this.dynamicModelRoutes.keys()];
+    const nextIds = new Set(nextRoutes.keys());
+    if (nextRoutes.size > 0) this.ensureModelHandler([...nextRoutes.values()]);
+
+    this.dynamicModelRoutes.clear();
+    for (const [routeId, route] of nextRoutes) {
+      this.dynamicModelRoutes.set(routeId, route);
+      this.removedBaseModelRoutes.delete(routeId);
+    }
+    for (const routeId of previousIds) {
+      if (!nextIds.has(routeId)) this.modelRouteStates.delete(routeId);
+    }
+    this.applyModelRoutes();
+
+    return {
+      configured: [...nextRoutes.keys()],
+      removed: previousIds.filter((routeId) => !nextIds.has(routeId)),
+      routes: this.listRuntimeModelRoutes()
+    };
+  }
+
+  private removeRuntimeModelRoute(params: RuntimeModelRouteRemoveParams): RuntimeModelRouteRemoveResult {
+    const routeId = requiredString(params?.routeId, 'routeId');
+    const wasDynamic = this.dynamicModelRoutes.delete(routeId);
+    const wasBase = this.baseModelRoutes.has(routeId) && !this.removedBaseModelRoutes.has(routeId);
+    if (wasBase) this.removedBaseModelRoutes.add(routeId);
+    const removed = wasDynamic || wasBase;
+    if (removed) {
+      this.modelRouteStates.delete(routeId);
+      this.applyModelRoutes();
+    }
+    return { routeId, removed, routes: this.listRuntimeModelRoutes() };
+  }
+
+  private updateRuntimeModelRouteHealth(params: RuntimeModelRouteHealthParams): RuntimeModelRouteHealthResult {
+    const routeId = requiredString(params?.routeId, 'routeId');
+    const route = this.currentModelRoutes().find((candidate) => candidate.id === routeId);
+    if (!route) {
+      return {
+        routeId,
+        exists: false,
+        credentialConfigured: false,
+        state: { availability: 'unavailable', health: 'unknown' }
+      };
+    }
+
+    if (params.state !== undefined) {
+      validateModelRouteRuntimeState(routeId, params.state);
+      this.modelRouteStates.set(routeId, { ...params.state });
+    }
+    const state = this.modelRouteStates.get(routeId) ?? {
+      availability: 'available' as const,
+      health: 'unknown' as const
+    };
+    return {
+      routeId,
+      exists: true,
+      credentialConfigured: typeof route.model.apiKey === 'string' && route.model.apiKey.length > 0,
+      state: { ...state },
+      model: { id: route.model.id, provider: String(route.model.provider) }
+    };
+  }
+
+  private currentModelRoutes(): ModelRoute[] {
+    const routes = new Map<string, ModelRoute>();
+    for (const [routeId, route] of this.baseModelRoutes) {
+      if (!this.removedBaseModelRoutes.has(routeId)) routes.set(routeId, route);
+    }
+    for (const [routeId, route] of this.dynamicModelRoutes) routes.set(routeId, route);
+    return [...routes.values()];
+  }
+
+  private ensureModelHandler(routes: readonly ModelRoute[]): CapabilityRouter {
+    if (this.capabilityRouter) return this.capabilityRouter;
+    const modelHandler = new TaskModelHandler({
+      routes,
+      cacheCoordinator: this.cacheCoordinator
+    });
+    this.modelHandler = modelHandler;
+    this.capabilityRouter = modelHandler.getCapabilityRouter();
+    this.capabilityRouter.setRuntimeStateSource(this.modelRouteStates);
+    this.taskRouter.registry.register(modelHandler);
+    return this.capabilityRouter;
+  }
+
+  private applyModelRoutes(): void {
+    if (!this.capabilityRouter) return;
+    this.capabilityRouter.replaceRoutes(this.currentModelRoutes());
   }
 
   /**
@@ -817,6 +965,105 @@ export class InkPiDaemon {
     }
 
     return [...capabilities].sort() as RuntimeCapability[];
+  }
+}
+
+function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): ModelRoute {
+  if (!isRecord(entry)) throw new Error('Model route registration must be an object');
+  const id = routeString(entry.id, 'route id');
+  if (!isRecord(entry.model)) throw new Error(`Model route '${id}' requires a model object`);
+  const modelId = routeString(entry.model.id, `model id for route '${id}'`);
+  const name = routeString(entry.model.name ?? modelId, `model name for route '${id}'`);
+  const provider = routeString(entry.model.provider, `model provider for route '${id}'`);
+  const model = {
+    id: modelId,
+    name,
+    provider: provider as AiModelConfig['provider'],
+    ...(typeof entry.model.apiKey === 'string' && entry.model.apiKey.length > 0 ? { apiKey: entry.model.apiKey } : {}),
+    ...(typeof entry.model.baseUrl === 'string' ? { baseUrl: entry.model.baseUrl } : {}),
+    ...(finiteNumber(entry.model.temperature) ? { temperature: entry.model.temperature } : {}),
+    ...(finiteNumber(entry.model.topP) ? { topP: entry.model.topP } : {}),
+    ...(finiteNumber(entry.model.maxTokens) ? { maxTokens: entry.model.maxTokens } : {}),
+    ...(finiteNumber(entry.model.thinkingBudget) ? { thinkingBudget: entry.model.thinkingBudget } : {}),
+    ...(typeof entry.model.supportsThinking === 'boolean' ? { supportsThinking: entry.model.supportsThinking } : {}),
+    ...(typeof entry.model.supportsMidConvoEffort === 'boolean'
+      ? { supportsMidConvoEffort: entry.model.supportsMidConvoEffort }
+      : {}),
+    ...(typeof entry.model.supportsPromptCache === 'boolean'
+      ? { supportsPromptCache: entry.model.supportsPromptCache }
+      : {}),
+    ...(finiteNumber(entry.model.presencePenalty) ? { presencePenalty: entry.model.presencePenalty } : {}),
+    ...(finiteNumber(entry.model.frequencyPenalty) ? { frequencyPenalty: entry.model.frequencyPenalty } : {}),
+    ...(isRecord(entry.model.cacheControl) &&
+    (entry.model.cacheControl.type === 'ephemeral' || entry.model.cacheControl.type === 'disabled')
+      ? { cacheControl: { type: entry.model.cacheControl.type } }
+      : {}),
+    ...(isRecord(entry.model.compat) ? { compat: entry.model.compat } : {}),
+    ...(isRecord(entry.model.fauxScript) ? { fauxScript: entry.model.fauxScript } : {})
+  } as AiModelConfig;
+
+  return {
+    id,
+    model,
+    ...(entry.capabilities ? { capabilities: { ...entry.capabilities } } : {}),
+    ...(finiteNumber(entry.priority) ? { priority: entry.priority } : {}),
+    ...(entry.ranking ? { ranking: { ...entry.ranking } } : {}),
+    ...(typeof entry.fallback === 'boolean' ? { fallback: entry.fallback } : {})
+  };
+}
+
+function summarizeRuntimeModelRoute(route: ModelRoute): RuntimeModelRouteSummary {
+  const model = route.model;
+  const summary = {
+    id: model.id,
+    name: model.name,
+    provider: String(model.provider),
+    ...(safeRouteBaseUrl(model.baseUrl) ? { baseUrl: safeRouteBaseUrl(model.baseUrl) } : {}),
+    ...(finiteNumber(model.temperature) ? { temperature: model.temperature } : {}),
+    ...(finiteNumber(model.topP) ? { topP: model.topP } : {}),
+    ...(finiteNumber(model.maxTokens) ? { maxTokens: model.maxTokens } : {}),
+    ...(finiteNumber(model.thinkingBudget) ? { thinkingBudget: model.thinkingBudget } : {}),
+    ...(typeof model.supportsThinking === 'boolean' ? { supportsThinking: model.supportsThinking } : {}),
+    ...(typeof model.supportsMidConvoEffort === 'boolean'
+      ? { supportsMidConvoEffort: model.supportsMidConvoEffort }
+      : {}),
+    ...(typeof model.supportsPromptCache === 'boolean' ? { supportsPromptCache: model.supportsPromptCache } : {}),
+    ...(finiteNumber(model.presencePenalty) ? { presencePenalty: model.presencePenalty } : {}),
+    ...(finiteNumber(model.frequencyPenalty) ? { frequencyPenalty: model.frequencyPenalty } : {}),
+    ...(model.cacheControl ? { cacheControl: model.cacheControl } : {})
+  };
+  return {
+    id: route.id,
+    model: summary,
+    ...(route.capabilities ? { capabilities: { ...route.capabilities } } : {}),
+    ...(route.priority === undefined ? {} : { priority: route.priority }),
+    ...(route.ranking ? { ranking: { ...route.ranking } } : {}),
+    ...(route.fallback === undefined ? {} : { fallback: route.fallback })
+  };
+}
+
+function routeString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Model route ${field} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function safeRouteBaseUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    url.username = '';
+    url.password = '';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return /[?#]|\/\/[^/]*@/.test(value) ? undefined : value;
   }
 }
 
