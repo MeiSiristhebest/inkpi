@@ -3,6 +3,7 @@ import {
   type CacheInvalidationEvent,
   type RuntimeCacheCoordinatorPort,
   createRuntimeCacheKey,
+  resolveTaskWorkspaceId,
   shouldInvalidateCacheEntry,
   stableSerialize,
   validateRuntimeCacheLayerStats
@@ -151,7 +152,7 @@ export class JitContextProvider implements ContextProvider {
     const values = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
     const metadata = request.metadata ?? {};
     const query: JitContextQuery = {
-      workspaceId: firstString(values.workspaceId, metadata.workspaceId),
+      workspaceId: resolveTaskWorkspaceId(request.task) ?? undefined,
       currentDocumentId: request.task.input.documentId,
       currentText: request.task.input.text,
       activeReferences: asStringArray(values.activeReferences),
@@ -235,6 +236,7 @@ export function createRetrievalCacheKey(
   const metadata = request?.metadata ?? {};
   return createRuntimeCacheKey({
     layer: 'retrieval',
+    workspaceId: query.workspaceId ?? null,
     taskKind: request?.purpose,
     instructionVersion: firstString(metadata.instructionVersion),
     skillVersion: firstString(metadata.skillVersion),

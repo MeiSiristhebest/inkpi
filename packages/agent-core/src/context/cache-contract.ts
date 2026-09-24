@@ -145,6 +145,13 @@ export function validateRuntimeCacheStats(value: unknown): asserts value is Runt
 
 export interface RuntimeCacheKeyInput {
   layer: RuntimeCacheLayer;
+  /**
+   * Owning workspace, or `null` when the request is explicitly unscoped.
+   * Required because content-only keys let one workspace replay a cached hit
+   * assembled for another. `null` is still a distinct key, so an unscoped
+   * entry can never collide with a workspace-scoped one.
+   */
+  workspaceId: string | null;
   taskKind?: string;
   instructionVersion?: string;
   skillVersion?: string;
@@ -167,7 +174,8 @@ export function createRuntimeCacheKey(input: RuntimeCacheKeyInput): string {
     provider: input.provider ?? null,
     skillVersion: input.skillVersion ?? null,
     taskKind: input.taskKind ?? null,
-    version: 1
+    version: 1,
+    workspaceId: input.workspaceId
   });
 }
 

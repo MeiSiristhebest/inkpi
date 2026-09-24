@@ -299,6 +299,7 @@ export function createContextCacheKey(task: AiTask, providerIds: readonly string
 
   return createRuntimeCacheKey({
     layer: 'context',
+    workspaceId: resolveTaskWorkspaceId(task),
     taskKind: task.kind,
     instructionVersion,
     skillVersion,
@@ -320,6 +321,23 @@ export function createContextCacheKey(task: AiTask, providerIds: readonly string
       providers: [...providerIds]
     }
   });
+}
+
+/**
+ * Resolve the owning workspace for cache identity and retrieval scoping.
+ * Precedence mirrors the Desktop task-authority convention: an explicit
+ * `scope` wins over the payload/metadata carriers, and a task that names no
+ * workspace resolves to `null` rather than an empty string, so an unscoped
+ * entry can never be mistaken for a workspace-scoped one.
+ */
+export function resolveTaskWorkspaceId(task: AiTask): string | null {
+  const metadata = asRecord(task.metadata);
+  const contextMetadata = asRecord(task.contextPolicy?.metadata);
+  const payload = asRecord(task.input?.payload);
+  return (
+    firstString(task.scope?.workspaceId, payload?.workspaceId, metadata?.workspaceId, contextMetadata?.workspaceId) ??
+    null
+  );
 }
 
 function clonePacket(packet: ContextPacket): ContextPacket {

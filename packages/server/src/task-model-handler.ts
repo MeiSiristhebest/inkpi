@@ -411,6 +411,10 @@ function createProviderResponseCacheKey(
   const skillVersion = firstString(taskMetadata?.skillVersion, contextMetadata?.skillVersion);
   return createRuntimeCacheKey({
     layer: 'provider',
+    // Provider replies are keyed by the rendered messages too, so the task scope is a
+    // sufficient discriminator here; the payload/metadata carriers only matter for the
+    // context and retrieval layers, where the resolver supplies them.
+    workspaceId: context.task.scope?.workspaceId ?? null,
     taskKind: context.task.kind,
     instructionVersion: context.instructions?.version,
     skillVersion,
