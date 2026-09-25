@@ -1,4 +1,12 @@
-import { FtsSearchEngine, InkDb, InkRepository, JitMemoryRetriever, formatJitContextAsPrompt } from '@inkpi/storage';
+import { type DomainChange, type DomainChangeSet, calculateDomainChangeSetChecksum } from '@inkpi/protocol';
+import {
+  DomainProjectionStore,
+  FtsSearchEngine,
+  InkDb,
+  InkRepository,
+  JitMemoryRetriever,
+  formatJitContextAsPrompt
+} from '@inkpi/storage';
 import { describe, expect, it } from 'vitest';
 
 describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
@@ -387,6 +395,65 @@ describe('JIT Tiered Memory Retrieval (L1 / L2 / L3)', () => {
 
     expect(result.assembledPromptBlock).toContain('Locations: 天机阁(千年占卜重地)');
     expect(result.assembledPromptBlock).toContain('Tracks: 玄阴古玉的线索(pending)');
+
+    db.close();
+  });
+
+  it('fills the L2 tier from chapter synopses that arrive through the domain journal', async () => {
+    const db = new InkDb(':memory:');
+    const repo = new InkRepository(db);
+    const fts = new FtsSearchEngine(db);
+    const projection = new DomainProjectionStore(db, () => 300);
+
+    const chapter = (id: string, order: number, synopsis?: string): DomainChange => ({
+      id: `chapter-change-${id}`,
+      aggregateType: 'chapter',
+      aggregateId: id,
+      operation: 'upsert',
+      revision: order,
+      occurredAt: 100 + order,
+      payload: {
+        id,
+        projectId: 'project-1',
+        volumeId: 'volume-1',
+        title: `第${order}章`,
+        content: '<p>正文</p>',
+        wordCount: 20,
+        order,
+        ...(synopsis === undefined ? {} : { synopsis }),
+        revision: order,
+        createdAt: 100,
+        updatedAt: 100 + order
+      }
+    });
+    const unsigned: Omit<DomainChangeSet, 'checksum'> = {
+      id: 'set-desktop-chapters',
+      workspaceId: 'project-1',
+      sourceDeviceId: 'desktop-test',
+      baseRevision: 0,
+      revision: 1,
+      createdAt: 300,
+      changes: [
+        chapter('chapter-1', 1, '林澈在雨夜离开北境，剑匣留在原地。'),
+        chapter('chapter-2', 2, '她在渡口重遇旧同门，仍未取剑。'),
+        chapter('chapter-3', 3)
+      ]
+    };
+
+    expect(projection.apply({ ...unsigned, checksum: calculateDomainChangeSetChecksum(unsigned) })).toMatchObject({
+      accepted: true
+    });
+
+    const result = await new JitMemoryRetriever({ repository: repo, ftsEngine: fts }).retrieve({
+      workspaceId: 'project-1',
+      currentDocumentId: 'chapter-3',
+      currentText: '她终于回头看向渡口。'
+    });
+
+    expect(result.l2RecentSummaries).toEqual([
+      { documentId: 'chapter-1', title: '第1章', summary: '林澈在雨夜离开北境，剑匣留在原地。' },
+      { documentId: 'chapter-2', title: '第2章', summary: '她在渡口重遇旧同门，仍未取剑。' }
+    ]);
 
     db.close();
   });
