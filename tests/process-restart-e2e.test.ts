@@ -2,7 +2,14 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { AiTask, TaskStatusSnapshot } from '@inkpi/protocol';
+import { calculateDomainChangeSetChecksum } from '@inkpi/protocol';
+import type {
+  AiTask,
+  DomainChange,
+  DomainChangeSet,
+  DomainProjectionApplyResult,
+  TaskStatusSnapshot
+} from '@inkpi/protocol';
 import { InkRpcClient, SqliteTaskCheckpointStore, SqliteTaskExecutionStore } from '@inkpi/server';
 import { InkDb } from '@inkpi/storage';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -102,11 +109,49 @@ process.once('SIGTERM', () => void shutdown());
 setInterval(() => undefined, 1_000);
 `;
 
+/**
+ * 正文持久化阶段只需要一条带着领域投影存储的守护进程：不注册模型、不跑任务，
+ * 这样崩溃点就只剩"领域日志 + 投影是否已经落到磁盘"这一件事。
+ */
+const DOMAIN_CHILD_SCRIPT = String.raw`
+import { InkPiDaemon } from '@inkpi/server';
+import { DomainProjectionStore, InkDb } from '@inkpi/storage';
+
+const dbPath = process.env.INKPI_PROCESS_RESTART_DB;
+if (!dbPath) throw new Error('INKPI_PROCESS_RESTART_DB is required');
+
+const db = new InkDb(dbPath);
+const daemon = new InkPiDaemon({
+  host: '127.0.0.1',
+  context: { domainProjection: new DomainProjectionStore(db) }
+});
+
+const emit = (event) => process.stdout.write(JSON.stringify(event) + '\n');
+
+await daemon.start(0, '127.0.0.1');
+emit({ type: 'ready', port: daemon.getStatus().port });
+
+let shuttingDown = false;
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await daemon.stop();
+    db.close();
+  } finally {
+    process.exit(0);
+  }
+};
+process.once('SIGINT', () => void shutdown());
+process.once('SIGTERM', () => void shutdown());
+setInterval(() => undefined, 1_000);
+`;
+
 function hasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
-function startDaemon(dbPath: string): Promise<RunningDaemon> {
+function startDaemon(dbPath: string, script: string = CHILD_SCRIPT): Promise<RunningDaemon> {
   const childEnv = { ...process.env };
   for (const key of [
     'DEEPSEEK_API_KEY',
@@ -120,7 +165,7 @@ function startDaemon(dbPath: string): Promise<RunningDaemon> {
   }
   childEnv.INKPI_PROCESS_RESTART_DB = dbPath;
 
-  const child = spawn(process.execPath, ['--input-type=module', '--eval', CHILD_SCRIPT], {
+  const child = spawn(process.execPath, ['--input-type=module', '--eval', script], {
     cwd: repositoryRoot,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -411,4 +456,122 @@ describe('real OS process crash and restart recovery', () => {
       if (secondDaemon) await terminateDaemon(secondDaemon);
     }
   }, 30_000);
+});
+
+const CRASH_WORKSPACE = 'process-restart-workspace';
+const CRASH_DOCUMENT = 'process-restart-chapter';
+// CJK + 换行 + 标点：正文必须逐字节回来，而不是"差不多"。
+const CRASH_BODY = '第一章\n林澈在雨夜离开北境，把剑匣留在了原地。\n她在渡口重遇旧同门 —— 仍未取剑。';
+
+function crashChangeSet(revision: number): DomainChangeSet {
+  const changes: DomainChange[] = [
+    {
+      id: `${CRASH_DOCUMENT}@${revision}`,
+      aggregateType: 'chapter',
+      aggregateId: CRASH_DOCUMENT,
+      operation: 'upsert',
+      revision,
+      payload: {
+        workspaceId: CRASH_WORKSPACE,
+        volumeId: 'volume-1',
+        title: '第一章',
+        synopsis: '林澈在雨夜离开北境，仍未取剑。',
+        content: revision === 1 ? CRASH_BODY : `${CRASH_BODY}\n她折返回渡口。`,
+        wordCount: CRASH_BODY.length
+      },
+      occurredAt: 1_700_000_000_000 + revision
+    }
+  ];
+  const unsigned = {
+    id: `change-set-${revision}`,
+    workspaceId: CRASH_WORKSPACE,
+    sourceDeviceId: 'process-restart-e2e',
+    baseRevision: revision - 1,
+    revision,
+    changes,
+    createdAt: 1_700_000_000_000 + revision
+  };
+  return { ...unsigned, checksum: calculateDomainChangeSetChecksum(unsigned) };
+}
+
+describe('manuscript body survives a real OS crash', () => {
+  it('reads the authoritative chapter content back from disk and keeps the projection cursor usable', async () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'inkpi-process-restart-content-'));
+    temporaryDirectories.add(temporaryDirectory);
+    const dbPath = join(temporaryDirectory, 'runtime.sqlite');
+
+    let firstDaemon: RunningDaemon | undefined;
+    let firstClient: InkRpcClient | undefined;
+    let secondDaemon: RunningDaemon | undefined;
+    let secondClient: InkRpcClient | undefined;
+    try {
+      firstDaemon = await startDaemon(dbPath, DOMAIN_CHILD_SCRIPT);
+      firstClient = await InkRpcClient.connectTcp(firstDaemon.port, '127.0.0.1');
+
+      await expect(
+        firstClient.request<DomainProjectionApplyResult>('domain.sync.push', {
+          changeSet: crashChangeSet(1)
+        })
+      ).resolves.toMatchObject({ accepted: true, duplicate: false, revision: 1 });
+
+      await firstClient.close();
+      firstClient = undefined;
+      expect(firstDaemon.child.kill('SIGKILL')).toBe(true);
+      const crashExit = await waitForChildExit(firstDaemon.child);
+      expect(crashExit.code).not.toBe(0);
+      activeDaemons.delete(firstDaemon);
+      firstDaemon = undefined;
+
+      // 崩溃后先用一个全新的连接直接读磁盘：证明正文真的落盘了，不是进程内存里的残留。
+      const evidenceDb = new InkDb(dbPath);
+      try {
+        const snapshot = evidenceDb
+          .prepare('SELECT content_markdown FROM document_snapshots WHERE document_id = ?')
+          .get(CRASH_DOCUMENT) as { content_markdown: string } | undefined;
+        expect(snapshot?.content_markdown).toBe(CRASH_BODY);
+        const document = evidenceDb.prepare('SELECT title, synopsis FROM documents WHERE id = ?').get(CRASH_DOCUMENT) as
+          | { title: string; synopsis: string | null }
+          | undefined;
+        expect(document).toMatchObject({ title: '第一章', synopsis: '林澈在雨夜离开北境，仍未取剑。' });
+        expect(
+          evidenceDb
+            .prepare('SELECT revision FROM domain_projection_cursors WHERE workspace_id = ?')
+            .get(CRASH_WORKSPACE)
+        ).toMatchObject({ revision: 1 });
+      } finally {
+        evidenceDb.close();
+      }
+
+      secondDaemon = await startDaemon(dbPath, DOMAIN_CHILD_SCRIPT);
+      secondClient = await InkRpcClient.connectTcp(secondDaemon.port, '127.0.0.1');
+      await expect(
+        secondClient.request<DomainChangeSet[]>('domain.sync.pull', {
+          workspaceId: CRASH_WORKSPACE,
+          afterRevision: 0
+        })
+      ).resolves.toMatchObject([
+        {
+          revision: 1,
+          changes: [{ aggregateId: CRASH_DOCUMENT, payload: { content: CRASH_BODY } }]
+        }
+      ]);
+
+      // 游标也必须活过崩溃：继续写第 2 批要能被接受，而不是被判定为 revision-conflict。
+      await expect(
+        secondClient.request<DomainProjectionApplyResult>('domain.sync.push', {
+          changeSet: crashChangeSet(2)
+        })
+      ).resolves.toMatchObject({ accepted: true, duplicate: false, revision: 2 });
+
+      await secondClient.close();
+      secondClient = undefined;
+      await terminateDaemon(secondDaemon);
+      secondDaemon = undefined;
+    } finally {
+      if (firstClient) await firstClient.close().catch(() => undefined);
+      if (secondClient) await secondClient.close().catch(() => undefined);
+      if (firstDaemon) await terminateDaemon(firstDaemon);
+      if (secondDaemon) await terminateDaemon(secondDaemon);
+    }
+  }, 45_000);
 });
