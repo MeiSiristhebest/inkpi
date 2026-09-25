@@ -171,7 +171,14 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
     typedServer.registerMethod('agent.prompt', (p: any) => ({ success: true, turnId: 't1', messages: [] }));
     typedServer.registerMethod('agent.steer', (p: any) => ({ success: true }));
     typedServer.registerMethod('agent.abort', () => ({ success: true }));
-    typedServer.registerMethod('session.getState', () => ({ messages: [], branches: [] }));
+    typedServer.registerMethod('session.getState', () => ({
+      sessionId: 'sess_e2e_all',
+      messages: [],
+      isStreaming: false,
+      editorText: '',
+      hasGhostText: false,
+      ghostText: null
+    }));
     typedServer.registerMethod('command.execute', (p: any) => ({ output: 'cmd done' }));
     typedServer.registerMethod('editor.insert', (p: any) => 'inserted');
     typedServer.registerMethod('editor.delete', (p: any) => 'deleted');

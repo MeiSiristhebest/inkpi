@@ -71,7 +71,7 @@ import type {
   ToolExecuteParams,
   ToolResultMessage
 } from '@inkpi/protocol';
-import type { RuntimeCapability } from '@inkpi/protocol';
+import type { DaemonStatus, RuntimeCapability } from '@inkpi/protocol';
 import type { ProposalProjectionStore } from '@inkpi/storage';
 import { createConversationHistoryProvider } from './conversation-history-provider.js';
 import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
@@ -118,15 +118,7 @@ export type {
   DaemonRuntimeCachePersistenceTargets,
   RuntimeCachePersistence
 } from './daemon-cache-persistence.js';
-
-export interface DaemonStatus {
-  running: boolean;
-  port?: number;
-  host?: string;
-  wsPort?: number | null;
-  activeSessions: number;
-  uptimeMs: number;
-}
+export type { DaemonStatus } from '@inkpi/protocol';
 
 /**
  * InkPi 常驻守护进程 (InkPi Daemon)

@@ -2,7 +2,7 @@ import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import { Agent } from '../agent.js';
 
 import { getModelPreset } from '@inkpi/ai';
-import type { ModelConfig } from '@inkpi/protocol';
+import type { ModelConfig, SessionCreateOptions, SessionSummary } from '@inkpi/protocol';
 import { NoModelConfiguredError } from '../errors.js';
 import type { Clock, SessionStore } from '../ports/index.js';
 import {
@@ -24,25 +24,9 @@ export interface ManagedSession {
   metadata?: Record<string, unknown>;
 }
 
-export interface SessionCreateOptions {
-  sessionId?: string;
-  model?: ModelConfig | string;
-  initialText?: string;
-  systemPrompt?: string;
-  metadata?: Record<string, unknown>;
-  /** 预置恢复的历史条目（对齐上游 v0.85.0 PR #8980 SessionManager.inMemory with preloaded entries） */
-  entries?: import('@inkpi/protocol').SessionEntry[];
-}
-
-export interface SessionSummary {
-  sessionId: string;
-  createdAt: number;
-  lastActiveAt: number;
-  messageCount: number;
-  documentLength: number;
-  hasGhostText: boolean;
-  metadata?: Record<string, unknown>;
-}
+// The session wire contract lives in @inkpi/protocol so the daemon's RPC map can name it;
+// re-exported here because agent-core publishes its session surface from this module.
+export type { SessionCreateOptions, SessionSummary } from '@inkpi/protocol';
 
 /**
  * 实时多会话注册表 (SessionRegistry)

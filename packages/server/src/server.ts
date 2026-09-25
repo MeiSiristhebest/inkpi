@@ -17,6 +17,7 @@ import type { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import type { ArtifactStore, RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
 import type { AgentMessage } from '@inkpi/protocol';
 import { RPC_ERROR_CODES } from '@inkpi/protocol';
+import type { RpcMethodRegistrationHandler } from '@inkpi/protocol';
 import type {
   AppendOnlySessionJournal,
   FtsSearchEngine,
@@ -102,8 +103,8 @@ export class InkRpcServer {
     return this.ctx;
   }
 
-  public registerMethod(name: string, handler: (params: any) => Promise<any> | any): void {
-    this.customHandlers.set(name, handler);
+  public registerMethod<K extends string>(name: K, handler: RpcMethodRegistrationHandler<K>): void {
+    this.customHandlers.set(name, handler as (params: any) => Promise<any> | any);
   }
 
   public bindTransport(transport: RpcTransport): void {
