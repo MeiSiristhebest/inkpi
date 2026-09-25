@@ -36,12 +36,28 @@ describe('serialized CreativeContext schema boundary', () => {
 
     expect(await documentProvider.supports?.(request(validContext))).toBe(true);
     expect(await storyProvider.supports?.(request(validContext))).toBe(true);
-    expect(await documentProvider.provide(request(validContext))).toMatchObject([
+    const fragments = await documentProvider.provide(request(validContext));
+    expect(fragments).toMatchObject([
       {
         source: SERIALIZED_CREATIVE_DOCUMENT_PROVIDER_ID,
-        data: expect.objectContaining({ documentId: 'chapter-1', text: '正文' })
+        kind: 'semantic-document',
+        data: expect.objectContaining({ documentId: 'chapter-1' })
+      },
+      {
+        source: SERIALIZED_CREATIVE_DOCUMENT_PROVIDER_ID,
+        kind: 'document-prose',
+        text: '正文'
       }
     ]);
+
+    // The manuscript travels once. Block text is a slice of the prose and the selection is the
+    // task-input fragment, so repeating either in the document structure tripled the chapter in
+    // a fragment the budget could not trim.
+    const structure = fragments[0].data as Record<string, unknown>;
+    expect(structure).not.toHaveProperty('text');
+    expect(structure).not.toHaveProperty('selectionText');
+    expect(structure.blocks).toEqual([{ id: 'block-1', type: 'paragraph', from: 0, to: 2 }]);
+
     expect(await storyProvider.provide(request(validContext))).toMatchObject([
       {
         source: SERIALIZED_CREATIVE_STORY_PROVIDER_ID,

@@ -14,18 +14,25 @@ export function createSerializedCreativeContextProviders(): readonly ContextProv
   return [
     {
       id: SERIALIZED_CREATIVE_DOCUMENT_PROVIDER_ID,
+      bucket: 'scene',
       supports: ({ task }) => getCreativeContext(task.input.payload) !== undefined,
       provide: ({ task }) => {
         const context = getCreativeContext(task.input.payload);
         if (!context) return [];
 
+        // Structure only: a block's text is a slice of `text` by construction on Desktop, and the
+        // selection already travels as the task-input fragment. Serialising them alongside the
+        // manuscript put the same chapter in the prompt three times, in a fragment too large to be
+        // trimmed because trimming only reaches text fragments.
         const document = {
           documentId: context.documentId,
           revision: context.revision,
-          text: context.text,
-          selectionText: context.selectionText,
-          blocks: context.blocks,
-          neighboringDocuments: context.neighboringDocuments,
+          blocks: context.blocks.map(({ id, type, from, to }) => ({ id, type, from, to })),
+          neighboringDocuments: context.neighboringDocuments.map(({ documentId, revision, text }) => ({
+            documentId,
+            revision,
+            text
+          })),
           projectRevision: context.projectRevision,
           fingerprint: context.fingerprint
         };
@@ -37,12 +44,21 @@ export function createSerializedCreativeContextProviders(): readonly ContextProv
             data: document,
             priority: 800,
             dependency: 1
+          },
+          {
+            id: `creative.document.text:${context.fingerprint}`,
+            source: SERIALIZED_CREATIVE_DOCUMENT_PROVIDER_ID,
+            kind: 'document-prose',
+            text: context.text,
+            priority: 810,
+            dependency: 1
           }
         ];
       }
     },
     {
       id: SERIALIZED_CREATIVE_STORY_PROVIDER_ID,
+      bucket: 'project',
       supports: ({ task }) =>
         task.contextPolicy?.includeProjectState === true &&
         getCreativeContext(task.input.payload)?.storyContext !== undefined,

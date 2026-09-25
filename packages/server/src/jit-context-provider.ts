@@ -1,4 +1,4 @@
-import type { ContextFragment, ContextProvider, ContextRequest } from '@inkpi/agent-core';
+import type { ContextBucket, ContextFragment, ContextProvider, ContextRequest } from '@inkpi/agent-core';
 import {
   type CacheInvalidationEvent,
   type RuntimeCacheCoordinatorPort,
@@ -51,6 +51,7 @@ interface RetrievalCacheEntry {
 /** Adapts the existing JIT retriever to the generic context pipeline. */
 export class JitContextProvider implements ContextProvider {
   readonly id = 'retrieval.jit';
+  readonly bucket: ContextBucket = 'retrieval';
   private readonly cache = new Map<string, RetrievalCacheEntry>();
   private readonly cacheEnabled: boolean;
   private readonly cacheMaxEntries: number;

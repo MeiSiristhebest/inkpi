@@ -23,6 +23,8 @@ export interface ContextFragment {
   tokenEstimate?: number;
   estimatedTokens?: number;
   metadata?: Record<string, unknown>;
+  /** Budget share this fragment competes for; stamped from the emitting provider. */
+  bucket?: ContextBucket;
 }
 
 export interface ContextPacket {
@@ -37,6 +39,14 @@ export interface ContextPacket {
 
 export interface ContextProvider {
   id: string;
+  /** Budget class this provider's fragments compete in. Omitted means "no reservation". */
+  bucket?: ContextBucket;
   supports?(request: ContextRequest): boolean | Promise<boolean>;
   provide(request: ContextRequest, signal?: AbortSignal): ContextFragment[] | Promise<ContextFragment[]>;
 }
+
+/**
+ * Budget classes for context assembly. The open manuscript must not be able to spend the
+ * whole packet, so each class gets its own share of the token budget.
+ */
+export type ContextBucket = 'scene' | 'project' | 'retrieval' | 'working';

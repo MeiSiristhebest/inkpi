@@ -7,11 +7,25 @@ import {
   stableSerialize,
   validateRuntimeCacheLayerStats
 } from './cache-contract.js';
-import type { ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
+import type { ContextBucket, ContextFragment, ContextPacket, ContextProvider, ContextRequest } from './types.js';
 
 const DEFAULT_MAX_TOKENS = 16_000;
 const DEFAULT_CONTEXT_CACHE_ENTRIES = 64;
 const CHARS_PER_TOKEN = 4;
+
+/**
+ * Share of the packet budget each bucket may spend before anything is crowded out. The ranking
+ * mirrors Desktop's `contextBudgetBuckets.ts` (manuscript over canonical facts over retrieved
+ * memory over working state); its instructions share is absent because skill instructions are
+ * composed outside the packet. Whatever the buckets do not spend is reclaimed afterwards, so a
+ * bucket reservation is a floor for the other classes, never wasted budget.
+ */
+export const CONTEXT_BUCKET_SHARES: Record<ContextBucket, number> = {
+  scene: 0.5,
+  project: 0.25,
+  retrieval: 0.15,
+  working: 0.1
+};
 
 export interface ContextCacheOptions {
   /** Context compilation is cached by default; set false or maxEntries to 0 to disable it. */
@@ -192,44 +206,34 @@ export class ContextPipeline {
     }
 
     const fragments: ContextFragment[] = [];
-    let inputTruncated = false;
     if (task.input.text) {
-      let inputText = task.input.text;
-      // Budget bucket protection: when other providers are active, clamp task-input to prevent starving story/JIT memory
-      if (activeProviders.length > 0 && maxTokens >= 16) {
-        const maxInputTokens = Math.max(1, Math.floor(maxTokens * 0.5));
-        const estimated = Math.max(1, Math.ceil(inputText.length / CHARS_PER_TOKEN));
-        if (estimated > maxInputTokens) {
-          inputText = inputText.slice(0, maxInputTokens * CHARS_PER_TOKEN);
-          inputTruncated = true;
-        }
-      }
-
       fragments.push({
         id: `task-input:${hash(
           stableSerialize({
             documentId: task.input.documentId,
             selection: task.input.selection,
-            text: inputText
+            text: task.input.text
           })
         )}`,
         source: 'task-input',
         kind: 'input',
-        text: inputText,
-        priority: Number.MAX_SAFE_INTEGER
+        text: task.input.text,
+        priority: Number.MAX_SAFE_INTEGER,
+        bucket: 'scene'
       });
     }
 
     for (const provider of activeProviders) {
       if (signal?.aborted) throw abortError();
       const provided = await provider.provide(request, signal);
-      fragments.push(...provided);
+      fragments.push(
+        ...provided.map((fragment) =>
+          provider.bucket && fragment.bucket === undefined ? { ...fragment, bucket: provider.bucket } : fragment
+        )
+      );
     }
 
     const packet = buildPacket(fragments, maxTokens, request.projectRevision);
-    if (inputTruncated) {
-      packet.truncated = true;
-    }
     if (maxFragments !== undefined && packet.fragments.length > maxFragments) {
       const limited = packet.fragments.slice(0, maxFragments);
       const limitedPacket = buildPacket(limited, maxTokens, request.projectRevision);
@@ -400,48 +404,79 @@ function buildPacket(input: ContextFragment[], maxTokens: number, projectRevisio
     const scoreDelta = score(right) - score(left);
     return scoreDelta || left.id.localeCompare(right.id);
   });
+  const allowance = bucketAllowance(ordered, limit);
   const accepted: ContextFragment[] = [];
   let tokenEstimate = 0;
-  let truncated = false;
+  const accept = (fragment: ContextFragment): void => {
+    accepted.push(fragment);
+    tokenEstimate += fragment.tokenEstimate ?? 0;
+  };
 
+  // A bucket share is a floor for the other classes: each class is filled inside its own reservation
+  // first, so one oversized manuscript fragment cannot starve every canonical fact below it.
+  const crowdedOut: ContextFragment[] = [];
   for (const fragment of ordered) {
-    const remaining = limit - tokenEstimate;
-    if (remaining <= 0) {
-      truncated = true;
-      break;
-    }
-    const fragmentTokens = fragment.tokenEstimate ?? fragment.estimatedTokens ?? estimateTokens(fragment);
-    if (fragmentTokens <= remaining) {
-      accepted.push(fragment);
-      tokenEstimate += fragmentTokens;
-      continue;
-    }
+    const cost = fragment.tokenEstimate ?? 0;
+    const reserved = allowance.get(fragment.bucket) ?? 0;
+    if (cost <= reserved) {
+      accept(fragment);
+      allowance.set(fragment.bucket, reserved - cost);
+    } else crowdedOut.push(fragment);
+  }
 
-    if (fragment.text && remaining > 0) {
-      const text = fragment.text.slice(0, remaining * CHARS_PER_TOKEN);
-      accepted.push({
-        ...fragment,
-        text,
-        tokenEstimate: estimateTokens({ text })
-      });
-      tokenEstimate += estimateTokens({ text });
-    }
-    truncated = true;
-    break;
+  // Whatever the floors did not spend is reclaimed by priority, and only whole fragments compete: a
+  // clipped fragment must never be chosen ahead of one that would still fit.
+  const unplaceable: ContextFragment[] = [];
+  for (const fragment of crowdedOut) {
+    if ((fragment.tokenEstimate ?? 0) <= limit - tokenEstimate) accept(fragment);
+    else unplaceable.push(fragment);
+  }
+
+  // Last resort, so a budget that holds only the selection keeps that text intact instead of
+  // trading a clip of it for a few leading characters of something larger.
+  for (const fragment of unplaceable) {
+    const trimmed = trimToTokens(fragment, limit - tokenEstimate);
+    if (trimmed) accept(trimmed);
   }
 
   const text = accepted
     .map((fragment) => fragment.text ?? serializeData(fragment.data ?? fragment.content))
     .filter(Boolean)
     .join('\n\n');
+  const wanted = [...unique.values()].reduce((sum, fragment) => sum + (fragment.tokenEstimate ?? 0), 0);
   return {
     fragments: accepted,
     text,
     tokenEstimate,
     fingerprint: fingerprint(accepted, projectRevision),
-    truncated,
+    truncated: wanted > tokenEstimate,
     projectRevision
   };
+}
+
+/**
+ * Reservation per bucket that is actually present, so one class of context cannot spend more
+ * than its share before the others are considered. Fragments from providers without a bucket
+ * compete for whatever the present buckets did not reserve.
+ */
+function bucketAllowance(fragments: readonly ContextFragment[], limit: number): Map<ContextBucket | undefined, number> {
+  const allowance = new Map<ContextBucket | undefined, number>();
+  let reserved = 0;
+  for (const fragment of fragments) {
+    const bucket = fragment.bucket;
+    if (!bucket || allowance.has(bucket)) continue;
+    const share = Math.floor(limit * CONTEXT_BUCKET_SHARES[bucket]);
+    allowance.set(bucket, share);
+    reserved += share;
+  }
+  allowance.set(undefined, Math.max(0, limit - reserved));
+  return allowance;
+}
+
+function trimToTokens(fragment: ContextFragment, tokens: number): ContextFragment | undefined {
+  if (!fragment.text || tokens <= 0) return undefined;
+  const text = fragment.text.slice(0, tokens * CHARS_PER_TOKEN);
+  return { ...fragment, text, tokenEstimate: estimateTokens({ text }) };
 }
 
 function estimateTokens(fragment: Pick<ContextFragment, 'text' | 'data' | 'content'>): number {

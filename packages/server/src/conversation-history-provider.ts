@@ -42,6 +42,7 @@ function extractHistory(payload: unknown): ConversationTurn[] | undefined {
 export function createConversationHistoryProvider(): ContextProvider {
   return {
     id: CONVERSATION_HISTORY_PROVIDER_ID,
+    bucket: 'working',
     supports: ({ task }) => extractHistory(task.input.payload) !== undefined,
     provide: ({ task }) => {
       const turns = extractHistory(task.input.payload);
