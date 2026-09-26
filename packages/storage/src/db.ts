@@ -38,6 +38,11 @@ export class InkDb implements IDb {
   }
 
   public initSchema(): void {
+    // `CREATE TABLE IF NOT EXISTS` cannot add a column to a table an earlier
+    // build already created, but the index that references it still runs inside
+    // the same exec — so columns that appear in an index must be migrated first
+    // or upgrading an existing database throws `no such column` and aborts.
+    this.ensureColumn('artifacts', 'workspace_id', 'TEXT');
     this.db.exec(STORAGE_SCHEMA_DDL);
     // Keep databases created by older versions readable while adding the
     // metadata required for guarded lane fast-forward merges.
@@ -65,10 +70,14 @@ export class InkDb implements IDb {
   }
 
   private ensureColumn(
-    table: 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions' | 'writer_leases',
+    table: 'artifacts' | 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions' | 'writer_leases',
     column: string,
     definition: string
   ): boolean {
+    if (!this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) {
+      // Fresh database: the table is about to be created from the full DDL.
+      return false;
+    }
     const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (columns.some((entry) => entry.name === column)) return false;
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
