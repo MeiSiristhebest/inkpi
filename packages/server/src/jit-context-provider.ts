@@ -152,8 +152,12 @@ export class JitContextProvider implements ContextProvider {
     const payload = request.task.input.payload;
     const values = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
     const metadata = request.metadata ?? {};
+    const workspaceId = resolveTaskWorkspaceId(request.task);
+    // §P0.11 / INV-03：L2 与 L3 都要读库。任务没有 workspace 归属时不存在「安全的语料范围」，
+    // 放进检索层会退化成全库匹配，把另一个项目的正文喂进这次的提示词，所以宁可不给上下文。
+    if (!workspaceId) return [];
     const query: JitContextQuery = {
-      workspaceId: resolveTaskWorkspaceId(request.task) ?? undefined,
+      workspaceId,
       currentDocumentId: request.task.input.documentId,
       currentText: request.task.input.text,
       activeReferences: asStringArray(values.activeReferences),
