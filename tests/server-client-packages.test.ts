@@ -209,7 +209,7 @@ describe('Comprehensive @inkpi/server & @inkpi/client Test Suite', () => {
     await expect(typedClient.suggestGhostText('ghost')).resolves.toBeDefined();
     await expect(typedClient.acceptGhostText('word')).resolves.toBeDefined();
     await expect(typedClient.dismissGhostText()).resolves.toBeDefined();
-    await expect(typedClient.queryMemory('q')).resolves.toBeDefined();
+    await expect(typedClient.queryMemory('q', 'typed-client-workspace')).resolves.toBeDefined();
     await expect(typedClient.searchFts('q')).resolves.toBeDefined();
     await expect(
       typedClient.submitTask({ id: 'typed-task', kind: 'creative.test', input: { text: 'w' } })

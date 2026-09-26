@@ -34,9 +34,13 @@ describe('Advanced JSON-RPC Server & Client Features', () => {
 
     // 2. JIT Memory RPC
     const jitRes = await client.retrieveJitMemory({
+      workspaceId: 'rpc-advanced-workspace',
       currentDraftText: 'UserB踏入剑宗大殿'
     });
     expect(jitRes.l1WorkingMemory).toBeDefined();
+    await expect(client.call('jit.retrieve', { currentDraftText: 'UserB踏入剑宗大殿' })).rejects.toThrow(
+      'storage.queryMemory requires a workspaceId'
+    );
 
     // 3. Telemetry RPC
     const stats = await client.getTelemetryStats();

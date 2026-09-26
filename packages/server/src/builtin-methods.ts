@@ -229,7 +229,9 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
   'jit.retrieve': (params, ctx) => BUILTIN_RPC_METHODS['storage.queryMemory'](params, ctx),
   'storage.queryMemory': async (params, ctx) => {
     if (!ctx.jitRetriever) throw new Error('JitRetriever not initialized');
-    const mem = await ctx.jitRetriever.retrieve(params);
+    const workspaceId = typeof params.workspaceId === 'string' ? params.workspaceId.trim() : '';
+    if (!workspaceId) throw new Error('storage.queryMemory requires a workspaceId');
+    const mem = await ctx.jitRetriever.retrieve({ ...params, workspaceId });
     return mem;
   },
 

@@ -294,8 +294,12 @@ export class InkRpcClient {
     return this.request<{ success: boolean }>('ghost.dismiss');
   }
 
-  public queryMemory(query: string, limit = 5) {
-    return this.request<Array<{ key: string; value: string; score: number }>>('storage.queryMemory', { query, limit });
+  public queryMemory(query: string, workspaceId: string, limit = 5) {
+    return this.request<Array<{ key: string; value: string; score: number }>>('storage.queryMemory', {
+      query,
+      workspaceId,
+      limit
+    });
   }
 
   public searchFts(query: string, limit = 10) {
