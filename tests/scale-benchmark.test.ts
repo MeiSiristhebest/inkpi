@@ -5,7 +5,7 @@ import { FtsSearchEngine, InkDb, InkRepository, JitMemoryRetriever, formatJitCon
 import { afterAll, describe, expect, it } from 'vitest';
 
 /**
- * P7 scale baseline: a full-length manuscript is ~1000 chapters and ~1M characters, so every
+ * P7 scale baseline: a full-length manuscript is ~1000 chapters and ~1M words, so every
  * correctness claim a three-chapter fixture makes has to survive that size.
  *
  * Timing is asserted as a growth ratio against a 4x smaller corpus instead of an absolute
@@ -18,7 +18,7 @@ const MAIN_WORKSPACE = 'ws-scale-main';
 const CONTROL_WORKSPACE = 'ws-scale-control';
 const DOCUMENTS_PER_FOLDER = 250;
 /** ~1050 characters per chapter, so 1000 chapters cross the 1M-character mark. */
-const WORDS_PER_CHAPTER = 150;
+const WORDS_PER_CHAPTER = 1000;
 const CORPUS_GROWTH_FACTOR = 4;
 /** Indexed lookups should stay near-flat, so a 4x corpus gets a 6x ceiling. */
 const INDEXED_GROWTH_CEILING = 6;
@@ -256,9 +256,10 @@ const control = seedCorpus({
 afterAll(() => sharedDb.close());
 
 describe('P7 runtime scale baseline', () => {
-  it('holds a 1000-chapter, ~1M-character manuscript without loss', () => {
+  it('holds a 1000-chapter, 1M-word manuscript without loss', () => {
     expect(world.documentCount).toBe(1000);
-    expect(world.totalChars).toBeGreaterThanOrEqual(900_000);
+    expect(world.documentCount * WORDS_PER_CHAPTER).toBe(1_000_000);
+    expect(world.totalChars).toBeGreaterThanOrEqual(5_000_000);
 
     // What the seeding pass reported is what actually landed in storage.
     expect(

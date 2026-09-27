@@ -17,6 +17,20 @@ function entry(overrides: Partial<ModelCatalogV2Entry> = {}): ModelCatalogV2Entr
 }
 
 describe('ModelCatalogV2', () => {
+  it('does not implicitly load the legacy generated catalog', () => {
+    expect(new ModelCatalogV2().getAllModels()).toEqual([]);
+  });
+
+  it('keeps duplicate provider short ids ambiguous and preserves OpenRouter ids', () => {
+    const catalog = new ModelCatalogV2([
+      entry({ id: 'openai/gpt-4o', provider: 'openrouter' }),
+      entry({ id: 'anthropic/gpt-4o', provider: 'anthropic' })
+    ]);
+
+    expect(catalog.getRoute('openai/gpt-4o')?.modelId).toBe('openai/gpt-4o');
+    expect(catalog.getModel('gpt-4o')).toBeUndefined();
+  });
+
   it('separates canonical identity, aliases, route metadata, and authentication descriptors', () => {
     const catalog = new ModelCatalogV2([
       entry({
@@ -38,13 +52,20 @@ describe('ModelCatalogV2', () => {
 
     expect(catalog.getModel('legacy-pro')?.canonicalId).toBe('inkpi/creative-pro-v2');
     expect(catalog.getModel('writer-pro')?.canonicalId).toBe('inkpi/creative-pro-v2');
+    expect(catalog.getIdentity('legacy-pro')).toMatchObject({
+      canonicalId: 'inkpi/creative-pro-v2',
+      name: 'Creative Pro'
+    });
+    expect(catalog.getPricing('legacy-pro')).toEqual({ inputPerMillionUsd: 1, outputPerMillionUsd: 2 });
     expect(catalog.getRoute('vendor/creative-pro')).toMatchObject({
       canonicalId: 'inkpi/creative-pro-v2',
       provider: 'test-provider',
       modelId: 'creative-pro-v2',
       baseUrl: 'http://127.0.0.1:9000/v1',
       authentication: { kind: 'oauth', required: true, credentialRef: 'model:test-provider' },
-      availability: { status: 'degraded' }
+      availability: { status: 'degraded' },
+      transport: { kind: 'custom', baseUrl: 'http://127.0.0.1:9000/v1' },
+      pricing: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 }
     });
     expect(catalog.getAliases()).toMatchObject({
       'legacy-pro': 'inkpi/creative-pro-v2',

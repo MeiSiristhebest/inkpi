@@ -624,7 +624,9 @@ function cloneManifest(manifest: SkillManifest): SkillManifest {
 }
 
 function asItems<T>(value: SkillRegistrationItems<T> | undefined): T[] {
-  return value === undefined ? [] : Array.isArray(value) ? [...value] : [value];
+  if (value === undefined) return [];
+  if (Array.isArray(value)) return [...(value as readonly T[])];
+  return [value as T];
 }
 
 function addSkillActivators(

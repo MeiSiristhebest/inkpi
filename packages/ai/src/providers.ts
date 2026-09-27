@@ -312,7 +312,8 @@ export const PROVIDER_API_KEY_ENV: Readonly<Record<string, string>> = {
   openai: 'OPENAI_API_KEY',
   claude: 'ANTHROPIC_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
-  gemini: 'GEMINI_API_KEY'
+  gemini: 'GEMINI_API_KEY',
+  'z-ai': 'ZAI_API_KEY'
 };
 
 export function resolveProviderApiKeyEnv(provider: string): string | undefined {
@@ -427,6 +428,7 @@ export const DEFAULT_BASE_URLS: Record<string, string> = {
   siliconflow: 'https://api.siliconflow.cn/v1',
   mistral: 'https://api.mistral.ai/v1',
   xai: 'https://api.x.ai/v1',
+  'z-ai': 'https://api.z.ai/api/paas/v4',
   ollama: 'http://localhost:11434'
 };
 
@@ -654,7 +656,35 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
       }
 
       if (!response.ok) {
-        stream.error(providerHttpError(model.provider, response.status, response.statusText));
+        let errorDetails: unknown;
+        let errorMessage = `${model.provider} API Error: ${response.status} ${response.statusText ?? ''}`.trim();
+        try {
+          const raw = await response.clone().text();
+          if (raw) {
+            try {
+              errorDetails = JSON.parse(raw);
+              const record =
+                errorDetails && typeof errorDetails === 'object'
+                  ? (errorDetails as Record<string, unknown>)
+                  : undefined;
+              const nested =
+                record?.error && typeof record.error === 'object' ? (record.error as Record<string, unknown>) : record;
+              if (typeof nested?.message === 'string') errorMessage = nested.message;
+            } catch {
+              errorMessage = raw.slice(0, 500) || errorMessage;
+            }
+          }
+        } catch {
+          // Preserve the HTTP classification when an error body cannot be read.
+        }
+        const retryAfterHeader = response.headers?.get('retry-after');
+        const retryAfterMs = retryAfterHeader ? Math.max(0, Number(retryAfterHeader) * 1000) : undefined;
+        stream.error(
+          classifyProviderError(
+            { message: errorMessage, status: response.status, provider: model.provider, details: errorDetails },
+            { provider: model.provider, status: response.status, retryAfterMs, details: errorDetails }
+          )
+        );
         return;
       }
 
@@ -1372,6 +1402,7 @@ providerRegistry.set('xai', openAiCompatibleProvider);
 providerRegistry.set('openrouter', openAiCompatibleProvider);
 providerRegistry.set('siliconflow', openAiCompatibleProvider);
 providerRegistry.set('qwen', openAiCompatibleProvider);
+providerRegistry.set('z-ai', openAiCompatibleProvider);
 // 未实现的 provider 不静默映射到其它传输层，而是显式失败，
 // 避免请求被悄悄发往错误的端点（如 bedrock 错误转发到 Anthropic 公开 API）。
 function unsupportedProvider(name: string): ProviderHandler {

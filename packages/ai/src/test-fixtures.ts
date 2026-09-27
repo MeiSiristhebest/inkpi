@@ -11,6 +11,28 @@ import { registerProvider } from './providers.js';
  */
 import type { ModelConfig } from './types.js';
 
+export const MOCK_TEST_MODEL_CAPABILITIES = {
+  nativeCapabilities: [
+    'creative-reasoning',
+    'creative-writing',
+    'text-rewrite',
+    'continuity-audit',
+    'creative-distillation'
+  ],
+  runtimeTransforms: [],
+  capabilities: ['creative-reasoning', 'creative-writing', 'text-rewrite', 'continuity-audit', 'creative-distillation'],
+  modalities: ['text'],
+  network: 'required',
+  outputFormats: ['text', 'structured', 'patch'],
+  streaming: true,
+  reasoning: true,
+  structuredOutput: true,
+  patchOutput: true,
+  toolCalling: false,
+  jsonSchema: false,
+  promptCaching: false
+} as const;
+
 const MOCK_TEST_PRESET: ModelConfig = {
   id: 'mock-model-v1',
   name: 'Faux Test Model',

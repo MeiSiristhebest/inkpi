@@ -45,6 +45,9 @@ export interface CapabilityRouterOptions {
 
 /** Capabilities declared by an injected model route. */
 export interface ModelCapabilities {
+  /** Provider-native declarations are kept separate from Runtime transforms. */
+  nativeCapabilities?: readonly string[];
+  runtimeTransforms?: readonly string[];
   capabilities?: readonly string[];
   tools?: readonly string[] | boolean;
   modalities?: readonly string[];
@@ -110,6 +113,8 @@ export function createModelRouteFromCatalog(
     id: options.id ?? entry.id,
     model: modelCatalogEntryToConfig(entry),
     capabilities: {
+      nativeCapabilities: [...declaration.capabilities],
+      runtimeTransforms: [],
       capabilities: [...declaration.capabilities],
       network: declaration.network,
       modalities: [...declaration.modalities],
@@ -153,22 +158,21 @@ export function createLegacyDefaultModelCapabilities(model: ModelConfig): ModelC
     supportsTools?: boolean;
     supportsVision?: boolean;
   };
-  const tools = extended.supportsTools ?? true;
+  const tools = extended.supportsTools;
   const contextTokens = extended.contextWindow;
   const offline = model.provider === 'ollama' || isLocalUrl(model.baseUrl);
   return {
-    capabilities: ['*'],
-    tools,
+    // Sparse legacy model configs no longer imply wildcard, structured, patch,
+    // or tool capabilities. Only facts explicitly present are advertised.
+    capabilities: [],
+    ...(tools === undefined ? {} : { tools }),
     modalities: extended.supportsVision === true ? ['text', 'image'] : ['text'],
     network: offline ? 'offline' : 'required',
-    outputFormats: ['text', 'structured', 'patch'],
-    streaming: extended.supportsStreaming ?? true,
-    reasoning: model.supportsThinking === true,
-    structuredOutput: true,
-    patchOutput: true,
-    toolCalling: tools,
-    jsonSchema: true,
-    promptCaching: model.supportsPromptCache === true,
+    outputFormats: ['text'],
+    ...(extended.supportsStreaming === undefined ? {} : { streaming: extended.supportsStreaming }),
+    ...(model.supportsThinking === undefined ? {} : { reasoning: model.supportsThinking }),
+    ...(tools === undefined ? {} : { toolCalling: tools }),
+    ...(model.supportsPromptCache === undefined ? {} : { promptCaching: model.supportsPromptCache }),
     ...(Number.isFinite(contextTokens) && contextTokens! > 0 ? { contextTokens, maxContextTokens: contextTokens } : {}),
     ...(model.maxTokens === undefined ? {} : { maxOutputTokens: model.maxTokens })
   };

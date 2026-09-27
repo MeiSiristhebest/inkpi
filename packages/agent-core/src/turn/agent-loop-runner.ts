@@ -63,14 +63,26 @@ export class AgentLoopRunner {
 
     try {
       let continueLoop = true;
+      let overflowRecoveryUsed = false;
 
       while (continueLoop) {
         if (signal?.aborted) break;
 
         await emitEvent({ type: 'turn_start' });
 
-        const llmMessages = await this.contextTransformer.prepare(ctx);
-        const assistantMessage = await this.streamInvoker.invoke(ctx, llmMessages);
+        let llmMessages = await this.contextTransformer.prepare(ctx);
+        let assistantMessage = await this.streamInvoker.invoke(ctx, llmMessages);
+        if (
+          assistantMessage.providerError?.code === 'context_overflow' &&
+          ctx.options.sessionCompactor &&
+          !overflowRecoveryUsed
+        ) {
+          overflowRecoveryUsed = true;
+          const compacted = await ctx.options.sessionCompactor.compact(ctx.state.messages, signal);
+          ctx.state.messages = compacted.compactedMessages;
+          llmMessages = await this.contextTransformer.prepare(ctx);
+          assistantMessage = await this.streamInvoker.invoke(ctx, llmMessages);
+        }
         const { toolResults, shouldTerminate } = await this.toolDispatcher.dispatch(ctx, assistantMessage);
 
         continueLoop = await this.turnFinalizer.finalize(ctx, {

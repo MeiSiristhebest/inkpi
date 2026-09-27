@@ -1,6 +1,7 @@
 import type {
   AssistantMessage,
   AssistantMessageEvent,
+  ProviderErrorMetadata,
   TextContent,
   ThinkingContent,
   ToolCallContent,
@@ -47,19 +48,42 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     }
   }
 
-  public error(
-    error: string | { message: string; code?: string; retryable?: boolean; provider?: string; status?: number }
-  ): void {
+  public error(error: string | (ProviderErrorMetadata & { message: string }) | ProviderError): void {
+    const normalizedError = typeof error === 'string' ? classifyProviderError(new Error(error)) : error;
     const event: Extract<AssistantMessageEvent, { type: 'error' }> =
       typeof error === 'string'
-        ? { type: 'error', error }
+        ? {
+            type: 'error',
+            error,
+            ...(normalizedError.code ? { code: normalizedError.code } : {}),
+            ...(normalizedError.retryable !== undefined ? { retryable: normalizedError.retryable } : {}),
+            ...(normalizedError.provider ? { provider: normalizedError.provider } : {}),
+            ...(normalizedError.status !== undefined ? { status: normalizedError.status } : {})
+          }
         : {
             type: 'error',
             error: error.message,
             ...(error.code ? { code: error.code } : {}),
             ...(error.retryable !== undefined ? { retryable: error.retryable } : {}),
             ...(error.provider ? { provider: error.provider } : {}),
-            ...(error.status !== undefined ? { status: error.status } : {})
+            ...(error.status !== undefined ? { status: error.status } : {}),
+            ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+            ...(error.maxDelayMs !== undefined ? { maxDelayMs: error.maxDelayMs } : {}),
+            ...(error.details !== undefined ? { details: error.details } : {}),
+            ...(error.code || error.retryAfterMs !== undefined || error.details !== undefined
+              ? {
+                  metadata: {
+                    message: error.message,
+                    ...(error.code ? { code: error.code } : {}),
+                    ...(error.retryable !== undefined ? { retryable: error.retryable } : {}),
+                    ...(error.provider ? { provider: error.provider } : {}),
+                    ...(error.status !== undefined ? { status: error.status } : {}),
+                    ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+                    ...(error.maxDelayMs !== undefined ? { maxDelayMs: error.maxDelayMs } : {}),
+                    ...(error.details !== undefined ? { details: error.details } : {})
+                  }
+                }
+              : {})
           };
     this.currentError = event;
     this.push(event);
@@ -128,6 +152,9 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     let finalUsage: Usage | undefined;
     let hasError = Boolean(this.currentError);
     let errorMessage: string | undefined = this.currentError?.error;
+    let providerError: ProviderErrorMetadata | undefined = this.currentError
+      ? errorMetadataFromEvent(this.currentError)
+      : undefined;
 
     const fail = (message: string): void => {
       hasError = true;
@@ -206,6 +233,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
         case 'error':
           hasError = true;
           errorMessage = event.error;
+          providerError = errorMetadataFromEvent(event);
           break;
       }
     }
@@ -253,10 +281,25 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
       content,
       stopReason,
       errorMessage,
+      ...(providerError ? { providerError } : {}),
       ...(finalUsage ? { usage: finalUsage } : {}),
       timestamp: Date.now()
     };
   }
+}
+
+function errorMetadataFromEvent(event: Extract<AssistantMessageEvent, { type: 'error' }>): ProviderErrorMetadata {
+  return {
+    ...(event.code ? { code: event.code } : {}),
+    message: event.error,
+    ...(event.retryable !== undefined ? { retryable: event.retryable } : {}),
+    ...(event.provider ? { provider: event.provider } : {}),
+    ...(event.status !== undefined ? { status: event.status } : {}),
+    ...(event.retryAfterMs !== undefined ? { retryAfterMs: event.retryAfterMs } : {}),
+    ...(event.maxDelayMs !== undefined ? { maxDelayMs: event.maxDelayMs } : {}),
+    ...(event.details !== undefined ? { details: event.details } : {}),
+    ...(event.metadata ? { ...event.metadata } : {})
+  };
 }
 
 export interface RetryOptions {
@@ -310,10 +353,12 @@ export async function retryAssistantStream<T>(fn: () => Promise<T>, options: Ret
     } catch (err) {
       lastError = err;
       const normalized = classifyProviderError(err);
-      if ((err instanceof ProviderError && !normalized.retryable) || attempt >= maxRetries) break;
+      if (!(err instanceof ProviderError) || !normalized.retryable || attempt >= maxRetries) break;
       if (options.signal?.aborted) throw abortError(options.signal);
 
-      const jitter = delay * (0.8 + Math.random() * 0.4);
+      const retryAfter = normalized.retryAfterMs;
+      const baseDelay = retryAfter !== undefined ? retryAfter : delay;
+      const jitter = Math.min(baseDelay * (0.8 + Math.random() * 0.4), normalized.maxDelayMs ?? maxDelay);
       options.onRetry?.(attempt, err, jitter);
       try {
         await delayWithSignal(jitter, options.signal);
@@ -353,10 +398,16 @@ export function createResilientStream(
       const inner = await factory(attempt);
       for await (const event of inner) {
         if (event.type === 'error') {
-          const retryable = options.isRetryable ? options.isRetryable(event.error, event) : (event.retryable ?? true);
+          const retryable = options.isRetryable ? options.isRetryable(event.error, event) : event.retryable === true;
           if (retryable && attempt < maxRetries) {
             shouldRetry = true;
-            retryError = new Error(event.error);
+            retryError = classifyProviderError(event.metadata ?? event, {
+              provider: event.provider,
+              status: event.status,
+              retryAfterMs: event.retryAfterMs,
+              maxDelayMs: event.maxDelayMs,
+              details: event.details
+            });
             break;
           }
         }
@@ -364,7 +415,12 @@ export function createResilientStream(
       }
 
       if (shouldRetry) {
-        const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
+        const normalizedRetry = classifyProviderError(retryError);
+        const delay = Math.min(
+          normalizedRetry.retryAfterMs ??
+            (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1),
+          normalizedRetry.maxDelayMs ?? options.maxDelayMs ?? Number.POSITIVE_INFINITY
+        );
         options.onRetry?.(attempt, retryError, delay);
         scheduleRetry(delay);
         return;
@@ -373,8 +429,11 @@ export function createResilientStream(
       outerStream.end();
     } catch (err: unknown) {
       const normalized = classifyProviderError(err);
-      if (normalized.retryable && attempt < maxRetries) {
-        const delay = (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1);
+      if (err instanceof ProviderError && normalized.retryable && attempt < maxRetries) {
+        const delay = Math.min(
+          normalized.retryAfterMs ?? (options.initialDelayMs ?? 50) * (options.backoffFactor ?? 2) ** (attempt - 1),
+          normalized.maxDelayMs ?? options.maxDelayMs ?? Number.POSITIVE_INFINITY
+        );
         options.onRetry?.(attempt, normalized, delay);
         scheduleRetry(delay);
       } else {

@@ -293,25 +293,18 @@ describe('capability-aware model routing', () => {
     expect(selected.id).toBe('offline');
   });
 
-  it('keeps omitted default capabilities compatible while explicit declarations stay strict', () => {
-    const compatible = new TaskModelHandler({ model: baseModel });
-    expect(
-      compatible.getCapabilityRouter().resolve(
+  it('treats omitted default capabilities as unknown rather than wildcard support', () => {
+    const conservative = new TaskModelHandler({ model: baseModel });
+    expect(() =>
+      conservative.getCapabilityRouter().resolve(
         task({
           outputContract: { format: 'text' },
-          requirements: {
-            capabilities: ['creative-writing'],
-            modalities: ['text'],
-            outputFormats: ['text'],
-            streaming: true
-          }
+          requirements: { capabilities: ['creative-writing'], needsTools: true, needsReasoning: true }
         })
-      ).id
-    ).toBe('default-model');
-
-    const strict = new TaskModelHandler({ model: baseModel, defaultModelCapabilities: {} });
-    expect(() => strict.getCapabilityRouter().resolve(task({ outputContract: { format: 'text' } }))).toThrow(
-      CapabilityMismatchError
+      )
+    ).toThrow(CapabilityMismatchError);
+    expect(conservative.getCapabilityRouter().resolve(task({ outputContract: { format: 'text' } })).id).toBe(
+      'default-model'
     );
   });
 
@@ -390,6 +383,14 @@ describe('capability-aware model routing', () => {
     const daemon = new InkPiDaemon({ defaultModel: baseModel });
     daemons.push(daemon);
 
+    const rejectedRoute = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'model.routes.configure',
+      params: { routes: [{ id: 'bad', model: { id: 'bad', provider: 'openai', unsupported: true } }] }
+    });
+    expect(rejectedRoute.error?.message).toContain('unsupported fields');
+
     const configured = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 10,
@@ -424,7 +425,7 @@ describe('capability-aware model routing', () => {
     });
     expect(JSON.stringify(configured)).not.toContain('secret-route-key');
 
-    const health = await daemon.getRpcServer().handleRequest({
+    const rejectedHealthMutation = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 11,
       method: 'model.routes.health',
@@ -432,6 +433,18 @@ describe('capability-aware model routing', () => {
         routeId: 'desktop:openai:writer',
         state: { availability: 'degraded', health: 'degraded', latencyMs: 240 }
       }
+    });
+    expect(rejectedHealthMutation.error?.message).toContain('read-only');
+    daemon.setRuntimeModelRouteHealth('desktop:openai:writer', {
+      availability: 'degraded',
+      health: 'degraded',
+      latencyMs: 240
+    });
+    const health = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 12,
+      method: 'model.routes.health',
+      params: { routeId: 'desktop:openai:writer' }
     });
     expect(health).toMatchObject({
       result: {
@@ -445,7 +458,7 @@ describe('capability-aware model routing', () => {
 
     const removed = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
-      id: 12,
+      id: 13,
       method: 'model.routes.remove',
       params: { routeId: 'desktop:openai:writer' }
     });

@@ -12,6 +12,7 @@ export type ProviderErrorCode =
   | 'provider_unavailable'
   | 'unsupported_capability'
   | 'malformed_response'
+  | 'context_overflow'
   | 'cancelled'
   | 'policy_refusal'
   | 'unknown';
@@ -22,11 +23,17 @@ export interface ProviderErrorInfo {
   retryable: boolean;
   provider?: string;
   status?: number;
+  retryAfterMs?: number;
+  maxDelayMs?: number;
+  details?: unknown;
 }
 
 export interface ProviderErrorContext {
   provider?: string;
   status?: number;
+  retryAfterMs?: number;
+  maxDelayMs?: number;
+  details?: unknown;
 }
 
 export interface ProviderErrorInit extends ProviderErrorContext {
@@ -41,6 +48,9 @@ export class ProviderError extends Error implements ProviderErrorInfo {
   public readonly retryable: boolean;
   public readonly provider?: string;
   public readonly status?: number;
+  public readonly retryAfterMs?: number;
+  public readonly maxDelayMs?: number;
+  public readonly details?: unknown;
 
   constructor(init: ProviderErrorInit) {
     super(init.message);
@@ -49,6 +59,9 @@ export class ProviderError extends Error implements ProviderErrorInfo {
     this.retryable = init.retryable ?? isProviderErrorRetryable(init.code);
     this.provider = init.provider;
     this.status = init.status;
+    this.retryAfterMs = init.retryAfterMs;
+    this.maxDelayMs = init.maxDelayMs;
+    this.details = init.details;
   }
 }
 
@@ -71,10 +84,30 @@ export function classifyProviderError(error: unknown, context: ProviderErrorCont
   const candidate = asErrorRecord(error);
   const provider = context.provider ?? readString(candidate?.provider);
   const status = context.status ?? readStatus(candidate);
-  const message = error instanceof Error ? error.message : String(error ?? 'Unknown provider error');
+  const message =
+    error instanceof Error
+      ? error.message
+      : (readString(candidate?.message) ?? String(error ?? 'Unknown provider error'));
+  const retryAfterMs = readFiniteNumber(candidate?.retryAfterMs ?? candidate?.retryAfter);
+  const maxDelayMs = readFiniteNumber(candidate?.maxDelayMs);
+  const details = candidate?.details;
 
   if (candidate?.name === 'AbortError' || /\babort(?:ed|ion)?\b/i.test(message)) {
-    return new ProviderError({ code: 'cancelled', message, provider, status });
+    return new ProviderError({ code: 'cancelled', message, provider, status, retryAfterMs, maxDelayMs, details });
+  }
+
+  const detailCode = asErrorRecord(candidate?.details)?.code;
+  if (isContextOverflow(message, candidate?.code ?? detailCode)) {
+    return new ProviderError({
+      code: 'context_overflow',
+      message,
+      provider,
+      status,
+      retryable: false,
+      retryAfterMs,
+      maxDelayMs,
+      details
+    });
   }
 
   if (status !== undefined) {
@@ -82,40 +115,53 @@ export function classifyProviderError(error: unknown, context: ProviderErrorCont
       code: providerErrorCodeForStatus(status),
       message,
       provider,
-      status
+      status,
+      retryAfterMs,
+      maxDelayMs,
+      details
     });
   }
 
   if (/missing (?:an? )?api key|credential|authentication|unauthorized|forbidden/i.test(message)) {
-    return new ProviderError({ code: 'authentication', message, provider });
+    return new ProviderError({ code: 'authentication', message, provider, retryAfterMs, maxDelayMs, details });
+  }
+  if (/provider unavailable|service unavailable|temporarily unavailable/i.test(message)) {
+    return new ProviderError({ code: 'provider_unavailable', message, provider, retryAfterMs, maxDelayMs, details });
   }
   if (/unsupported|not implemented|capability/i.test(message)) {
-    return new ProviderError({ code: 'unsupported_capability', message, provider });
+    return new ProviderError({ code: 'unsupported_capability', message, provider, retryAfterMs, maxDelayMs, details });
   }
   if (/malformed|invalid json|parse|stream ended|missing .*output|missing .*finish/i.test(message)) {
-    return new ProviderError({ code: 'malformed_response', message, provider });
+    return new ProviderError({ code: 'malformed_response', message, provider, retryAfterMs, maxDelayMs, details });
   }
   if (/refus|policy|safety/i.test(message)) {
-    return new ProviderError({ code: 'policy_refusal', message, provider });
+    return new ProviderError({ code: 'policy_refusal', message, provider, retryAfterMs, maxDelayMs, details });
   }
   if (
-    /timeout|timed out|network|fetch failed|failed to fetch|connection reset|connection refused|econn|enotfound|socket|temporar/i.test(
+    /timeout|timed out|network|fetch failed|failed to fetch|connection reset|connection refused|econn|enotfound|socket|temporar|transient/i.test(
       message
     )
   ) {
-    return new ProviderError({ code: 'transient_transport', message, provider });
+    return new ProviderError({ code: 'transient_transport', message, provider, retryAfterMs, maxDelayMs, details });
   }
 
-  return new ProviderError({ code: 'unknown', message, provider });
+  return new ProviderError({ code: 'unknown', message, provider, retryAfterMs, maxDelayMs, details });
 }
 
-export function providerHttpError(provider: string, status: number, statusText?: string): ProviderError {
+export function providerHttpError(
+  provider: string,
+  status: number,
+  statusText?: string,
+  metadata?: Pick<ProviderErrorInit, 'retryAfterMs' | 'maxDelayMs' | 'details'>
+): ProviderError {
   const suffix = statusText ? ` ${statusText}` : '';
+  const message = `${provider} API Error: ${status}${suffix}`;
   return new ProviderError({
-    code: providerErrorCodeForStatus(status),
-    message: `${provider} API Error: ${status}${suffix}`,
+    code: isContextOverflow(message, undefined) ? 'context_overflow' : providerErrorCodeForStatus(status),
+    message,
     provider,
-    status
+    status,
+    ...metadata
   });
 }
 
@@ -138,6 +184,19 @@ function asErrorRecord(error: unknown): Record<string, unknown> | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function isContextOverflow(message: string, code: unknown): boolean {
+  return (
+    code === 'context_overflow' ||
+    code === 'context_length_exceeded' ||
+    /context(?:\s+window|\s+length)?\s+(?:is\s+)?(?:too\s+long|overflow|exceed|limit)/i.test(message) ||
+    /maximum context length|prompt is too long|token limit/i.test(message)
+  );
 }
 
 function readStatus(value: Record<string, unknown> | undefined): number | undefined {

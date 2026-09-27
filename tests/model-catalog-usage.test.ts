@@ -1,6 +1,7 @@
 import {
   KNOWN_MODELS,
   PromptCacheOptimizer,
+  ProviderError,
   UsageTracker,
   calculateCost,
   findModelInCatalog,
@@ -174,7 +175,7 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     const retryFn = async () => {
       callCount++;
       if (callCount < 3) {
-        throw new Error('Transient rate limit error');
+        throw new ProviderError({ code: 'rate_limit', message: 'Transient rate limit error', provider: 'openai' });
       }
       return 'success-data';
     };

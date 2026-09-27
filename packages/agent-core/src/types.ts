@@ -10,6 +10,7 @@ import type {
   ToolResultMessage,
   Usage
 } from '@inkpi/protocol';
+import type { ContextBudgetPlanner, SessionCompactor } from './compaction/index.js';
 import type { Clock, IdGenerator, ModelStreamer, ThinkingMapper } from './ports/index.js';
 
 export type { ToolExecutionMode };
@@ -83,4 +84,7 @@ export interface AgentOptions {
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
   afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
   shouldStopAfterTurn?: (ctx: ShouldStopAfterTurnContext, signal?: AbortSignal) => Promise<boolean>;
+  /** Runtime compactor used before first call and during rolling tool history. */
+  sessionCompactor?: SessionCompactor;
+  contextBudgetPlanner?: ContextBudgetPlanner;
 }

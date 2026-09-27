@@ -167,7 +167,7 @@ describe('@inkpi/ai', () => {
     stream.push({ type: 'text_delta', textDelta: 'must be ignored' });
 
     await expect(iterator.next()).resolves.toEqual({
-      value: { type: 'error', error: 'provider failed' },
+      value: { type: 'error', error: 'provider failed', code: 'unknown', retryable: false },
       done: false
     });
     await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });

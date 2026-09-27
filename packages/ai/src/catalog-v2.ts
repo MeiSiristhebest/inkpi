@@ -1,5 +1,4 @@
 import {
-  KNOWN_MODELS,
   type ModelCatalogEntry,
   modelCatalogEntryToCapabilityDeclaration,
   modelCatalogEntryToConfig
@@ -26,19 +25,54 @@ export interface ModelAvailabilityDescriptor {
   reason?: string;
 }
 
+export interface ModelTransportDescriptor {
+  kind: 'openai-compatible' | 'anthropic' | 'ollama' | 'custom';
+  baseUrl?: string;
+}
+
 export interface ModelRouteDescriptor {
   canonicalId: string;
   provider: string;
+  /** Provider-native model identifier. OpenRouter keeps slash-qualified ids intact. */
   modelId: string;
   baseUrl?: string;
+  transport: ModelTransportDescriptor;
   authentication: ModelAuthenticationDescriptor;
   availability: ModelAvailabilityDescriptor;
+  pricing?: ModelPricingDescriptor;
+}
+
+/** Canonical identity is provider-independent and contains no executable route data. */
+export interface CanonicalModelIdentity {
+  canonicalId: string;
+  name: string;
+  aliases: readonly string[];
+}
+
+/** Pricing is catalog metadata, not a transport or credential concern. */
+export interface ModelPricingDescriptor {
+  inputPerMillionUsd: number;
+  outputPerMillionUsd: number;
+  cacheReadPerMillionUsd?: number;
+  cacheWritePerMillionUsd?: number;
 }
 
 /** JSON-safe catalog metadata. Executable handlers live in the manager registry. */
-export interface ModelCatalogV2Entry extends ModelCatalogEntry {
+export interface ModelCatalogV2Entry
+  extends Omit<
+    ModelCatalogEntry,
+    'contextWindow' | 'maxTokens' | 'supportsThinking' | 'supportsTools' | 'supportsVision' | 'cost'
+  > {
   /** Stable identity independent of provider aliases or display names. */
   canonicalId?: string;
+  /** V2 metadata is sparse: omitted capability facts remain unknown. */
+  contextWindow?: number;
+  maxTokens?: number;
+  supportsThinking?: boolean;
+  supportsTools?: boolean;
+  supportsVision?: boolean;
+  cost?: ModelPricingDescriptor;
+  pricing?: ModelPricingDescriptor;
   /** Explicit legacy/user-facing aliases. */
   aliases?: readonly string[];
   /** Transport identity may differ from the catalog identity. */
@@ -68,38 +102,48 @@ interface CatalogRecord {
  */
 export class ModelCatalogV2 {
   private records = new Map<string, CatalogRecord>();
-  private aliases = new Map<string, string>();
+  /** null marks an ambiguous short alias shared by multiple routes. */
+  private aliases = new Map<string, string | null>();
   private handlers = new Map<string, ProviderHandler>();
 
-  constructor(entries: readonly ModelCatalogV2Entry[] = KNOWN_MODELS) {
+  /** V2 is intentionally opt-in; callers register canonical identities explicitly. */
+  constructor(entries: readonly ModelCatalogV2Entry[] = []) {
     for (const entry of entries) this.registerModel(entry);
   }
 
   public registerModel(entry: ModelCatalogV2Entry): void {
-    modelCatalogEntryToCapabilityDeclaration(entry);
+    modelCatalogEntryToCapabilityDeclaration(toLegacyCatalogEntry(entry));
     const canonicalId = normalizeRequired(entry.canonicalId ?? entry.id, 'canonical model id');
     const route = createRouteDescriptor(entry, canonicalId);
     const aliases = collectAliases(entry, canonicalId, route.modelId).map((alias) =>
       normalizeRequired(alias, 'model alias').toLowerCase()
     );
-
-    for (const alias of aliases) {
-      const current = this.aliases.get(alias);
-      if (current && current !== canonicalId) {
-        throw new Error(`Model alias '${alias}' is already mapped to '${current}'.`);
-      }
-    }
+    const explicitAliases = new Set(
+      (entry.aliases ?? []).map((alias) => normalizeRequired(alias, 'model alias').toLowerCase())
+    );
 
     if (this.records.has(canonicalId)) this.removeAliasesFor(canonicalId);
+    for (const alias of aliases) {
+      const current = this.aliases.get(alias);
+      if (current && current !== canonicalId && explicitAliases.has(alias)) {
+        throw new Error(`Model alias '${alias}' is already mapped to '${current}'.`);
+      }
+      if (current && current !== canonicalId) this.aliases.set(alias, null);
+      else if (current === null && explicitAliases.has(alias)) {
+        throw new Error(`Model alias '${alias}' is ambiguous.`);
+      } else this.aliases.set(alias, canonicalId);
+    }
     this.records.set(canonicalId, { entry: { ...entry, canonicalId }, route });
-    for (const alias of aliases) this.aliases.set(alias, canonicalId);
+    this.rebuildAliases();
   }
 
   public unregisterModel(idOrAlias: string): boolean {
     const canonicalId = this.resolveCanonicalId(idOrAlias);
     if (!canonicalId) return false;
     this.removeAliasesFor(canonicalId);
-    return this.records.delete(canonicalId);
+    const removed = this.records.delete(canonicalId);
+    if (removed) this.rebuildAliases();
+    return removed;
   }
 
   public registerAlias(alias: string, canonicalIdOrAlias: string): void {
@@ -110,8 +154,12 @@ export class ModelCatalogV2 {
     }
 
     const current = this.aliases.get(normalizedAlias);
-    if (current && current !== canonicalId) {
-      throw new Error(`Model alias '${alias}' is already mapped to '${current}'.`);
+    if (current !== undefined && current !== canonicalId) {
+      throw new Error(
+        current === null
+          ? `Model alias '${alias}' is ambiguous.`
+          : `Model alias '${alias}' is already mapped to '${current}'.`
+      );
     }
     this.aliases.set(normalizedAlias, canonicalId);
   }
@@ -119,6 +167,24 @@ export class ModelCatalogV2 {
   public getModel(idOrAlias: string): ModelCatalogV2Entry | undefined {
     const canonicalId = this.resolveCanonicalId(idOrAlias);
     return canonicalId ? this.records.get(canonicalId)?.entry : undefined;
+  }
+
+  public getIdentity(idOrAlias: string): CanonicalModelIdentity | undefined {
+    const canonicalId = this.resolveCanonicalId(idOrAlias);
+    const entry = canonicalId ? this.records.get(canonicalId)?.entry : undefined;
+    if (!entry || !canonicalId) return undefined;
+    return {
+      canonicalId,
+      name: entry.name,
+      aliases: collectAliases(entry, canonicalId, this.records.get(canonicalId)!.route.modelId)
+    };
+  }
+
+  public getPricing(idOrAlias: string): ModelPricingDescriptor | undefined {
+    const canonicalId = this.resolveCanonicalId(idOrAlias);
+    const entry = canonicalId ? this.records.get(canonicalId)?.entry : undefined;
+    const pricing = entry?.pricing ?? entry?.cost;
+    return pricing ? { ...pricing } : undefined;
   }
 
   public getRoute(idOrAlias: string): ModelRouteDescriptor | undefined {
@@ -132,7 +198,11 @@ export class ModelCatalogV2 {
   }
 
   public getAliases(): Record<string, string> {
-    return Object.fromEntries([...this.aliases.entries()].sort(([left], [right]) => left.localeCompare(right)));
+    return Object.fromEntries(
+      [...this.aliases.entries()]
+        .filter((entry): entry is [string, string] => entry[1] !== null)
+        .sort(([left], [right]) => left.localeCompare(right))
+    );
   }
 
   public setAvailability(idOrAlias: string, availability: ModelAvailabilityDescriptor): ModelAvailabilityDescriptor {
@@ -159,7 +229,7 @@ export class ModelCatalogV2 {
 
     const handler =
       this.handlers.get(record.route.provider.toLowerCase()) ?? getProvider(record.route.provider as ProviderType);
-    const baseConfig = modelCatalogEntryToConfig(record.entry);
+    const baseConfig = modelCatalogEntryToConfig(toLegacyCatalogEntry(record.entry));
     const config: ModelConfig = {
       ...baseConfig,
       id: record.route.modelId,
@@ -178,7 +248,8 @@ export class ModelCatalogV2 {
     if (typeof idOrAlias !== 'string' || idOrAlias.trim().length === 0) return undefined;
     const query = idOrAlias.trim();
     if (this.records.has(query)) return query;
-    return this.aliases.get(query.toLowerCase());
+    const mapped = this.aliases.get(query.toLowerCase());
+    return mapped ?? undefined;
   }
 
   private requireCanonicalId(idOrAlias: string): string {
@@ -192,11 +263,35 @@ export class ModelCatalogV2 {
       if (mappedId === canonicalId) this.aliases.delete(alias);
     }
   }
+
+  private rebuildAliases(): void {
+    this.aliases.clear();
+    for (const [canonicalId, record] of this.records) {
+      for (const alias of collectAliases(record.entry, canonicalId, record.route.modelId)) {
+        const normalized = normalizeRequired(alias, 'model alias').toLowerCase();
+        const current = this.aliases.get(normalized);
+        if (current !== undefined && current !== canonicalId) this.aliases.set(normalized, null);
+        else this.aliases.set(normalized, canonicalId);
+      }
+    }
+  }
+}
+
+function toLegacyCatalogEntry(entry: ModelCatalogV2Entry): ModelCatalogEntry {
+  return {
+    ...entry,
+    contextWindow: entry.contextWindow ?? 1,
+    maxTokens: entry.maxTokens ?? 1,
+    supportsThinking: entry.supportsThinking ?? false,
+    supportsTools: entry.supportsTools ?? false,
+    supportsVision: entry.supportsVision,
+    cost: entry.cost ?? { inputPerMillionUsd: 0, outputPerMillionUsd: 0 }
+  };
 }
 
 function createRouteDescriptor(entry: ModelCatalogV2Entry, canonicalId: string): ModelRouteDescriptor {
   const provider = normalizeRequired(entry.route?.provider ?? entry.provider, 'route provider');
-  const modelId = normalizeRequired(entry.route?.modelId ?? shortModelId(entry.id), 'route model id');
+  const modelId = normalizeRequired(entry.route?.modelId ?? defaultRouteModelId(entry.id, provider), 'route model id');
   const authentication = entry.authentication ? { ...entry.authentication } : defaultAuthentication(provider);
   const availability = entry.availability ? { ...entry.availability } : { status: 'unknown' as const };
   validateAuthentication(authentication);
@@ -207,21 +302,41 @@ function createRouteDescriptor(entry: ModelCatalogV2Entry, canonicalId: string):
     provider,
     modelId,
     ...(entry.route?.baseUrl ? { baseUrl: entry.route.baseUrl } : {}),
+    transport: {
+      kind: transportKind(provider),
+      ...(entry.route?.baseUrl ? { baseUrl: entry.route.baseUrl } : {})
+    },
     authentication,
-    availability
+    availability,
+    ...((entry.pricing ?? entry.cost) ? { pricing: { ...(entry.pricing ?? entry.cost)! } } : {})
   };
 }
 
 function collectAliases(entry: ModelCatalogV2Entry, canonicalId: string, routeModelId: string): string[] {
-  const aliases = new Set<string>([canonicalId, entry.id, routeModelId, ...(entry.aliases ?? [])]);
-  const shortId = shortModelId(entry.id);
-  if (shortId) aliases.add(shortId);
-  return [...aliases];
+  // Short ids remain convenient when unique; registerModel marks collisions as
+  // ambiguous instead of silently selecting one provider route.
+  return [...new Set([canonicalId, entry.id, routeModelId, shortModelId(entry.id), ...(entry.aliases ?? [])])];
+}
+
+function defaultRouteModelId(id: string, provider: string): string {
+  // OpenRouter accepts provider-qualified ids (for example openai/gpt-4o).
+  // Never strip that identity while constructing its transport request.
+  return provider.toLowerCase() === 'openrouter' ? id : shortModelId(id);
 }
 
 function shortModelId(id: string): string {
   const separator = id.indexOf('/');
   return separator >= 0 ? id.slice(separator + 1) : id;
+}
+
+function transportKind(provider: string): ModelTransportDescriptor['kind'] {
+  const normalized = provider.toLowerCase();
+  if (normalized === 'anthropic' || normalized === 'claude') return 'anthropic';
+  if (normalized === 'ollama') return 'ollama';
+  if (['openai', 'openrouter', 'deepseek', 'groq', 'mistral', 'xai', 'z-ai'].includes(normalized)) {
+    return 'openai-compatible';
+  }
+  return 'custom';
 }
 
 function defaultAuthentication(provider: string): ModelAuthenticationDescriptor {
@@ -276,7 +391,9 @@ function cloneAvailability(availability: ModelAvailabilityDescriptor): ModelAvai
 function cloneRoute(route: ModelRouteDescriptor): ModelRouteDescriptor {
   return {
     ...route,
+    transport: { ...route.transport },
     authentication: { ...route.authentication },
-    availability: cloneAvailability(route.availability)
+    availability: cloneAvailability(route.availability),
+    ...(route.pricing ? { pricing: { ...route.pricing } } : {})
   };
 }

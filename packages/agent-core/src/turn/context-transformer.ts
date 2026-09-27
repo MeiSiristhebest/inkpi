@@ -15,6 +15,11 @@ export class ContextTransformer {
     await this.drainSteering(ctx);
 
     let workingMessages = [...ctx.state.messages];
+    if (ctx.options.sessionCompactor?.shouldCompact(workingMessages)) {
+      const compacted = await ctx.options.sessionCompactor.compact(workingMessages, ctx.signal);
+      ctx.state.messages = compacted.compactedMessages;
+      workingMessages = [...ctx.state.messages];
+    }
     if (ctx.options.transformContext) {
       workingMessages = await ctx.options.transformContext(workingMessages, ctx.signal);
     }

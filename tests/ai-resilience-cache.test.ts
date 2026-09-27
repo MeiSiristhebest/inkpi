@@ -1,4 +1,10 @@
-import { AssistantEventStream, PromptCacheOptimizer, createResilientStream, retryAssistantStream } from '@inkpi/ai';
+import {
+  AssistantEventStream,
+  PromptCacheOptimizer,
+  ProviderError,
+  createResilientStream,
+  retryAssistantStream
+} from '@inkpi/ai';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai)', () => {
@@ -86,7 +92,9 @@ describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai
     const result = await retryAssistantStream(
       async () => {
         retryAttempt++;
-        if (retryAttempt < 2) throw new Error('Temporary failure');
+        if (retryAttempt < 2) {
+          throw new ProviderError({ code: 'transient_transport', message: 'Temporary failure', provider: 'openai' });
+        }
         return 'success_val';
       },
       { maxRetries: 3, initialDelayMs: 10 }
