@@ -239,8 +239,13 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
   'storage.searchFts': (params, ctx) => BUILTIN_RPC_METHODS['fts.search'](params, ctx),
   'fts.search': (params, ctx) => {
     if (!ctx.fts) throw new Error('FTS search capability not initialized');
-    const results = ctx.fts.search(params.query, params.limit);
-    return results;
+    const workspaceId = typeof params.workspaceId === 'string' ? params.workspaceId.trim() : '';
+    if (!workspaceId) throw new Error('fts.search requires a workspaceId');
+    return ctx.fts.search({
+      query: params.query,
+      workspaceId,
+      limit: params.limit
+    });
   },
 
   // 10. Telemetry metrics

@@ -43,6 +43,7 @@ describe('artifact RPC over TCP', () => {
         saved: true,
         id: sameTypeOtherTask.id
       });
+      await expect(client.getArtifact('artifact:tcp-e2e-missing')).resolves.toBeUndefined();
       const rehydrated = await client.getArtifact(artifact.id);
       expect(rehydrated).toEqual(artifact);
       expect(JSON.parse(JSON.stringify(rehydrated))).toEqual(artifact);

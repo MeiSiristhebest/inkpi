@@ -75,6 +75,8 @@ interface TaskRecord {
   executionAttempts: ExecutionAttempt[];
   resumeToken?: ResumeToken;
   executionSnapshot?: ExecutionSnapshot;
+  executionPlan?: import('@inkpi/protocol').ExecutionPlan;
+  executionSettlement?: import('@inkpi/protocol').ExecutionSettlement;
   steering: unknown[];
   persistenceFailed?: boolean;
   scheduled?: { id: string; cancel: () => boolean };
@@ -477,6 +479,12 @@ export class TaskRouter {
       if (handlerResult.executionSnapshot) {
         record.executionSnapshot = cloneValue(handlerResult.executionSnapshot);
       }
+      if (handlerResult.executionPlan) {
+        record.executionPlan = cloneValue(handlerResult.executionPlan);
+      }
+      if (handlerResult.executionSettlement) {
+        record.executionSettlement = cloneValue(handlerResult.executionSettlement);
+      }
       if (record.controller.signal.aborted) {
         this.finishCancelled(record, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
@@ -802,6 +810,8 @@ export class TaskRouter {
       executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
       resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
       executionSnapshot: stored.executionSnapshot ? cloneValue(stored.executionSnapshot) : undefined,
+      executionPlan: stored.executionPlan ? cloneValue(stored.executionPlan) : undefined,
+      executionSettlement: stored.executionSettlement ? cloneValue(stored.executionSettlement) : undefined,
       steering: stored.steering ? cloneValue(stored.steering) : [],
       scheduleSequence: 0
     };
@@ -876,6 +886,8 @@ export class TaskRouter {
       })),
       resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
       executionSnapshot: record.executionSnapshot ? cloneValue(record.executionSnapshot) : undefined,
+      executionPlan: record.executionPlan ? cloneValue(record.executionPlan) : undefined,
+      executionSettlement: record.executionSettlement ? cloneValue(record.executionSettlement) : undefined,
       steering: cloneValue(record.steering)
     };
   }
@@ -928,12 +940,31 @@ function toTaskError(error: unknown): TaskError {
     return { code: 'TASK_TIMEOUT', message: error.message, retryable: true };
   }
   if (error instanceof Error) {
-    const metadata = error as Error & { retryable?: boolean; details?: unknown };
+    const metadata = error as Error & {
+      code?: string;
+      provider?: string;
+      status?: number;
+      retryable?: boolean;
+      retryAfterMs?: number;
+      maxDelayMs?: number;
+      details?: unknown;
+    };
+    const isProviderError = error.name === 'ProviderError' || metadata.provider !== undefined;
+    const details =
+      isProviderError && metadata.code
+        ? {
+            ...(metadata.provider === undefined ? {} : { provider: metadata.provider }),
+            ...(metadata.status !== undefined ? { status: metadata.status } : {}),
+            ...(metadata.retryAfterMs !== undefined ? { retryAfterMs: metadata.retryAfterMs } : {}),
+            ...(metadata.maxDelayMs !== undefined ? { maxDelayMs: metadata.maxDelayMs } : {}),
+            ...(metadata.details !== undefined ? { details: metadata.details } : {})
+          }
+        : metadata.details;
     return sanitizeTaskError({
-      code: 'TASK_FAILED',
+      code: isProviderError ? (metadata.code ?? 'TASK_FAILED') : 'TASK_FAILED',
       message: error.message,
       retryable: metadata.retryable,
-      details: metadata.details
+      ...(details === undefined ? {} : { details })
     });
   }
   return { code: 'TASK_FAILED', message: String(error) };

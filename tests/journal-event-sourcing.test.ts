@@ -1,6 +1,7 @@
 import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ExecutionPlan } from '@inkpi/protocol';
 import { AppendOnlySessionJournal, InkDb, InkRepository } from '@inkpi/storage';
 import { describe, expect, it } from 'vitest';
 
@@ -132,9 +133,20 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
       details: { stateLedger: { entities: [], assets: [], tracks: [], locations: [], modifiedDocuments: [] } }
     });
 
+    const replayPlan: ExecutionPlan = {
+      version: 1,
+      id: 'plan_replay_1',
+      createdAt: 150,
+      operation: 'tool_call',
+      target: 'grep',
+      input: { pattern: 'chapter-1' },
+      replay: 'safe',
+      fingerprint: 'c'.repeat(64)
+    };
     journal.append('operation_intent', {
       id: 'op_replay_1',
       type: 'tool_call',
+      plan: replayPlan,
       intent: { tool: 'grep' }
     });
 
@@ -160,6 +172,7 @@ describe('Append-Only JSONL Session Storage & Event Sourcing', () => {
     const opInDb = repo.getOperation('op_replay_1');
     expect(opInDb?.state).toBe('settled');
     expect(opInDb?.settlement).toEqual({ count: 10 });
+    expect(opInDb?.plan).toEqual(replayPlan);
 
     const snap = repo.getSnapshot('ch_1');
     expect(snap?.contentMarkdown).toContain('少年UserB');

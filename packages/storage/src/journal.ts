@@ -316,6 +316,7 @@ export class AppendOnlySessionJournal {
                 type: op.type || 'custom',
                 state: 'running',
                 intent: op.intent,
+                plan: op.plan,
                 createdAt: entry.timestamp,
                 updatedAt: entry.timestamp
               });
@@ -333,6 +334,7 @@ export class AppendOnlySessionJournal {
                 type: op.type || 'custom',
                 state: op.error ? 'failed' : 'settled',
                 intent: op.intent,
+                plan: op.plan,
                 settlement: op.settlement,
                 error: op.error,
                 createdAt: op.createdAt || entry.timestamp,
@@ -399,6 +401,8 @@ function parseJournalEntry(value: unknown, sessionId: string): JournalEntry {
   if (!Object.prototype.hasOwnProperty.call(entry, 'payload')) {
     throw new Error('entry.payload is required.');
   }
+  // SAFETY: The guards above validate the required JournalEntry fields; the
+  // remaining payload is intentionally opaque at the journal boundary.
   return entry as unknown as JournalEntry;
 }
 

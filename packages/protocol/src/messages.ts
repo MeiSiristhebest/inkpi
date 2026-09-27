@@ -45,11 +45,24 @@ export interface UserMessage extends BaseMessage {
   content: string | (TextContent | ImageContent)[];
 }
 
+export interface ProviderErrorMetadata {
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  provider?: string;
+  status?: number;
+  retryAfterMs?: number;
+  maxDelayMs?: number;
+  details?: unknown;
+}
+
 export interface AssistantMessage extends BaseMessage {
   role: 'assistant';
   content: ContentBlock[];
   stopReason?: 'stop' | 'tool_use' | 'length' | 'error' | 'aborted';
   errorMessage?: string;
+  /** Structured provider failure metadata preserved across the stream boundary. */
+  providerError?: ProviderErrorMetadata;
   usage?: Usage;
   /**
    * 本条消息生成时使用的 provider 思考档位（如 Anthropic 自适应思考 effort）。
@@ -110,6 +123,7 @@ export type ProviderType =
   | 'azure'
   | 'siliconflow'
   | 'qwen'
+  | 'z-ai'
   | 'faux'
   | 'custom';
 

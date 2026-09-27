@@ -8,6 +8,7 @@ import type {
   CacheInvalidateParams,
   CacheInvalidateResult,
   CacheStatus,
+  DiagnosticSnapshot,
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
@@ -315,8 +316,8 @@ export class InkRpcClient {
   }
 
   // 8. FTS
-  public searchFts(query: string, limit?: number) {
-    return this.request<any[]>('storage.searchFts', { query, limit });
+  public searchFts(query: string, workspaceId: string, limit?: number) {
+    return this.request<any[]>('storage.searchFts', { query, workspaceId, limit });
   }
 
   // 10. Telemetry
@@ -330,6 +331,10 @@ export class InkRpcClient {
 
   public exportOpenTelemetry() {
     return this.request<string>('telemetry.exportOtel');
+  }
+
+  public getRuntimeDiagnostics(): Promise<DiagnosticSnapshot> {
+    return this.request<DiagnosticSnapshot>('runtime.diagnostics');
   }
 
   public submitTask(task: AiTask): Promise<TaskSubmitResult> {
@@ -450,9 +455,10 @@ export class InkRpcClient {
     return this.request('artifact.save', params);
   }
 
-  public getArtifact(id: string): Promise<Artifact | undefined> {
+  public async getArtifact(id: string): Promise<Artifact | undefined> {
     const params: ArtifactGetParams = { id };
-    return this.request('artifact.get', params);
+    const artifact = await this.request<Artifact | null>('artifact.get', params);
+    return artifact ?? undefined;
   }
 
   public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {

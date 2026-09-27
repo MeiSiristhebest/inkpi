@@ -1,5 +1,7 @@
 import {
+  ContextBudgetPlanner,
   type RuntimeCacheCoordinatorPort,
+  type SessionCompactor,
   type TaskHandler,
   type TaskHandlerContext,
   type TaskHandlerResult,
@@ -8,7 +10,7 @@ import {
   createRuntimeCacheKey,
   stableSerialize
 } from '@inkpi/agent-core';
-import { type ModelConfig, streamAi } from '@inkpi/ai';
+import { type ModelConfig, ProviderError, classifyProviderError, streamAi } from '@inkpi/ai';
 import {
   type AgentMessage,
   type AssistantMessage,
@@ -40,6 +42,74 @@ export type {
   ResolvedModelRoute
 } from './model-capability-router.js';
 
+export type ProviderRecoveryMode = 'none' | 'retry-same-route' | 'failover-route' | 'compact-and-retry';
+
+export interface ProviderRecoveryOptions {
+  mode?: ProviderRecoveryMode;
+  maxRetries?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  sleep?: (delayMs: number, signal: AbortSignal) => Promise<void>;
+}
+
+/** Bounded provider recovery policy shared by task execution and route failover. */
+export class ProviderRecovery {
+  readonly mode: ProviderRecoveryMode;
+  readonly maxRetries: number;
+  readonly initialDelayMs: number;
+  readonly maxDelayMs: number;
+  private readonly sleep: (delayMs: number, signal: AbortSignal) => Promise<void>;
+
+  constructor(options: ProviderRecoveryOptions = {}) {
+    this.mode = options.mode ?? 'failover-route';
+    this.maxRetries = Math.max(0, Math.floor(options.maxRetries ?? 1));
+    this.initialDelayMs = Math.max(0, Math.floor(options.initialDelayMs ?? 0));
+    this.maxDelayMs = Math.max(this.initialDelayMs, Math.floor(options.maxDelayMs ?? 10_000));
+    this.sleep =
+      options.sleep ??
+      ((delayMs, signal) =>
+        new Promise((resolve, reject) => {
+          if (signal.aborted) {
+            reject(signal.reason instanceof Error ? signal.reason : new Error('Aborted'));
+            return;
+          }
+          const timer = setTimeout(resolve, delayMs);
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              reject(signal.reason instanceof Error ? signal.reason : new Error('Aborted'));
+            },
+            { once: true }
+          );
+        }));
+  }
+
+  canRetrySameRoute(error: unknown, retriesUsed: number): boolean {
+    return this.mode === 'retry-same-route' && retriesUsed < this.maxRetries && isRetryableProviderError(error);
+  }
+
+  canFailover(error: unknown): boolean {
+    return this.mode === 'failover-route' && isRetryableProviderError(error);
+  }
+
+  /** Exposes the bounded action for callers that need to record recovery telemetry. */
+  action(error: unknown, retriesUsed: number, hasNextRoute: boolean): ProviderRecoveryMode {
+    if (!isRetryableProviderError(error)) return 'none';
+    if (this.mode === 'retry-same-route' && retriesUsed < this.maxRetries) return 'retry-same-route';
+    if (this.mode === 'compact-and-retry' && retriesUsed === 0) return 'compact-and-retry';
+    if (this.mode === 'failover-route' && hasNextRoute) return 'failover-route';
+    return 'none';
+  }
+
+  async wait(error: unknown, retriesUsed: number, signal: AbortSignal): Promise<void> {
+    const normalized = classifyProviderError(error);
+    const backoff = this.initialDelayMs * 2 ** retriesUsed;
+    const delay = Math.min(normalized.retryAfterMs ?? backoff, normalized.maxDelayMs ?? this.maxDelayMs);
+    await this.sleep(delay, signal);
+  }
+}
+
 export interface TaskModelHandlerOptions {
   model?: ModelConfig;
   systemPrompt?: string;
@@ -52,6 +122,10 @@ export interface TaskModelHandlerOptions {
   providerResponseCache?: ProviderResponseCache;
   providerResponseCacheOptions?: Omit<ProviderResponseCacheOptions, 'cacheCoordinator'>;
   cacheCoordinator?: RuntimeCacheCoordinatorPort;
+  /** Optional explicit summarizer capability used for rolling tool-history compaction. */
+  sessionCompactor?: SessionCompactor;
+  providerRecovery?: ProviderRecoveryOptions;
+  contextBudgetPlanner?: ContextBudgetPlanner;
 }
 
 /**
@@ -67,12 +141,18 @@ export class TaskModelHandler implements TaskHandler {
   private readonly maxToolSteps: number;
   private readonly capabilityRouter: CapabilityRouter;
   private readonly providerResponseCache: ProviderResponseCache;
+  private readonly sessionCompactor?: SessionCompactor;
+  private readonly providerRecovery: ProviderRecovery;
+  private readonly contextBudgetPlanner: ContextBudgetPlanner;
 
   constructor(options: TaskModelHandlerOptions) {
     this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
     this.stream = options.stream ?? streamAi;
     this.toolRegistry = options.toolRegistry;
     this.maxToolSteps = Math.max(0, options.maxToolSteps ?? 8);
+    this.sessionCompactor = options.sessionCompactor;
+    this.providerRecovery = new ProviderRecovery(options.providerRecovery);
+    this.contextBudgetPlanner = options.contextBudgetPlanner ?? new ContextBudgetPlanner();
     this.providerResponseCache =
       options.providerResponseCache ??
       new ProviderResponseCache({
@@ -118,19 +198,28 @@ export class TaskModelHandler implements TaskHandler {
     let lastError: unknown;
     for (const route of routes) {
       attemptedRoutes.push(route.id);
-      try {
-        const result = await this.executeRoute(context, route);
-        if (attemptedRoutes.length === 1) return result;
-        return {
-          ...result,
-          provenance: {
-            ...result.provenance,
-            routeAttempts: attemptedRoutes
+      let sameRouteRetries = 0;
+      while (true) {
+        try {
+          const result = await this.executeRoute(context, route);
+          if (attemptedRoutes.length === 1) return result;
+          return {
+            ...result,
+            provenance: {
+              ...result.provenance,
+              routeAttempts: attemptedRoutes
+            }
+          };
+        } catch (error) {
+          lastError = error;
+          if (this.providerRecovery.canRetrySameRoute(error, sameRouteRetries)) {
+            sameRouteRetries += 1;
+            await this.providerRecovery.wait(error, sameRouteRetries - 1, context.signal);
+            continue;
           }
-        };
-      } catch (error) {
-        lastError = error;
-        if (!shouldFailoverToNextRoute(error, context.signal)) throw error;
+          if (!this.providerRecovery.canFailover(error) || context.signal.aborted) throw error;
+          break;
+        }
       }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
@@ -139,7 +228,7 @@ export class TaskModelHandler implements TaskHandler {
   private async executeRoute(context: TaskHandlerContext, route: ResolvedModelRoute): Promise<TaskHandlerResult> {
     const startedAt = Date.now();
     const prompt = buildPrompt(context);
-    const messages: AgentMessage[] = [{ role: 'user', content: prompt, timestamp: Date.now() }];
+    let messages: AgentMessage[] = [{ role: 'user', content: prompt, timestamp: Date.now() }];
     const toolRegistry =
       route.capabilities.tools === false
         ? undefined
@@ -150,7 +239,25 @@ export class TaskModelHandler implements TaskHandler {
     let toolStep = 0;
     let providerCacheKey: string | undefined;
     let providerCacheHit = false;
+    let overflowRecoveryUsed = false;
     while (true) {
+      if (this.sessionCompactor) {
+        const budgetPlan = this.contextBudgetPlanner.plan(
+          {
+            contextWindowTokens: route.capabilities.maxContextTokens ?? route.capabilities.contextTokens,
+            outputReserveTokens: route.capabilities.maxOutputTokens ?? route.model.maxTokens,
+            messages
+          },
+          this.sessionCompactor
+        );
+        if (
+          (budgetPlan.overBudget || this.sessionCompactor.shouldCompact(messages, context.task)) &&
+          messages.length > 1
+        ) {
+          const compacted = await this.sessionCompactor.compact(messages, context.signal, context.task);
+          messages = compacted.compactedMessages;
+        }
+      }
       const steering = context.consumeSteering();
       if (steering.length > 0) messages.push(publicSteeringMessage(steering));
       const cacheKey =
@@ -165,8 +272,31 @@ export class TaskModelHandler implements TaskHandler {
         providerCacheKey = cacheKey;
       }
       if (assistant.stopReason === 'error' || assistant.errorMessage) {
-        const error = new Error(assistant.errorMessage ?? 'Model returned an error');
-        (error as Error & { retryable?: boolean }).retryable = true;
+        const providerError = assistant.providerError;
+        const error = providerError?.code
+          ? new ProviderError({
+              code: providerError.code as import('@inkpi/ai').ProviderErrorCode,
+              message: providerError.message ?? assistant.errorMessage ?? 'Model returned an error',
+              retryable: providerError.retryable,
+              provider: providerError.provider ?? route.model.provider,
+              status: providerError.status,
+              retryAfterMs: providerError.retryAfterMs,
+              maxDelayMs: providerError.maxDelayMs,
+              details: providerError.details
+            })
+          : new Error(assistant.errorMessage ?? 'Model returned an error');
+        if (
+          this.sessionCompactor &&
+          this.providerRecovery.mode === 'compact-and-retry' &&
+          !overflowRecoveryUsed &&
+          error instanceof ProviderError &&
+          error.code === 'context_overflow'
+        ) {
+          overflowRecoveryUsed = true;
+          const compacted = await this.sessionCompactor.compact(messages, context.signal, context.task);
+          messages = compacted.compactedMessages;
+          continue;
+        }
         throw error;
       }
       const toolCalls = assistant.content.filter(isToolCall);
@@ -496,9 +626,8 @@ function stripPrivateReasoning(text: string): string {
     .trim();
 }
 
-function shouldFailoverToNextRoute(error: unknown, signal: AbortSignal): boolean {
-  if (signal.aborted || !(error instanceof Error)) return false;
-  return (error as Error & { retryable?: boolean }).retryable === true;
+function isRetryableProviderError(error: unknown): boolean {
+  return error instanceof ProviderError && error.retryable;
 }
 
 const defaultSystemPrompt = 'You are InkPi creative intelligence. Follow the task output contract exactly.';

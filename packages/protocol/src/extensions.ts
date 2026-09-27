@@ -1,3 +1,4 @@
+import type { JsonObject } from './json.js';
 import type { AgentMessage, ImageContent, TextContent } from './messages.js';
 
 export type ToolExecutionMode = 'parallel' | 'sequential';
@@ -71,7 +72,7 @@ export interface ToolRegistrationDescriptor {
 /** Parameters for the explicit Desktop -> Runtime tool execution boundary. */
 export interface ToolExecuteParams {
   readonly toolName: string;
-  readonly arguments: Record<string, unknown>;
+  readonly arguments: JsonObject;
   readonly toolCallId?: string;
 }
 

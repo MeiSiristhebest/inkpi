@@ -839,6 +839,10 @@ mutation
 | Phase 22 reliability review | 13 个场景的 `PHASE22_RELIABILITY_SCENARIOS`、phase22-reliability-matrix、fault injection、RPC/restart/cache/provider tests | 本地 13/13 场景进入 deterministic gate；生产故障、真实 provider 和长期运行仍未声明完成 |
 | Phase 23 final freeze | `PHASE23_ATOMIC_CONDITIONS` 的 20 个原子条件、source marker、CI 直接执行和 Final Freeze audit 规则 | 本地门禁以 20 项为准；旧 `final-freeze-audit.mjs` 的 16 组 external/replay 汇总不是 20 项实现证据的替代物 |
 
+### Durable execution payload privacy decision
+
+Runtime 保留完整工具参数、执行计划输入、结算结果和工具结果于本地 SQLite 及可选 JSONL journal，以确保 `replay: safe` 使用原始输入，并维持 plan fingerprint 与恢复证据一致。当前这些执行载荷没有经过 `sanitizePrivateData`，也没有应用层 at-rest 加密。Owner 选择保留精确 replay，并暂时接受、明确记录本地明文静态存储风险；这不代表跨进程脱敏或生产访问控制已完成。后续若要脱敏，必须同步修改恢复合约：缺少必要输入的操作不得静默重放；at-rest encryption 另行设计密钥生命周期和迁移。
+
 ## 19. Final Freeze Checklist
 
 以下清单是本地 Final Freeze Gate 的映射说明。当前本地 gate 只接受 Runtime 仓库内的 test、fixture、workflow 来源；它不把 fixture、旧 external/replay JSON、GUI 记录或真实 provider 结果转换成新的实现证据。

@@ -16,8 +16,9 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
       .prepare(
         `INSERT INTO task_executions
           (task_id, task_json, snapshot_json, attempts, updated_at,
-           run_json, steps_json, execution_attempts_json, resume_token_json, execution_snapshot_json, steering_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           run_json, steps_json, execution_attempts_json, resume_token_json, execution_snapshot_json,
+           execution_plan_json, execution_settlement_json, steering_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(task_id) DO UPDATE SET
            task_json = excluded.task_json,
            snapshot_json = excluded.snapshot_json,
@@ -28,6 +29,8 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
            execution_attempts_json = excluded.execution_attempts_json,
            resume_token_json = excluded.resume_token_json,
            execution_snapshot_json = excluded.execution_snapshot_json,
+           execution_plan_json = excluded.execution_plan_json,
+           execution_settlement_json = excluded.execution_settlement_json,
            steering_json = excluded.steering_json`
       )
       .run(
@@ -41,6 +44,8 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
         record.executionAttempts ? JSON.stringify(sanitizePrivateData(record.executionAttempts)) : null,
         record.resumeToken ? JSON.stringify(record.resumeToken) : null,
         record.executionSnapshot ? JSON.stringify(record.executionSnapshot) : null,
+        record.executionPlan ? JSON.stringify(record.executionPlan) : null,
+        record.executionSettlement ? JSON.stringify(record.executionSettlement) : null,
         record.steering ? JSON.stringify(record.steering) : null
       );
   }
@@ -76,7 +81,8 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
     const row = this.db
       .prepare(
         `SELECT task_json, snapshot_json, attempts, updated_at,
-                run_json, steps_json, execution_attempts_json, resume_token_json, execution_snapshot_json, steering_json
+                run_json, steps_json, execution_attempts_json, resume_token_json, execution_snapshot_json,
+                execution_plan_json, execution_settlement_json, steering_json
          FROM task_executions WHERE task_id = ?`
       )
       .get(taskId) as Record<string, unknown> | undefined;
@@ -86,7 +92,8 @@ export class SqliteTaskExecutionStore implements TaskExecutionStore {
   list(): TaskExecutionRecord[] {
     const rows = this.db
       .prepare(`SELECT task_json, snapshot_json, attempts, updated_at,
-                       run_json, steps_json, execution_attempts_json, resume_token_json, execution_snapshot_json, steering_json
+                       run_json, steps_json, execution_attempts_json, resume_token_json, execution_snapshot_json,
+                       execution_plan_json, execution_settlement_json, steering_json
                 FROM task_executions ORDER BY updated_at, task_id`)
       .all() as Array<Record<string, unknown>>;
     return rows.map(parseRecord);
@@ -113,6 +120,8 @@ function parseRecord(row: Record<string, unknown>): TaskExecutionRecord {
     executionAttempts: parseJson(row.execution_attempts_json, taskId, 'execution_attempts_json'),
     resumeToken: parseJson(row.resume_token_json, taskId, 'resume_token_json'),
     executionSnapshot: parseJson(row.execution_snapshot_json, taskId, 'execution_snapshot_json'),
+    executionPlan: parseJson(row.execution_plan_json, taskId, 'execution_plan_json'),
+    executionSettlement: parseJson(row.execution_settlement_json, taskId, 'execution_settlement_json'),
     steering: parseJson(row.steering_json, taskId, 'steering_json')
   } as TaskExecutionRecord;
 }

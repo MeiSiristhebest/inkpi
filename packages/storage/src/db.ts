@@ -53,7 +53,10 @@ export class InkDb implements IDb {
     this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
     this.ensureColumn('task_executions', 'resume_token_json', 'TEXT');
     this.ensureColumn('task_executions', 'execution_snapshot_json', 'TEXT');
+    this.ensureColumn('task_executions', 'execution_plan_json', 'TEXT');
+    this.ensureColumn('task_executions', 'execution_settlement_json', 'TEXT');
     this.ensureColumn('task_executions', 'steering_json', 'TEXT');
+    this.ensureColumn('operations', 'plan_json', 'TEXT');
     this.ensureColumn('writer_leases', 'fencing_token', 'INTEGER NOT NULL DEFAULT 0');
     const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
     const addedBaseDelta = this.ensureColumn('branch_tips', 'base_delta_id', 'INTEGER NOT NULL DEFAULT 0');
@@ -70,7 +73,14 @@ export class InkDb implements IDb {
   }
 
   private ensureColumn(
-    table: 'artifacts' | 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions' | 'writer_leases',
+    table:
+      | 'artifacts'
+      | 'lanes'
+      | 'branch_tips'
+      | 'domain_change_sets'
+      | 'task_executions'
+      | 'writer_leases'
+      | 'operations',
     column: string,
     definition: string
   ): boolean {

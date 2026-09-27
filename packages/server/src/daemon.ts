@@ -20,7 +20,10 @@ import {
 import type { ModelConfig as AiModelConfig } from '@inkpi/ai';
 import {
   RUNTIME_CAPABILITIES,
+  RUNTIME_CONTRACT_VERSION,
   RUNTIME_IMPLEMENTATION_VERSION,
+  RUNTIME_PROTOCOL_VERSION,
+  RUNTIME_SCHEMA_HASH,
   assertRuntimeHandshakeRequest,
   createRuntimeHandshakeResponse
 } from '@inkpi/protocol';
@@ -33,6 +36,7 @@ import type {
   CacheInvalidateResult,
   CacheLayer,
   CacheStatus,
+  DiagnosticSnapshot,
   DomainSyncPullParams,
   DomainSyncPushParams,
   DomainSyncRestoreParams,
@@ -322,8 +326,11 @@ export class InkPiDaemon {
       return { saved: true, id: params.artifact.id };
     });
 
-    this.rpcServer.registerMethod('artifact.get', (params: ArtifactGetParams) => {
-      return this.withArtifactStore().get(params.id);
+    this.rpcServer.registerMethod('artifact.get', async (params: ArtifactGetParams) => {
+      // `undefined` is not a legal value at the strict JSON/RPC boundary.
+      // Preserve the storage port's optional result internally, but encode a
+      // missing artifact as JSON `null` on the wire.
+      return (await this.withArtifactStore().get(params.id)) ?? null;
     });
 
     this.rpcServer.registerMethod('artifact.list', async (params: ArtifactListParams = {}) => {
@@ -547,6 +554,7 @@ export class InkPiDaemon {
 
     // 1. Session Management RPCs
     this.rpcServer.registerMethod('daemon.status', () => this.getStatus());
+    this.rpcServer.registerMethod('runtime.diagnostics', () => this.getDiagnosticSnapshot());
 
     this.rpcServer.registerMethod('session.create', (params: SessionCreateOptions) => {
       const session = this.sessionManager.createSession(params);
@@ -713,7 +721,21 @@ export class InkPiDaemon {
     return { routeId, removed, routes: this.listRuntimeModelRoutes() };
   }
 
+  /** Runtime-owned monitor hook; Desktop RPCs can only read the resulting state. */
+  public setRuntimeModelRouteHealth(routeId: string, state: ModelRouteRuntimeState): void {
+    const normalizedRouteId = requiredString(routeId, 'routeId');
+    if (!this.currentModelRoutes().some((route) => route.id === normalizedRouteId)) {
+      throw new Error(`Model route '${normalizedRouteId}' is not registered`);
+    }
+    validateModelRouteRuntimeState(normalizedRouteId, state);
+    this.modelRouteStates.set(normalizedRouteId, { ...state });
+  }
+
   private updateRuntimeModelRouteHealth(params: RuntimeModelRouteHealthParams): RuntimeModelRouteHealthResult {
+    const rawParams: { routeId?: unknown; state?: unknown } = params;
+    if (rawParams.state !== undefined) {
+      throw new Error('model.routes.health is read-only; Runtime health monitors own route state');
+    }
     const routeId = requiredString(params?.routeId, 'routeId');
     const route = this.currentModelRoutes().find((candidate) => candidate.id === routeId);
     if (!route) {
@@ -725,10 +747,6 @@ export class InkPiDaemon {
       };
     }
 
-    if (params.state !== undefined) {
-      validateModelRouteRuntimeState(routeId, params.state);
-      this.modelRouteStates.set(routeId, { ...params.state });
-    }
     const state = this.modelRouteStates.get(routeId) ?? {
       availability: 'available' as const,
       health: 'unknown' as const
@@ -934,6 +952,38 @@ export class InkPiDaemon {
     };
   }
 
+  /** Return only Runtime-owned, JSON-safe health metadata; credentials and payloads stay private. */
+  public getDiagnosticSnapshot(): DiagnosticSnapshot {
+    const capabilities = this.getRuntimeCapabilities();
+    const status = this.getStatus();
+    return {
+      version: 1,
+      capturedAt: Date.now(),
+      runtime: {
+        protocolVersion: RUNTIME_PROTOCOL_VERSION,
+        contractVersion: RUNTIME_CONTRACT_VERSION,
+        schemaHash: RUNTIME_SCHEMA_HASH,
+        implementationVersion: RUNTIME_IMPLEMENTATION_VERSION,
+        capabilities
+      },
+      daemon: {
+        running: status.running,
+        activeSessions: status.activeSessions,
+        uptimeMs: status.uptimeMs,
+        ...(status.port === undefined ? {} : { port: status.port }),
+        ...(status.host === undefined ? {} : { host: status.host }),
+        ...(status.wsPort === null || status.wsPort === undefined ? {} : { wsPort: status.wsPort })
+      },
+      cache: {
+        version: 1,
+        stats: this.cacheCoordinator.stats()
+      },
+      modelRoutes: {
+        configured: this.currentModelRoutes().length
+      }
+    };
+  }
+
   private getRuntimeCapabilities(): RuntimeCapability[] {
     const capabilities = new Set<string>(RUNTIME_CAPABILITIES);
     const context = this.rpcServer.getContext();
@@ -962,8 +1012,76 @@ export class InkPiDaemon {
 
 function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): ModelRoute {
   if (!isRecord(entry)) throw new Error('Model route registration must be an object');
+  assertAllowedKeys(
+    entry,
+    ['id', 'model', 'capabilities', 'priority', 'ranking', 'fallback'],
+    'model route registration'
+  );
   const id = routeString(entry.id, 'route id');
   if (!isRecord(entry.model)) throw new Error(`Model route '${id}' requires a model object`);
+  assertAllowedKeys(
+    entry.model,
+    [
+      'id',
+      'name',
+      'provider',
+      'apiKey',
+      'baseUrl',
+      'temperature',
+      'topP',
+      'maxTokens',
+      'thinkingBudget',
+      'supportsThinking',
+      'supportsMidConvoEffort',
+      'supportsPromptCache',
+      'presencePenalty',
+      'frequencyPenalty',
+      'cacheControl',
+      'compat',
+      'fauxScript'
+    ],
+    `model route '${id}' model`
+  );
+  if (entry.capabilities !== undefined) {
+    assertAllowedKeys(
+      entry.capabilities,
+      [
+        'nativeCapabilities',
+        'runtimeTransforms',
+        'capabilities',
+        'tools',
+        'modalities',
+        'network',
+        'outputFormats',
+        'streaming',
+        'contextTokens',
+        'maxLatencyMs',
+        'maxCostUsd',
+        'reasoning',
+        'structuredOutput',
+        'patchOutput',
+        'toolCalling',
+        'jsonSchema',
+        'parallelToolCalling',
+        'maxContextTokens',
+        'maxOutputTokens',
+        'promptCaching',
+        'schemaIds',
+        'supportsTools',
+        'supportsReasoning',
+        'supportsStructuredOutput',
+        'supportsPatchOutput',
+        'supportsStreaming'
+      ],
+      `model route '${id}' capabilities`
+    );
+  }
+  if (entry.ranking !== undefined)
+    assertAllowedKeys(
+      entry.ranking,
+      ['quality', 'latencyMs', 'costUsd', 'userPreference'],
+      `model route '${id}' ranking`
+    );
   const modelId = routeString(entry.model.id, `model id for route '${id}'`);
   const name = routeString(entry.model.name ?? modelId, `model name for route '${id}'`);
   const provider = routeString(entry.model.provider, `model provider for route '${id}'`);
@@ -1032,6 +1150,13 @@ function summarizeRuntimeModelRoute(route: ModelRoute): RuntimeModelRouteSummary
     ...(route.ranking ? { ranking: { ...route.ranking } } : {}),
     ...(route.fallback === undefined ? {} : { fallback: route.fallback })
   };
+}
+
+function assertAllowedKeys(value: unknown, allowed: readonly string[], context: string): void {
+  if (!isRecord(value)) throw new Error(`${context} must be an object`);
+  const allowedSet = new Set(allowed);
+  const unknown = Object.keys(value).filter((key) => !allowedSet.has(key));
+  if (unknown.length > 0) throw new Error(`${context} contains unsupported fields: ${unknown.join(', ')}`);
 }
 
 function routeString(value: unknown, field: string): string {

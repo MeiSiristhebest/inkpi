@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS operations (
   type TEXT NOT NULL,
   state TEXT NOT NULL,
   intent_json TEXT,
+  plan_json TEXT,
   settlement_json TEXT,
   error TEXT,
   created_at INTEGER NOT NULL,
@@ -252,6 +253,8 @@ CREATE TABLE IF NOT EXISTS task_executions (
   execution_attempts_json TEXT,
   resume_token_json TEXT,
   execution_snapshot_json TEXT,
+  execution_plan_json TEXT,
+  execution_settlement_json TEXT,
   steering_json TEXT
 );
 

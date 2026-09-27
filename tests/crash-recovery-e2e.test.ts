@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Agent, detectAndMarkInterruptedOperations, reduceSession } from '@inkpi/agent-core';
+import { Agent, detectAndMarkInterruptedOperations, planInterruptedRecovery, reduceSession } from '@inkpi/agent-core';
 import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
-import type { AgentTool } from '@inkpi/protocol';
+import type { AgentTool, ExecutionPlan } from '@inkpi/protocol';
 import { AppendOnlySessionJournal, InkRepository } from '@inkpi/storage';
 import { describe, expect, it } from 'vitest';
 
@@ -91,11 +91,24 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
     expect(agent1.state.messages.length).toBeGreaterThan(1);
     expect(toolCallsMade).toContain('creative assets');
 
-    // Simulate mid-execution pending operation crash by appending an un-settled operation_intent
+    // Simulate a crash after persisting the complete tool plan but before settlement.
+    const interruptedPlan: ExecutionPlan = {
+      version: 1,
+      id: 'plan_interrupted_stream',
+      createdAt: 101,
+      operation: 'tool_call',
+      target: 'lookup_data',
+      input: { arguments: { query: 'recovery assets' } },
+      replay: 'safe',
+      fingerprint: 'a'.repeat(64)
+    };
     journal1.append('operation_intent', {
       id: 'op_interrupted_stream',
-      type: 'provider_stream',
-      intent: { model: 'mock-test', tokenLimit: 1000 }
+      type: 'tool_call',
+      plan: interruptedPlan,
+      intent: { name: 'lookup_data', arguments: { query: 'recovery assets' } },
+      replay: 'safe',
+      invocationId: 'call_interrupted_stream'
     });
 
     // Verify raw file exists on disk
@@ -127,8 +140,27 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
     const recoveryResult = detectAndMarkInterruptedOperations(materializedState, Date.now);
     expect(recoveryResult.recoveredCount).toBe(1);
     expect(recoveryResult.interruptedIds).toContain('op_interrupted_stream');
-    expect(recoveryResult.state.operations.get('op_interrupted_stream')?.state).toBe('interrupted');
+    expect(recoveryResult.state.operations.get('op_interrupted_stream')).toMatchObject({
+      state: 'interrupted',
+      plan: interruptedPlan,
+      intent: {
+        name: 'lookup_data',
+        arguments: { query: 'recovery assets' },
+        replay: 'safe',
+        invocationId: 'call_interrupted_stream'
+      }
+    });
     expect(materializedState.operations.get('op_interrupted_stream')?.state).toBe('running');
+    expect(planInterruptedRecovery(recoveryResult.state)).toEqual([
+      {
+        invocationId: 'call_interrupted_stream',
+        operationId: 'op_interrupted_stream',
+        toolName: 'lookup_data',
+        arguments: { query: 'recovery assets' },
+        replay: 'safe',
+        action: 'replay'
+      }
+    ]);
 
     // Phase 3: Resume Agent from materialized state
     const resumeStreamFn = () => {

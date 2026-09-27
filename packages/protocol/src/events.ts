@@ -1,4 +1,11 @@
-import type { AgentMessage, AssistantMessage, ToolCallContent, ToolResultMessage, Usage } from './messages.js';
+import type {
+  AgentMessage,
+  AssistantMessage,
+  ProviderErrorMetadata,
+  ToolCallContent,
+  ToolResultMessage,
+  Usage
+} from './messages.js';
 
 export type AssistantMessageEvent =
   | { type: 'text_delta'; textDelta: string }
@@ -14,6 +21,10 @@ export type AssistantMessageEvent =
       retryable?: boolean;
       provider?: string;
       status?: number;
+      retryAfterMs?: number;
+      maxDelayMs?: number;
+      details?: unknown;
+      metadata?: ProviderErrorMetadata;
     };
 
 export type AgentEvent =

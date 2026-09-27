@@ -60,6 +60,12 @@ export const ToolCallContentSchema = Type.Object({
   arguments: Type.Record(Type.String(), JsonValueSchema)
 });
 
+export const ToolExecuteParamsSchema = Type.Object({
+  toolName: Type.String({ minLength: 1 }),
+  arguments: Type.Record(Type.String(), JsonValueSchema),
+  toolCallId: Type.Optional(IdSchema)
+});
+
 export const ContentBlockSchema = Type.Union([
   TextContentSchema,
   ThinkingContentSchema,
@@ -68,6 +74,17 @@ export const ContentBlockSchema = Type.Union([
 ]);
 
 // 5. 消息模型 Schemas
+export const ProviderErrorMetadataSchema = Type.Object({
+  code: Type.Optional(Type.String()),
+  message: Type.Optional(Type.String()),
+  retryable: Type.Optional(Type.Boolean()),
+  provider: Type.Optional(Type.String()),
+  status: Type.Optional(Type.Integer()),
+  retryAfterMs: Type.Optional(Type.Number({ minimum: 0 })),
+  maxDelayMs: Type.Optional(Type.Number({ minimum: 0 })),
+  details: Type.Optional(JsonValueSchema)
+});
+
 export const UserMessageSchema = Type.Object({
   id: Type.Optional(IdSchema),
   role: Type.Literal('user'),
@@ -89,8 +106,10 @@ export const AssistantMessageSchema = Type.Object({
     ])
   ),
   errorMessage: Type.Optional(Type.String()),
+  providerError: Type.Optional(ProviderErrorMetadataSchema),
   usage: Type.Optional(UsageSchema),
-  timestamp: Type.Optional(TimestampSchema)
+  timestamp: Type.Optional(TimestampSchema),
+  providerThinkingLevel: Type.Optional(Type.String())
 });
 
 export const ToolResultMessageSchema = Type.Object({
@@ -289,6 +308,107 @@ export const TaskExecutionAttemptSchema = Type.Object({
   error: Type.Optional(TaskErrorSchema)
 });
 
+export const DiagnosticSnapshotSchema = Type.Object({
+  version: Type.Literal(1),
+  capturedAt: TimestampSchema,
+  runtime: Type.Object({
+    protocolVersion: Type.String({ minLength: 1 }),
+    contractVersion: Type.Integer({ minimum: 1 }),
+    schemaHash: Type.String({ minLength: 1 }),
+    implementationVersion: Type.String({ minLength: 1 }),
+    capabilities: Type.Array(Type.String({ minLength: 1 }))
+  }),
+  daemon: Type.Object({
+    running: Type.Boolean(),
+    activeSessions: Type.Integer({ minimum: 0 }),
+    uptimeMs: Type.Number({ minimum: 0 }),
+    port: Type.Optional(Type.Integer({ minimum: 0 })),
+    host: Type.Optional(Type.String({ minLength: 1 })),
+    wsPort: Type.Optional(Type.Integer({ minimum: 0 }))
+  }),
+  cache: Type.Object({
+    version: Type.Literal(1),
+    stats: Type.Object({
+      provider: Type.Object({
+        hits: Type.Integer({ minimum: 0 }),
+        misses: Type.Integer({ minimum: 0 }),
+        evictions: Type.Integer({ minimum: 0 }),
+        invalidations: Type.Integer({ minimum: 0 })
+      }),
+      context: Type.Object({
+        hits: Type.Integer({ minimum: 0 }),
+        misses: Type.Integer({ minimum: 0 }),
+        evictions: Type.Integer({ minimum: 0 }),
+        invalidations: Type.Integer({ minimum: 0 })
+      }),
+      retrieval: Type.Object({
+        hits: Type.Integer({ minimum: 0 }),
+        misses: Type.Integer({ minimum: 0 }),
+        evictions: Type.Integer({ minimum: 0 }),
+        invalidations: Type.Integer({ minimum: 0 })
+      })
+    })
+  }),
+  modelRoutes: Type.Object({ configured: Type.Integer({ minimum: 0 }) })
+});
+
+export const RuntimeModelRouteHealthParamsSchema = Type.Object({ routeId: IdSchema });
+
+export const RuntimeModelRouteCapabilitiesSchema = Type.Object({
+  nativeCapabilities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  runtimeTransforms: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  capabilities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  tools: Type.Optional(Type.Union([Type.Array(Type.String({ minLength: 1 })), Type.Boolean()])),
+  modalities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  network: Type.Optional(Type.Union([Type.Literal('offline'), Type.Literal('optional'), Type.Literal('required')])),
+  outputFormats: Type.Optional(
+    Type.Array(Type.Union([Type.Literal('text'), Type.Literal('structured'), Type.Literal('patch')]))
+  ),
+  streaming: Type.Optional(Type.Boolean()),
+  contextTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  maxLatencyMs: Type.Optional(Type.Number({ minimum: 0 })),
+  maxCostUsd: Type.Optional(Type.Number({ minimum: 0 })),
+  reasoning: Type.Optional(Type.Boolean()),
+  structuredOutput: Type.Optional(Type.Boolean()),
+  patchOutput: Type.Optional(Type.Boolean()),
+  toolCalling: Type.Optional(Type.Boolean()),
+  jsonSchema: Type.Optional(Type.Union([Type.Boolean(), Type.Array(Type.String({ minLength: 1 }))])),
+  parallelToolCalling: Type.Optional(Type.Boolean()),
+  maxContextTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  maxOutputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  promptCaching: Type.Optional(Type.Boolean()),
+  schemaIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  supportsTools: Type.Optional(Type.Boolean()),
+  supportsReasoning: Type.Optional(Type.Boolean()),
+  supportsStructuredOutput: Type.Optional(Type.Boolean()),
+  supportsPatchOutput: Type.Optional(Type.Boolean()),
+  supportsStreaming: Type.Optional(Type.Boolean())
+});
+
+export const ExecutionPlanSchema = Type.Object({
+  version: Type.Literal(1),
+  id: IdSchema,
+  taskId: Type.Optional(IdSchema),
+  createdAt: TimestampSchema,
+  operation: Type.Union([Type.Literal('tool_call'), Type.Literal('provider_call'), Type.Literal('workflow_stage')]),
+  target: Type.String({ minLength: 1 }),
+  input: JsonValueSchema,
+  replay: Type.Union([Type.Literal('safe'), Type.Literal('never')]),
+  fingerprint: Type.String({ pattern: '^[a-f0-9]{64}$' })
+});
+
+export const ExecutionSettlementSchema = Type.Object({
+  version: Type.Literal(1),
+  id: IdSchema,
+  planId: IdSchema,
+  settledAt: TimestampSchema,
+  status: Type.Union([Type.Literal('settled'), Type.Literal('failed'), Type.Literal('aborted')]),
+  planFingerprint: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+  result: Type.Optional(JsonValueSchema),
+  error: Type.Optional(Type.String()),
+  fingerprint: Type.String({ pattern: '^[a-f0-9]{64}$' })
+});
+
 export const ExecutionSnapshotSchema = Type.Object({
   version: Type.Literal(1),
   id: IdSchema,
@@ -340,6 +460,8 @@ export const TaskExecutionSnapshotSchema = Type.Object({
   executionAttempts: Type.Optional(Type.Array(TaskExecutionAttemptSchema)),
   resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
   executionSnapshot: Type.Optional(ExecutionSnapshotSchema),
+  executionPlan: Type.Optional(ExecutionPlanSchema),
+  executionSettlement: Type.Optional(ExecutionSettlementSchema),
   steering: Type.Optional(Type.Array(Type.Any()))
 });
 
@@ -369,3 +491,58 @@ export const RpcNotificationSchema = Type.Object({
   method: Type.String({ minLength: 1 }),
   params: Type.Optional(Type.Any())
 });
+
+/**
+ * Canonical registry used by the Runtime compatibility fingerprint. Keep this
+ * list explicit so adding or changing a wire schema cannot silently bypass the
+ * Desktop <-> Runtime handshake hash.
+ */
+export const PROTOCOL_SCHEMA_DEFINITIONS = {
+  JsonValueSchema,
+  IdSchema,
+  TimestampSchema,
+  ThinkingLevelSchema,
+  UsageSchema,
+  TextContentSchema,
+  ThinkingContentSchema,
+  ImageContentSchema,
+  ToolCallContentSchema,
+  ToolExecuteParamsSchema,
+  ContentBlockSchema,
+  ProviderErrorMetadataSchema,
+  UserMessageSchema,
+  AssistantMessageSchema,
+  ToolResultMessageSchema,
+  SystemMessageSchema,
+  CustomMessageSchema,
+  AgentMessageSchema,
+  LegacyEntityStateSchema,
+  LegacyAssetStateSchema,
+  LegacyTrackStateSchema,
+  LegacyLocationStateSchema,
+  RuntimeStateSchema,
+  LegacyStateLedgerSchema,
+  EntityStateSchema,
+  AssetStateSchema,
+  TrackStateSchema,
+  LocationStateSchema,
+  StateLedgerSchema,
+  TaskStatusSchema,
+  TaskErrorSchema,
+  TaskStatusSnapshotSchema,
+  TaskExecutionParamsSchema,
+  TaskExecutionResumeTokenSchema,
+  TaskExecutionRunSchema,
+  TaskExecutionStepSchema,
+  TaskExecutionAttemptSchema,
+  DiagnosticSnapshotSchema,
+  RuntimeModelRouteHealthParamsSchema,
+  RuntimeModelRouteCapabilitiesSchema,
+  ExecutionPlanSchema,
+  ExecutionSettlementSchema,
+  ExecutionSnapshotSchema,
+  TaskExecutionSnapshotSchema,
+  RpcRequestSchema,
+  RpcResponseSchema,
+  RpcNotificationSchema
+} as const;

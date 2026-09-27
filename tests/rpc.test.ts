@@ -74,8 +74,11 @@ describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', 
     const text = await client.getEditorText();
     expect(text).toContain('夜深了');
 
-    const ftsRes = await client.searchFts('烛火');
+    const ftsRes = await client.searchFts('烛火', 'rpc-workspace');
     expect(Array.isArray(ftsRes)).toBe(true);
+    await expect(client.call('storage.searchFts', { query: '烛火' })).rejects.toThrow(
+      'fts.search requires a workspaceId'
+    );
 
     // 8. Test Agent abort & getState
     await client.abort();

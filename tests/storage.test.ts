@@ -1,4 +1,4 @@
-import type { Document, Folder, Workspace } from '@inkpi/protocol';
+import type { Document, ExecutionPlan, Folder, Workspace } from '@inkpi/protocol';
 import { CompactionEngine, InkDb, InkRepository } from '@inkpi/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -192,12 +192,23 @@ describe('@inkpi/storage', () => {
 
   it('should save and query Operations and SessionEntries projection records', () => {
     // 1. Operations test
+    const plan: ExecutionPlan = {
+      version: 1,
+      id: 'plan-op-test-1',
+      createdAt: 1000,
+      operation: 'tool_call',
+      target: 'search',
+      input: { query: 'antigravity' },
+      replay: 'safe',
+      fingerprint: 'fingerprint-op-test-1'
+    };
     repo.saveOperation({
       id: 'op_test_1',
       sessionId: 'sess_storage_test',
       type: 'tool_call',
       state: 'running',
       intent: { tool: 'search', q: 'antigravity' },
+      plan,
       createdAt: 1000,
       updatedAt: 1000
     });
@@ -206,6 +217,7 @@ describe('@inkpi/storage', () => {
     expect(op).toBeDefined();
     expect(op?.state).toBe('running');
     expect(op?.intent).toEqual({ tool: 'search', q: 'antigravity' });
+    expect(op?.plan).toEqual(plan);
 
     // Update operation state
     repo.saveOperation({
@@ -214,6 +226,7 @@ describe('@inkpi/storage', () => {
       type: 'tool_call',
       state: 'settled',
       intent: { tool: 'search', q: 'antigravity' },
+      plan,
       settlement: { count: 42 },
       createdAt: 1000,
       updatedAt: 1050

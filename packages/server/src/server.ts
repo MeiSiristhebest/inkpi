@@ -15,7 +15,7 @@ import type { InstructionRegistry } from '@inkpi/agent-core';
 import type { TaskSchedulerPersistence } from '@inkpi/agent-core';
 import type { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import type { ArtifactStore, RpcNotification, RpcRequest, RpcResponse } from '@inkpi/protocol';
-import type { AgentMessage } from '@inkpi/protocol';
+import { type JsonObject, type JsonValue, assertJsonValue } from '@inkpi/protocol';
 import { RPC_ERROR_CODES } from '@inkpi/protocol';
 import type { RpcMethodRegistrationHandler } from '@inkpi/protocol';
 import type {
@@ -27,7 +27,7 @@ import type {
 } from '@inkpi/storage';
 import type { DomainProjectionStore } from '@inkpi/storage';
 import type { ProposalProjectionStore } from '@inkpi/storage';
-import { BUILTIN_RPC_METHODS, type RpcMethodHandler } from './builtin-methods.js';
+import { BUILTIN_RPC_METHODS } from './builtin-methods.js';
 import { TcpSocketTransport } from './tcp-transport.js';
 import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST } from './transport.js';
@@ -186,11 +186,12 @@ export class InkRpcServer {
     }
   }
 
-  public notify(method: string, params?: any): void {
+  public notify(method: string, params?: unknown): void {
+    const safeParams = params === undefined ? undefined : normalizeJsonBoundary(params, 'RPC notification params');
     const notif: RpcNotification = {
       jsonrpc: '2.0',
       method,
-      params
+      params: safeParams
     };
     if (this.notificationSender) {
       this.notificationSender(notif);
@@ -216,11 +217,12 @@ export class InkRpcServer {
     }
 
     try {
-      const result = await this.dispatch(req.method, req.params || {});
+      const safeParams = req.params === undefined ? undefined : normalizeJsonBoundary(req.params, 'RPC request params');
+      const result = await this.dispatch(req.method, safeParams ?? {});
       return {
         jsonrpc: '2.0',
         id: req.id,
-        result
+        result: normalizeJsonBoundary(result, 'RPC response result')
       };
     } catch (err: any) {
       return {
@@ -229,7 +231,7 @@ export class InkRpcServer {
         error: {
           code: err.code || RPC_ERROR_CODES.INTERNAL_ERROR,
           message: err.message || 'Internal server error',
-          data: err.data
+          ...(normalizeRpcErrorData(err.data) === undefined ? {} : { data: normalizeRpcErrorData(err.data) })
         }
       };
     }
@@ -252,13 +254,48 @@ export class InkRpcServer {
   }
 }
 
-function normalizeAgentMessage(message: unknown, method: string): AgentMessage {
-  if (typeof message === 'string') {
-    if (message.trim().length === 0) throw new Error(`${method} requires a non-empty message`);
-    return { role: 'user', content: message, timestamp: Date.now() };
+function normalizeRpcErrorData(value: unknown): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return normalizeJsonBoundary(value, 'RPC error data');
+  } catch {
+    return undefined;
   }
-  if (!message || typeof message !== 'object' || !('role' in message)) {
-    throw new Error(`${method} requires a string or AgentMessage`);
+}
+
+function normalizeJsonBoundary(value: unknown, context: string): JsonValue {
+  const normalized = removeUndefined(value, context);
+  if (normalized === undefined) throw new Error(`${context} must not be undefined`);
+  assertJsonValue(normalized, context);
+  return normalized;
+}
+
+function removeUndefined(value: unknown, context: string): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error(`${context} contains a non-finite number`);
+    return value;
   }
-  return message as AgentMessage;
+  if (Array.isArray(value)) {
+    const result: JsonValue[] = [];
+    for (const item of value) {
+      const normalized = removeUndefined(item, context);
+      if (normalized === undefined) throw new Error(`${context} contains undefined array values`);
+      result.push(normalized);
+    }
+    return result;
+  }
+  if (
+    typeof value === 'object' &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+  ) {
+    const result: JsonObject = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      const normalized = removeUndefined(item, `${context}.${key}`);
+      if (normalized !== undefined) result[key] = normalized;
+    }
+    return result;
+  }
+  throw new Error(`${context} contains a non-JSON value`);
 }

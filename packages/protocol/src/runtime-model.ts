@@ -1,3 +1,4 @@
+import type { JsonObject } from './json.js';
 import type { OutputFormat } from './task.js';
 
 /** Model configuration accepted by the Runtime route-management boundary. */
@@ -18,9 +19,8 @@ export interface RuntimeModelRegistrationConfig {
   presencePenalty?: number;
   frequencyPenalty?: number;
   cacheControl?: { type: 'ephemeral' | 'disabled' };
-  compat?: Record<string, unknown>;
-  fauxScript?: Record<string, unknown>;
-  [key: string]: unknown;
+  compat?: JsonObject;
+  fauxScript?: JsonObject;
 }
 
 /** Public, secret-free model configuration returned by Runtime. */
@@ -44,6 +44,9 @@ export interface RuntimeModelSummary {
 export type RuntimeModelNetworkCapability = 'offline' | 'optional' | 'required';
 
 export interface RuntimeModelRouteCapabilities {
+  /** Provider-native declarations; Runtime transforms are listed separately. */
+  nativeCapabilities?: readonly string[];
+  runtimeTransforms?: readonly string[];
   capabilities?: readonly string[];
   tools?: readonly string[] | boolean;
   modalities?: readonly string[];
@@ -127,9 +130,9 @@ export interface RuntimeModelRouteHealthState {
   userPreference?: number;
 }
 
+/** Read-only health query. Health state is owned by Runtime monitors, not RPC callers. */
 export interface RuntimeModelRouteHealthParams {
   routeId: string;
-  state?: RuntimeModelRouteHealthState;
 }
 
 export interface RuntimeModelRouteHealthResult {

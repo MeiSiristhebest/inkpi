@@ -6,6 +6,8 @@
  * is a compatibility fingerprint, not an authentication mechanism.
  */
 
+import { PROTOCOL_SCHEMA_DEFINITIONS, PROTOCOL_VERSION } from './schemas.js';
+
 export const RUNTIME_PROTOCOL_VERSION = 'inkpi.runtime.v1' as const;
 export const RUNTIME_CONTRACT_VERSION = 1 as const;
 
@@ -18,6 +20,7 @@ export const RUNTIME_IMPLEMENTATION_VERSION = '1.0.0' as const;
 /** RPC capabilities that may be advertised by an InkPi Runtime. */
 export const RUNTIME_CAPABILITIES = [
   'runtime.handshake',
+  'runtime.diagnostics',
   'daemon.status',
   'instruction.register',
   'instruction.status',
@@ -102,7 +105,13 @@ export interface RuntimeHandshakeResponse {
  * this value.
  */
 export const RUNTIME_SCHEMA_HASH = stableFingerprint(
-  [`protocol:${RUNTIME_PROTOCOL_VERSION}`, `contract:${RUNTIME_CONTRACT_VERSION}`, ...RUNTIME_CAPABILITIES].join('\n')
+  [
+    `protocol:${RUNTIME_PROTOCOL_VERSION}`,
+    `contract:${RUNTIME_CONTRACT_VERSION}`,
+    `protocol-schema:${PROTOCOL_VERSION}`,
+    `schemas:${JSON.stringify(PROTOCOL_SCHEMA_DEFINITIONS)}`,
+    ...RUNTIME_CAPABILITIES
+  ].join('\n')
 );
 
 export function assertRuntimeHandshakeRequest(value: unknown): asserts value is RuntimeHandshakeRequest {

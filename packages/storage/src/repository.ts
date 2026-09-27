@@ -9,6 +9,14 @@ import type {
 } from '@inkpi/protocol';
 import type { IDb, IRepository } from './ports.js';
 
+function parseStoredJson<T = unknown>(value: string, label: string): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    throw new Error(`Invalid ${label} JSON in storage`, { cause: error });
+  }
+}
+
 export class InkRepository implements IRepository {
   private db: IDb;
 
@@ -250,11 +258,12 @@ export class InkRepository implements IRepository {
 
   public saveOperation(record: OperationRecord): void {
     const stmt = this.db.prepare(`
-      INSERT INTO operations (id, session_id, type, state, intent_json, settlement_json, error, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO operations (id, session_id, type, state, intent_json, plan_json, settlement_json, error, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         state = excluded.state,
         intent_json = excluded.intent_json,
+        plan_json = COALESCE(excluded.plan_json, operations.plan_json),
         settlement_json = excluded.settlement_json,
         error = excluded.error,
         updated_at = excluded.updated_at
@@ -265,6 +274,7 @@ export class InkRepository implements IRepository {
       record.type,
       record.state,
       record.intent !== undefined ? JSON.stringify(record.intent) : null,
+      record.plan !== undefined ? JSON.stringify(record.plan) : null,
       record.settlement !== undefined ? JSON.stringify(record.settlement) : null,
       record.error || null,
       record.createdAt,
@@ -281,8 +291,9 @@ export class InkRepository implements IRepository {
       sessionId: row.session_id,
       type: row.type,
       state: row.state,
-      intent: row.intent_json ? JSON.parse(row.intent_json) : undefined,
-      settlement: row.settlement_json ? JSON.parse(row.settlement_json) : undefined,
+      intent: row.intent_json ? parseStoredJson(row.intent_json, 'operation intent') : undefined,
+      plan: row.plan_json ? parseStoredJson(row.plan_json, 'operation plan') : undefined,
+      settlement: row.settlement_json ? parseStoredJson(row.settlement_json, 'operation settlement') : undefined,
       error: row.error || undefined,
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at)
@@ -297,8 +308,9 @@ export class InkRepository implements IRepository {
       sessionId: row.session_id,
       type: row.type,
       state: row.state,
-      intent: row.intent_json ? JSON.parse(row.intent_json) : undefined,
-      settlement: row.settlement_json ? JSON.parse(row.settlement_json) : undefined,
+      intent: row.intent_json ? parseStoredJson(row.intent_json, 'operation intent') : undefined,
+      plan: row.plan_json ? parseStoredJson(row.plan_json, 'operation plan') : undefined,
+      settlement: row.settlement_json ? parseStoredJson(row.settlement_json, 'operation settlement') : undefined,
       error: row.error || undefined,
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at)
@@ -344,7 +356,7 @@ export class InkRepository implements IRepository {
       laneId: row.lane_id || undefined,
       operationId: row.operation_id || undefined,
       type: row.type,
-      payload: JSON.parse(row.payload_json),
+      payload: parseStoredJson(row.payload_json, 'session entry payload'),
       timestamp: Number(row.timestamp),
       version: Number(row.version) || 1
     }));

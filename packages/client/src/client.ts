@@ -5,6 +5,7 @@ import type {
   ArtifactListParams,
   ArtifactSaveParams,
   ArtifactSaveResult,
+  DiagnosticSnapshot,
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
@@ -302,9 +303,10 @@ export class InkRpcClient {
     });
   }
 
-  public searchFts(query: string, limit = 10) {
+  public searchFts(query: string, workspaceId: string, limit = 10) {
     return this.request<Array<{ documentId: string; title: string; snippet: string }>>('storage.searchFts', {
       query,
+      workspaceId,
       limit
     });
   }
@@ -315,6 +317,10 @@ export class InkRpcClient {
 
   public exportOpenTelemetry() {
     return this.request<string>('telemetry.exportOtel');
+  }
+
+  public getRuntimeDiagnostics(): Promise<DiagnosticSnapshot> {
+    return this.request<DiagnosticSnapshot>('runtime.diagnostics');
   }
 
   public submitTask(task: AiTask): Promise<TaskSubmitResult> {
@@ -408,9 +414,10 @@ export class InkRpcClient {
     return this.request<ArtifactSaveResult>('artifact.save', { ...params });
   }
 
-  public getArtifact(id: string): Promise<Artifact | undefined> {
+  public async getArtifact(id: string): Promise<Artifact | undefined> {
     const params: ArtifactGetParams = { id };
-    return this.request<Artifact | undefined>('artifact.get', { ...params });
+    const artifact = await this.request<Artifact | null>('artifact.get', { ...params });
+    return artifact ?? undefined;
   }
 
   public listArtifacts(options: ArtifactListParams = {}): Promise<Artifact[]> {

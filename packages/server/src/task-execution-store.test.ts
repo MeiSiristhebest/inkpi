@@ -35,6 +35,27 @@ describe('SqliteTaskExecutionStore', () => {
         context: { messageCount: 0, messageIds: [], fingerprint: 'ctx' },
         policy: { maxTokens: 100 }
       },
+      executionPlan: {
+        version: 1,
+        id: 'plan:1',
+        taskId: task.id,
+        createdAt: 14,
+        operation: 'tool_call',
+        target: 'lookup',
+        input: { arguments: { query: 'chapter' } },
+        replay: 'safe',
+        fingerprint: 'a'.repeat(64)
+      },
+      executionSettlement: {
+        version: 1,
+        id: 'settlement:1',
+        planId: 'plan:1',
+        settledAt: 15,
+        status: 'settled',
+        planFingerprint: 'a'.repeat(64),
+        result: { content: [{ type: 'text', text: 'result' }], details: { count: 1 } },
+        fingerprint: 'b'.repeat(64)
+      },
       steering: [{ input: 'continue' }]
     };
     const store = new SqliteTaskExecutionStore(db);

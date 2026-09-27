@@ -145,7 +145,7 @@ describe('System Integration & Edge Cases Suite', () => {
 
     // Slash & Fts & Telemetry
     await client.executeSlash('/help');
-    await client.searchFts('章节');
+    await client.searchFts('章节', 'system-integration-workspace');
     await client.getTelemetry();
   });
 

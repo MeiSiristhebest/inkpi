@@ -60,6 +60,25 @@ describe('execution snapshots', () => {
     expect(JSON.stringify(snapshot)).not.toContain('execute');
   });
 
+  it('fingerprints message and execution content with deterministic SHA-256', () => {
+    const base = {
+      id: 'execution-fingerprint',
+      createdAt: 100,
+      model: { id: 'test', name: 'Test', provider: 'openai' as const },
+      systemPrompt: 'System',
+      tools: [tool()],
+      messages: [{ id: 'same-id', role: 'user' as const, content: 'first' }]
+    };
+    const first = createExecutionSnapshot(base);
+    const second = createExecutionSnapshot({
+      ...base,
+      messages: [{ id: 'same-id', role: 'user' as const, content: 'second' }]
+    });
+
+    expect(first.context.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(second.context.fingerprint).not.toBe(first.context.fingerprint);
+  });
+
   it('rejects non-JSON tool schemas before a snapshot crosses the boundary', () => {
     expect(() =>
       createExecutionSnapshot({

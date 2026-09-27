@@ -8,7 +8,6 @@ import {
   TaskExecutionParamsSchema,
   TaskExecutionSnapshotSchema,
   ThinkingLevelSchema,
-  Type,
   UsageSchema,
   UserMessageSchema,
   Value,
@@ -58,7 +57,8 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
         { type: 'thinking', thinking: '思考剧情发展...' },
         { type: 'text', text: '萧炎深吸了一口气。' },
         { type: 'toolCall', id: 'call_1', name: 'updateStateLedger', arguments: {} }
-      ]
+      ],
+      providerThinkingLevel: 'medium'
     };
     expect(Value.Check(AssistantMessageSchema, assistantMsg)).toBe(true);
   });
@@ -184,6 +184,27 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
         },
         policy: { timeoutMs: 1000 },
         metadata: { routeId: 'default-model' }
+      },
+      executionPlan: {
+        version: 1,
+        id: 'plan:execution-task',
+        taskId: 'execution-task',
+        createdAt: 15,
+        operation: 'tool_call',
+        target: 'lookup',
+        input: { arguments: { query: 'chapter' } },
+        replay: 'safe',
+        fingerprint: 'a'.repeat(64)
+      },
+      executionSettlement: {
+        version: 1,
+        id: 'settlement:execution-task',
+        planId: 'plan:execution-task',
+        settledAt: 16,
+        status: 'settled',
+        planFingerprint: 'a'.repeat(64),
+        result: { content: [{ type: 'text', text: 'result' }], details: { count: 1 } },
+        fingerprint: 'b'.repeat(64)
       },
       steering: [{ direction: 'continue' }]
     };

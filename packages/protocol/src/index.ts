@@ -10,6 +10,7 @@ export * from './rpc.js';
 export * from './pipeline.js';
 export * from './task.js';
 export * from './execution.js';
+export * from './diagnostics.js';
 export * from './domain-sync.js';
 export * from './domain-proposal.js';
 export * from './proposal-sync.js';
