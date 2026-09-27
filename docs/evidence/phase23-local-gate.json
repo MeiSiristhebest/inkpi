@@ -128,7 +128,7 @@
     "usedForEligibility": false
   },
   "testRun": {
-    "command": "pnpm.cmd exec vitest run tests/phase23-local-freeze.test.ts tests/phase22-reliability-matrix.test.ts --reporter=dot",
+    "command": "node node_modules/vitest/vitest.mjs run tests/phase23-local-freeze.test.ts tests/phase22-reliability-matrix.test.ts --reporter=dot",
     "passed": true
   },
   "formalFreeze": {

@@ -103,7 +103,15 @@ export function readFreezeEvidence(filePath) {
   if (!filePath || !filePath.trim()) return {};
   const normalizedPath = resolve(filePath);
   if (!existsSync(normalizedPath)) throw new Error('Evidence file does not exist.');
-  const parsed = JSON.parse(readFileSync(normalizedPath, 'utf8'));
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(normalizedPath, 'utf8'));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error('Evidence file must contain valid JSON.', { cause: error });
+    }
+    throw error;
+  }
   if (!isRecord(parsed)) throw new Error('Evidence file must contain a JSON object.');
   return parsed;
 }
@@ -117,10 +125,9 @@ export async function evaluateLocalFreeze() {
   const gate = await import('../packages/evals/src/phase23-local-gate.ts');
   let testsPassed = false;
   let testError;
-  const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+  const repositoryRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
+  const vitestCli = resolve(repositoryRoot, 'node_modules', 'vitest', 'vitest.mjs');
   const testArgs = [
-    'exec',
-    'vitest',
     'run',
     'tests/phase23-local-freeze.test.ts',
     'tests/phase22-reliability-matrix.test.ts',
@@ -128,10 +135,9 @@ export async function evaluateLocalFreeze() {
   ];
 
   try {
-    execFileSync(packageManager, testArgs, {
-      cwd: resolve(fileURLToPath(new URL('../', import.meta.url))),
+    execFileSync(process.execPath, [vitestCli, ...testArgs], {
+      cwd: repositoryRoot,
       env: { ...process.env, INKPI_RUN_REAL_PROVIDER_ACCEPTANCE: '0' },
-      shell: process.platform === 'win32',
       stdio: 'inherit'
     });
     testsPassed = true;
@@ -155,7 +161,7 @@ export async function evaluateLocalFreeze() {
   return {
     ...report,
     testRun: {
-      command: `${packageManager} ${testArgs.join(' ')}`,
+      command: `node node_modules/vitest/vitest.mjs ${testArgs.join(' ')}`,
       passed: testsPassed,
       ...(testError ? { error: testError } : {})
     },

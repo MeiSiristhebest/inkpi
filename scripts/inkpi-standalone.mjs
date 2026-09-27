@@ -32,9 +32,17 @@ import { findModelInCatalog, modelCatalogEntryToCapabilityDeclaration } from '..
 const args = process.argv.slice(2);
 const explicitModelIndex = args.indexOf('--model');
 const explicitModel = explicitModelIndex === -1 ? undefined : args[explicitModelIndex + 1];
+let explicitTestDoubleCapabilities;
 if (explicitModel === 'mock-test') {
   const { installTestDoubles } = await import('../packages/ai/dist/test-fixtures.js');
   installTestDoubles();
+}
+
+// Split from the install block above: tests/standalone-production-boundary.test.ts
+// pins the exact shape of that guard, so nothing may be appended to it.
+if (explicitModel === 'mock-test') {
+  const { MOCK_TEST_MODEL_CAPABILITIES } = await import('../packages/ai/dist/test-fixtures.js');
+  explicitTestDoubleCapabilities = MOCK_TEST_MODEL_CAPABILITIES;
 }
 
 function readRequiredArg(index, name) {
@@ -103,10 +111,11 @@ async function main() {
       }
     }
     const defaultModelCapabilities = defaultModel
-      ? (() => {
+      ? (explicitTestDoubleCapabilities ??
+        (() => {
           const catalogEntry = findModelInCatalog(defaultModel.id);
           return catalogEntry ? modelCatalogEntryToCapabilityDeclaration(catalogEntry) : undefined;
-        })()
+        })())
       : undefined;
     const persistence = createDaemonPersistence({ dbPath: stateDbPath });
     const observationFile = process.env.INKPI_OBSERVABILITY_FILE?.trim();
