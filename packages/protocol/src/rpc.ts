@@ -10,6 +10,7 @@ import type {
   ArtifactSaveResult
 } from './artifact.js';
 import type { CacheInvalidateParams, CacheInvalidateResult, CacheStatus } from './cache.js';
+import type { DiagnosticSnapshot } from './diagnostics.js';
 import type {
   DomainChangeSet,
   DomainProjectionApplyResult,
@@ -251,6 +252,7 @@ export interface DaemonRpcMethodMap {
   'model.routes.remove': RpcMethodContract<RuntimeModelRouteRemoveParams, RuntimeModelRouteRemoveResult>;
   'proposal.sync.push': RpcMethodContract<ProposalSyncPushParams, ProposalSyncPushResult>;
   'proposal.sync.snapshot': RpcMethodContract<ProposalSyncSnapshotParams, ProposalProjectionSnapshot>;
+  'runtime.diagnostics': RpcMethodContract<void, DiagnosticSnapshot>;
   'runtime.handshake': RpcMethodContract<RuntimeHandshakeRequest, RuntimeHandshakeResponse>;
   'session.abort': RpcMethodContract<SessionRefParams, SessionAckResult>;
   'session.close': RpcMethodContract<SessionRefParams, SessionAckResult>;
@@ -312,6 +314,7 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'model.routes.remove',
   'proposal.sync.push',
   'proposal.sync.snapshot',
+  'runtime.diagnostics',
   'runtime.handshake',
   'session.abort',
   'session.close',

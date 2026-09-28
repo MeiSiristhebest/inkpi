@@ -26,16 +26,10 @@ import { BUILTIN_RPC_METHODS } from '../packages/server/src/builtin-methods.js';
 const DAEMON_SOURCE = path.resolve(__dirname, '../packages/server/src/daemon.ts');
 
 /**
- * 已注册但契约尚未落地的方法（容忍白名单，不是要求）。
- *
- * `runtime.diagnostics` 由另一条在途改动引入（`packages/protocol/src/diagnostics.ts`
- * 尚未合并），此处不替未合并的类型抢先签名。等它的 `DiagnosticSnapshot` 进入
- * `DaemonRpcMethodMap` 之后，下面的守卫会要求把这一行删掉。
- *
- * 只在"工作树里确实注册了却没有契约"时才有意义：单独检出本分支（没有那条在途改动）
- * 时这个方法根本不存在，白名单保持沉默即可，不该把 CI 变红。
+ * 暂时已注册但尚无 RPC 契约的方法。新增方法应优先补齐 DaemonRpcMethodMap；
+ * 完成契约后，必须立即从此白名单移除。
  */
-const PENDING_CONTRACT: readonly string[] = ['runtime.diagnostics'];
+const PENDING_CONTRACT: readonly string[] = [];
 
 /** 去掉注释，避免把文档或注释里的方法名当成真实注册。 */
 function stripComments(source: string): string {
