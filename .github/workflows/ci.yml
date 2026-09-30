@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
     paths:
       - "packages/**"
       - "scripts/**"
@@ -12,7 +12,7 @@ on:
       - "vitest.config.ts"
       - ".github/workflows/ci.yml"
   pull_request:
-    branches: [master, main]
+    branches: [master]
     paths:
       - "packages/**"
       - "scripts/**"
