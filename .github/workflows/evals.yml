@@ -2,7 +2,7 @@ name: Evals & Provenance Contracts
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
     paths:
       - "packages/evals/**"
       - "tests/**"
@@ -12,7 +12,7 @@ on:
       - "vitest.config.ts"
       - ".github/workflows/evals.yml"
   pull_request:
-    branches: [master, main]
+    branches: [master]
     paths:
       - "packages/evals/**"
       - "tests/**"
