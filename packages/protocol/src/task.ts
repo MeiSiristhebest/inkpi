@@ -1,4 +1,4 @@
-import type { ExecutionPlan, ExecutionSettlement, ExecutionSnapshot } from './execution.js';
+import type { ExecutionSnapshot } from './execution.js';
 
 /**
  * Domain-neutral task contracts shared by desktop clients and the AI runtime.
@@ -236,8 +236,6 @@ export interface TaskExecutionSnapshot {
   executionAttempts?: TaskExecutionAttempt[];
   resumeToken?: TaskExecutionResumeToken;
   executionSnapshot?: ExecutionSnapshot;
-  executionPlan?: ExecutionPlan;
-  executionSettlement?: ExecutionSettlement;
   steering?: unknown[];
 }
 

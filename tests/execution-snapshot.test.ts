@@ -60,23 +60,23 @@ describe('execution snapshots', () => {
     expect(JSON.stringify(snapshot)).not.toContain('execute');
   });
 
-  it('fingerprints message and execution content with deterministic SHA-256', () => {
-    const base = {
-      id: 'execution-fingerprint',
-      createdAt: 100,
-      model: { id: 'test', name: 'Test', provider: 'openai' as const },
-      systemPrompt: 'System',
-      tools: [tool()],
-      messages: [{ id: 'same-id', role: 'user' as const, content: 'first' }]
-    };
-    const first = createExecutionSnapshot(base);
-    const second = createExecutionSnapshot({
-      ...base,
-      messages: [{ id: 'same-id', role: 'user' as const, content: 'second' }]
-    });
+  it('fingerprints message ids without deriving a hash from private message content', () => {
+    const createSnapshot = (content: string) =>
+      createExecutionSnapshot({
+        id: 'execution-fingerprint',
+        createdAt: 100,
+        model: { id: 'test', name: 'Test', provider: 'openai' },
+        systemPrompt: 'System',
+        tools: [tool()],
+        messages: [{ id: 'same-id', role: 'user', content }]
+      });
+    const first = createSnapshot('private message one');
+    const second = createSnapshot('private message two');
 
-    expect(first.context.fingerprint).toMatch(/^[a-f0-9]{64}$/);
-    expect(second.context.fingerprint).not.toBe(first.context.fingerprint);
+    expect(first.context.fingerprint).toMatch(/^[a-f0-9]{8}$/);
+    expect(second.context.fingerprint).toBe(first.context.fingerprint);
+    expect(JSON.stringify(first)).not.toContain('private message');
+    expect(JSON.stringify(second)).not.toContain('private message');
   });
 
   it('rejects non-JSON tool schemas before a snapshot crosses the boundary', () => {

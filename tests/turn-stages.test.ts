@@ -1,4 +1,3 @@
-import { createExecutionPlan, sha256Hex } from '@inkpi/protocol';
 import type { AgentEvent, AgentMessage, AssistantMessage, ToolResultMessage } from '@inkpi/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { MessageQueue } from '../packages/agent-core/src/queues.js';
@@ -61,30 +60,6 @@ function makeCtx(
 function assistantMsg(content: AssistantMessage['content']): AssistantMessage {
   return { role: 'assistant', content, timestamp: 1 } as AssistantMessage;
 }
-
-describe('Execution plan durability', () => {
-  it('uses SHA-256 and deterministic content-complete fingerprints', () => {
-    expect(sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
-    const first = createExecutionPlan({
-      id: 'plan-1',
-      createdAt: 1,
-      operation: 'tool_call',
-      target: 'write',
-      input: { b: 2, a: 1 },
-      replay: 'never'
-    });
-    const second = createExecutionPlan({
-      id: 'plan-1',
-      createdAt: 1,
-      operation: 'tool_call',
-      target: 'write',
-      input: { a: 1, b: 2 },
-      replay: 'never'
-    });
-    expect(first.fingerprint).toBe(second.fingerprint);
-    expect(first.fingerprint).toMatch(/^[a-f0-9]{64}$/);
-  });
-});
 
 describe('ContextTransformer (管线第 1 段)', () => {
   it('无 transformContext / convertToLlm 时原样返回消息副本', async () => {
@@ -438,6 +413,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       name: 'echo',
       description: '',
       parameters: { type: 'object', properties: {} },
+      replay: 'safe',
       execute: async () => ({ content: [{ type: 'text', text: 'pong' }] })
     });
 
@@ -450,17 +426,15 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     expect(appended[0].payload).toMatchObject({
       id: 'op_tool_c1',
       type: 'tool_call',
-      plan: {
-        id: 'op_tool_c1',
-        operation: 'tool_call',
-        target: 'echo',
-        fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
-      }
+      invocationId: expect.any(String),
+      replay: 'safe',
+      intent: { name: 'echo', arguments: { a: 1 } }
     });
-    expect(appended[1].payload.settlement).toMatchObject({
-      planId: 'op_tool_c1',
-      planFingerprint: appended[0].payload.plan.fingerprint,
-      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
+    expect(appended[1].payload).toMatchObject({
+      id: 'op_tool_c1',
+      type: 'tool_call',
+      invocationId: appended[0].payload.invocationId,
+      settlement: { content: [{ type: 'text', text: 'pong' }] }
     });
   });
 });

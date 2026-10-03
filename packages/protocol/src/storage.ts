@@ -1,4 +1,3 @@
-import type { ExecutionPlan } from './execution.js';
 import type { RuntimeState } from './pipeline.js';
 
 export interface Workspace {
@@ -198,8 +197,6 @@ export interface OperationRecord {
   type: OperationType;
   state: OperationState;
   intent: unknown;
-  /** Content-complete execution plan retained for durable replay/audit. */
-  plan?: ExecutionPlan;
   settlement?: unknown;
   error?: string;
   createdAt: number;

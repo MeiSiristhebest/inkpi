@@ -9,13 +9,13 @@
 import { PROTOCOL_SCHEMA_DEFINITIONS, PROTOCOL_VERSION } from './schemas.js';
 
 export const RUNTIME_PROTOCOL_VERSION = 'inkpi.runtime.v1' as const;
-export const RUNTIME_CONTRACT_VERSION = 1 as const;
+export const RUNTIME_CONTRACT_VERSION = 2 as const;
 
 /** Loopback-only endpoint defaults shared by CLI, Runtime, and Desktop. */
 export const DEFAULT_RPC_HOST = '127.0.0.1';
 export const DEFAULT_RPC_PORT = 8848;
 export const DEFAULT_RPC_WS_PORT = 8849;
-export const RUNTIME_IMPLEMENTATION_VERSION = '1.0.0' as const;
+export const RUNTIME_IMPLEMENTATION_VERSION = '2.0.0' as const;
 
 /** RPC capabilities that may be advertised by an InkPi Runtime. */
 export const RUNTIME_CAPABILITIES = [

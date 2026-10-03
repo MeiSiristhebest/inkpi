@@ -120,4 +120,48 @@ describe('@inkpi/agent-core -> JSON-RPC 2.0 Client & Server Headless Protocol', 
       'FTS search capability not initialized'
     );
   });
+
+  it('keeps params, results, notifications, and error data JSON-safe', async () => {
+    const notifications: unknown[] = [];
+    const server = new InkRpcServer({}, (notification) => notifications.push(notification));
+    server.registerMethod('test.echo', (params: unknown) => params);
+
+    const echo = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'test.echo',
+      params: { optional: undefined }
+    } as any);
+    expect(echo.result).toEqual({});
+
+    server.notify('test.changed', { optional: undefined });
+    expect(notifications[0]).toMatchObject({ params: {} });
+    expect(() => server.notify('test.invalid-notification', { value: Number.NaN })).toThrow('non-finite number');
+
+    const invalidParams = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'test.echo',
+      params: { value: Number.NaN }
+    } as any);
+    expect(invalidParams.error?.message).toContain('RPC request params');
+
+    server.registerMethod('test.invalid-result', () => ({ value: Number.NaN }));
+    const invalidResult = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'test.invalid-result'
+    } as any);
+    expect(invalidResult.error?.message).toContain('non-finite number');
+
+    server.registerMethod('test.invalid-error-data', () => {
+      throw { code: 409, message: 'conflict', data: Number.NaN };
+    });
+    const invalidErrorData = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'test.invalid-error-data'
+    } as any);
+    expect(invalidErrorData.error?.data).toBeUndefined();
+  });
 });

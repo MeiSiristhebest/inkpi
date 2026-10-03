@@ -243,7 +243,6 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
           type: op.type || 'custom',
           state: (op.state as OperationState) || 'running',
           intent: storedIntent,
-          plan: op.plan ?? existing?.plan,
           error: op.error,
           createdAt: existing?.createdAt || entry.timestamp,
           updatedAt: entry.timestamp
@@ -263,7 +262,6 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
           type: op.type || existing?.type || 'custom',
           state: isError ? 'failed' : 'settled',
           intent: existing?.intent ?? op.intent,
-          plan: existing?.plan ?? op.plan,
           settlement: op.settlement !== undefined ? op.settlement : op.result,
           error: op.error || undefined,
           createdAt: existing?.createdAt || entry.timestamp,

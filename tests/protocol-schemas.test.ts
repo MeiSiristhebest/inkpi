@@ -185,27 +185,6 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
         policy: { timeoutMs: 1000 },
         metadata: { routeId: 'default-model' }
       },
-      executionPlan: {
-        version: 1,
-        id: 'plan:execution-task',
-        taskId: 'execution-task',
-        createdAt: 15,
-        operation: 'tool_call',
-        target: 'lookup',
-        input: { arguments: { query: 'chapter' } },
-        replay: 'safe',
-        fingerprint: 'a'.repeat(64)
-      },
-      executionSettlement: {
-        version: 1,
-        id: 'settlement:execution-task',
-        planId: 'plan:execution-task',
-        settledAt: 16,
-        status: 'settled',
-        planFingerprint: 'a'.repeat(64),
-        result: { content: [{ type: 'text', text: 'result' }], details: { count: 1 } },
-        fingerprint: 'b'.repeat(64)
-      },
       steering: [{ direction: 'continue' }]
     };
 

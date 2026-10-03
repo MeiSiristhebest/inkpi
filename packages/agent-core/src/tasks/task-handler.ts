@@ -1,12 +1,4 @@
-import type {
-  AiTask,
-  ExecutionPlan,
-  ExecutionSettlement,
-  ExecutionSnapshot,
-  TaskOutput,
-  ToolCallContent,
-  ToolResultMessage
-} from '@inkpi/protocol';
+import type { AiTask, ExecutionSnapshot, TaskOutput, ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
 import type { ContextPacket } from '../context/types.js';
 import type { ComposedInstructions } from '../instructions/instruction-registry.js';
 import type { ToolRegistry } from '../tools.js';
@@ -35,8 +27,6 @@ export interface TaskHandlerResult {
   artifactIds?: string[];
   proposalIds?: string[];
   executionSnapshot?: ExecutionSnapshot;
-  executionPlan?: ExecutionPlan;
-  executionSettlement?: ExecutionSettlement;
   provenance?: Record<string, unknown>;
 }
 

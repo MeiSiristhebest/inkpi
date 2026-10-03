@@ -1,12 +1,4 @@
-import {
-  type AssistantMessage,
-  type ToolCallContent,
-  type ToolResultMessage,
-  type ToolUpdateOptions,
-  assertJsonValue,
-  createExecutionPlan,
-  createExecutionSettlement
-} from '@inkpi/protocol';
+import type { AssistantMessage, ToolCallContent, ToolResultMessage, ToolUpdateOptions } from '@inkpi/protocol';
 import { runWithConcurrency } from '../concurrency.js';
 import { extractToolCalls } from './extract-tool-calls.js';
 import type { TurnContext } from './turn-context.js';
@@ -79,21 +71,18 @@ export class ToolDispatcher {
           // 截断拦截同样遵守"意图 → 结算 → 结果物化"三段持久化，保证恢复路径完整。
           const invocationId = this.reserveInvocationId(ctx);
           const toolOpId = `op_tool_${call.id}`;
-          const plan = createToolExecutionPlan(toolOpId, call, 'never', ctx.clock());
           ctx.options.journal.append('operation_intent', {
             id: toolOpId,
             type: 'tool_call',
             invocationId,
             replay: 'never',
-            plan,
             intent: { name: call.name, arguments: call.arguments, intercepted: 'output_length' }
           });
-          const settlement = createToolExecutionSettlement(plan, truncatedRes, ctx.clock(), 'failed');
           ctx.options.journal.append('operation_settlement', {
             id: toolOpId,
             type: 'tool_call',
             invocationId,
-            settlement,
+            settlement: { content: truncatedRes.content },
             error: 'Intercepted: assistant response hit output limit before tool arguments completed.'
           });
           ctx.options.journal.append(
@@ -145,8 +134,6 @@ export class ToolDispatcher {
     const toolOpId = `op_tool_${call.id}`;
     const invocationId = this.reserveInvocationId(ctx);
     const replay = toolRegistry.get(call.name)?.replay ?? 'safe';
-    // The complete, hashed plan is written before gates or external effects.
-    const plan = createToolExecutionPlan(toolOpId, call, replay, clock());
 
     if (options.journal) {
       options.journal.append('operation_intent', {
@@ -154,7 +141,6 @@ export class ToolDispatcher {
         type: 'tool_call',
         invocationId,
         replay,
-        plan,
         intent: { name: call.name, arguments: call.arguments }
       });
     }
@@ -174,7 +160,7 @@ export class ToolDispatcher {
           type: 'tool_call',
           invocationId,
           error: 'Tool execution aborted by signal',
-          settlement: createToolExecutionSettlement(plan, abortedRes, clock(), 'aborted')
+          settlement: abortedRes
         });
         options.journal.append('tool_execution', { ...abortedRes, invocationId, sourceIndex }, invocationId);
       }
@@ -280,7 +266,7 @@ export class ToolDispatcher {
         id: toolOpId,
         type: 'tool_call',
         invocationId,
-        settlement: createToolExecutionSettlement(plan, toolRes, clock(), toolRes.isError ? 'failed' : 'settled'),
+        settlement: { content: toolRes.content, details: toolRes.details },
         error: toolRes.isError ? (toolRes.content?.[0] as any)?.text || 'Tool execution error' : undefined
       });
       // tool_execution 条目 id = invocationId（预保留的结果条目身份，重放安全）。
@@ -295,39 +281,4 @@ export class ToolDispatcher {
     });
     return toolRes;
   }
-}
-
-function asJsonValue(value: unknown): import('@inkpi/protocol').JsonValue {
-  assertJsonValue(value, 'Execution plan value');
-  return value;
-}
-
-function createToolExecutionPlan(id: string, call: ToolCallContent, replay: 'safe' | 'never', createdAt: number) {
-  return createExecutionPlan({
-    id,
-    createdAt,
-    operation: 'tool_call',
-    target: call.name,
-    input: { arguments: asJsonValue(call.arguments) },
-    replay
-  });
-}
-
-function createToolExecutionSettlement(
-  plan: ReturnType<typeof createToolExecutionPlan>,
-  result: ToolResultMessage,
-  settledAt: number,
-  status: 'settled' | 'failed' | 'aborted'
-) {
-  return createExecutionSettlement({
-    id: `${plan.id}:settlement`,
-    planId: plan.id,
-    settledAt,
-    status,
-    planFingerprint: plan.fingerprint,
-    result: {
-      content: asJsonValue(result.content),
-      ...(result.details === undefined ? {} : { details: asJsonValue(result.details) })
-    }
-  });
 }

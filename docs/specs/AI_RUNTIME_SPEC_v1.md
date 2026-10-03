@@ -841,7 +841,9 @@ mutation
 
 ### Durable execution payload privacy decision
 
-Runtime 保留完整工具参数、执行计划输入、结算结果和工具结果于本地 SQLite 及可选 JSONL journal，以确保 `replay: safe` 使用原始输入，并维持 plan fingerprint 与恢复证据一致。当前这些执行载荷没有经过 `sanitizePrivateData`，也没有应用层 at-rest 加密。Owner 选择保留精确 replay，并暂时接受、明确记录本地明文静态存储风险；这不代表跨进程脱敏或生产访问控制已完成。后续若要脱敏，必须同步修改恢复合约：缺少必要输入的操作不得静默重放；at-rest encryption 另行设计密钥生命周期和迁移。
+Runtime continues to persist full tool arguments in `operation_intent.intent` and settled tool results in `operation_settlement.settlement` and `tool_execution` journal entries. Recovery uses the recorded `intent`, `replay` policy, and `invocationId`; it does not require a second `ExecutionPlan` or `ExecutionSettlement` copy or their content fingerprints. These payloads remain in local SQLite and optional JSONL journals without application-layer at-rest encryption or private-data sanitization. This preserves safe replay while retaining the documented local plaintext-storage risk.
+
+`ExecutionSnapshot` records message identifiers and a non-cryptographic fingerprint of those identifiers; it does not hash message content. The fingerprint is only a compact identifier summary and is not an integrity or authentication mechanism.
 
 ## 19. Final Freeze Checklist
 

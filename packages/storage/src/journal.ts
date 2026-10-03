@@ -310,13 +310,20 @@ export class AppendOnlySessionJournal {
           case 'operation_intent': {
             const op = entry.payload;
             if (op && typeof op.id === 'string') {
+              const intentExtras: Record<string, unknown> = {};
+              if (op.replay !== undefined) intentExtras.replay = op.replay;
+              if (op.invocationId !== undefined) intentExtras.invocationId = op.invocationId;
+              const baseIntent = op.intent !== undefined ? op.intent : op;
+              const intent =
+                baseIntent && typeof baseIntent === 'object' && !Array.isArray(baseIntent)
+                  ? { ...(baseIntent as Record<string, unknown>), ...intentExtras }
+                  : baseIntent;
               repo.saveOperation({
                 id: op.id,
                 sessionId: this.sessionId,
                 type: op.type || 'custom',
                 state: 'running',
-                intent: op.intent,
-                plan: op.plan,
+                intent,
                 createdAt: entry.timestamp,
                 updatedAt: entry.timestamp
               });
@@ -334,7 +341,6 @@ export class AppendOnlySessionJournal {
                 type: op.type || 'custom',
                 state: op.error ? 'failed' : 'settled',
                 intent: op.intent,
-                plan: op.plan,
                 settlement: op.settlement,
                 error: op.error,
                 createdAt: op.createdAt || entry.timestamp,

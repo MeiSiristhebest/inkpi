@@ -75,8 +75,6 @@ interface TaskRecord {
   executionAttempts: ExecutionAttempt[];
   resumeToken?: ResumeToken;
   executionSnapshot?: ExecutionSnapshot;
-  executionPlan?: import('@inkpi/protocol').ExecutionPlan;
-  executionSettlement?: import('@inkpi/protocol').ExecutionSettlement;
   steering: unknown[];
   persistenceFailed?: boolean;
   scheduled?: { id: string; cancel: () => boolean };
@@ -479,12 +477,6 @@ export class TaskRouter {
       if (handlerResult.executionSnapshot) {
         record.executionSnapshot = cloneValue(handlerResult.executionSnapshot);
       }
-      if (handlerResult.executionPlan) {
-        record.executionPlan = cloneValue(handlerResult.executionPlan);
-      }
-      if (handlerResult.executionSettlement) {
-        record.executionSettlement = cloneValue(handlerResult.executionSettlement);
-      }
       if (record.controller.signal.aborted) {
         this.finishCancelled(record, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
         return;
@@ -810,8 +802,6 @@ export class TaskRouter {
       executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
       resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
       executionSnapshot: stored.executionSnapshot ? cloneValue(stored.executionSnapshot) : undefined,
-      executionPlan: stored.executionPlan ? cloneValue(stored.executionPlan) : undefined,
-      executionSettlement: stored.executionSettlement ? cloneValue(stored.executionSettlement) : undefined,
       steering: stored.steering ? cloneValue(stored.steering) : [],
       scheduleSequence: 0
     };
@@ -886,8 +876,6 @@ export class TaskRouter {
       })),
       resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
       executionSnapshot: record.executionSnapshot ? cloneValue(record.executionSnapshot) : undefined,
-      executionPlan: record.executionPlan ? cloneValue(record.executionPlan) : undefined,
-      executionSettlement: record.executionSettlement ? cloneValue(record.executionSettlement) : undefined,
       steering: cloneValue(record.steering)
     };
   }

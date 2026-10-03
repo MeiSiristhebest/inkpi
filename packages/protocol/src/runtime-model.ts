@@ -130,7 +130,6 @@ export interface RuntimeModelRouteHealthState {
   userPreference?: number;
 }
 
-/** Read-only health query. Health state is owned by Runtime monitors, not RPC callers. */
 export interface RuntimeModelRouteHealthParams {
   routeId: string;
 }

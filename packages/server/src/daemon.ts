@@ -952,6 +952,31 @@ export class InkPiDaemon {
     };
   }
 
+  private getRuntimeCapabilities(): RuntimeCapability[] {
+    const capabilities = new Set<string>(RUNTIME_CAPABILITIES);
+    const context = this.rpcServer.getContext();
+
+    if (!context.domainProjection) {
+      removeCapabilities(capabilities, [
+        'domain.sync.push',
+        'domain.sync.pull',
+        'domain.sync.snapshot',
+        'domain.sync.restore'
+      ]);
+    }
+    if (!context.proposalProjection) {
+      removeCapabilities(capabilities, ['proposal.sync.push', 'proposal.sync.snapshot']);
+    }
+    if (!context.artifactStore) {
+      removeCapabilities(capabilities, ['artifact.save', 'artifact.get', 'artifact.list']);
+    }
+    if (this.firstPartyPluginRuntime.toolNames.length === 0) {
+      removeCapabilities(capabilities, ['tool.list', 'tool.execute']);
+    }
+
+    return [...capabilities].sort() as RuntimeCapability[];
+  }
+
   /** Return only Runtime-owned, JSON-safe health metadata; credentials and payloads stay private. */
   public getDiagnosticSnapshot(): DiagnosticSnapshot {
     const capabilities = this.getRuntimeCapabilities();
@@ -982,31 +1007,6 @@ export class InkPiDaemon {
         configured: this.currentModelRoutes().length
       }
     };
-  }
-
-  private getRuntimeCapabilities(): RuntimeCapability[] {
-    const capabilities = new Set<string>(RUNTIME_CAPABILITIES);
-    const context = this.rpcServer.getContext();
-
-    if (!context.domainProjection) {
-      removeCapabilities(capabilities, [
-        'domain.sync.push',
-        'domain.sync.pull',
-        'domain.sync.snapshot',
-        'domain.sync.restore'
-      ]);
-    }
-    if (!context.proposalProjection) {
-      removeCapabilities(capabilities, ['proposal.sync.push', 'proposal.sync.snapshot']);
-    }
-    if (!context.artifactStore) {
-      removeCapabilities(capabilities, ['artifact.save', 'artifact.get', 'artifact.list']);
-    }
-    if (this.firstPartyPluginRuntime.toolNames.length === 0) {
-      removeCapabilities(capabilities, ['tool.list', 'tool.execute']);
-    }
-
-    return [...capabilities].sort() as RuntimeCapability[];
   }
 }
 
@@ -1076,12 +1076,13 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
       `model route '${id}' capabilities`
     );
   }
-  if (entry.ranking !== undefined)
+  if (entry.ranking !== undefined) {
     assertAllowedKeys(
       entry.ranking,
       ['quality', 'latencyMs', 'costUsd', 'userPreference'],
       `model route '${id}' ranking`
     );
+  }
   const modelId = routeString(entry.model.id, `model id for route '${id}'`);
   const name = routeString(entry.model.name ?? modelId, `model name for route '${id}'`);
   const provider = routeString(entry.model.provider, `model provider for route '${id}'`);
@@ -1152,18 +1153,18 @@ function summarizeRuntimeModelRoute(route: ModelRoute): RuntimeModelRouteSummary
   };
 }
 
-function assertAllowedKeys(value: unknown, allowed: readonly string[], context: string): void {
-  if (!isRecord(value)) throw new Error(`${context} must be an object`);
-  const allowedSet = new Set(allowed);
-  const unknown = Object.keys(value).filter((key) => !allowedSet.has(key));
-  if (unknown.length > 0) throw new Error(`${context} contains unsupported fields: ${unknown.join(', ')}`);
-}
-
 function routeString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Model route ${field} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function assertAllowedKeys(value: unknown, allowed: readonly string[], context: string): void {
+  if (!isRecord(value)) throw new Error(`${context} must be an object`);
+  const allowedSet = new Set(allowed);
+  const unknown = Object.keys(value).filter((key) => !allowedSet.has(key));
+  if (unknown.length > 0) throw new Error(`${context} contains unsupported fields: ${unknown.join(', ')}`);
 }
 
 function finiteNumber(value: unknown): value is number {
