@@ -61,22 +61,25 @@ describe('execution snapshots', () => {
   });
 
   it('fingerprints message ids without deriving a hash from private message content', () => {
-    const createSnapshot = (content: string) =>
+    const createSnapshot = (content: string, messageId = 'same-id') =>
       createExecutionSnapshot({
         id: 'execution-fingerprint',
         createdAt: 100,
         model: { id: 'test', name: 'Test', provider: 'openai' },
         systemPrompt: 'System',
         tools: [tool()],
-        messages: [{ id: 'same-id', role: 'user', content }]
+        messages: [{ id: messageId, role: 'user', content }]
       });
     const first = createSnapshot('private message one');
     const second = createSnapshot('private message two');
+    const differentMessageId = createSnapshot('private message one', 'different-id');
 
     expect(first.context.fingerprint).toMatch(/^[a-f0-9]{8}$/);
     expect(second.context.fingerprint).toBe(first.context.fingerprint);
+    expect(differentMessageId.context.fingerprint).not.toBe(first.context.fingerprint);
     expect(JSON.stringify(first)).not.toContain('private message');
     expect(JSON.stringify(second)).not.toContain('private message');
+    expect(JSON.stringify(differentMessageId)).not.toContain('private message');
   });
 
   it('rejects non-JSON tool schemas before a snapshot crosses the boundary', () => {

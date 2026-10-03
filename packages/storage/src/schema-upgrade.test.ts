@@ -130,9 +130,17 @@ describe('schema upgrade of pre-existing databases', () => {
     });
     expect(
       upgraded
-        .prepare('SELECT execution_plan_json, execution_settlement_json FROM task_executions WHERE task_id = ?')
+        .prepare(
+          'SELECT task_json, snapshot_json, attempts, execution_plan_json, execution_settlement_json FROM task_executions WHERE task_id = ?'
+        )
         .get('task-1')
-    ).toEqual({ execution_plan_json: '{"legacy":"plan"}', execution_settlement_json: '{"ok":true}' });
+    ).toEqual({
+      task_json: '{"id":"task-1"}',
+      snapshot_json: '{"status":"interrupted"}',
+      attempts: 1,
+      execution_plan_json: '{"legacy":"plan"}',
+      execution_settlement_json: '{"ok":true}'
+    });
 
     const repo = new InkRepository(upgraded);
     expect(repo.getOperation('operation-1')).toMatchObject({

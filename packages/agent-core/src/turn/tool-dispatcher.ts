@@ -1,4 +1,10 @@
-import type { AssistantMessage, ToolCallContent, ToolResultMessage, ToolUpdateOptions } from '@inkpi/protocol';
+import {
+  type AssistantMessage,
+  type ToolCallContent,
+  type ToolResultMessage,
+  type ToolUpdateOptions,
+  assertJsonValue
+} from '@inkpi/protocol';
 import { runWithConcurrency } from '../concurrency.js';
 import { extractToolCalls } from './extract-tool-calls.js';
 import type { TurnContext } from './turn-context.js';
@@ -87,7 +93,13 @@ export class ToolDispatcher {
           });
           ctx.options.journal.append(
             'tool_execution',
-            { ...truncatedRes, invocationId, sourceIndex: sourceIndexByCallId.get(call.id) },
+            {
+              ...truncatedRes,
+              invocationId,
+              ...(sourceIndexByCallId.get(call.id) !== undefined
+                ? { sourceIndex: sourceIndexByCallId.get(call.id) }
+                : {})
+            },
             invocationId
           );
         }
@@ -160,9 +172,13 @@ export class ToolDispatcher {
           type: 'tool_call',
           invocationId,
           error: 'Tool execution aborted by signal',
-          settlement: abortedRes
+          settlement: { content: abortedRes.content }
         });
-        options.journal.append('tool_execution', { ...abortedRes, invocationId, sourceIndex }, invocationId);
+        options.journal.append(
+          'tool_execution',
+          { ...abortedRes, invocationId, ...(sourceIndex !== undefined ? { sourceIndex } : {}) },
+          invocationId
+        );
       }
       return abortedRes;
     }
@@ -183,11 +199,17 @@ export class ToolDispatcher {
       // checkpoint：工具显式请求把"完整有界"快照持久化为 tool_progress 条目。
       // 该条目仅是观察数据，绝不作为完成证明；节流与有界性由工具负责（可信工具合约）。
       if (updateOptions?.checkpoint && options.journal) {
+        if (update.details !== undefined) {
+          assertJsonValue(update.details, `Tool '${call.name}' progress details`);
+        }
         options.journal.append('tool_progress', {
           invocationId,
           toolCallId: call.id,
           toolName: call.name,
-          snapshot: { content: update.content, details: update.details },
+          snapshot: {
+            content: update.content,
+            ...(update.details !== undefined ? { details: update.details } : {})
+          },
           timestamp: clock()
         });
       }
@@ -244,6 +266,10 @@ export class ToolDispatcher {
           if (afterRes.terminate) termination.value = true;
         }
       }
+
+      if (options.journal && toolRes.details !== undefined) {
+        assertJsonValue(toolRes.details, `Tool '${call.name}' result details`);
+      }
     } catch (error) {
       termination.value = true;
       const message = error instanceof Error ? error.message : String(error);
@@ -266,11 +292,25 @@ export class ToolDispatcher {
         id: toolOpId,
         type: 'tool_call',
         invocationId,
-        settlement: { content: toolRes.content, details: toolRes.details },
+        settlement: {
+          content: toolRes.content,
+          ...(toolRes.details !== undefined ? { details: toolRes.details } : {})
+        },
         error: toolRes.isError ? (toolRes.content?.[0] as any)?.text || 'Tool execution error' : undefined
       });
       // tool_execution 条目 id = invocationId（预保留的结果条目身份，重放安全）。
-      options.journal.append('tool_execution', { ...toolRes, invocationId, sourceIndex }, invocationId);
+      const { details, terminate, ...result } = toolRes;
+      options.journal.append(
+        'tool_execution',
+        {
+          ...result,
+          ...(details !== undefined ? { details } : {}),
+          ...(terminate !== undefined ? { terminate } : {}),
+          invocationId,
+          ...(sourceIndex !== undefined ? { sourceIndex } : {})
+        },
+        invocationId
+      );
     }
 
     if (toolRes.terminate) termination.value = true;
