@@ -1,13 +1,16 @@
 packages:
   - 'packages/*'
+allowBuilds:
+  '@biomejs/biome': set this to true or false
+  esbuild: set this to true or false
 minimumReleaseAgeExclude:
-  - '@inkpi/agent-core@1.0.0'
+  - '@inkpi/agent-core@2.0.0'
   - '@inkpi/ai@1.0.0'
   - '@inkpi/cli@1.0.0'
   - '@inkpi/client@1.0.0'
   - '@inkpi/editor-core@1.0.0'
-  - '@inkpi/protocol@1.0.0'
-  - '@inkpi/server@1.0.0'
+  - '@inkpi/protocol@2.0.0'
+  - '@inkpi/server@2.0.0'
   - '@inkpi/session-backends@1.0.0'
-  - '@inkpi/storage@1.0.0'
+  - '@inkpi/storage@2.0.0'
   - '@inkpi/tui@1.0.0'

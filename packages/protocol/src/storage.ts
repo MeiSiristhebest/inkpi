@@ -203,6 +203,17 @@ export interface OperationRecord {
   updatedAt: number;
 }
 
+/** Merge replay identity metadata into an operation's projected intent. */
+export function mergeOperationIntent(operation: Record<string, unknown>): unknown {
+  const intentExtras: Record<string, unknown> = {};
+  if (operation.replay !== undefined) intentExtras.replay = operation.replay;
+  if (operation.invocationId !== undefined) intentExtras.invocationId = operation.invocationId;
+  const baseIntent = operation.intent !== undefined ? operation.intent : operation;
+  return baseIntent && typeof baseIntent === 'object' && !Array.isArray(baseIntent)
+    ? { ...(baseIntent as Record<string, unknown>), ...intentExtras }
+    : baseIntent;
+}
+
 /** 事件溯源日志类型 */
 export type SessionEntryType =
   | 'session_start'

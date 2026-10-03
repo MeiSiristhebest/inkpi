@@ -1,4 +1,4 @@
-import { JsonValueSchema, Type, Value, assertJsonValue, isJsonValue } from '@inkpi/protocol';
+import { JsonValueSchema, Type, Value, assertJsonValue, isJsonValue, mergeOperationIntent } from '@inkpi/protocol';
 import type {
   AgentMessage,
   AgentTool,
@@ -16,6 +16,17 @@ import type {
 import { describe, expect, it } from 'vitest';
 
 describe('@inkpi/protocol (Pure Zero-Bias Protocol Contracts)', () => {
+  it('merges replay metadata into the operation intent shared by projections', () => {
+    expect(
+      mergeOperationIntent({
+        id: 'op_tool_1',
+        intent: { name: 'search', arguments: { query: 'inkpi' } },
+        replay: 'safe',
+        invocationId: 'inv_1'
+      })
+    ).toEqual({ name: 'search', arguments: { query: 'inkpi' }, replay: 'safe', invocationId: 'inv_1' });
+  });
+
   it('should instantiate and validate standard message types', () => {
     const userMsg: UserMessage = {
       role: 'user',

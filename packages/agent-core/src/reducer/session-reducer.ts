@@ -3,6 +3,7 @@
  * 接收 SessionEntry[] 日志流，纯函数计算物化会话状态 (MaterializedSessionState)。
  */
 
+import { mergeOperationIntent } from '@inkpi/protocol';
 import type {
   AgentMessage,
   AssistantMessage,
@@ -227,16 +228,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
       const op = entry.payload;
       if (op && typeof op.id === 'string') {
         const existing = next.operations.get(op.id);
-        // 持久性合约：payload 顶层的 replay / invocationId 必须并入记录的 intent，
-        // 否则恢复规划（planInterruptedRecovery）无法读取重放策略。
-        const intentExtras: Record<string, unknown> = {};
-        if (op.replay !== undefined) intentExtras.replay = op.replay;
-        if (op.invocationId !== undefined) intentExtras.invocationId = op.invocationId;
-        const baseIntent = op.intent !== undefined ? op.intent : op;
-        const storedIntent =
-          baseIntent && typeof baseIntent === 'object' && !Array.isArray(baseIntent)
-            ? { ...(baseIntent as Record<string, unknown>), ...intentExtras }
-            : baseIntent;
+        const storedIntent = mergeOperationIntent(op);
         next.operations.set(op.id, {
           id: op.id,
           sessionId: next.sessionId,

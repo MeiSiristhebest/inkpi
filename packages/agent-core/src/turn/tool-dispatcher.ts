@@ -3,6 +3,7 @@ import {
   type ToolCallContent,
   type ToolResultMessage,
   type ToolUpdateOptions,
+  assertJsonObject,
   assertJsonValue
 } from '@inkpi/protocol';
 import { runWithConcurrency } from '../concurrency.js';
@@ -75,6 +76,7 @@ export class ToolDispatcher {
         };
         if (ctx.options.journal) {
           // 截断拦截同样遵守"意图 → 结算 → 结果物化"三段持久化，保证恢复路径完整。
+          assertJsonObject(call.arguments, `Tool '${call.name}' arguments`);
           const invocationId = this.reserveInvocationId(ctx);
           const toolOpId = `op_tool_${call.id}`;
           ctx.options.journal.append('operation_intent', {
@@ -148,6 +150,7 @@ export class ToolDispatcher {
     const replay = toolRegistry.get(call.name)?.replay ?? 'safe';
 
     if (options.journal) {
+      assertJsonObject(call.arguments, `Tool '${call.name}' arguments`);
       options.journal.append('operation_intent', {
         id: toolOpId,
         type: 'tool_call',
@@ -194,11 +197,12 @@ export class ToolDispatcher {
     // fencing：结算后拒收迟到的进度更新（对齐上游 tool-durability "tool-promise settlement
     // stops accepting updates"）。
     let settled = false;
-    const fencedUpdate = async (update: { content: any[]; details?: unknown }, updateOptions?: ToolUpdateOptions) => {
+    const fencedUpdate = (update: { content: any[]; details?: unknown }, updateOptions?: ToolUpdateOptions): void => {
       if (settled) return;
       // checkpoint：工具显式请求把"完整有界"快照持久化为 tool_progress 条目。
       // 该条目仅是观察数据，绝不作为完成证明；节流与有界性由工具负责（可信工具合约）。
       if (updateOptions?.checkpoint && options.journal) {
+        assertJsonValue(update.content, `Tool '${call.name}' progress content`);
         if (update.details !== undefined) {
           assertJsonValue(update.details, `Tool '${call.name}' progress details`);
         }
@@ -213,11 +217,11 @@ export class ToolDispatcher {
           timestamp: clock()
         });
       }
-      await emitEvent({
+      void emitEvent({
         type: 'tool_execution_update',
         toolCallId: call.id,
         partialResult: update
-      });
+      }).catch(() => undefined);
     };
 
     let toolRes: ToolResultMessage & { terminate?: boolean };
@@ -267,8 +271,11 @@ export class ToolDispatcher {
         }
       }
 
-      if (options.journal && toolRes.details !== undefined) {
-        assertJsonValue(toolRes.details, `Tool '${call.name}' result details`);
+      if (options.journal) {
+        assertJsonValue(toolRes.content, `Tool '${call.name}' result content`);
+        if (toolRes.details !== undefined) {
+          assertJsonValue(toolRes.details, `Tool '${call.name}' result details`);
+        }
       }
     } catch (error) {
       termination.value = true;

@@ -353,6 +353,7 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     expect(appended[1].payload.settlement).toEqual({
       content: [{ type: 'text', text: 'Tool execution aborted by signal' }]
     });
+    expect(appended[1].payload.settlement).not.toHaveProperty('role');
   });
 
   it('sequential 模式下按调用顺序串行执行', async () => {
@@ -471,6 +472,87 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     expect(appended.map((entry) => entry.kind)).toEqual(['operation_intent', 'operation_settlement', 'tool_execution']);
     expect(appended[1].payload.settlement).not.toHaveProperty('details');
     expect(appended[2].payload).not.toHaveProperty('details');
+  });
+
+  it('validates tool arguments before journaling the intent', async () => {
+    const appended: Array<{ kind: string; payload: any }> = [];
+    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const execute = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'pong' }] }));
+    const registry = new ToolRegistry();
+    registry.register({ name: 'echo', description: '', parameters: { type: 'object' }, execute });
+    const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: { invalid: Number.NaN } } as any]);
+
+    await expect(new ToolDispatcher().dispatch(ctx, msg)).rejects.toThrow('not a JSON object');
+    expect(execute).not.toHaveBeenCalled();
+    expect(appended).toEqual([]);
+  });
+
+  it('rejects non-JSON tool result content before writing a settlement', async () => {
+    const appended: Array<{ kind: string; payload: any }> = [];
+    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'echo',
+      description: '',
+      parameters: { type: 'object' },
+      execute: async () => ({ content: [{ type: 'text', text: 'pong', invalid: Number.NaN }] as any })
+    });
+    const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
+
+    const out = await new ToolDispatcher().dispatch(ctx, msg);
+
+    expect(out.toolResults[0].isError).toBe(true);
+    expect(out.toolResults[0].content[0]).toMatchObject({ text: expect.stringContaining('not JSON-safe') });
+    expect(appended[1].payload.settlement.content).toEqual(out.toolResults[0].content);
+  });
+
+  it('passes a void onUpdate callback to tools', async () => {
+    let updateReturn: unknown;
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'echo',
+      description: '',
+      parameters: { type: 'object' },
+      execute: async (_id, _args, _signal, onUpdate) => {
+        updateReturn = onUpdate?.({ content: [{ type: 'text', text: 'working' }] });
+        return { content: [{ type: 'text', text: 'pong' }] };
+      }
+    });
+    const { ctx, events } = makeCtx({ toolRegistry: registry });
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
+
+    await new ToolDispatcher().dispatch(ctx, msg);
+
+    expect(updateReturn).toBeUndefined();
+    expect(events.some((event) => event.type === 'tool_execution_update')).toBe(true);
+  });
+
+  it('handles invalid checkpoint details synchronously through the void onUpdate contract', async () => {
+    const appended: Array<{ kind: string; payload: any }> = [];
+    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'echo',
+      description: '',
+      parameters: { type: 'object' },
+      execute: async (_id, _args, _signal, onUpdate) => {
+        onUpdate?.(
+          { content: [{ type: 'text', text: 'working' }], details: { invalid: Number.NaN } },
+          { checkpoint: true }
+        );
+        return { content: [{ type: 'text', text: 'pong' }] };
+      }
+    });
+    const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
+    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
+
+    const out = await new ToolDispatcher().dispatch(ctx, msg);
+
+    expect(out.toolResults[0].isError).toBe(true);
+    expect(out.toolResults[0].content[0]).toMatchObject({ text: expect.stringContaining('not JSON-safe') });
+    expect(appended.map((entry) => entry.kind)).toEqual(['operation_intent', 'operation_settlement', 'tool_execution']);
   });
 });
 

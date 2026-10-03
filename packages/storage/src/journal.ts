@@ -9,6 +9,7 @@ import {
   writeFileSync
 } from 'node:fs';
 import { dirname } from 'node:path';
+import { mergeOperationIntent } from '@inkpi/protocol';
 import type { JournalEntry, JournalEntryType, StateLedger } from '@inkpi/protocol';
 import type { InkDb } from './db.js';
 import type { InkRepository } from './repository.js';
@@ -310,20 +311,12 @@ export class AppendOnlySessionJournal {
           case 'operation_intent': {
             const op = entry.payload;
             if (op && typeof op.id === 'string') {
-              const intentExtras: Record<string, unknown> = {};
-              if (op.replay !== undefined) intentExtras.replay = op.replay;
-              if (op.invocationId !== undefined) intentExtras.invocationId = op.invocationId;
-              const baseIntent = op.intent !== undefined ? op.intent : op;
-              const intent =
-                baseIntent && typeof baseIntent === 'object' && !Array.isArray(baseIntent)
-                  ? { ...(baseIntent as Record<string, unknown>), ...intentExtras }
-                  : baseIntent;
               repo.saveOperation({
                 id: op.id,
                 sessionId: this.sessionId,
                 type: op.type || 'custom',
                 state: 'running',
-                intent,
+                intent: mergeOperationIntent(op),
                 createdAt: entry.timestamp,
                 updatedAt: entry.timestamp
               });
