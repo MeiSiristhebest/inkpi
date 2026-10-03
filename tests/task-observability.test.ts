@@ -100,6 +100,43 @@ describe('task observability and provenance', () => {
     expect(JSON.stringify(observation)).not.toContain('must not be copied');
   });
 
+  it('preserves structured ProviderError fields through task failure serialization', async () => {
+    const registry = new TaskRegistry();
+    registry.register({
+      id: 'provider-error-metadata-handler',
+      kinds: ['test.observable.provider-error-metadata'],
+      async execute() {
+        const error = Object.assign(new Error('upstream rate limit'), {
+          name: 'ProviderError',
+          code: 'rate_limit',
+          provider: 'fixture-provider',
+          status: 429,
+          retryable: true,
+          retryAfterMs: 250,
+          maxDelayMs: 1000,
+          details: { requestId: 'req-1', rawThinking: 'private' }
+        });
+        throw error;
+      }
+    });
+    const router = new TaskRouter({ registry, now: () => 10 });
+    router.submit({ id: 'provider-error-metadata', kind: 'test.observable.provider-error-metadata', input: {} });
+
+    const result = await router.wait('provider-error-metadata');
+    expect(result.error).toMatchObject({
+      code: 'rate_limit',
+      retryable: true,
+      details: {
+        provider: 'fixture-provider',
+        status: 429,
+        retryAfterMs: 250,
+        maxDelayMs: 1000,
+        details: { requestId: 'req-1' }
+      }
+    });
+    expect(JSON.stringify(result.error)).not.toContain('private');
+  });
+
   it('retains and emits only sampled task runs without affecting the task path', async () => {
     const emitted: TaskRunObservation[] = [];
     const registry = new TaskRegistry();

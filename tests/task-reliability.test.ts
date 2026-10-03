@@ -1,6 +1,6 @@
 import { InMemoryTaskCheckpointStore, InMemoryTaskExecutionStore, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
 import type { TaskExecutionRecord, TaskExecutionStore } from '@inkpi/agent-core';
-import type { AiTask, ExecutionPlan, ExecutionSettlement } from '@inkpi/protocol';
+import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
 class DelayedExecutionStore implements TaskExecutionStore {
@@ -116,26 +116,6 @@ describe('durable task reliability', () => {
     const executions = new InMemoryTaskExecutionStore();
     const checkpoints = new InMemoryTaskCheckpointStore();
     const task = makeTask({ id: 'crashed-task', kind: 'test.resume' });
-    const executionPlan: ExecutionPlan = {
-      version: 1,
-      id: 'plan-crashed-task',
-      taskId: task.id,
-      createdAt: 10,
-      operation: 'provider_call',
-      target: 'mock-provider',
-      input: { prompt: 'input' },
-      replay: 'safe',
-      fingerprint: 'plan-fingerprint'
-    };
-    const executionSettlement: ExecutionSettlement = {
-      version: 1,
-      id: 'settlement-crashed-task',
-      planId: executionPlan.id,
-      settledAt: 11,
-      status: 'aborted',
-      planFingerprint: executionPlan.fingerprint,
-      fingerprint: 'settlement-fingerprint'
-    };
     await executions.save({
       task,
       snapshot: {
@@ -145,9 +125,7 @@ describe('durable task reliability', () => {
         checkpoint: { step: 'chapter-147', updatedAt: 10 }
       },
       attempts: 1,
-      updatedAt: 10,
-      executionPlan,
-      executionSettlement
+      updatedAt: 10
     });
     await checkpoints.save({
       taskId: task.id,
@@ -170,7 +148,6 @@ describe('durable task reliability', () => {
     await router.ready;
     expect(router.status(task.id)).toMatchObject({ status: 'interrupted' });
     expect(router.status(task.id).executionRunId).toBe('run:crashed-task');
-    expect(router.execution(task.id)).toMatchObject({ executionPlan, executionSettlement });
     expect(await router.resume(task.id)).toMatchObject({ status: 'queued' });
     await expect(router.wait(task.id)).resolves.toMatchObject({
       status: 'completed',

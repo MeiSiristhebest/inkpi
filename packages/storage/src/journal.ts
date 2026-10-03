@@ -9,6 +9,7 @@ import {
   writeFileSync
 } from 'node:fs';
 import { dirname } from 'node:path';
+import { mergeOperationIntent } from '@inkpi/protocol';
 import type { JournalEntry, JournalEntryType, StateLedger } from '@inkpi/protocol';
 import type { InkDb } from './db.js';
 import type { InkRepository } from './repository.js';
@@ -315,8 +316,7 @@ export class AppendOnlySessionJournal {
                 sessionId: this.sessionId,
                 type: op.type || 'custom',
                 state: 'running',
-                intent: op.intent,
-                plan: op.plan,
+                intent: mergeOperationIntent(op),
                 createdAt: entry.timestamp,
                 updatedAt: entry.timestamp
               });
@@ -334,7 +334,6 @@ export class AppendOnlySessionJournal {
                 type: op.type || 'custom',
                 state: op.error ? 'failed' : 'settled',
                 intent: op.intent,
-                plan: op.plan,
                 settlement: op.settlement,
                 error: op.error,
                 createdAt: op.createdAt || entry.timestamp,

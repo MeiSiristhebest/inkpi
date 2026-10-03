@@ -1,13 +1,4 @@
-import type {
-  AiTask,
-  ExecutionPlan,
-  ExecutionSettlement,
-  ExecutionSnapshot,
-  TaskError,
-  TaskResult,
-  TaskStatus,
-  TaskStatusSnapshot
-} from '@inkpi/protocol';
+import type { AiTask, ExecutionSnapshot, TaskError, TaskResult, TaskStatus, TaskStatusSnapshot } from '@inkpi/protocol';
 
 export interface ExecutionRun {
   id: string;
@@ -57,8 +48,6 @@ export interface TaskExecutionRecord {
   executionAttempts?: ExecutionAttempt[];
   resumeToken?: ResumeToken;
   executionSnapshot?: ExecutionSnapshot;
-  executionPlan?: ExecutionPlan;
-  executionSettlement?: ExecutionSettlement;
   steering?: unknown[];
 }
 
@@ -96,8 +85,6 @@ function cloneRecord(record: TaskExecutionRecord): TaskExecutionRecord {
     executionAttempts: record.executionAttempts ? cloneValue(record.executionAttempts) : undefined,
     resumeToken: record.resumeToken ? cloneValue(record.resumeToken) : undefined,
     executionSnapshot: record.executionSnapshot ? cloneValue(record.executionSnapshot) : undefined,
-    executionPlan: record.executionPlan ? cloneValue(record.executionPlan) : undefined,
-    executionSettlement: record.executionSettlement ? cloneValue(record.executionSettlement) : undefined,
     steering: record.steering ? cloneValue(record.steering) : undefined
   };
 }

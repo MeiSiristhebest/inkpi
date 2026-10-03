@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { InkDb } from './db.js';
+import { InkRepository } from './repository.js';
 
 function insertLegacyArtifact(db: InkDb, id: string, taskId: string): void {
   db.prepare(
@@ -84,38 +85,69 @@ describe('schema upgrade of pre-existing databases', () => {
     db.close();
   });
 
-  it('adds execution-plan columns to existing operation and task tables without losing records', () => {
+  it('opens databases with legacy execution-plan columns without altering their data', () => {
     const path = tempDbPath();
     const created = new InkDb(path);
-    created
-      .prepare(
-        `INSERT INTO operations (id, session_id, type, state, intent_json, settlement_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run('operation-1', 'session-1', 'tool_call', 'settled', '{"tool":"read"}', '{"ok":true}', 1, 2);
-    created
-      .prepare(
-        'INSERT INTO task_executions (task_id, task_json, snapshot_json, attempts, updated_at) VALUES (?, ?, ?, ?, ?)'
-      )
-      .run('task-1', '{"id":"task-1"}', '{"status":"interrupted"}', 1, 2);
-    created.exec('ALTER TABLE operations DROP COLUMN plan_json');
-    created.exec('ALTER TABLE task_executions DROP COLUMN execution_plan_json');
-    created.exec('ALTER TABLE task_executions DROP COLUMN execution_settlement_json');
     expect(columnsOf(created, 'operations')).not.toContain('plan_json');
     expect(columnsOf(created, 'task_executions')).not.toContain('execution_plan_json');
     expect(columnsOf(created, 'task_executions')).not.toContain('execution_settlement_json');
+
+    created.exec('ALTER TABLE operations ADD COLUMN plan_json TEXT');
+    created.exec('ALTER TABLE task_executions ADD COLUMN execution_plan_json TEXT');
+    created.exec('ALTER TABLE task_executions ADD COLUMN execution_settlement_json TEXT');
+    created
+      .prepare(
+        `INSERT INTO operations
+          (id, session_id, type, state, intent_json, plan_json, settlement_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'operation-1',
+        'session-1',
+        'tool_call',
+        'settled',
+        '{"name":"read"}',
+        '{"legacy":"plan"}',
+        '{"ok":true}',
+        1,
+        2
+      );
+    created
+      .prepare(
+        `INSERT INTO task_executions
+          (task_id, task_json, snapshot_json, attempts, updated_at, execution_plan_json, execution_settlement_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('task-1', '{"id":"task-1"}', '{"status":"interrupted"}', 1, 2, '{"legacy":"plan"}', '{"ok":true}');
     created.close();
 
     const upgraded = new InkDb(path);
     expect(columnsOf(upgraded, 'operations')).toContain('plan_json');
     expect(columnsOf(upgraded, 'task_executions')).toContain('execution_plan_json');
     expect(columnsOf(upgraded, 'task_executions')).toContain('execution_settlement_json');
+    expect(upgraded.prepare('SELECT plan_json FROM operations WHERE id = ?').get('operation-1')).toEqual({
+      plan_json: '{"legacy":"plan"}'
+    });
     expect(
-      upgraded.prepare('SELECT intent_json, settlement_json FROM operations WHERE id = ?').get('operation-1')
-    ).toEqual({ intent_json: '{"tool":"read"}', settlement_json: '{"ok":true}' });
-    expect(
-      upgraded.prepare('SELECT task_json, snapshot_json, attempts FROM task_executions WHERE task_id = ?').get('task-1')
-    ).toEqual({ task_json: '{"id":"task-1"}', snapshot_json: '{"status":"interrupted"}', attempts: 1 });
+      upgraded
+        .prepare(
+          'SELECT task_json, snapshot_json, attempts, execution_plan_json, execution_settlement_json FROM task_executions WHERE task_id = ?'
+        )
+        .get('task-1')
+    ).toEqual({
+      task_json: '{"id":"task-1"}',
+      snapshot_json: '{"status":"interrupted"}',
+      attempts: 1,
+      execution_plan_json: '{"legacy":"plan"}',
+      execution_settlement_json: '{"ok":true}'
+    });
+
+    const repo = new InkRepository(upgraded);
+    expect(repo.getOperation('operation-1')).toMatchObject({
+      state: 'settled',
+      intent: { name: 'read' },
+      settlement: { ok: true }
+    });
     upgraded.close();
   });
 });

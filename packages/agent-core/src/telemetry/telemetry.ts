@@ -384,7 +384,7 @@ export class TelemetryCollector {
             resource: {
               attributes: [
                 { key: 'service.name', value: { stringValue: 'inkpi-agent-engine' } },
-                { key: 'service.version', value: { stringValue: '1.0.0' } }
+                { key: 'service.version', value: { stringValue: '2.0.0' } }
               ]
             },
             scopeSpans: [

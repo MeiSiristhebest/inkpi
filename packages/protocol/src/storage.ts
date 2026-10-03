@@ -1,4 +1,3 @@
-import type { ExecutionPlan } from './execution.js';
 import type { RuntimeState } from './pipeline.js';
 
 export interface Workspace {
@@ -198,12 +197,21 @@ export interface OperationRecord {
   type: OperationType;
   state: OperationState;
   intent: unknown;
-  /** Content-complete execution plan retained for durable replay/audit. */
-  plan?: ExecutionPlan;
   settlement?: unknown;
   error?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/** Merge replay identity metadata into an operation's projected intent. */
+export function mergeOperationIntent(operation: Record<string, unknown>): unknown {
+  const intentExtras: Record<string, unknown> = {};
+  if (operation.replay !== undefined) intentExtras.replay = operation.replay;
+  if (operation.invocationId !== undefined) intentExtras.invocationId = operation.invocationId;
+  const baseIntent = operation.intent !== undefined ? operation.intent : operation;
+  return baseIntent && typeof baseIntent === 'object' && !Array.isArray(baseIntent)
+    ? { ...(baseIntent as Record<string, unknown>), ...intentExtras }
+    : baseIntent;
 }
 
 /** 事件溯源日志类型 */

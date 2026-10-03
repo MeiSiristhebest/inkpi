@@ -385,30 +385,6 @@ export const RuntimeModelRouteCapabilitiesSchema = Type.Object({
   supportsStreaming: Type.Optional(Type.Boolean())
 });
 
-export const ExecutionPlanSchema = Type.Object({
-  version: Type.Literal(1),
-  id: IdSchema,
-  taskId: Type.Optional(IdSchema),
-  createdAt: TimestampSchema,
-  operation: Type.Union([Type.Literal('tool_call'), Type.Literal('provider_call'), Type.Literal('workflow_stage')]),
-  target: Type.String({ minLength: 1 }),
-  input: JsonValueSchema,
-  replay: Type.Union([Type.Literal('safe'), Type.Literal('never')]),
-  fingerprint: Type.String({ pattern: '^[a-f0-9]{64}$' })
-});
-
-export const ExecutionSettlementSchema = Type.Object({
-  version: Type.Literal(1),
-  id: IdSchema,
-  planId: IdSchema,
-  settledAt: TimestampSchema,
-  status: Type.Union([Type.Literal('settled'), Type.Literal('failed'), Type.Literal('aborted')]),
-  planFingerprint: Type.String({ pattern: '^[a-f0-9]{64}$' }),
-  result: Type.Optional(JsonValueSchema),
-  error: Type.Optional(Type.String()),
-  fingerprint: Type.String({ pattern: '^[a-f0-9]{64}$' })
-});
-
 export const ExecutionSnapshotSchema = Type.Object({
   version: Type.Literal(1),
   id: IdSchema,
@@ -460,8 +436,6 @@ export const TaskExecutionSnapshotSchema = Type.Object({
   executionAttempts: Type.Optional(Type.Array(TaskExecutionAttemptSchema)),
   resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
   executionSnapshot: Type.Optional(ExecutionSnapshotSchema),
-  executionPlan: Type.Optional(ExecutionPlanSchema),
-  executionSettlement: Type.Optional(ExecutionSettlementSchema),
   steering: Type.Optional(Type.Array(Type.Any()))
 });
 
@@ -538,8 +512,6 @@ export const PROTOCOL_SCHEMA_DEFINITIONS = {
   DiagnosticSnapshotSchema,
   RuntimeModelRouteHealthParamsSchema,
   RuntimeModelRouteCapabilitiesSchema,
-  ExecutionPlanSchema,
-  ExecutionSettlementSchema,
   ExecutionSnapshotSchema,
   TaskExecutionSnapshotSchema,
   RpcRequestSchema,

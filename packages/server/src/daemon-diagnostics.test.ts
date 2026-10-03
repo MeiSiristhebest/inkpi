@@ -26,7 +26,7 @@ describe('Runtime diagnostics boundary', () => {
         version: 1,
         runtime: {
           protocolVersion: 'inkpi.runtime.v1',
-          contractVersion: 1,
+          contractVersion: 2,
           capabilities: expect.arrayContaining(['runtime.diagnostics'])
         },
         modelRoutes: { configured: 1 },

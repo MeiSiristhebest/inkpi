@@ -88,7 +88,6 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
         payload: {
           id: 'op_tool_1',
           type: 'tool_call',
-          plan: { id: 'plan-op-tool-1', fingerprint: 'fp-op-tool-1' },
           intent: { name: 'exec_sql', query: 'SELECT 1' }
         }
       },
@@ -111,7 +110,6 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     expect(op).toBeDefined();
     expect(op?.state).toBe('settled');
     expect(op?.settlement).toEqual({ rows: [1] });
-    expect(op?.plan).toEqual({ id: 'plan-op-tool-1', fingerprint: 'fp-op-tool-1' });
   });
 
   it('should detect and mark interrupted operations upon recovery after sudden crash', () => {

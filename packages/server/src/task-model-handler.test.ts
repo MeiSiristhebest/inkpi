@@ -182,7 +182,7 @@ describe('TaskModelHandler structured output failures', () => {
         modelId: 'structured-failure-model',
         baseUrl: 'https://gateway.example.test/v1'
       },
-      context: { estimatedTokens: 4, fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      context: { estimatedTokens: 4, fingerprint: 'f7dc67e4' },
       policy: { timeoutMs: 1000, maxAttempts: 2 },
       metadata: { routeId: 'default-model', contextFingerprint: 'snapshot-context' }
     });

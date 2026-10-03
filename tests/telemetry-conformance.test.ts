@@ -79,6 +79,10 @@ describe('Creative Telemetry & Conformance Suite (1:1 Ported from pi-telemetry)'
     const otelJson = collector.exportOpenTelemetryJson();
     expect(otelJson).toContain('inkpi-agent-engine');
     expect(otelJson).toContain('narrative_outline');
+    const serviceVersion = JSON.parse(otelJson).resourceSpans[0].resource.attributes.find(
+      (attribute: { key: string; value?: { stringValue?: string } }) => attribute.key === 'service.version'
+    )?.value?.stringValue;
+    expect(serviceVersion).toBe('2.0.0');
 
     // 7. Unsubscribe and Reset
     unsubscribe();

@@ -5,9 +5,7 @@ import {
   type ExecutionSnapshot,
   type JsonObject,
   type JsonValue,
-  assertJsonValue,
-  sha256Hex,
-  stableJson
+  assertJsonValue
 } from '@inkpi/protocol';
 
 export interface ExecutionSnapshotInput {
@@ -41,45 +39,32 @@ export function createExecutionSnapshot(input: ExecutionSnapshotInput): Executio
   }
   if (input.policy !== undefined) assertJsonObject(input.policy, 'Execution snapshot policy');
   if (input.metadata !== undefined) assertJsonObject(input.metadata, 'Execution snapshot metadata');
-  const messages = normalizeSnapshotValue(input.messages, 'Execution snapshot messages');
 
   const tools = input.tools.map((tool) => createToolSnapshot(tool));
   const messageIds = input.messages.map((message, index) => message.id ?? `${index}:${message.role}`);
-  const model = {
-    ...(input.canonicalModelId ? { canonicalId: input.canonicalModelId } : {}),
-    provider: input.model.provider,
-    modelId: input.model.id,
-    ...(input.model.name ? { displayName: input.model.name } : {}),
-    ...(sanitizeEndpoint(input.model.baseUrl) ? { baseUrl: sanitizeEndpoint(input.model.baseUrl) } : {}),
-    ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {})
-  };
-  const instructions = {
-    systemPrompt: input.systemPrompt,
-    ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {})
-  };
-  const fingerprint = sha256Hex(
-    stableJson({
-      model,
-      instructions,
-      tools,
-      messages,
-      ...(input.policy ? { policy: input.policy } : {}),
-      ...(input.metadata ? { metadata: input.metadata } : {})
-    })
-  );
 
   return {
     version: 1,
     id: input.id,
     ...(input.taskId ? { taskId: input.taskId } : {}),
     createdAt: input.createdAt,
-    model,
-    instructions,
+    model: {
+      ...(input.canonicalModelId ? { canonicalId: input.canonicalModelId } : {}),
+      provider: input.model.provider,
+      modelId: input.model.id,
+      ...(input.model.name ? { displayName: input.model.name } : {}),
+      ...(sanitizeEndpoint(input.model.baseUrl) ? { baseUrl: sanitizeEndpoint(input.model.baseUrl) } : {}),
+      ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {})
+    },
+    instructions: {
+      systemPrompt: input.systemPrompt,
+      ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {})
+    },
     tools,
     context: {
       messageCount: input.messages.length,
       messageIds,
-      fingerprint,
+      fingerprint: fingerprint(messageIds),
       ...(input.estimatedTokens !== undefined ? { estimatedTokens: input.estimatedTokens } : {})
     },
     ...(input.policy ? { policy: input.policy } : {}),
@@ -104,27 +89,6 @@ function createToolSnapshot(tool: AgentTool): ExecutionSnapshot['tools'][number]
     ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
     ...(tool.replay ? { replay: tool.replay } : {})
   };
-}
-
-function normalizeSnapshotValue(value: unknown, context: string): JsonValue {
-  if (value === undefined) return null;
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new Error(`${context} contains a non-finite number`);
-    return value;
-  }
-  if (Array.isArray(value)) return value.map((item) => normalizeSnapshotValue(item, context));
-  if (
-    typeof value === 'object' &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
-  ) {
-    const result: JsonObject = {};
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      if (item !== undefined) result[key] = normalizeSnapshotValue(item, `${context}.${key}`);
-    }
-    return result;
-  }
-  throw new Error(`${context} contains a non-JSON value`);
 }
 
 function assertJsonObject(value: unknown, context: string): asserts value is JsonObject {
@@ -160,4 +124,15 @@ function sanitizeEndpoint(value: string | undefined): string | undefined {
     // userinfo/query secrets. Invalid/unsafe endpoints are omitted.
     return /[?#]|\/\/[^/]*@/.test(value) ? undefined : value;
   }
+}
+
+/** Fingerprint IDs only to avoid creating guessable hashes of private message content. */
+function fingerprint(values: readonly string[]): string {
+  const serialized = JSON.stringify(values);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < serialized.length; index += 1) {
+    hash ^= serialized.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }

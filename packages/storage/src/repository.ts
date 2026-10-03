@@ -258,12 +258,11 @@ export class InkRepository implements IRepository {
 
   public saveOperation(record: OperationRecord): void {
     const stmt = this.db.prepare(`
-      INSERT INTO operations (id, session_id, type, state, intent_json, plan_json, settlement_json, error, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO operations (id, session_id, type, state, intent_json, settlement_json, error, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         state = excluded.state,
-        intent_json = excluded.intent_json,
-        plan_json = COALESCE(excluded.plan_json, operations.plan_json),
+        intent_json = COALESCE(excluded.intent_json, operations.intent_json),
         settlement_json = excluded.settlement_json,
         error = excluded.error,
         updated_at = excluded.updated_at
@@ -274,7 +273,6 @@ export class InkRepository implements IRepository {
       record.type,
       record.state,
       record.intent !== undefined ? JSON.stringify(record.intent) : null,
-      record.plan !== undefined ? JSON.stringify(record.plan) : null,
       record.settlement !== undefined ? JSON.stringify(record.settlement) : null,
       record.error || null,
       record.createdAt,
@@ -292,7 +290,6 @@ export class InkRepository implements IRepository {
       type: row.type,
       state: row.state,
       intent: row.intent_json ? parseStoredJson(row.intent_json, 'operation intent') : undefined,
-      plan: row.plan_json ? parseStoredJson(row.plan_json, 'operation plan') : undefined,
       settlement: row.settlement_json ? parseStoredJson(row.settlement_json, 'operation settlement') : undefined,
       error: row.error || undefined,
       createdAt: Number(row.created_at),
@@ -309,7 +306,6 @@ export class InkRepository implements IRepository {
       type: row.type,
       state: row.state,
       intent: row.intent_json ? parseStoredJson(row.intent_json, 'operation intent') : undefined,
-      plan: row.plan_json ? parseStoredJson(row.plan_json, 'operation plan') : undefined,
       settlement: row.settlement_json ? parseStoredJson(row.settlement_json, 'operation settlement') : undefined,
       error: row.error || undefined,
       createdAt: Number(row.created_at),
