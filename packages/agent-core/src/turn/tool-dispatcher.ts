@@ -61,22 +61,24 @@ export class ToolDispatcher {
     // 其工具参数可能不完整，不予执行截断工具调用，避免产生未知副作用。
     if (assistantMessage.stopReason === 'length') {
       for (const call of toolCalls) {
-        const truncatedRes: ToolResultMessage = {
-          role: 'toolResult',
-          toolCallId: call.id,
-          toolName: call.name,
-          isError: true,
-          content: [
-            {
-              type: 'text',
-              text: `Tool call '${call.name}' was not executed because the assistant response hit the output token limit and arguments may be truncated.`
-            }
-          ],
-          timestamp: ctx.clock()
-        };
-        if (ctx.options.journal) {
+        const invalidArgumentsError = this.getJournalArgumentsError(ctx, call);
+        const truncatedRes: ToolResultMessage = invalidArgumentsError
+          ? await this.rejectInvalidArguments(ctx, call, invalidArgumentsError, sourceIndexByCallId.get(call.id))
+          : {
+              role: 'toolResult',
+              toolCallId: call.id,
+              toolName: call.name,
+              isError: true,
+              content: [
+                {
+                  type: 'text',
+                  text: `Tool call '${call.name}' was not executed because the assistant response hit the output token limit and arguments may be truncated.`
+                }
+              ],
+              timestamp: ctx.clock()
+            };
+        if (ctx.options.journal && !invalidArgumentsError) {
           // 截断拦截同样遵守"意图 → 结算 → 结果物化"三段持久化，保证恢复路径完整。
-          assertJsonObject(call.arguments, `Tool '${call.name}' arguments`);
           const invocationId = this.reserveInvocationId(ctx);
           const toolOpId = `op_tool_${call.id}`;
           ctx.options.journal.append('operation_intent', {
@@ -84,7 +86,11 @@ export class ToolDispatcher {
             type: 'tool_call',
             invocationId,
             replay: 'never',
-            intent: { name: call.name, arguments: call.arguments, intercepted: 'output_length' }
+            intent: {
+              name: call.name,
+              arguments: call.arguments,
+              intercepted: 'output_length'
+            }
           });
           ctx.options.journal.append('operation_settlement', {
             id: toolOpId,
@@ -137,6 +143,84 @@ export class ToolDispatcher {
     return `inv_${ctx.clock()}_${(ctx.clock() % 1000000).toString(36)}`;
   }
 
+  private getJournalArgumentsError(ctx: TurnContext, call: ToolCallContent): string | undefined {
+    if (!ctx.options.journal) return undefined;
+    try {
+      assertJsonObject(call.arguments, `Tool '${call.name}' arguments`);
+      return undefined;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private async rejectInvalidArguments(
+    ctx: TurnContext,
+    call: ToolCallContent,
+    error: string,
+    sourceIndex?: number
+  ): Promise<ToolResultMessage> {
+    const { options, emitEvent, clock } = ctx;
+    const invocationId = this.reserveInvocationId(ctx);
+    const toolOpId = `op_tool_${call.id}`;
+    const errorText = `Tool arguments rejected before execution: ${error}`;
+    const result: ToolResultMessage = {
+      role: 'toolResult',
+      toolCallId: call.id,
+      toolName: call.name,
+      isError: true,
+      content: [{ type: 'text', text: errorText }],
+      timestamp: clock()
+    };
+
+    if (options.journal) {
+      options.journal.append('operation_intent', {
+        id: toolOpId,
+        type: 'tool_call',
+        invocationId,
+        replay: 'never',
+        intent: { name: call.name, invalidArguments: true }
+      });
+    }
+
+    ctx.state.pendingToolCalls.add(call.id);
+    try {
+      await emitEvent({
+        type: 'tool_execution_start',
+        toolCallId: call.id,
+        toolName: call.name,
+        args: {}
+      });
+
+      if (options.journal) {
+        options.journal.append('operation_settlement', {
+          id: toolOpId,
+          type: 'tool_call',
+          invocationId,
+          settlement: { content: result.content },
+          error: errorText
+        });
+        options.journal.append(
+          'tool_execution',
+          {
+            ...result,
+            invocationId,
+            ...(sourceIndex !== undefined ? { sourceIndex } : {})
+          },
+          invocationId
+        );
+      }
+
+      await emitEvent({
+        type: 'tool_execution_end',
+        toolCallId: call.id,
+        result: result.content
+      });
+      return result;
+    } finally {
+      ctx.state.pendingToolCalls.delete(call.id);
+    }
+  }
+
   private async executeOne(
     ctx: TurnContext,
     call: ToolCallContent,
@@ -146,11 +230,15 @@ export class ToolDispatcher {
   ): Promise<ToolResultMessage & { terminate?: boolean }> {
     const { options, toolRegistry, emitEvent, signal, clock } = ctx;
     const toolOpId = `op_tool_${call.id}`;
+    const invalidArgumentsError = this.getJournalArgumentsError(ctx, call);
+
+    if (invalidArgumentsError) {
+      return this.rejectInvalidArguments(ctx, call, invalidArgumentsError, sourceIndex);
+    }
+
     const invocationId = this.reserveInvocationId(ctx);
     const replay = toolRegistry.get(call.name)?.replay ?? 'safe';
-
     if (options.journal) {
-      assertJsonObject(call.arguments, `Tool '${call.name}' arguments`);
       options.journal.append('operation_intent', {
         id: toolOpId,
         type: 'tool_call',
@@ -179,7 +267,11 @@ export class ToolDispatcher {
         });
         options.journal.append(
           'tool_execution',
-          { ...abortedRes, invocationId, ...(sourceIndex !== undefined ? { sourceIndex } : {}) },
+          {
+            ...abortedRes,
+            invocationId,
+            ...(sourceIndex !== undefined ? { sourceIndex } : {})
+          },
           invocationId
         );
       }
@@ -197,6 +289,7 @@ export class ToolDispatcher {
     // fencing：结算后拒收迟到的进度更新（对齐上游 tool-durability "tool-promise settlement
     // stops accepting updates"）。
     let settled = false;
+    let pendingUpdateEvents = Promise.resolve();
     const fencedUpdate = (update: { content: any[]; details?: unknown }, updateOptions?: ToolUpdateOptions): void => {
       if (settled) return;
       // checkpoint：工具显式请求把"完整有界"快照持久化为 tool_progress 条目。
@@ -217,11 +310,12 @@ export class ToolDispatcher {
           timestamp: clock()
         });
       }
-      void emitEvent({
+      const event = {
         type: 'tool_execution_update',
         toolCallId: call.id,
         partialResult: update
-      }).catch(() => undefined);
+      } as const;
+      pendingUpdateEvents = pendingUpdateEvents.then(() => emitEvent(event)).catch(() => undefined);
     };
 
     let toolRes: ToolResultMessage & { terminate?: boolean };
@@ -252,7 +346,9 @@ export class ToolDispatcher {
           timestamp: clock()
         };
       } else {
-        toolRes = await toolRegistry.executeTool(call, signal, fencedUpdate, { messages: ctx.state.messages });
+        toolRes = await toolRegistry.executeTool(call, signal, fencedUpdate, {
+          messages: ctx.state.messages
+        });
       }
 
       if (options.afterToolCall) {
@@ -291,6 +387,7 @@ export class ToolDispatcher {
       };
     } finally {
       settled = true;
+      await pendingUpdateEvents;
       ctx.state.pendingToolCalls.delete(call.id);
     }
 

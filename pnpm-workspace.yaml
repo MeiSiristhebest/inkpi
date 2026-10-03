@@ -1,8 +1,8 @@
 packages:
   - 'packages/*'
 allowBuilds:
-  '@biomejs/biome': set this to true or false
-  esbuild: set this to true or false
+  '@biomejs/biome': false
+  esbuild: false
 minimumReleaseAgeExclude:
   - '@inkpi/agent-core@2.0.0'
   - '@inkpi/ai@1.0.0'

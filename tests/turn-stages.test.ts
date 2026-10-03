@@ -63,14 +63,20 @@ function assistantMsg(content: AssistantMessage['content']): AssistantMessage {
 
 describe('ContextTransformer (管线第 1 段)', () => {
   it('无 transformContext / convertToLlm 时原样返回消息副本', async () => {
-    const { ctx, state } = makeCtx({ state: makeState([{ role: 'user', content: [], timestamp: 1 } as AgentMessage]) });
+    const { ctx, state } = makeCtx({
+      state: makeState([{ role: 'user', content: [], timestamp: 1 } as AgentMessage])
+    });
     const out = await new ContextTransformer().prepare(ctx);
     expect(out).toHaveLength(1);
     expect(out).not.toBe(state.messages); // 返回副本，不共享引用
   });
 
   it('drain 出来的 steering 消息会并入历史并派发生命周期事件', async () => {
-    const steeringMsg = { role: 'user', content: [], timestamp: 1 } as AgentMessage;
+    const steeringMsg = {
+      role: 'user',
+      content: [],
+      timestamp: 1
+    } as AgentMessage;
     const steering = queueOf(steeringMsg);
     const { ctx, events, state } = makeCtx({ queues: { steering } });
 
@@ -98,7 +104,11 @@ describe('ContextTransformer (管线第 1 段)', () => {
   });
 
   it('transformContext 收到的是包含 steering 消息的历史', async () => {
-    const steeringMsg = { role: 'user', content: [], timestamp: 9 } as AgentMessage;
+    const steeringMsg = {
+      role: 'user',
+      content: [],
+      timestamp: 9
+    } as AgentMessage;
     const seen: number[] = [];
     const { ctx } = makeCtx({
       queues: { steering: queueOf(steeringMsg) },
@@ -154,7 +164,13 @@ describe('TurnFinalizer (管线第 4 段)', () => {
 
   it('steering 队列非空时续跑', async () => {
     const { ctx } = makeCtx({
-      queues: { steering: queueOf({ role: 'user', content: [], timestamp: 1 } as AgentMessage) }
+      queues: {
+        steering: queueOf({
+          role: 'user',
+          content: [],
+          timestamp: 1
+        } as AgentMessage)
+      }
     });
     const cont = await new TurnFinalizer().finalize(ctx, {
       assistantMessage: msg,
@@ -165,7 +181,11 @@ describe('TurnFinalizer (管线第 4 段)', () => {
   });
 
   it('follow-up 队列非空时排空并入历史后续跑', async () => {
-    const followUpMsg = { role: 'user', content: [], timestamp: 5 } as AgentMessage;
+    const followUpMsg = {
+      role: 'user',
+      content: [],
+      timestamp: 5
+    } as AgentMessage;
     const { ctx, events, state } = makeCtx({
       queues: { followUp: queueOf(followUpMsg) }
     });
@@ -190,9 +210,17 @@ describe('TurnFinalizer (管线第 4 段)', () => {
   });
 
   it('工具结果优先于 steering：有工具结果时直接续跑，不再排 follow-up', async () => {
-    const followUpMsg = { role: 'user', content: [], timestamp: 5 } as AgentMessage;
+    const followUpMsg = {
+      role: 'user',
+      content: [],
+      timestamp: 5
+    } as AgentMessage;
     const followUp = queueOf(followUpMsg);
-    const steering = queueOf({ role: 'user', content: [], timestamp: 1 } as AgentMessage);
+    const steering = queueOf({
+      role: 'user',
+      content: [],
+      timestamp: 1
+    } as AgentMessage);
     const { ctx, state } = makeCtx({ queues: { followUp, steering } });
 
     const cont = await new TurnFinalizer().finalize(ctx, {
@@ -244,11 +272,22 @@ describe('ToolDispatcher (管线第 3 段)', () => {
   it('beforeToolCall 拦截时不执行工具，并按 terminate 标记终止', async () => {
     const execute = vi.fn();
     const registry = new ToolRegistry();
-    registry.register({ name: 'boom', description: '', parameters: { type: 'object', properties: {} }, execute });
+    registry.register({
+      name: 'boom',
+      description: '',
+      parameters: { type: 'object', properties: {} },
+      execute
+    });
 
     const { ctx } = makeCtx({
       toolRegistry: registry,
-      options: { beforeToolCall: async () => ({ block: true, reason: 'nope', terminate: true }) }
+      options: {
+        beforeToolCall: async () => ({
+          block: true,
+          reason: 'nope',
+          terminate: true
+        })
+      }
     });
     const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'boom', arguments: {} } as any]);
 
@@ -304,7 +343,9 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     const out = await new ToolDispatcher().dispatch(ctx, msg);
     expect(out.shouldTerminate).toBe(false);
     expect(out.toolResults[0].isError).toBe(true);
-    expect(out.toolResults[0].content[0]).toMatchObject({ text: 'Tool Exception: kaboom' });
+    expect(out.toolResults[0].content[0]).toMatchObject({
+      text: 'Tool Exception: kaboom'
+    });
     expect(state.pendingToolCalls.size).toBe(0);
   });
 
@@ -338,9 +379,16 @@ describe('ToolDispatcher (管线第 3 段)', () => {
   it('signal 已中断时直接返回中断结果，不调用工具', async () => {
     const execute = vi.fn();
     const appended: Array<{ kind: string; payload: any }> = [];
-    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const journal = {
+      append: (kind: string, payload: any) => appended.push({ kind, payload })
+    };
     const registry = new ToolRegistry();
-    registry.register({ name: 'echo', description: '', parameters: { type: 'object', properties: {} }, execute });
+    registry.register({
+      name: 'echo',
+      description: '',
+      parameters: { type: 'object', properties: {} },
+      execute
+    });
 
     const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
     ctx.signal = { aborted: true } as AbortSignal;
@@ -371,7 +419,10 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       }
     });
 
-    const { ctx } = makeCtx({ toolRegistry: registry, options: { toolExecution: 'sequential' } });
+    const { ctx } = makeCtx({
+      toolRegistry: registry,
+      options: { toolExecution: 'sequential' }
+    });
     const msg = assistantMsg([
       { type: 'toolCall', id: 'c1', name: 't', arguments: { n: 1 } } as any,
       { type: 'toolCall', id: 'c2', name: 't', arguments: { n: 2 } } as any
@@ -399,7 +450,10 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       }
     });
 
-    const { ctx } = makeCtx({ toolRegistry: registry, options: { toolExecution: 'parallel' } });
+    const { ctx } = makeCtx({
+      toolRegistry: registry,
+      options: { toolExecution: 'parallel' }
+    });
     const msg = assistantMsg([
       { type: 'toolCall', id: 'c1', name: 't', arguments: { n: 1 } } as any,
       { type: 'toolCall', id: 'c2', name: 't', arguments: { n: 2 } } as any
@@ -412,7 +466,9 @@ describe('ToolDispatcher (管线第 3 段)', () => {
 
   it('journal 会登记意图、结算与工具执行三条记录', async () => {
     const appended: Array<{ kind: string; payload: any }> = [];
-    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const journal = {
+      append: (kind: string, payload: any) => appended.push({ kind, payload })
+    };
 
     const registry = new ToolRegistry();
     registry.register({
@@ -442,13 +498,17 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       invocationId: appended[0].payload.invocationId,
       settlement: { content: [{ type: 'text', text: 'pong' }] }
     });
-    expect(appended[1].payload.settlement).toEqual({ content: [{ type: 'text', text: 'pong' }] });
+    expect(appended[1].payload.settlement).toEqual({
+      content: [{ type: 'text', text: 'pong' }]
+    });
     expect(appended[2].payload).not.toHaveProperty('details');
   });
 
   it('journal rejects non-JSON details added by the after-tool hook', async () => {
     const appended: Array<{ kind: string; payload: any }> = [];
-    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const journal = {
+      append: (kind: string, payload: any) => appended.push({ kind, payload })
+    };
     const registry = new ToolRegistry();
     registry.register({
       name: 'echo',
@@ -468,35 +528,106 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     const out = await new ToolDispatcher().dispatch(ctx, msg);
 
     expect(out.toolResults[0].isError).toBe(true);
-    expect(out.toolResults[0].content[0]).toMatchObject({ text: expect.stringContaining('not JSON-safe') });
+    expect(out.toolResults[0].content[0]).toMatchObject({
+      text: expect.stringContaining('not JSON-safe')
+    });
     expect(appended.map((entry) => entry.kind)).toEqual(['operation_intent', 'operation_settlement', 'tool_execution']);
     expect(appended[1].payload.settlement).not.toHaveProperty('details');
     expect(appended[2].payload).not.toHaveProperty('details');
   });
 
-  it('validates tool arguments before journaling the intent', async () => {
-    const appended: Array<{ kind: string; payload: any }> = [];
-    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
-    const execute = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'pong' }] }));
-    const registry = new ToolRegistry();
-    registry.register({ name: 'echo', description: '', parameters: { type: 'object' }, execute });
-    const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
-    const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: { invalid: Number.NaN } } as any]);
+  it.each(['tool_use', 'length'] as const)(
+    'returns a per-call error for invalid journal arguments and continues mixed calls (%s)',
+    async (stopReason) => {
+      const appended: Array<{ kind: string; payload: any }> = [];
+      const journal = {
+        append: (kind: string, payload: any) => appended.push({ kind, payload })
+      };
+      const execute = vi.fn(async () => ({
+        content: [{ type: 'text' as const, text: 'pong' }]
+      }));
+      const registry = new ToolRegistry();
+      registry.register({
+        name: 'echo',
+        description: '',
+        parameters: { type: 'object' },
+        execute
+      });
+      const { ctx, events } = makeCtx({
+        toolRegistry: registry,
+        options: { journal }
+      });
+      const msg = assistantMsg([
+        {
+          type: 'toolCall',
+          id: 'c-invalid',
+          name: 'echo',
+          arguments: { invalid: Number.NaN }
+        } as any,
+        {
+          type: 'toolCall',
+          id: 'c-valid',
+          name: 'echo',
+          arguments: { value: 'valid' }
+        } as any
+      ]);
+      msg.stopReason = stopReason;
 
-    await expect(new ToolDispatcher().dispatch(ctx, msg)).rejects.toThrow('not a JSON object');
-    expect(execute).not.toHaveBeenCalled();
-    expect(appended).toEqual([]);
-  });
+      const out = await new ToolDispatcher().dispatch(ctx, msg);
+
+      expect(out.toolResults.map((result) => result.toolCallId)).toEqual(['c-invalid', 'c-valid']);
+      expect(out.toolResults[0].isError).toBe(true);
+      expect(out.toolResults[0].content[0]).toMatchObject({
+        text: expect.stringContaining('not a JSON object')
+      });
+      if (stopReason === 'length') {
+        expect(execute).not.toHaveBeenCalled();
+        expect(out.toolResults[1].content[0]).toMatchObject({
+          text: expect.stringContaining('output token limit')
+        });
+      } else {
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(execute).toHaveBeenCalledWith(
+          'c-valid',
+          { value: 'valid' },
+          undefined,
+          expect.any(Function),
+          expect.objectContaining({ messages: expect.any(Array) })
+        );
+        expect(out.toolResults[1].content).toEqual([{ type: 'text', text: 'pong' }]);
+      }
+
+      const invalidIntent = appended.find(
+        (entry) => entry.kind === 'operation_intent' && entry.payload.id === 'op_tool_c-invalid'
+      );
+      expect(invalidIntent?.payload.intent).toEqual({
+        name: 'echo',
+        invalidArguments: true
+      });
+      expect(invalidIntent?.payload.intent).not.toHaveProperty('arguments');
+      const invalidExecution = appended.find(
+        (entry) => entry.kind === 'tool_execution' && entry.payload.toolCallId === 'c-invalid'
+      );
+      expect(invalidExecution?.payload).not.toHaveProperty('arguments');
+      expect(
+        events.find((event) => event.type === 'tool_execution_start' && event.toolCallId === 'c-invalid')
+      ).toMatchObject({ args: {} });
+    }
+  );
 
   it('rejects non-JSON tool result content before writing a settlement', async () => {
     const appended: Array<{ kind: string; payload: any }> = [];
-    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const journal = {
+      append: (kind: string, payload: any) => appended.push({ kind, payload })
+    };
     const registry = new ToolRegistry();
     registry.register({
       name: 'echo',
       description: '',
       parameters: { type: 'object' },
-      execute: async () => ({ content: [{ type: 'text', text: 'pong', invalid: Number.NaN }] as any })
+      execute: async () => ({
+        content: [{ type: 'text', text: 'pong', invalid: Number.NaN }] as any
+      })
     });
     const { ctx } = makeCtx({ toolRegistry: registry, options: { journal } });
     const msg = assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any]);
@@ -504,7 +635,9 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     const out = await new ToolDispatcher().dispatch(ctx, msg);
 
     expect(out.toolResults[0].isError).toBe(true);
-    expect(out.toolResults[0].content[0]).toMatchObject({ text: expect.stringContaining('not JSON-safe') });
+    expect(out.toolResults[0].content[0]).toMatchObject({
+      text: expect.stringContaining('not JSON-safe')
+    });
     expect(appended[1].payload.settlement.content).toEqual(out.toolResults[0].content);
   });
 
@@ -516,7 +649,9 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       description: '',
       parameters: { type: 'object' },
       execute: async (_id, _args, _signal, onUpdate) => {
-        updateReturn = onUpdate?.({ content: [{ type: 'text', text: 'working' }] });
+        updateReturn = onUpdate?.({
+          content: [{ type: 'text', text: 'working' }]
+        });
         return { content: [{ type: 'text', text: 'pong' }] };
       }
     });
@@ -529,9 +664,62 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     expect(events.some((event) => event.type === 'tool_execution_update')).toBe(true);
   });
 
+  it('serializes update listeners and drains them before tool_execution_end', async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'echo',
+      description: '',
+      parameters: { type: 'object' },
+      execute: async (_id, _args, _signal, onUpdate) => {
+        onUpdate?.({ content: [{ type: 'text', text: 'first' }] });
+        onUpdate?.({ content: [{ type: 'text', text: 'second' }] });
+        return { content: [{ type: 'text', text: 'done' }] };
+      }
+    });
+    const { ctx } = makeCtx({ toolRegistry: registry });
+    const eventOrder: string[] = [];
+    let releaseFirstUpdate!: () => void;
+    let markFirstUpdateStarted!: () => void;
+    const firstUpdateGate = new Promise<void>((resolve) => {
+      releaseFirstUpdate = resolve;
+    });
+    const firstUpdateStarted = new Promise<void>((resolve) => {
+      markFirstUpdateStarted = resolve;
+    });
+    ctx.emitEvent = async (event) => {
+      if (event.type === 'tool_execution_update') {
+        const text = (event.partialResult as any).content[0].text;
+        if (text === 'first') {
+          eventOrder.push('first:start');
+          markFirstUpdateStarted();
+          await firstUpdateGate;
+          eventOrder.push('first:end');
+        } else {
+          eventOrder.push('second');
+        }
+      } else if (event.type === 'tool_execution_end') {
+        eventOrder.push('end');
+      }
+    };
+
+    const dispatch = new ToolDispatcher().dispatch(
+      ctx,
+      assistantMsg([{ type: 'toolCall', id: 'c1', name: 'echo', arguments: {} } as any])
+    );
+    await firstUpdateStarted;
+    const beforeRelease = [...eventOrder];
+    releaseFirstUpdate();
+    await dispatch;
+
+    expect(beforeRelease).toEqual(['first:start']);
+    expect(eventOrder).toEqual(['first:start', 'first:end', 'second', 'end']);
+  });
+
   it('handles invalid checkpoint details synchronously through the void onUpdate contract', async () => {
     const appended: Array<{ kind: string; payload: any }> = [];
-    const journal = { append: (kind: string, payload: any) => appended.push({ kind, payload }) };
+    const journal = {
+      append: (kind: string, payload: any) => appended.push({ kind, payload })
+    };
     const registry = new ToolRegistry();
     registry.register({
       name: 'echo',
@@ -539,7 +727,10 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       parameters: { type: 'object' },
       execute: async (_id, _args, _signal, onUpdate) => {
         onUpdate?.(
-          { content: [{ type: 'text', text: 'working' }], details: { invalid: Number.NaN } },
+          {
+            content: [{ type: 'text', text: 'working' }],
+            details: { invalid: Number.NaN }
+          },
           { checkpoint: true }
         );
         return { content: [{ type: 'text', text: 'pong' }] };
@@ -551,7 +742,9 @@ describe('ToolDispatcher (管线第 3 段)', () => {
     const out = await new ToolDispatcher().dispatch(ctx, msg);
 
     expect(out.toolResults[0].isError).toBe(true);
-    expect(out.toolResults[0].content[0]).toMatchObject({ text: expect.stringContaining('not JSON-safe') });
+    expect(out.toolResults[0].content[0]).toMatchObject({
+      text: expect.stringContaining('not JSON-safe')
+    });
     expect(appended.map((entry) => entry.kind)).toEqual(['operation_intent', 'operation_settlement', 'tool_execution']);
   });
 });
