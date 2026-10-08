@@ -2,6 +2,9 @@ import { type DomainChangeSet, calculateDomainChangeSetChecksum } from '@inkpi/p
 import { STORAGE_SCHEMA_DDL } from './ddl.js';
 import type { IDb, PreparedStatement } from './ports.js';
 
+/** Increment when the Runtime's persisted SQLite shape changes. */
+export const STORAGE_SCHEMA_VERSION = 1;
+
 interface SqliteDatabase {
   exec(sql: string): void;
   prepare(sql: string): PreparedStatement;
@@ -38,6 +41,15 @@ export class InkDb implements IDb {
   }
 
   public initSchema(): void {
+    const storedVersion = Number(
+      (this.db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined)?.user_version ?? 0
+    );
+    if (storedVersion > STORAGE_SCHEMA_VERSION) {
+      throw new Error(
+        `Runtime storage schema ${storedVersion} is newer than supported schema ${STORAGE_SCHEMA_VERSION}.`
+      );
+    }
+
     // `CREATE TABLE IF NOT EXISTS` cannot add a column to a table an earlier
     // build already created, but the index that references it still runs inside
     // the same exec — so columns that appear in an index must be migrated first
@@ -67,6 +79,7 @@ export class InkDb implements IDb {
       `);
     }
     this.backfillDomainChangeSetChecksums();
+    this.db.exec(`PRAGMA user_version = ${STORAGE_SCHEMA_VERSION}`);
   }
 
   private ensureColumn(

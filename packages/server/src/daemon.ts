@@ -19,11 +19,14 @@ import {
 } from '@inkpi/agent-core';
 import type { ModelConfig as AiModelConfig } from '@inkpi/ai';
 import {
+  DAEMON_RPC_METHOD_NAMES,
   RUNTIME_CAPABILITIES,
   RUNTIME_CONTRACT_VERSION,
+  RUNTIME_IMPLEMENTATION_COMMIT,
   RUNTIME_IMPLEMENTATION_VERSION,
   RUNTIME_PROTOCOL_VERSION,
   RUNTIME_SCHEMA_HASH,
+  RUNTIME_SKILL_MANIFEST_HASH,
   assertRuntimeHandshakeRequest,
   createRuntimeHandshakeResponse
 } from '@inkpi/protocol';
@@ -48,6 +51,8 @@ import type {
   ModelConfig,
   ProposalSyncPushParams,
   ProposalSyncSnapshotParams,
+  RuntimeModelProviderProbeParams,
+  RuntimeModelProviderProbeResult,
   RuntimeModelRouteHealthParams,
   RuntimeModelRouteHealthResult,
   RuntimeModelRouteRegistration,
@@ -76,6 +81,7 @@ import type {
   ToolResultMessage
 } from '@inkpi/protocol';
 import type { DaemonStatus, RuntimeCapability } from '@inkpi/protocol';
+import { STORAGE_SCHEMA_VERSION } from '@inkpi/storage';
 import type { ProposalProjectionStore } from '@inkpi/storage';
 import { createConversationHistoryProvider } from './conversation-history-provider.js';
 import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
@@ -92,6 +98,7 @@ import {
   type ModelRouteRuntimeState,
   validateModelRouteRuntimeState
 } from './model-capability-router.js';
+import { probeModelProvider } from './model-provider-probe.js';
 import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TaskModelHandler } from './task-model-handler.js';
@@ -470,6 +477,10 @@ export class InkPiDaemon {
 
     this.rpcServer.registerMethod('model.routes.list', () => this.listRuntimeModelRoutes());
     this.rpcServer.registerMethod(
+      'model.provider.probe',
+      (params: RuntimeModelProviderProbeParams): Promise<RuntimeModelProviderProbeResult> => probeModelProvider(params)
+    );
+    this.rpcServer.registerMethod(
       'model.routes.configure',
       (params: RuntimeModelRoutesConfigureParams): RuntimeModelRoutesConfigureResult =>
         this.configureRuntimeModelRoutes(params)
@@ -547,7 +558,11 @@ export class InkPiDaemon {
       assertRuntimeHandshakeRequest(params);
       return createRuntimeHandshakeResponse({
         runtimeVersion: RUNTIME_IMPLEMENTATION_VERSION,
+        runtimeCommit: RUNTIME_IMPLEMENTATION_COMMIT,
+        rpcMethods: DAEMON_RPC_METHOD_NAMES,
         capabilities: this.getRuntimeCapabilities(),
+        skillManifestHash: RUNTIME_SKILL_MANIFEST_HASH,
+        storageSchemaVersion: STORAGE_SCHEMA_VERSION,
         request: params
       });
     });

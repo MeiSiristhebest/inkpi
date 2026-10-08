@@ -1,5 +1,6 @@
 import {
   DESKTOP_REQUIRED_RUNTIME_CAPABILITIES,
+  RUNTIME_CONTRACT_VERSION,
   RUNTIME_SCHEMA_HASH,
   createRuntimeHandshakeRequest
 } from '@inkpi/protocol';
@@ -28,6 +29,10 @@ describe('Runtime compatibility contract', () => {
       contractVersion: request.contractVersion,
       schemaHash: RUNTIME_SCHEMA_HASH,
       runtimeVersion: '2.0.0',
+      runtimeCommit: expect.any(String),
+      rpcMethods: expect.arrayContaining(['runtime.handshake', 'model.provider.probe']),
+      skillManifestHash: expect.any(String),
+      storageSchemaVersion: expect.any(Number),
       missingCapabilities: []
     });
     expect((response.result as { capabilities: string[] }).capabilities).not.toContain('artifact.list');
@@ -52,6 +57,7 @@ describe('Runtime compatibility contract', () => {
       accepted: false,
       schemaHash: RUNTIME_SCHEMA_HASH,
       missingCapabilities: [],
+      missingRpcMethods: [],
       reason: expect.stringContaining('mismatch')
     });
   });
@@ -73,10 +79,37 @@ describe('Runtime compatibility contract', () => {
     if (response.error) throw new Error(response.error.message);
     expect(response.result).toMatchObject({
       accepted: false,
-      contractVersion: 2,
+      contractVersion: RUNTIME_CONTRACT_VERSION,
       schemaHash: RUNTIME_SCHEMA_HASH,
       missingCapabilities: [],
+      missingRpcMethods: [],
       reason: expect.stringContaining('mismatch')
+    });
+  });
+
+  it('rejects a Runtime whose commit, skills, or storage schema differ from the pinned identity', async () => {
+    const daemon = new InkPiDaemon();
+    const request = createRuntimeHandshakeRequest({
+      clientName: 'inkpi-desktop-test',
+      requiredCapabilities: DESKTOP_REQUIRED_RUNTIME_CAPABILITIES,
+      expectedRuntime: {
+        runtimeCommit: '0'.repeat(40),
+        skillManifestHash: '0'.repeat(64),
+        storageSchemaVersion: 99
+      }
+    });
+
+    const response = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 'handshake-identity-mismatch',
+      method: 'runtime.handshake',
+      params: request
+    });
+
+    if (response.error) throw new Error(response.error.message);
+    expect(response.result).toMatchObject({
+      accepted: false,
+      reason: expect.stringContaining('Runtime identity mismatch')
     });
   });
 });

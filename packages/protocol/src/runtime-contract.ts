@@ -6,16 +6,26 @@
  * is a compatibility fingerprint, not an authentication mechanism.
  */
 
+import { DAEMON_RPC_METHOD_NAMES } from './rpc.js';
 import { PROTOCOL_SCHEMA_DEFINITIONS, PROTOCOL_VERSION } from './schemas.js';
 
 export const RUNTIME_PROTOCOL_VERSION = 'inkpi.runtime.v1' as const;
-export const RUNTIME_CONTRACT_VERSION = 2 as const;
+export const RUNTIME_CONTRACT_VERSION = 3 as const;
 
 /** Loopback-only endpoint defaults shared by CLI, Runtime, and Desktop. */
 export const DEFAULT_RPC_HOST = '127.0.0.1';
 export const DEFAULT_RPC_PORT = 8848;
 export const DEFAULT_RPC_WS_PORT = 8849;
 export const RUNTIME_IMPLEMENTATION_VERSION = '2.0.0' as const;
+declare const __INKPI_RUNTIME_COMMIT__: string | undefined;
+declare const __INKPI_SKILL_MANIFEST_HASH__: string | undefined;
+
+/** Build identity is injected only into standalone binaries built from a clean Git checkout. */
+export const RUNTIME_IMPLEMENTATION_COMMIT =
+  typeof __INKPI_RUNTIME_COMMIT__ === 'string' ? __INKPI_RUNTIME_COMMIT__ : 'unknown';
+/** Hash of the built-in Skill manifests shipped alongside the standalone binary. */
+export const RUNTIME_SKILL_MANIFEST_HASH =
+  typeof __INKPI_SKILL_MANIFEST_HASH__ === 'string' ? __INKPI_SKILL_MANIFEST_HASH__ : 'unknown';
 
 /** RPC capabilities that may be advertised by an InkPi Runtime. */
 export const RUNTIME_CAPABILITIES = [
@@ -54,7 +64,8 @@ export const RUNTIME_CAPABILITIES = [
   'model.routes.list',
   'model.routes.configure',
   'model.routes.remove',
-  'model.routes.health'
+  'model.routes.health',
+  'model.provider.probe'
 ] as const;
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number];
@@ -76,7 +87,8 @@ export const DESKTOP_REQUIRED_RUNTIME_CAPABILITIES = [
   'model.routes.list',
   'model.routes.configure',
   'model.routes.remove',
-  'model.routes.health'
+  'model.routes.health',
+  'model.provider.probe'
 ] as const satisfies readonly RuntimeCapability[];
 
 export interface RuntimeHandshakeRequest {
@@ -86,6 +98,13 @@ export interface RuntimeHandshakeRequest {
   clientName: string;
   clientVersion?: string;
   requiredCapabilities: readonly string[];
+  expectedRuntime?: RuntimeIdentityExpectation;
+}
+
+export interface RuntimeIdentityExpectation {
+  runtimeCommit: string;
+  skillManifestHash: string;
+  storageSchemaVersion: number;
 }
 
 export interface RuntimeHandshakeResponse {
@@ -94,8 +113,13 @@ export interface RuntimeHandshakeResponse {
   contractVersion: number;
   schemaHash: string;
   runtimeVersion: string;
+  runtimeCommit: string;
+  rpcMethods: string[];
   capabilities: string[];
+  skillManifestHash: string;
+  storageSchemaVersion: number;
   missingCapabilities: string[];
+  missingRpcMethods: string[];
   reason?: string;
 }
 
@@ -110,7 +134,8 @@ export const RUNTIME_SCHEMA_HASH = stableFingerprint(
     `contract:${RUNTIME_CONTRACT_VERSION}`,
     `protocol-schema:${PROTOCOL_VERSION}`,
     `schemas:${JSON.stringify(PROTOCOL_SCHEMA_DEFINITIONS)}`,
-    ...RUNTIME_CAPABILITIES
+    ...RUNTIME_CAPABILITIES.map((capability) => `capability:${capability}`),
+    ...DAEMON_RPC_METHOD_NAMES.map((method) => `rpc:${method}`)
   ].join('\n')
 );
 
@@ -138,22 +163,26 @@ export function assertRuntimeHandshakeRequest(value: unknown): asserts value is 
   if (!Array.isArray(value.requiredCapabilities) || !value.requiredCapabilities.every(isNonEmptyString)) {
     throw new Error('Runtime handshake requiredCapabilities are invalid');
   }
+  if (value.expectedRuntime !== undefined) assertRuntimeIdentityExpectation(value.expectedRuntime);
 }
 
 export function createRuntimeHandshakeRequest(options: {
   clientName: string;
   clientVersion?: string;
   requiredCapabilities?: readonly string[];
+  expectedRuntime?: RuntimeIdentityExpectation;
 }): RuntimeHandshakeRequest {
   const clientName = options.clientName.trim();
   if (!clientName) throw new Error('Runtime handshake clientName must not be empty');
+  if (options.expectedRuntime) assertRuntimeIdentityExpectation(options.expectedRuntime);
   return {
     protocolVersion: RUNTIME_PROTOCOL_VERSION,
     contractVersion: RUNTIME_CONTRACT_VERSION,
     schemaHash: RUNTIME_SCHEMA_HASH,
     clientName,
     ...(options.clientVersion?.trim() ? { clientVersion: options.clientVersion.trim() } : {}),
-    requiredCapabilities: [...(options.requiredCapabilities ?? [])]
+    requiredCapabilities: [...(options.requiredCapabilities ?? [])],
+    ...(options.expectedRuntime ? { expectedRuntime: { ...options.expectedRuntime } } : {})
   };
 }
 
@@ -182,33 +211,83 @@ export function assertRuntimeHandshakeResponse(
   if (value.schemaHash !== RUNTIME_SCHEMA_HASH) {
     throw new Error(`Runtime schema mismatch: expected ${RUNTIME_SCHEMA_HASH}, received ${String(value.schemaHash)}`);
   }
+  if (!Array.isArray(value.missingCapabilities) || !value.missingCapabilities.every(isNonEmptyString)) {
+    throw new Error('Runtime handshake missingCapabilities are invalid');
+  }
+  if (!Array.isArray(value.missingRpcMethods) || !value.missingRpcMethods.every(isNonEmptyString)) {
+    throw new Error('Runtime handshake missingRpcMethods are invalid');
+  }
   if (typeof value.runtimeVersion !== 'string' || !value.runtimeVersion.trim()) {
     throw new Error('Runtime handshake did not report a runtime version');
   }
   if (!Array.isArray(value.capabilities) || !value.capabilities.every(isNonEmptyString)) {
     throw new Error('Runtime handshake capabilities are invalid');
   }
+  if (!Array.isArray(value.rpcMethods) || !value.rpcMethods.every(isNonEmptyString)) {
+    throw new Error('Runtime handshake RPC methods are invalid');
+  }
+  if (typeof value.runtimeCommit !== 'string' || !value.runtimeCommit.trim()) {
+    throw new Error('Runtime handshake did not report a runtime commit');
+  }
+  if (typeof value.skillManifestHash !== 'string' || !value.skillManifestHash.trim()) {
+    throw new Error('Runtime handshake did not report a skill manifest hash');
+  }
+  if (
+    typeof value.storageSchemaVersion !== 'number' ||
+    !Number.isSafeInteger(value.storageSchemaVersion) ||
+    value.storageSchemaVersion < 1
+  ) {
+    throw new Error('Runtime handshake storage schema version is invalid');
+  }
   const capabilities = new Set(value.capabilities);
   const missing = requiredCapabilities.filter((capability) => !capabilities.has(capability));
   if (missing.length > 0) {
     throw new Error(`Runtime is missing required capabilities: ${missing.join(', ')}`);
   }
+  if (value.missingCapabilities.length > 0) {
+    throw new Error(`Runtime reports missing capabilities: ${value.missingCapabilities.join(', ')}`);
+  }
+  const rpcMethods = new Set(value.rpcMethods);
+  const missingMethods = requiredCapabilities.filter((method) => !rpcMethods.has(method));
+  if (missingMethods.length > 0) {
+    throw new Error(`Runtime is missing required RPC methods: ${missingMethods.join(', ')}`);
+  }
+  if (value.missingRpcMethods.length > 0) {
+    throw new Error(`Runtime reports missing RPC methods: ${value.missingRpcMethods.join(', ')}`);
+  }
 }
 
 export function createRuntimeHandshakeResponse(options: {
   runtimeVersion: string;
+  runtimeCommit: string;
+  rpcMethods: readonly string[];
   capabilities: readonly string[];
+  skillManifestHash: string;
+  storageSchemaVersion: number;
   request: RuntimeHandshakeRequest;
 }): RuntimeHandshakeResponse {
   const capabilities = [...new Set(options.capabilities)].sort();
+  const rpcMethods = [...new Set(options.rpcMethods)].sort();
   const missingCapabilities = options.request.requiredCapabilities.filter(
     (capability) => !capabilities.includes(capability)
   );
+  const missingRpcMethods = options.request.requiredCapabilities.filter((method) => !rpcMethods.includes(method));
+  const identityMismatches = options.request.expectedRuntime
+    ? [
+        ...(options.request.expectedRuntime.runtimeCommit === options.runtimeCommit ? [] : ['runtime commit']),
+        ...(options.request.expectedRuntime.skillManifestHash === options.skillManifestHash ? [] : ['skill manifest']),
+        ...(options.request.expectedRuntime.storageSchemaVersion === options.storageSchemaVersion
+          ? []
+          : ['storage schema'])
+      ]
+    : [];
   const compatible =
     options.request.protocolVersion === RUNTIME_PROTOCOL_VERSION &&
     options.request.contractVersion === RUNTIME_CONTRACT_VERSION &&
     options.request.schemaHash === RUNTIME_SCHEMA_HASH &&
-    missingCapabilities.length === 0;
+    missingCapabilities.length === 0 &&
+    missingRpcMethods.length === 0 &&
+    identityMismatches.length === 0;
 
   return {
     accepted: compatible,
@@ -216,17 +295,43 @@ export function createRuntimeHandshakeResponse(options: {
     contractVersion: RUNTIME_CONTRACT_VERSION,
     schemaHash: RUNTIME_SCHEMA_HASH,
     runtimeVersion: options.runtimeVersion,
+    runtimeCommit: options.runtimeCommit,
+    rpcMethods,
     capabilities,
+    skillManifestHash: options.skillManifestHash,
+    storageSchemaVersion: options.storageSchemaVersion,
     missingCapabilities,
+    missingRpcMethods,
     ...(compatible
       ? {}
       : {
           reason:
             missingCapabilities.length > 0
               ? `Missing capabilities: ${missingCapabilities.join(', ')}`
-              : 'Protocol, contract version, or schema hash mismatch'
+              : missingRpcMethods.length > 0
+                ? `Missing RPC methods: ${missingRpcMethods.join(', ')}`
+                : identityMismatches.length > 0
+                  ? `Runtime identity mismatch: ${identityMismatches.join(', ')}`
+                  : 'Protocol, contract version, or schema hash mismatch'
         })
   };
+}
+
+function assertRuntimeIdentityExpectation(value: unknown): asserts value is RuntimeIdentityExpectation {
+  if (!isRecord(value)) throw new Error('Runtime handshake expectedRuntime is invalid');
+  if (typeof value.runtimeCommit !== 'string' || !/^[0-9a-f]{40}$/.test(value.runtimeCommit)) {
+    throw new Error('Runtime handshake expected runtimeCommit is invalid');
+  }
+  if (typeof value.skillManifestHash !== 'string' || !/^[0-9a-f]{64}$/.test(value.skillManifestHash)) {
+    throw new Error('Runtime handshake expected skillManifestHash is invalid');
+  }
+  if (
+    typeof value.storageSchemaVersion !== 'number' ||
+    !Number.isSafeInteger(value.storageSchemaVersion) ||
+    value.storageSchemaVersion < 1
+  ) {
+    throw new Error('Runtime handshake expected storageSchemaVersion is invalid');
+  }
 }
 
 function stableFingerprint(value: string): string {

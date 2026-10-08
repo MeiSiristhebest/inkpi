@@ -40,6 +40,8 @@ import type {
 } from './proposal-sync.js';
 import type { RuntimeHandshakeRequest, RuntimeHandshakeResponse } from './runtime-contract.js';
 import type {
+  RuntimeModelProviderProbeParams,
+  RuntimeModelProviderProbeResult,
   RuntimeModelRouteHealthParams,
   RuntimeModelRouteHealthResult,
   RuntimeModelRouteRemoveParams,
@@ -250,6 +252,7 @@ export interface DaemonRpcMethodMap {
   'model.routes.health': RpcMethodContract<RuntimeModelRouteHealthParams, RuntimeModelRouteHealthResult>;
   'model.routes.list': RpcMethodContract<void, RuntimeModelRouteSummary[]>;
   'model.routes.remove': RpcMethodContract<RuntimeModelRouteRemoveParams, RuntimeModelRouteRemoveResult>;
+  'model.provider.probe': RpcMethodContract<RuntimeModelProviderProbeParams, RuntimeModelProviderProbeResult>;
   'proposal.sync.push': RpcMethodContract<ProposalSyncPushParams, ProposalSyncPushResult>;
   'proposal.sync.snapshot': RpcMethodContract<ProposalSyncSnapshotParams, ProposalProjectionSnapshot>;
   'runtime.diagnostics': RpcMethodContract<void, DiagnosticSnapshot>;
@@ -312,6 +315,7 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'model.routes.health',
   'model.routes.list',
   'model.routes.remove',
+  'model.provider.probe',
   'proposal.sync.push',
   'proposal.sync.snapshot',
   'runtime.diagnostics',

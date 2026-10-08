@@ -6,10 +6,11 @@
  * 具备供应链依赖严格性校验与单可执行文件封包。
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getRuntimeBuildIdentity } from './runtime-build-identity.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,13 +56,31 @@ try {
 
 const targetBinaryName = process.platform === 'win32' ? 'inkpi.exe' : 'inkpi';
 const finalOutPath = path.join(distDir, targetBinaryName);
+const buildIdentity = getRuntimeBuildIdentity(rootDir);
+console.log(`🔏 Runtime commit: ${buildIdentity.runtimeCommit}`);
+console.log(`🔏 Skill manifest hash: ${buildIdentity.skillManifestHash}`);
 
 if (hasBun && !isDryRun) {
   try {
-    execSync(`bun build --compile --minify --outfile "${finalOutPath}" "${standaloneEntry}"`, {
+    execFileSync(
+      'bun',
+      [
+        'build',
+        '--compile',
+        '--minify',
+        '--outfile',
+        finalOutPath,
+        '--define',
+        `__INKPI_RUNTIME_COMMIT__=${JSON.stringify(buildIdentity.runtimeCommit)}`,
+        '--define',
+        `__INKPI_SKILL_MANIFEST_HASH__=${JSON.stringify(buildIdentity.skillManifestHash)}`,
+        standaloneEntry
+      ],
+      {
       stdio: 'inherit',
       cwd: rootDir
-    });
+      }
+    );
     console.log(`🎉 [SUCCESS] Single-file binary compiled: ${finalOutPath}`);
   } catch (err) {
     console.error('❌ Bun compilation error:', err);

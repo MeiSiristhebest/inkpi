@@ -3,10 +3,11 @@
  * 使用 Bun 将 InkPi 全部子包内联并编译为单个独立可执行二进制文件 (无外部 Node.js 依赖)
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getRuntimeBuildIdentity } from './runtime-build-identity.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,12 +39,25 @@ if (!fs.existsSync(entrypointPath)) {
 if (hasBun) {
   const targetBin = process.platform === 'win32' ? 'inkpi.exe' : 'inkpi';
   const outPath = path.join(distDir, targetBin);
+  const buildIdentity = getRuntimeBuildIdentity(rootDir);
   console.log(`🔨 Building standalone binary with Bun: ${outPath}...`);
   try {
-    execSync(`bun build --compile --minify --outfile "${outPath}" "${entrypointPath}"`, {
-      stdio: 'inherit',
-      cwd: rootDir
-    });
+    execFileSync(
+      'bun',
+      [
+        'build',
+        '--compile',
+        '--minify',
+        '--outfile',
+        outPath,
+        '--define',
+        `__INKPI_RUNTIME_COMMIT__=${JSON.stringify(buildIdentity.runtimeCommit)}`,
+        '--define',
+        `__INKPI_SKILL_MANIFEST_HASH__=${JSON.stringify(buildIdentity.skillManifestHash)}`,
+        entrypointPath
+      ],
+      { stdio: 'inherit', cwd: rootDir }
+    );
     console.log(`✅ [InkPi Bundler] Standalone binary created successfully at: ${outPath}`);
   } catch (err) {
     console.error('❌ Failed to compile standalone binary with Bun:', err);

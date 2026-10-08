@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { InkDb } from './db.js';
+import { InkDb, STORAGE_SCHEMA_VERSION } from './db.js';
 import { InkRepository } from './repository.js';
 
 function insertLegacyArtifact(db: InkDb, id: string, taskId: string): void {
@@ -41,6 +41,17 @@ function tempDbPath(): string {
 }
 
 describe('schema upgrade of pre-existing databases', () => {
+  it('rejects a database created by a newer Runtime storage schema', () => {
+    const path = tempDbPath();
+    const created = new InkDb(path);
+    created.exec(`PRAGMA user_version = ${STORAGE_SCHEMA_VERSION + 1}`);
+    created.close();
+
+    expect(() => new InkDb(path)).toThrow(
+      `Runtime storage schema ${STORAGE_SCHEMA_VERSION + 1} is newer than supported schema ${STORAGE_SCHEMA_VERSION}.`
+    );
+  });
+
   it('upgrades a database whose artifacts table predates workspace_id', () => {
     const path = tempDbPath();
 

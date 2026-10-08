@@ -37,5 +37,7 @@ export type {
   RuntimeModelRouteSummary,
   RuntimeModelRoutesConfigureParams,
   RuntimeModelRoutesConfigureResult,
+  RuntimeModelProviderProbeParams,
+  RuntimeModelProviderProbeResult,
   RuntimeModelSummary
 } from './runtime-model.js';

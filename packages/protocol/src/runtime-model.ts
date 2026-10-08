@@ -141,3 +141,16 @@ export interface RuntimeModelRouteHealthResult {
   state: RuntimeModelRouteHealthState;
   model?: Pick<RuntimeModelSummary, 'id' | 'provider'>;
 }
+
+/** One-shot provider probe. Credentials are request-only and never returned. */
+export interface RuntimeModelProviderProbeParams {
+  provider: string;
+  baseUrl: string;
+  apiKey?: string;
+}
+
+export interface RuntimeModelProviderProbeResult {
+  status: number;
+  latency: number;
+  modelIds: string[];
+}

@@ -1,4 +1,9 @@
-import { DiagnosticSnapshotSchema, validateSchema } from '@inkpi/protocol';
+import {
+  DiagnosticSnapshotSchema,
+  RUNTIME_CONTRACT_VERSION,
+  RUNTIME_PROTOCOL_VERSION,
+  validateSchema
+} from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
 
@@ -25,8 +30,8 @@ describe('Runtime diagnostics boundary', () => {
       expect(response.result).toMatchObject({
         version: 1,
         runtime: {
-          protocolVersion: 'inkpi.runtime.v1',
-          contractVersion: 2,
+          protocolVersion: RUNTIME_PROTOCOL_VERSION,
+          contractVersion: RUNTIME_CONTRACT_VERSION,
           capabilities: expect.arrayContaining(['runtime.diagnostics'])
         },
         modelRoutes: { configured: 1 },
