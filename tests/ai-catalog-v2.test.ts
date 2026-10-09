@@ -73,6 +73,71 @@ describe('ModelCatalogV2', () => {
     });
   });
 
+  it('resolves multiple operations through one identity, route, and credential reference', () => {
+    const catalog = new ModelCatalogV2([
+      entry({
+        canonicalId: 'inkpi/writer-model',
+        operations: ['chat', 'classify'],
+        authentication: { kind: 'api-key', required: true, credentialRef: 'provider:shared-key' }
+      })
+    ]);
+
+    const chat = catalog.resolveOperation('inkpi/writer-model', 'chat');
+    const classify = catalog.resolveOperation('inkpi/writer-model', 'classify');
+    expect(catalog.getOperations('inkpi/writer-model')).toEqual(['chat', 'classify']);
+    expect(classify).toMatchObject({ operation: 'classify', canonicalId: chat.canonicalId });
+    expect(classify.route.authentication).toEqual(chat.route.authentication);
+    expect(() => catalog.resolveOperation('inkpi/writer-model', 'image')).toThrow(
+      /does not support the 'image' operation/
+    );
+  });
+
+  it('preserves tiered pricing as a defensive catalog copy', () => {
+    const catalog = new ModelCatalogV2([
+      entry({
+        pricing: {
+          inputPerMillionUsd: 1,
+          outputPerMillionUsd: 2,
+          serviceTierRates: { priority: { outputPerMillionUsd: 4 } },
+          promptLengthTiers: [{ minimumPromptTokens: 128_000, rates: { inputPerMillionUsd: 3 } }],
+          cacheWritePerMillionUsdByTtl: { '5m': 2, '1h': 5 }
+        }
+      })
+    ]);
+
+    const returnedPricing = catalog.getPricing('vendor/creative-pro')!;
+    returnedPricing.serviceTierRates!.priority.outputPerMillionUsd = 99;
+    returnedPricing.promptLengthTiers![0].rates.inputPerMillionUsd = 99;
+    returnedPricing.cacheWritePerMillionUsdByTtl!['5m'] = 99;
+
+    expect(catalog.getPricing('vendor/creative-pro')).toMatchObject({
+      serviceTierRates: { priority: { outputPerMillionUsd: 4 } },
+      promptLengthTiers: [{ minimumPromptTokens: 128_000, rates: { inputPerMillionUsd: 3 } }],
+      cacheWritePerMillionUsdByTtl: { '5m': 2, '1h': 5 }
+    });
+    expect(catalog.getRoute('vendor/creative-pro')?.pricing?.serviceTierRates).toEqual({
+      priority: { outputPerMillionUsd: 4 }
+    });
+  });
+
+  it('rejects invalid tiered pricing before registration', () => {
+    expect(
+      () =>
+        new ModelCatalogV2([
+          entry({
+            pricing: {
+              inputPerMillionUsd: 1,
+              outputPerMillionUsd: 2,
+              promptLengthTiers: [
+                { minimumPromptTokens: 128_000, rates: { inputPerMillionUsd: 3 } },
+                { minimumPromptTokens: 128_000, rates: { outputPerMillionUsd: 4 } }
+              ]
+            }
+          })
+        ])
+    ).toThrow(/thresholds must be unique/);
+  });
+
   it('resolves executable handlers separately from catalog metadata', () => {
     const catalog = new ModelCatalogV2([entry()]);
     const handler = vi.fn(() => new AssistantEventStream());

@@ -98,7 +98,11 @@ describe('P0：恢复后工具结果按源序物化', () => {
 describe('P1：助手流式帧持久化', () => {
   it('编码器：块起始快照 + delta；终态不产帧；迟到增量被拒收', () => {
     const encoder = new AssistantFrameEncoder();
-    expect(encoder.encode({ type: 'text_delta', textDelta: 'he' })).toEqual({ type: 'text_start', index: 0, text: '' });
+    expect(encoder.encode({ type: 'text_delta', textDelta: 'he' })).toEqual({
+      type: 'text_start',
+      index: 0,
+      text: 'he'
+    });
     expect(encoder.encode({ type: 'text_delta', textDelta: 'llo' })).toEqual({
       type: 'text_delta',
       index: 0,
@@ -107,7 +111,7 @@ describe('P1：助手流式帧持久化', () => {
     expect(encoder.encode({ type: 'thinking_delta', thinkingDelta: 'think' })).toEqual({
       type: 'thinking_start',
       index: 1,
-      thinking: ''
+      thinking: 'think'
     });
 
     expect(encoder.encode({ type: 'tool_call_start', toolCallId: 'c1', toolName: 'search' })).toEqual({
@@ -133,6 +137,30 @@ describe('P1：助手流式帧持久化', () => {
     // 终态事件：不产帧
     expect(encoder.encode({ type: 'usage', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } })).toBeNull();
     expect(encoder.encode({ type: 'error', error: 'boom' })).toBeNull();
+  });
+
+  it('编码器到归约器保留首个增量，并在 retry attempt reset 后只恢复新尝试', () => {
+    const encoder = new AssistantFrameEncoder();
+    const frames = [
+      encoder.encode({ type: 'text_delta', textDelta: '甲' }),
+      encoder.encode({ type: 'text_delta', textDelta: '乙' }),
+      encoder.encode({ type: 'thinking_delta', thinkingDelta: '一' }),
+      encoder.encode({ type: 'thinking_delta', thinkingDelta: '二' })
+    ].filter((frame): frame is NonNullable<typeof frame> => frame !== null);
+
+    expect(reduceAssistantFrames(frames)?.content).toEqual([
+      { type: 'text', text: '甲乙' },
+      { type: 'thinking', thinking: '一二' }
+    ]);
+
+    const retryEncoder = new AssistantFrameEncoder();
+    const retriedFrames = [
+      retryEncoder.encode({ type: 'text_delta', textDelta: '旧半句' }),
+      retryEncoder.encode({ type: 'attempt_reset' }),
+      retryEncoder.encode({ type: 'text_delta', textDelta: '新答案' })
+    ].filter((frame): frame is NonNullable<typeof frame> => frame !== null);
+
+    expect(reduceAssistantFrames(retriedFrames)?.content).toEqual([{ type: 'text', text: '新答案' }]);
   });
 
   it('归约器：按帧重建部分消息；未完结调用尽力解析参数', () => {

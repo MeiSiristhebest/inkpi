@@ -29,6 +29,10 @@ describe('@inkpi/ai catalog routing (C2)', () => {
     expect(foundQualified?.id).toBe('deepseek/deepseek-r1');
   });
 
+  it('prefers exact model IDs over an earlier qualified suffix match', () => {
+    expect(findModelInCatalog('deepseek-chat')?.id).toBe('deepseek-chat');
+  });
+
   it('planning route yields a thinking model; drafting yields a non-thinking model', () => {
     const mgr = new ModelCatalogManager();
     const planning = mgr.routeModelForTask('planning');
@@ -133,6 +137,69 @@ describe('@inkpi/ai catalog routing (C2)', () => {
     );
     expect(mgr.getModel('existing')?.id).toBe('existing');
     expect(mgr.getModel('invalid-declaration')).toBeUndefined();
+  });
+
+  it('keeps unknown generated prices unavailable without accepting arbitrary negative rates', () => {
+    const manager = new ModelCatalogManager([
+      entry({
+        id: 'unpriced-generated-model',
+        supportsThinking: false,
+        cost: { inputPerMillionUsd: -1_000_000, outputPerMillionUsd: -1_000_000 }
+      })
+    ]);
+
+    expect(manager.getModel('unpriced-generated-model')).toBeDefined();
+    expect(
+      () =>
+        new ModelCatalogManager([
+          entry({
+            id: 'invalid-negative-price',
+            supportsThinking: false,
+            cost: { inputPerMillionUsd: -1, outputPerMillionUsd: 1 }
+          })
+        ])
+    ).toThrow(/must be a non-negative number/);
+  });
+
+  it('supports authoritative catalog replacement without resurrecting removed static entries', async () => {
+    const mgr = new ModelCatalogManager([entry({ id: 'tenant/old', supportsThinking: false })]);
+
+    await mgr.refreshCatalog(async () => [entry({ id: 'tenant/current', supportsThinking: false })], {
+      mode: 'replace'
+    });
+
+    expect(mgr.getModel('tenant/old')).toBeUndefined();
+    expect(mgr.getModel('deepseek/deepseek-r1')).toBeUndefined();
+    expect(mgr.getAllModels().map((model) => model.id)).toEqual(['tenant/current', 'current']);
+  });
+
+  it('does not let an older in-flight refresh overwrite a newer catalog', async () => {
+    const mgr = new ModelCatalogManager([entry({ id: 'initial', supportsThinking: false })]);
+    let resolveOld!: (models: ModelCatalogEntry[]) => void;
+    let resolveNew!: (models: ModelCatalogEntry[]) => void;
+    const oldResult = new Promise<ModelCatalogEntry[]>((resolve) => {
+      resolveOld = resolve;
+    });
+    const newResult = new Promise<ModelCatalogEntry[]>((resolve) => {
+      resolveNew = resolve;
+    });
+
+    const oldRefresh = mgr.refreshCatalog(() => oldResult, { mode: 'replace' });
+    const newRefresh = mgr.refreshCatalog(() => newResult, { mode: 'replace' });
+    resolveNew([entry({ id: 'newer', supportsThinking: false })]);
+    await newRefresh;
+    resolveOld([entry({ id: 'older', supportsThinking: false })]);
+    await oldRefresh;
+
+    expect(mgr.getAllModels().map((model) => model.id)).toEqual(['newer']);
+  });
+
+  it('does not restore a statically known model after explicit unregister', () => {
+    const mgr = new ModelCatalogManager([entry({ id: 'deepseek/deepseek-r1', supportsThinking: true })]);
+
+    expect(mgr.unregisterModel('deepseek/deepseek-r1')).toBe(true);
+    expect(mgr.getModel('deepseek/deepseek-r1')).toBeUndefined();
+    expect(mgr.getModel('deepseek-r1')).toBeUndefined();
   });
 
   it('sorts a declaration-only provider matrix without claiming provider reachability', () => {

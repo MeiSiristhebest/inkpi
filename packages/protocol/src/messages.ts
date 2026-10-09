@@ -26,12 +26,19 @@ export interface ToolCallContent {
 export type ContentBlock = TextContent | ThinkingContent | ImageContent | ToolCallContent;
 
 export interface Usage {
+  /** Input tokens outside the separately reported prompt cache read/write counts. */
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Provider-reported full prompt length, including cached input, for tiered pricing. */
+  promptTokens?: number;
+  /** Provider-reported execution tier used for service-tier pricing. */
+  serviceTier?: string;
   reasoningTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  cacheWrite5mTokens?: number;
+  cacheWrite1hTokens?: number;
 }
 
 export interface BaseMessage {
@@ -152,6 +159,8 @@ export interface UsageTotals {
   thinkingTokens?: number;
   totalTokens: number;
   costUsd: number;
+  /** Missing or incomplete pricing is not equivalent to a free request. */
+  costStatus?: 'known' | 'partial' | 'unknown';
 }
 
 export interface BranchSummaryDetails {

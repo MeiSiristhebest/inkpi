@@ -13,6 +13,8 @@ export { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from '@inkpi/protocol';
 export interface RpcTransport {
   send(message: string): Promise<void> | void;
   onMessage(handler: (message: string) => void): void;
+  /** Notifies pending RPC calls when the underlying connection closes. */
+  onClose?(handler: (error?: Error) => void): void;
   close(): Promise<void> | void;
   isOpen(): boolean;
 }
@@ -20,6 +22,7 @@ export interface RpcTransport {
 export class MemoryTransport implements RpcTransport {
   private peer?: MemoryTransport;
   private handlers: ((message: string) => void)[] = [];
+  private closeHandlers: ((error?: Error) => void)[] = [];
   private open = true;
 
   public static createPair(): [MemoryTransport, MemoryTransport] {
@@ -45,14 +48,28 @@ export class MemoryTransport implements RpcTransport {
     this.handlers.push(handler);
   }
 
-  public close(): void {
-    this.open = false;
-    if (this.peer) {
-      this.peer.open = false;
+  public onClose(handler: (error?: Error) => void): void {
+    if (!this.open) {
+      handler(new Error('RPC memory connection is closed'));
+      return;
     }
+    this.closeHandlers.push(handler);
+  }
+
+  public close(): void {
+    const error = new Error('RPC memory connection closed');
+    this.markClosed(error);
+    this.peer?.markClosed(error);
   }
 
   public isOpen(): boolean {
     return this.open;
+  }
+
+  private markClosed(error: Error): void {
+    if (!this.open) return;
+    this.open = false;
+    for (const handler of this.closeHandlers) handler(error);
+    this.closeHandlers = [];
   }
 }

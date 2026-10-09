@@ -66,6 +66,47 @@ describe('AI Provider Resilience & Precise Prompt Caching (1:1 Ported from pi-ai
     expect((message.content[0] as any).text).toBe('Recovered stream chunk');
   });
 
+  it('resets events from a failed partial attempt before collecting the retry', async () => {
+    const emittedTypes: string[] = [];
+    const stream = createResilientStream(
+      (attempt) => {
+        const inner = new AssistantEventStream();
+        setTimeout(() => {
+          if (attempt === 1) {
+            inner.push({ type: 'text_delta', textDelta: 'obsolete half-sentence' });
+            inner.push({ type: 'usage', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } });
+            inner.push({ type: 'tool_call_start', toolCallId: 'obsolete-call', toolName: 'draft' });
+            inner.push({ type: 'tool_call_delta', toolCallId: 'obsolete-call', argsDelta: '{"partial":' });
+            inner.error('503 Service Unavailable');
+          } else {
+            inner.push({ type: 'text_delta', textDelta: 'replacement answer' });
+            inner.push({ type: 'usage', usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 } });
+            inner.end();
+          }
+        }, 0);
+        return inner;
+      },
+      { maxRetries: 2, initialDelayMs: 1, maxDelayMs: 1 }
+    );
+    stream.on((event) => {
+      emittedTypes.push(event.type);
+    });
+
+    const message = await stream.collect();
+
+    expect(message.content).toEqual([{ type: 'text', text: 'replacement answer' }]);
+    expect(message.usage).toMatchObject({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
+    expect(emittedTypes).toEqual([
+      'text_delta',
+      'usage',
+      'tool_call_start',
+      'tool_call_delta',
+      'attempt_reset',
+      'text_delta',
+      'usage'
+    ]);
+  });
+
   it('should handle terminal errors after maxRetries in createResilientStream and retryAssistantStream', async () => {
     let callCount = 0;
     const stream = createResilientStream(

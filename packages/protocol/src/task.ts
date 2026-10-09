@@ -240,6 +240,7 @@ export interface TaskExecutionSnapshot {
 }
 
 export interface TaskSubmitParams {
+  /** Stable submission identity. Repeating the same id and payload returns its existing task. */
   task: AiTask;
 }
 

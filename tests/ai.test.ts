@@ -303,7 +303,7 @@ describe('@inkpi/ai', () => {
           'data: {"choices":[{"delta":{"content":"hel',
           'lo"}}]}\n\n',
           'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
-          'data: {"usage":{"prompt_tokens":11,"completion_tokens":13,"total_tokens":24}}\n\n',
+          'data: {"service_tier":"priority","usage":{"prompt_tokens":11,"completion_tokens":13,"total_tokens":24,"prompt_tokens_details":{"cached_tokens":3}}}\n\n',
           'data: [DONE]\n\n'
         ])
       );
@@ -327,9 +327,10 @@ describe('@inkpi/ai', () => {
         { type: 'thinking', thinking: 'think' },
         { type: 'text', text: 'hello' }
       ]);
-      expect(msg.usage?.inputTokens).toBe(11);
+      expect(msg.usage?.inputTokens).toBe(8);
       expect(msg.usage?.outputTokens).toBe(13);
       expect(msg.usage?.totalTokens).toBe(24);
+      expect(msg.usage).toMatchObject({ promptTokens: 11, serviceTier: 'priority', cacheReadTokens: 3 });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('https://provider.test/v1/chat/completions');
@@ -479,7 +480,7 @@ describe('@inkpi/ai', () => {
       .fn()
       .mockResolvedValue(
         responseFrom([
-          'data: {"type":"message_start","message":{"usage":{"input_tokens":17}}}\n\n',
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":17,"cache_read_input_tokens":3,"cache_creation_input_tokens":5,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3}}}}\n\n',
           'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"plan"}}\n\n',
           'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"result"}}\n\n',
           'data: {"type":"message_delta","usage":{"output_tokens":19}}\n\n',
@@ -508,6 +509,13 @@ describe('@inkpi/ai', () => {
       expect(msg.usage?.inputTokens).toBe(17);
       expect(msg.usage?.outputTokens).toBe(19);
       expect(msg.usage?.totalTokens).toBe(36);
+      expect(msg.usage).toMatchObject({
+        promptTokens: 25,
+        cacheReadTokens: 3,
+        cacheWriteTokens: 5,
+        cacheWrite5mTokens: 2,
+        cacheWrite1hTokens: 3
+      });
       const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('https://provider.test/v1/messages');
       expect(request.headers).toMatchObject({
@@ -606,7 +614,7 @@ describe('@inkpi/ai', () => {
       .fn()
       .mockResolvedValue(
         responseFrom([
-          'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"reason"},{"text":"answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":4,"totalTokenCount":7}}'
+          'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"reason"},{"text":"answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"cachedContentTokenCount":1,"candidatesTokenCount":4,"totalTokenCount":7}}'
         ])
       );
     globalThis.fetch = fetchMock as any;
@@ -627,6 +635,9 @@ describe('@inkpi/ai', () => {
         { type: 'text', text: 'answer' }
       ]);
       expect(msg.usage?.totalTokens).toBe(7);
+      expect(msg.usage?.promptTokens).toBe(3);
+      expect(msg.usage?.inputTokens).toBe(2);
+      expect(msg.usage?.cacheReadTokens).toBe(1);
       expect(fetchMock.mock.calls[0]?.[0]).toBe(
         'https://provider.test/v1beta/models/gemini-test:streamGenerateContent?alt=sse&key=key%20with%20spaces'
       );
@@ -665,6 +676,7 @@ describe('@inkpi/ai', () => {
       expect(msg.role).toBe('assistant');
       expect(msg.content.some((c) => c.type === 'text' && c.text.includes('本地离线'))).toBe(true);
       expect(msg.usage?.totalTokens).toBe(40);
+      expect(msg.usage?.promptTokens).toBe(15);
     } finally {
       globalThis.fetch = originalFetch;
     }

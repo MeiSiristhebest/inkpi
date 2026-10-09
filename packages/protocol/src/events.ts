@@ -8,6 +8,8 @@ import type {
 } from './messages.js';
 
 export type AssistantMessageEvent =
+  /** Discard partial output from a failed attempt before replacement output arrives. */
+  | { type: 'attempt_reset' }
   | { type: 'text_delta'; textDelta: string }
   | { type: 'thinking_delta'; thinkingDelta: string }
   | { type: 'tool_call_start'; toolCallId: string; toolName: string }

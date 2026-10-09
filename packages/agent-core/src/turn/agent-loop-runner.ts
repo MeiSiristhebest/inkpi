@@ -103,6 +103,11 @@ export class AgentLoopRunner {
 
     return state.messages;
   }
+
+  /** Drop the retained transcript view after an idle period or session reset. */
+  public clearIncrementalContextCache(): void {
+    this.contextTransformer.clearIncrementalCache();
+  }
 }
 
 export interface AgentLoopStages {

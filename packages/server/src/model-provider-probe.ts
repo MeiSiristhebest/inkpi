@@ -5,6 +5,7 @@ export interface ModelProviderProbeOptions {
   now?: () => number;
   signal?: AbortSignal;
   timeoutMs?: number;
+  resolveCredential?: (credentialRef: string) => Promise<string | undefined>;
 }
 
 const DEFAULT_TIMEOUT_MS = 6000;
@@ -16,7 +17,10 @@ export async function probeModelProvider(
 ): Promise<RuntimeModelProviderProbeResult> {
   const endpoint = providerModelsEndpoint(params.provider, params.baseUrl);
   const headers: Record<string, string> = { Accept: 'application/json' };
-  const apiKey = params.apiKey?.trim();
+  const apiKey = params.credentialRef ? (await options.resolveCredential?.(params.credentialRef))?.trim() : undefined;
+  if (params.credentialRef && !options.resolveCredential) {
+    throw new Error('Model credential broker is not configured');
+  }
   const provider = params.provider.trim().toLowerCase();
   if (apiKey) {
     if (provider.includes('anthropic')) {

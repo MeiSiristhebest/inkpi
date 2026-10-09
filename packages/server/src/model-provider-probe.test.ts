@@ -15,9 +15,16 @@ describe('Runtime model provider probe', () => {
       {
         provider: 'custom',
         baseUrl: 'https://models.example.test/v1/',
-        apiKey: 'secret'
+        credentialRef: 'inkpi.model.custom.model-a'
       },
-      { fetchImpl, now: () => times.shift() ?? 137 }
+      {
+        fetchImpl,
+        now: () => times.shift() ?? 137,
+        resolveCredential: async (reference) => {
+          expect(reference).toBe('inkpi.model.custom.model-a');
+          return 'secret';
+        }
+      }
     );
 
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -42,17 +49,17 @@ describe('Runtime model provider probe', () => {
       {
         provider: 'anthropic',
         baseUrl: 'https://api.anthropic.com',
-        apiKey: 'anthropic-secret'
+        credentialRef: 'inkpi.model.anthropic.claude'
       },
-      { fetchImpl }
+      { fetchImpl, resolveCredential: async () => 'anthropic-secret' }
     );
     await probeModelProvider(
       {
         provider: 'google',
         baseUrl: 'https://generativelanguage.googleapis.com',
-        apiKey: 'google-secret'
+        credentialRef: 'inkpi.model.google.gemini'
       },
-      { fetchImpl }
+      { fetchImpl, resolveCredential: async () => 'google-secret' }
     );
     await probeModelProvider({ provider: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1' }, { fetchImpl });
 

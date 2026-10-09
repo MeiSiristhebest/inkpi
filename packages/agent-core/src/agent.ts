@@ -1,11 +1,13 @@
 import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMessage } from '@inkpi/protocol';
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
-import { runAgentLoop } from './loop.js';
 import { consoleLogger } from './ports/index.js';
 import { REAL_CLOCK } from './ports/index.js';
 import { MessageQueue } from './queues.js';
 import { ToolRegistry } from './tools.js';
+import { AgentLoopRunner } from './turn/agent-loop-runner.js';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
+
+const INCREMENTAL_CONTEXT_IDLE_RETENTION_MS = 5 * 60 * 1000;
 
 /**
  * 纯粹 Agent 执行引擎核心（兼容别名 AgentEngine 见 src/deprecations.ts）
@@ -29,6 +31,8 @@ export class Agent {
   private abortController: AbortController | null = null;
   private currentRunPromise: Promise<void> | null = null;
   private runActive = false;
+  private readonly loopRunner = new AgentLoopRunner();
+  private contextViewIdleTimer?: ReturnType<typeof setTimeout>;
   // 手动 compaction 的 idle 追踪（对齐上游 v0.85.0 #8920：abort 必须等待 compaction 收尾）。
   private compactionAbortController: AbortController | null = null;
   private compactionPromise: Promise<unknown> | null = null;
@@ -152,6 +156,8 @@ export class Agent {
     const followUpCount = this.followUpQueue.size();
     this.steeringQueue.clear();
     this.followUpQueue.clear();
+    this.clearContextViewIdleTimer();
+    this.loopRunner.clearIncrementalContextCache();
     return { steering: steeringCount, followUp: followUpCount };
   }
 
@@ -288,7 +294,7 @@ export class Agent {
       mergedTools.register(t, this.extensionHost.getToolRegistration(t.name));
     }
 
-    const runPromise = runAgentLoop({
+    const runPromise = this.loopRunner.run({
       state: this.state,
       options: {
         ...this.options,
@@ -369,7 +375,24 @@ export class Agent {
       this.abortController = null;
       this.runActive = false;
       this.resolveIdleWaitIfIdle();
+      this.scheduleContextViewExpiry();
     }
+  }
+
+  private clearContextViewIdleTimer(): void {
+    if (this.contextViewIdleTimer !== undefined) clearTimeout(this.contextViewIdleTimer);
+    this.contextViewIdleTimer = undefined;
+  }
+
+  private scheduleContextViewExpiry(): void {
+    this.clearContextViewIdleTimer();
+    if (!this.options.incrementalTransformContext) return;
+
+    this.contextViewIdleTimer = setTimeout(() => {
+      this.contextViewIdleTimer = undefined;
+      if (!this.runActive) this.loopRunner.clearIncrementalContextCache();
+    }, INCREMENTAL_CONTEXT_IDLE_RETENTION_MS);
+    (this.contextViewIdleTimer as unknown as { unref?: () => void }).unref?.();
   }
 
   private claimRun(): void {
@@ -378,6 +401,7 @@ export class Agent {
         'Agent already has a run in progress. Wait for it to finish or abort it before starting another run.'
       );
     }
+    this.clearContextViewIdleTimer();
     this.runActive = true;
     this.abortController = new AbortController();
   }

@@ -12,6 +12,95 @@ const model: ModelConfig = {
 };
 
 describe('TaskModelHandler structured output failures', () => {
+  it('resolves broker credentials only for the provider call and keeps them out of the execution snapshot', async () => {
+    let providerModel: ModelConfig | undefined;
+    const handler = new TaskModelHandler({
+      routes: [
+        {
+          id: 'credential-route',
+          model: { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
+          credentialRef: 'inkpi.model.openai.gpt-4o',
+          capabilities: { outputFormats: ['text'], structuredOutput: true }
+        }
+      ],
+      credentialResolver: async (reference) => {
+        expect(reference).toBe('inkpi.model.openai.gpt-4o');
+        return 'broker-secret';
+      },
+      stream: (modelForProvider) => {
+        providerModel = modelForProvider;
+        const result = new AssistantEventStream();
+        queueMicrotask(() => {
+          result.push({ type: 'text_delta', textDelta: 'answer' });
+          result.end();
+        });
+        return result;
+      }
+    });
+
+    const result = await handler.execute({
+      task: {
+        id: 'credential-task',
+        kind: 'test.credential',
+        input: {},
+        outputContract: { format: 'text' }
+      },
+      context: {
+        fragments: [],
+        text: '',
+        tokenEstimate: 0,
+        fingerprint: 'credential-context',
+        truncated: false
+      },
+      signal: new AbortController().signal,
+      executionRunId: 'run:credential-task',
+      attempt: 1,
+      consumeSteering: () => [],
+      saveCheckpoint: async () => undefined,
+      reportProgress: () => undefined
+    });
+
+    const snapshot = result.executionSnapshot;
+    expect(providerModel?.apiKey).toBe('broker-secret');
+    expect(snapshot?.model).not.toHaveProperty('apiKey');
+    expect(JSON.stringify(snapshot)).not.toContain('broker-secret');
+  });
+
+  it('fails closed when a referenced credential has no broker', async () => {
+    const handler = new TaskModelHandler({
+      routes: [
+        {
+          id: 'credential-route',
+          model: { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
+          credentialRef: 'inkpi.model.openai.gpt-4o'
+        }
+      ]
+    });
+
+    await expect(
+      handler.execute({
+        task: {
+          id: 'credential-no-broker-task',
+          kind: 'test.credential',
+          input: {}
+        },
+        context: {
+          fragments: [],
+          text: '',
+          tokenEstimate: 0,
+          fingerprint: 'credential-context',
+          truncated: false
+        },
+        signal: new AbortController().signal,
+        executionRunId: 'run:credential-no-broker-task',
+        attempt: 1,
+        consumeSteering: () => [],
+        saveCheckpoint: async () => undefined,
+        reportProgress: () => undefined
+      })
+    ).rejects.toThrow('Model credential broker is not configured');
+  });
+
   it('rejects invalid structured output with a non-retryable error', async () => {
     const stream = (_model: ModelConfig, _messages: AgentMessage[]) => {
       const result = new AssistantEventStream();
@@ -24,7 +113,10 @@ describe('TaskModelHandler structured output failures', () => {
     const handler = new TaskModelHandler({
       model,
       stream,
-      defaultModelCapabilities: { outputFormats: ['structured'], structuredOutput: true }
+      defaultModelCapabilities: {
+        outputFormats: ['structured'],
+        structuredOutput: true
+      }
     });
     const task: AiTask = {
       id: 'structured-failure-task',
@@ -69,7 +161,10 @@ describe('TaskModelHandler structured output failures', () => {
     const handler = new TaskModelHandler({
       model,
       stream,
-      defaultModelCapabilities: { outputFormats: ['text'], structuredOutput: true }
+      defaultModelCapabilities: {
+        outputFormats: ['text'],
+        structuredOutput: true
+      }
     });
     const task: AiTask = {
       id: 'prompt-order-task',
@@ -135,10 +230,16 @@ describe('TaskModelHandler structured output failures', () => {
       name: 'lookup',
       description: 'Lookup',
       parameters: { type: 'object', properties: {} },
-      execute: async () => ({ content: [{ type: 'text', text: 'tool value' }] })
+      execute: async () => ({
+        content: [{ type: 'text', text: 'tool value' }]
+      })
     });
     const handler = new TaskModelHandler({
-      model: { ...model, baseUrl: 'https://gateway.example.test/v1?api_key=secret', apiKey: 'sk-secret' },
+      model: {
+        ...model,
+        baseUrl: 'https://gateway.example.test/v1?api_key=secret',
+        apiKey: 'sk-secret'
+      },
       toolRegistry,
       stream: (_model, _messages) => {
         const result = new AssistantEventStream();
@@ -148,7 +249,10 @@ describe('TaskModelHandler structured output failures', () => {
         });
         return result;
       },
-      defaultModelCapabilities: { outputFormats: ['text'], structuredOutput: true }
+      defaultModelCapabilities: {
+        outputFormats: ['text'],
+        structuredOutput: true
+      }
     });
 
     const result = await handler.execute({
@@ -184,7 +288,10 @@ describe('TaskModelHandler structured output failures', () => {
       },
       context: { estimatedTokens: 4, fingerprint: 'f7dc67e4' },
       policy: { timeoutMs: 1000, maxAttempts: 2 },
-      metadata: { routeId: 'default-model', contextFingerprint: 'snapshot-context' }
+      metadata: {
+        routeId: 'default-model',
+        contextFingerprint: 'snapshot-context'
+      }
     });
     expect(JSON.stringify(result.executionSnapshot)).not.toContain('sk-secret');
   });
@@ -196,7 +303,9 @@ describe('TaskModelHandler structured output failures', () => {
       name: 'lookup',
       description: 'Lookup',
       parameters: { type: 'object', properties: {} },
-      execute: async () => ({ content: [{ type: 'text', text: 'tool value' }] })
+      execute: async () => ({
+        content: [{ type: 'text', text: 'tool value' }]
+      })
     });
     const stream = (_model: ModelConfig, _messages: AgentMessage[], options?: StreamOptions) => {
       observedTools = options?.tools;

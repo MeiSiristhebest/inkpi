@@ -76,6 +76,7 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     expect(totals.outputTokens).toBe(500_000);
     expect(totals.cacheReadTokens).toBe(200_000);
     expect(totals.costUsd).toBeGreaterThan(0.2); // input: 0.14 + output: 0.14 + cacheRead: ~0.0028
+    expect(totals.costStatus).toBe('known');
 
     const breakdown = foreshadowinger.getCostBreakdown('deepseek-chat');
     expect(breakdown.totalCost).toBeGreaterThan(0);
@@ -95,6 +96,8 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
     // Test unknown model name and no model parameter
     foreshadowinger.recordUsage({ inputTokens: 100, outputTokens: 100, totalTokens: 200 }, 'unknown_model_123');
     foreshadowinger.recordUsage({ inputTokens: 50, outputTokens: 50, totalTokens: 100 });
+    expect(foreshadowinger.getTotals().costStatus).toBe('unknown');
+    expect(foreshadowinger.getCostBreakdown('unknown_model_123').totalCost).toBeNull();
 
     foreshadowinger.reset();
     expect(foreshadowinger.getTotals().totalTokens).toBe(0);
@@ -155,13 +158,15 @@ describe('@inkpi/ai -> ModelCatalog, ThinkingBudgets & UsageTracker', () => {
       { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
       { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 }
     );
-    expect(cost1).toBeGreaterThan(0);
+    expect(cost1).not.toBeNull();
+    expect(cost1!).toBeGreaterThan(0);
 
     const cost2 = calculateCost(
       { inputPerMillionUsd: 1, outputPerMillionUsd: 2, cacheReadPerMillionUsd: 0.1, cacheWritePerMillionUsd: 0.2 },
       { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 100, cacheWriteTokens: 50, totalTokens: 1650 }
     );
-    expect(cost2).toBeGreaterThan(0);
+    expect(cost2).not.toBeNull();
+    expect(cost2!).toBeGreaterThan(0);
 
     const costEmpty = calculateCost(
       { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },

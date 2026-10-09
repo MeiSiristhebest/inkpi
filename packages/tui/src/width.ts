@@ -5,6 +5,10 @@
 
 // ANSI Escape sequence regex
 export const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+const ANSI_AT_POSITION_REGEX = new RegExp(ANSI_REGEX.source, 'y');
+const MARK_REGEX = /^\p{Mark}$/u;
+const GRAPHEME_SEGMENTER =
+  typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : undefined;
 
 /**
  * 剥除 ANSI 控制符
@@ -35,9 +39,118 @@ export function isWideChar(codePoint: number): boolean {
     // Fullwidth Ideographic Space (\u3000)
     codePoint === 0x3000 ||
     // Common Emojis and Symbols
+    (codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff) ||
     (codePoint >= 0x1f300 && codePoint <= 0x1f9ff) ||
     (codePoint >= 0x2600 && codePoint <= 0x27bf)
   );
+}
+
+interface GraphemeToken {
+  segment: string;
+  prefix: string;
+  raw: string;
+  sourceEnd: number;
+  width: number;
+}
+
+function graphemeSegments(text: string): Array<{ segment: string; index: number }> {
+  if (GRAPHEME_SEGMENTER) {
+    return Array.from(GRAPHEME_SEGMENTER.segment(text), ({ segment, index }) => ({ segment, index }));
+  }
+
+  const segments: Array<{ segment: string; index: number }> = [];
+  let index = 0;
+  for (const segment of text) {
+    segments.push({ segment, index });
+    index += segment.length;
+  }
+  return segments;
+}
+
+function widthOfGrapheme(segment: string): number {
+  if (segment.includes('\ufe0f') || segment.includes('\u20e3')) return 2;
+
+  let width = 0;
+  for (const character of segment) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      codePoint === 0x200c ||
+      codePoint === 0x200d ||
+      (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+      (codePoint >= 0xe0100 && codePoint <= 0xe01ef) ||
+      (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff) ||
+      (codePoint >= 0xe0020 && codePoint <= 0xe007f) ||
+      MARK_REGEX.test(character)
+    ) {
+      continue;
+    }
+    width = Math.max(width, isWideChar(codePoint) ? 2 : 1);
+  }
+  return width;
+}
+
+function ansiAt(text: string, index: number): string | undefined {
+  ANSI_AT_POSITION_REGEX.lastIndex = index;
+  return ANSI_AT_POSITION_REGEX.exec(text)?.[0];
+}
+
+function tokenizeGraphemes(text: string): { tokens: GraphemeToken[]; trailingAnsi: string } {
+  const plainParts: string[] = [];
+  const rawStarts: number[] = [];
+  const rawEnds: number[] = [];
+  let index = 0;
+
+  while (index < text.length) {
+    const ansi = ansiAt(text, index);
+    if (ansi) {
+      index += ansi.length;
+      continue;
+    }
+
+    const codePoint = text.codePointAt(index)!;
+    const length = codePoint > 0xffff ? 2 : 1;
+    plainParts.push(text.slice(index, index + length));
+    for (let unit = 0; unit < length; unit += 1) {
+      rawStarts.push(index);
+      rawEnds.push(index + length);
+    }
+    index += length;
+  }
+
+  const plainText = plainParts.join('');
+  const tokens: GraphemeToken[] = [];
+  let rawCursor = 0;
+  for (const part of graphemeSegments(plainText)) {
+    const rawStart = rawStarts[part.index];
+    const rawEnd = rawEnds[part.index + part.segment.length - 1];
+    const raw = text.slice(rawStart, rawEnd);
+    tokens.push({
+      segment: part.segment,
+      prefix: text.slice(rawCursor, rawStart),
+      raw,
+      sourceEnd: rawEnd,
+      width: widthOfGrapheme(part.segment)
+    });
+    rawCursor = rawEnd;
+  }
+
+  return { tokens, trailingAnsi: text.slice(rawCursor) };
+}
+
+function extractAnsiSequences(text: string): string {
+  let result = '';
+  let index = 0;
+  while (index < text.length) {
+    const ansi = ansiAt(text, index);
+    if (ansi) {
+      result += ansi;
+      index += ansi.length;
+      continue;
+    }
+    const codePoint = text.codePointAt(index)!;
+    index += codePoint > 0xffff ? 2 : 1;
+  }
+  return result;
 }
 
 /**
@@ -47,15 +160,7 @@ export function visibleWidth(text: string): number {
   if (!text) return 0;
   const clean = stripAnsi(text);
   let width = 0;
-
-  for (let i = 0; i < clean.length; i++) {
-    const code = clean.codePointAt(i)!;
-    if (code > 0xffff) {
-      i++; // Surrogate pair
-    }
-    width += isWideChar(code) ? 2 : 1;
-  }
-
+  for (const { segment } of graphemeSegments(clean)) width += widthOfGrapheme(segment);
   return width;
 }
 
@@ -66,42 +171,31 @@ export function sliceWithWidth(text: string, startCol: number, maxColumns: numbe
   if (maxColumns <= 0) return '';
   let currentCol = 0;
   let result = '';
-  let i = 0;
-  let activeAnsi = '';
+  let pendingAnsi = '';
+  let selected = false;
+  let truncated = false;
+  const { tokens, trailingAnsi } = tokenizeGraphemes(text);
 
-  while (i < text.length) {
-    if (text.charCodeAt(i) === 0x1b) {
-      // Extract full ANSI escape sequence
-      const match = text
-        .slice(i)
-        .match(/^(\x1b\[[0-9;]*[a-zA-Z]|\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))/);
-      if (match) {
-        const ansiCode = match[0];
-        activeAnsi += ansiCode;
-        if (currentCol >= startCol && currentCol - startCol < maxColumns) {
-          result += ansiCode;
-        }
-        i += ansiCode.length;
-        continue;
-      }
+  for (const token of tokens) {
+    if (currentCol < startCol) {
+      pendingAnsi += token.prefix + extractAnsiSequences(token.raw);
+      currentCol += token.width;
+      continue;
     }
 
-    const codePoint = text.codePointAt(i)!;
-    const charLen = codePoint > 0xffff ? 2 : 1;
-    const char = text.slice(i, i + charLen);
-    const charWidth = isWideChar(codePoint) ? 2 : 1;
-
-    if (currentCol >= startCol && currentCol - startCol + charWidth <= maxColumns) {
-      result += char;
-    } else if (currentCol - startCol + charWidth > maxColumns && currentCol >= startCol) {
-      // Cannot fit next wide char without overflowing
+    if (currentCol - startCol + token.width > maxColumns) {
+      truncated = true;
       break;
     }
 
-    currentCol += charWidth;
-    i += charLen;
+    result += pendingAnsi + token.prefix + token.raw;
+    pendingAnsi = '';
+    selected = true;
+    currentCol += token.width;
   }
 
+  if (selected && !truncated) result += pendingAnsi + trailingAnsi;
+  if (selected && /\x1b\[[0-9;]*m/.test(result) && !/\x1b\[(?:0;?)*m$/.test(result)) result += '\x1b[0m';
   return result;
 }
 

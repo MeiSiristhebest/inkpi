@@ -6,8 +6,8 @@ export interface RuntimeModelRegistrationConfig {
   id: string;
   name: string;
   provider: string;
-  /** Request-only secret. Runtime never returns it in a route summary. */
-  apiKey?: string;
+  /** Opaque reference resolved by the Runtime's host-owned credential broker. */
+  credentialRef?: string;
   baseUrl?: string;
   temperature?: number;
   topP?: number;
@@ -80,7 +80,7 @@ export interface RuntimeModelRouteRanking {
   userPreference?: number;
 }
 
-/** A route registration sent to Runtime. It may contain an in-memory apiKey. */
+/** A route registration sent to Runtime. Credentials are referenced, never included. */
 export interface RuntimeModelRouteRegistration {
   id: string;
   model: RuntimeModelRegistrationConfig;
@@ -142,11 +142,11 @@ export interface RuntimeModelRouteHealthResult {
   model?: Pick<RuntimeModelSummary, 'id' | 'provider'>;
 }
 
-/** One-shot provider probe. Credentials are request-only and never returned. */
+/** One-shot provider probe. Credentials are referenced and never returned. */
 export interface RuntimeModelProviderProbeParams {
   provider: string;
   baseUrl: string;
-  apiKey?: string;
+  credentialRef?: string;
 }
 
 export interface RuntimeModelProviderProbeResult {

@@ -41,10 +41,23 @@ describe('TUI Hardware Cursor, Wide Characters & Overlay System (Aligned with Pi
     expect(visibleWidth('\x1b[31m红字\x1b[0m')).toBe(4); // ANSI stripped
   });
 
+  it('should count grapheme clusters as terminal columns', () => {
+    expect(visibleWidth('e\u0301')).toBe(1);
+    expect(visibleWidth('🇨🇳')).toBe(2);
+    expect(visibleWidth('👨‍👩‍👧‍👦')).toBe(2);
+    expect(visibleWidth('1️⃣')).toBe(2);
+  });
+
   it('should slice text precisely with ANSI awareness and wide character protection', () => {
     const text = '\x1b[32m林玄拔剑而起\x1b[0m，天地变色！';
     const sliced = sliceWithWidth(text, 0, 8); // 8 columns = 4 Chinese characters: "林玄拔剑"
     expect(visibleWidth(sliced)).toBe(8);
+  });
+
+  it('should preserve styling when a slice starts after styled text', () => {
+    const sliced = sliceWithWidth('\x1b[31mA😀B\x1b[0m', 1, 2);
+    expect(sliced).toBe('\x1b[31m😀\x1b[0m');
+    expect(visibleWidth(sliced)).toBe(2);
   });
 
   it('should extract CURSOR_MARKER and accurately calculate physical hardware cursor coordinates', () => {

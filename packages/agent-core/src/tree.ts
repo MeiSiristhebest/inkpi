@@ -15,6 +15,13 @@ export interface SessionTreeNode {
   metadata?: Record<string, unknown>;
 }
 
+export interface SessionHistoryDelta {
+  headId: string | null;
+  messages: AgentMessage[];
+  /** True when the previous head is not on this branch and the caller must rebuild its view. */
+  reset: boolean;
+}
+
 export class SessionTree {
   private nodes = new Map<string, SessionTreeNode>();
   private rootId: string | null = null;
@@ -22,6 +29,7 @@ export class SessionTree {
   private readonly idGenerator: IdGenerator;
   private readonly clock: Clock;
   private generatedId = 0;
+  private revision = 0;
 
   constructor(initialMessages?: AgentMessage[], options: SessionTreeOptions = {}) {
     this.idGenerator = options.idGenerator || (() => `node_${++this.generatedId}`);
@@ -65,6 +73,7 @@ export class SessionTree {
     }
 
     this.currentLeafId = id;
+    this.revision += 1;
     return id;
   }
 
@@ -79,7 +88,10 @@ export class SessionTree {
     if (!this.nodes.has(fromNodeId)) {
       throw new Error(`Node ${fromNodeId} not found in SessionTree`);
     }
-    this.currentLeafId = fromNodeId;
+    if (this.currentLeafId !== fromNodeId) {
+      this.currentLeafId = fromNodeId;
+      this.revision += 1;
+    }
     return fromNodeId;
   }
 
@@ -106,7 +118,10 @@ export class SessionTree {
 
   public navigate(toNodeId: string): boolean {
     if (!this.nodes.has(toNodeId)) return false;
-    this.currentLeafId = toNodeId;
+    if (this.currentLeafId !== toNodeId) {
+      this.currentLeafId = toNodeId;
+      this.revision += 1;
+    }
     return true;
   }
 
@@ -118,19 +133,24 @@ export class SessionTree {
     return this.currentLeafId;
   }
 
+  /** Revision of the tree's structure and active leaf, used to reject stale async results. */
+  public getRevision(): number {
+    return this.revision;
+  }
+
   public getNode(id: string): SessionTreeNode | undefined {
     return this.nodes.get(id);
   }
 
   public getHistory(leafId?: string): AgentMessage[] {
-    const targetId = leafId || this.currentLeafId;
+    const targetId = leafId ?? this.currentLeafId;
     if (!targetId || !this.nodes.has(targetId)) return [];
 
     const messages: AgentMessage[] = [];
     let curr: SessionTreeNode | undefined = this.nodes.get(targetId);
 
     while (curr) {
-      messages.unshift(curr.message);
+      messages.push(curr.message);
       if (curr.parentId) {
         curr = this.nodes.get(curr.parentId);
       } else {
@@ -138,7 +158,31 @@ export class SessionTree {
       }
     }
 
-    return messages;
+    return messages.reverse();
+  }
+
+  /** Return only entries added after an ancestor head; branch changes return a full reset path. */
+  public getHistoryDelta(previousHeadId: string | null, leafId?: string): SessionHistoryDelta {
+    const targetId = leafId ?? this.currentLeafId;
+    if (!targetId || !this.nodes.has(targetId)) {
+      return { headId: null, messages: [], reset: previousHeadId !== null };
+    }
+
+    const messages: AgentMessage[] = [];
+    let current: SessionTreeNode | undefined = this.nodes.get(targetId);
+    while (current) {
+      if (current.id === previousHeadId) {
+        return { headId: targetId, messages: messages.reverse(), reset: false };
+      }
+      messages.push(current.message);
+      current = current.parentId ? this.nodes.get(current.parentId) : undefined;
+    }
+
+    return {
+      headId: targetId,
+      messages: messages.reverse(),
+      reset: previousHeadId !== null
+    };
   }
 
   public getBranches(): Array<{ leafId: string; length: number; lastMessage: AgentMessage }> {
@@ -240,5 +284,6 @@ export class SessionTree {
     this.nodes.clear();
     this.rootId = null;
     this.currentLeafId = null;
+    this.revision += 1;
   }
 }

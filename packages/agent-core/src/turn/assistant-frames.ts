@@ -13,6 +13,7 @@ import type { AssistantMessage, AssistantMessageEvent, ContentBlock, ToolCallCon
  * 5. 帧只追加不重写；归约（{@linkcode reduceAssistantFrames}）按序重放即可重建部分消息。
  */
 export type AssistantStreamFrame =
+  | { type: 'attempt_reset' }
   | { type: 'text_start'; index: number; text: string }
   | { type: 'text_delta'; index: number; delta: string }
   | { type: 'thinking_start'; index: number; thinking: string }
@@ -40,14 +41,14 @@ export class AssistantFrameEncoder {
       case 'text_delta': {
         if (this.textIndex === undefined) {
           this.textIndex = this.nextIndex++;
-          return { type: 'text_start', index: this.textIndex, text: '' };
+          return { type: 'text_start', index: this.textIndex, text: event.textDelta };
         }
         return { type: 'text_delta', index: this.textIndex, delta: event.textDelta };
       }
       case 'thinking_delta': {
         if (this.thinkingIndex === undefined) {
           this.thinkingIndex = this.nextIndex++;
-          return { type: 'thinking_start', index: this.thinkingIndex, thinking: '' };
+          return { type: 'thinking_start', index: this.thinkingIndex, thinking: event.thinkingDelta };
         }
         return { type: 'thinking_delta', index: this.thinkingIndex, delta: event.thinkingDelta };
       }
@@ -74,6 +75,12 @@ export class AssistantFrameEncoder {
       case 'error':
         // 终态：不产帧。终态结果由 operation_settlement / agent_turn 结算条目持久化。
         return null;
+      case 'attempt_reset':
+        this.nextIndex = 0;
+        this.textIndex = undefined;
+        this.thinkingIndex = undefined;
+        this.toolCallState.clear();
+        return { type: 'attempt_reset' };
       default:
         return null;
     }
@@ -126,6 +133,10 @@ export function reduceAssistantFrames(frames: readonly AssistantStreamFrame[]): 
   for (const frame of frames) {
     if (!frame || typeof frame !== 'object' || typeof (frame as any).type !== 'string') continue;
     switch (frame.type) {
+      case 'attempt_reset':
+        content.length = 0;
+        rawArgsByIndex.clear();
+        break;
       case 'text_start':
         ensureTextBlock(frame.index).text = frame.text;
         break;

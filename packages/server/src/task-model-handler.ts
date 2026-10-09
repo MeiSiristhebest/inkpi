@@ -28,6 +28,7 @@ import {
   createLegacyDefaultModelCapabilities
 } from './model-capability-router.js';
 import { ProviderResponseCache, type ProviderResponseCacheOptions } from './provider-response-cache.js';
+import type { RuntimeCredentialResolver } from './runtime-credential-broker.js';
 
 export {
   CapabilityMismatchError,
@@ -126,6 +127,7 @@ export interface TaskModelHandlerOptions {
   sessionCompactor?: SessionCompactor;
   providerRecovery?: ProviderRecoveryOptions;
   contextBudgetPlanner?: ContextBudgetPlanner;
+  credentialResolver?: RuntimeCredentialResolver;
 }
 
 /**
@@ -144,6 +146,7 @@ export class TaskModelHandler implements TaskHandler {
   private readonly sessionCompactor?: SessionCompactor;
   private readonly providerRecovery: ProviderRecovery;
   private readonly contextBudgetPlanner: ContextBudgetPlanner;
+  private readonly credentialResolver?: RuntimeCredentialResolver;
 
   constructor(options: TaskModelHandlerOptions) {
     this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
@@ -153,6 +156,7 @@ export class TaskModelHandler implements TaskHandler {
     this.sessionCompactor = options.sessionCompactor;
     this.providerRecovery = new ProviderRecovery(options.providerRecovery);
     this.contextBudgetPlanner = options.contextBudgetPlanner ?? new ContextBudgetPlanner();
+    this.credentialResolver = options.credentialResolver;
     this.providerResponseCache =
       options.providerResponseCache ??
       new ProviderResponseCache({
@@ -226,6 +230,7 @@ export class TaskModelHandler implements TaskHandler {
   }
 
   private async executeRoute(context: TaskHandlerContext, route: ResolvedModelRoute): Promise<TaskHandlerResult> {
+    const providerModel = await this.resolveProviderModel(route);
     const startedAt = Date.now();
     const prompt = buildPrompt(context);
     let messages: AgentMessage[] = [{ role: 'user', content: prompt, timestamp: Date.now() }];
@@ -268,7 +273,7 @@ export class TaskModelHandler implements TaskHandler {
         providerCacheKey = cacheKey;
         providerCacheHit = true;
       } else {
-        assistant = await this.collect(messages, context, route);
+        assistant = await this.collect(messages, context, route, providerModel);
         providerCacheKey = cacheKey;
       }
       if (assistant.stopReason === 'error' || assistant.errorMessage) {
@@ -324,7 +329,11 @@ export class TaskModelHandler implements TaskHandler {
       });
       messages.push(...toolResults);
       for (const result of toolResults) {
-        toolTrace.push({ id: result.toolCallId, name: result.toolName, isError: result.isError === true });
+        toolTrace.push({
+          id: result.toolCallId,
+          name: result.toolName,
+          isError: result.isError === true
+        });
       }
     }
     const finalAssistant = assistant;
@@ -397,7 +406,8 @@ export class TaskModelHandler implements TaskHandler {
   private async collect(
     messages: AgentMessage[],
     context: TaskHandlerContext,
-    route: ResolvedModelRoute
+    route: ResolvedModelRoute,
+    model: ResolvedModelRoute['model'] = route.model
   ): Promise<AssistantMessage> {
     const tools =
       route.capabilities.tools === false
@@ -407,11 +417,11 @@ export class TaskModelHandler implements TaskHandler {
             description: tool.description,
             parameters: tool.parameters
           }));
-    const stream = (route.stream ?? this.stream)(route.model, messages, {
+    const stream = (route.stream ?? this.stream)(model, messages, {
       signal: context.signal,
       systemPrompt: route.systemPrompt ?? this.systemPrompt,
-      maxTokens: route.model.maxTokens,
-      thinkingBudget: route.model.thinkingBudget,
+      maxTokens: model.maxTokens,
+      thinkingBudget: model.thinkingBudget,
       ...(tools && tools.length > 0 ? { tools } : {})
     });
     const onAbort = () => stream.abort();
@@ -421,6 +431,13 @@ export class TaskModelHandler implements TaskHandler {
     } finally {
       context.signal.removeEventListener('abort', onAbort);
     }
+  }
+
+  private async resolveProviderModel(route: ResolvedModelRoute): Promise<ResolvedModelRoute['model']> {
+    if (!route.credentialRef) return route.model;
+    if (!this.credentialResolver) throw new Error('Model credential broker is not configured');
+    const apiKey = await this.credentialResolver(route.credentialRef);
+    return apiKey ? { ...route.model, apiKey } : route.model;
   }
 }
 
@@ -613,7 +630,9 @@ function parseJson(text: string): JsonValue {
     assertJsonValue(parsed, 'Model JSON output');
     return parsed;
   } catch {
-    const error = new Error('Model output is not valid JSON') as Error & { retryable?: boolean };
+    const error = new Error('Model output is not valid JSON') as Error & {
+      retryable?: boolean;
+    };
     error.retryable = false;
     throw error;
   }

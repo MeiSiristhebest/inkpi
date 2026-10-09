@@ -1,126 +1,255 @@
-import type { ModelCatalogEntry } from './catalog.js';
+import { modelCatalogEntryToCapabilityDeclaration } from './catalog.js';
+import type { ModelCatalogEntry, ModelPriceDescriptor, ModelPriceRateOverrides } from './catalog.js';
 import { getHttpClient } from './http-client.js';
 
 export interface RemoteCatalogOptions {
-  /**
-   * 远端模型目录与定价更新地址。
-   * 默认为官方/社区实时维护的 models-catalog 端点，也可指向企业内部 AI Gateway。
-   */
+  /** Remote model and price directory. */
   url?: string;
-  /**
-   * 本地缓存 TTL（毫秒），默认 1 小时 (3600_000 ms)
-   */
+  /** Local cache TTL in milliseconds. Defaults to one hour. */
   cacheTtlMs?: number;
+  /** Merge supplemental entries by default, or replace this URL's prior directory. */
+  mode?: 'merge' | 'replace';
   signal?: AbortSignal;
 }
 
 export interface CostCalculationResult {
-  inputCostUsd: number;
-  outputCostUsd: number;
-  cacheReadCostUsd: number;
-  cacheWriteCostUsd: number;
-  totalCostUsd: number;
+  inputCostUsd: number | null;
+  outputCostUsd: number | null;
+  cacheReadCostUsd: number | null;
+  cacheWriteCostUsd: number | null;
+  totalCostUsd: number | null;
+  savedCostByCacheUsd: number | null;
+  status: 'known' | 'partial' | 'unknown';
 }
 
-const dynamicCatalog = new Map<string, ModelCatalogEntry>();
-let lastFetchedAt = 0;
-const DEFAULT_TTL = 3600_000; // 1h
+export interface ModelCostUsage {
+  inputTokens: number;
+  outputTokens: number;
+  promptTokens?: number;
+  serviceTier?: string;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  cacheWrite5mTokens?: number;
+  cacheWrite1hTokens?: number;
+}
 
-/**
- * 动态注册或更新模型定价条目
- */
+interface RemoteCatalogState {
+  entries: Map<string, ModelCatalogEntry>;
+  etag?: string;
+  lastFetchedAt: number;
+  generation: number;
+}
+
+const registeredCatalog = new Map<string, ModelCatalogEntry>();
+const remoteCatalogs = new Map<string, RemoteCatalogState>();
+const DEFAULT_TTL = 3600_000;
+
+/** Register a local or explicitly configured model price. */
 export function registerModelCost(entry: ModelCatalogEntry): void {
-  dynamicCatalog.set(entry.id, entry);
+  modelCatalogEntryToCapabilityDeclaration(entry);
+  registeredCatalog.set(entry.id, entry);
 }
 
 /**
- * 从远端拉取最新模型目录与价格表，支持 ETag 与静默刷新
+ * Refresh one remote directory. Conditional requests are scoped by URL, and a
+ * response only publishes if it is still the newest request for that URL.
  */
 export async function refreshCatalog(options?: RemoteCatalogOptions): Promise<number> {
   const url = options?.url || process.env.INKPI_MODELS_CATALOG_URL;
-  if (!url) return dynamicCatalog.size;
+  if (!url) return getCatalogSize();
+
+  const ttl = options?.cacheTtlMs ?? DEFAULT_TTL;
+  if (!Number.isFinite(ttl) || ttl < 0) throw new RangeError('Model catalog cache TTL must be non-negative.');
+
+  let state = remoteCatalogs.get(url);
+  if (!state) {
+    state = { entries: new Map(), lastFetchedAt: 0, generation: 0 };
+    remoteCatalogs.set(url, state);
+  }
 
   const now = Date.now();
-  const ttl = options?.cacheTtlMs ?? DEFAULT_TTL;
-  if (now - lastFetchedAt < ttl && dynamicCatalog.size > 0) {
-    return dynamicCatalog.size;
-  }
+  if (state.lastFetchedAt > 0 && now - state.lastFetchedAt < ttl) return getCatalogSize();
+
+  const generation = ++state.generation;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (state.etag) headers['If-None-Match'] = state.etag;
 
   try {
-    const res = await getHttpClient().fetch(url, {
+    const response = await getHttpClient().fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers,
       signal: options?.signal
     });
-    if (!res.ok) return dynamicCatalog.size;
 
-    const data = (await res.json()) as ModelCatalogEntry[];
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        if (item.id && item.cost) {
-          dynamicCatalog.set(item.id, item);
-        }
-      }
-      lastFetchedAt = now;
+    if (response.status === 304) {
+      if (remoteCatalogs.get(url) !== state || generation !== state.generation) return getCatalogSize();
+      state.etag = response.headers.get('etag') ?? state.etag;
+      state.lastFetchedAt = Date.now();
+      return getCatalogSize();
     }
-  } catch {
-    // 优雅降级：网络异常时不破坏调用链，继续使用已知定价
+    if (!response.ok) return getCatalogSize();
+
+    const payload: unknown = await response.json();
+    if (!Array.isArray(payload)) return getCatalogSize();
+
+    const fetched = new Map<string, ModelCatalogEntry>();
+    for (const candidate of payload) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const entry = candidate as ModelCatalogEntry;
+      if (!entry.id || !entry.cost) continue;
+      modelCatalogEntryToCapabilityDeclaration(entry);
+      fetched.set(entry.id, entry);
+    }
+
+    if (remoteCatalogs.get(url) !== state || generation !== state.generation) return getCatalogSize();
+
+    if (options?.mode === 'replace') {
+      state.entries = fetched;
+    } else {
+      const merged = new Map(state.entries);
+      for (const [id, entry] of fetched) merged.set(id, entry);
+      state.entries = merged;
+    }
+    state.etag = response.headers.get('etag') ?? undefined;
+    state.lastFetchedAt = Date.now();
+  } catch (error) {
+    if (options?.signal?.aborted) throw error;
+    // A failed refresh leaves the last published directory intact.
   }
 
-  return dynamicCatalog.size;
+  return getCatalogSize();
 }
 
-/**
- * 计算指定模型单次交互所消耗的真实 USD 成本
- */
+/** Calculate cost, leaving unavailable components unknown instead of free. */
 export function calculateDynamicModelCost(
   modelId: string,
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens?: number;
-    cacheWriteTokens?: number;
-  },
-  fallbackCostRates?: {
-    inputPerMillionUsd: number;
-    outputPerMillionUsd: number;
-    cacheReadPerMillionUsd?: number;
-    cacheWritePerMillionUsd?: number;
-  }
+  usage: ModelCostUsage,
+  fallbackCostRates?: ModelPriceDescriptor
 ): CostCalculationResult {
-  const entry = dynamicCatalog.get(modelId);
-  const rates = entry?.cost ||
-    fallbackCostRates || {
-      inputPerMillionUsd: 0,
-      outputPerMillionUsd: 0
-    };
+  const entry = registeredCatalog.get(modelId) ?? findRemoteEntry(modelId);
+  return calculateModelCost(entry?.cost ?? fallbackCostRates, usage);
+}
 
-  const inputTokens = usage.inputTokens || 0;
-  const outputTokens = usage.outputTokens || 0;
-  const cacheReadTokens = usage.cacheReadTokens || 0;
-  const cacheWriteTokens = usage.cacheWriteTokens || 0;
-
-  const inputCostUsd = (inputTokens / 1_000_000) * rates.inputPerMillionUsd;
-  const outputCostUsd = (outputTokens / 1_000_000) * rates.outputPerMillionUsd;
-  const cacheReadCostUsd = ((rates.cacheReadPerMillionUsd ?? 0) / 1_000_000) * cacheReadTokens;
-  const cacheWriteCostUsd = ((rates.cacheWritePerMillionUsd ?? 0) / 1_000_000) * cacheWriteTokens;
-
-  const totalCostUsd = inputCostUsd + outputCostUsd + cacheReadCostUsd + cacheWriteCostUsd;
+export function calculateModelCost(
+  pricing: ModelPriceDescriptor | undefined,
+  usage: ModelCostUsage
+): CostCalculationResult {
+  const rates = pricing ? resolveRates(pricing, usage) : undefined;
+  const inputCostUsd = costFor(usage.inputTokens, rates?.inputPerMillionUsd);
+  const outputCostUsd = costFor(usage.outputTokens, rates?.outputPerMillionUsd);
+  const cacheReadCostUsd = costFor(usage.cacheReadTokens ?? 0, rates?.cacheReadPerMillionUsd);
+  const cacheWriteCostUsd = calculateCacheWriteCost(pricing, rates, usage);
+  const costs = [inputCostUsd, outputCostUsd, cacheReadCostUsd, cacheWriteCostUsd];
+  const activeCosts = costs.filter((_, index) => usageComponentTokens(usage, index) > 0);
+  const knownActiveCount = activeCosts.filter((cost) => cost !== null).length;
+  const hasUnknownActiveCost = activeCosts.some((cost) => cost === null);
+  const totalCostUsd = hasUnknownActiveCost ? null : costs.reduce<number>((sum, cost) => sum + (cost ?? 0), 0);
+  const cacheReadTokens = usage.cacheReadTokens ?? 0;
+  const savedCostByCacheUsd =
+    cacheReadTokens === 0
+      ? 0
+      : rates?.inputPerMillionUsd !== undefined && rates.cacheReadPerMillionUsd !== undefined
+        ? Math.max(0, (cacheReadTokens / 1_000_000) * (rates.inputPerMillionUsd - rates.cacheReadPerMillionUsd))
+        : null;
 
   return {
     inputCostUsd,
     outputCostUsd,
     cacheReadCostUsd,
     cacheWriteCostUsd,
-    totalCostUsd
+    totalCostUsd,
+    savedCostByCacheUsd,
+    status: !hasUnknownActiveCost ? 'known' : knownActiveCount === 0 ? 'unknown' : 'partial'
   };
 }
 
-/**
- * 重置或清空动态缓存（主要供测试使用）
- */
+function resolveRates(
+  pricing: ModelPriceDescriptor,
+  usage: { promptTokens?: number; serviceTier?: string }
+): ModelPriceRateOverrides | undefined {
+  let rates: ModelPriceRateOverrides = pricing;
+  if (pricing.serviceTierRates) {
+    const serviceTier = usage.serviceTier;
+    if (!serviceTier || !pricing.serviceTierRates[serviceTier]) return undefined;
+    rates = { ...rates, ...pricing.serviceTierRates[serviceTier] };
+  }
+  if (pricing.promptLengthTiers?.length) {
+    if (usage.promptTokens === undefined) return undefined;
+    const tier = [...pricing.promptLengthTiers]
+      .filter((candidate) => candidate.minimumPromptTokens <= usage.promptTokens!)
+      .sort((left, right) => right.minimumPromptTokens - left.minimumPromptTokens)[0];
+    if (tier) rates = { ...rates, ...tier.rates };
+  }
+  return rates;
+}
+
+function calculateCacheWriteCost(
+  pricing: ModelPriceDescriptor | undefined,
+  rates: ModelPriceRateOverrides | undefined,
+  usage: {
+    cacheWriteTokens?: number;
+    cacheWrite5mTokens?: number;
+    cacheWrite1hTokens?: number;
+  }
+): number | null {
+  const totalTokens = usage.cacheWriteTokens ?? (usage.cacheWrite5mTokens ?? 0) + (usage.cacheWrite1hTokens ?? 0);
+  const ttlRates = pricing?.cacheWritePerMillionUsdByTtl;
+  if (!ttlRates || Object.keys(ttlRates).length === 0 || totalTokens === 0) {
+    return costFor(totalTokens, rates?.cacheWritePerMillionUsd);
+  }
+
+  const hasDurationUsage = usage.cacheWrite5mTokens !== undefined || usage.cacheWrite1hTokens !== undefined;
+  if (!hasDurationUsage) return null;
+  const fiveMinuteTokens = usage.cacheWrite5mTokens ?? 0;
+  const oneHourTokens = usage.cacheWrite1hTokens ?? 0;
+  const residualTokens = totalTokens - fiveMinuteTokens - oneHourTokens;
+  if (residualTokens < 0) return null;
+
+  const fiveMinuteCost = costFor(fiveMinuteTokens, ttlRates['5m']);
+  const oneHourCost = costFor(oneHourTokens, ttlRates['1h']);
+  const residualCost = costFor(residualTokens, rates?.cacheWritePerMillionUsd);
+  if (fiveMinuteCost === null || oneHourCost === null || residualCost === null) return null;
+  return fiveMinuteCost + oneHourCost + residualCost;
+}
+
+function usageComponentTokens(usage: ModelCostUsage, index: number): number {
+  switch (index) {
+    case 0:
+      return usage.inputTokens;
+    case 1:
+      return usage.outputTokens;
+    case 2:
+      return usage.cacheReadTokens ?? 0;
+    default:
+      return usage.cacheWriteTokens ?? (usage.cacheWrite5mTokens ?? 0) + (usage.cacheWrite1hTokens ?? 0);
+  }
+}
+
+function costFor(tokens: number, ratePerMillionUsd: number | undefined): number | null {
+  if (tokens === 0) return 0;
+  if (ratePerMillionUsd === undefined || !Number.isFinite(ratePerMillionUsd) || ratePerMillionUsd < 0) return null;
+  return (tokens / 1_000_000) * ratePerMillionUsd;
+}
+
+function findRemoteEntry(modelId: string): ModelCatalogEntry | undefined {
+  const sources = [...remoteCatalogs.values()].sort((left, right) => right.lastFetchedAt - left.lastFetchedAt);
+  for (const source of sources) {
+    const entry = source.entries.get(modelId);
+    if (entry) return entry;
+  }
+  return undefined;
+}
+
+function getCatalogSize(): number {
+  const ids = new Set(registeredCatalog.keys());
+  for (const source of remoteCatalogs.values()) {
+    for (const id of source.entries.keys()) ids.add(id);
+  }
+  return ids.size;
+}
+
+/** Reset local and remote catalog state for tests or explicit cache invalidation. */
 export function clearCostCache(): void {
-  dynamicCatalog.clear;
-  dynamicCatalog.clear();
-  lastFetchedAt = 0;
+  registeredCatalog.clear();
+  remoteCatalogs.clear();
 }

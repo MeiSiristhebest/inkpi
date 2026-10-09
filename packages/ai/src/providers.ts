@@ -720,13 +720,17 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
             const data = parseJsonStreamEvent(dataStr, model.provider);
             if (data.usage) {
               sawUsage = true;
+              const promptTokens = data.usage.prompt_tokens ?? 0;
+              const cacheReadTokens = data.usage.prompt_tokens_details?.cached_tokens ?? 0;
               stream.push({
                 type: 'usage',
                 usage: {
-                  inputTokens: data.usage.prompt_tokens || 0,
+                  inputTokens: Math.max(0, promptTokens - cacheReadTokens),
                   outputTokens: data.usage.completion_tokens || 0,
                   totalTokens: data.usage.total_tokens || 0,
-                  cacheReadTokens: data.usage.prompt_tokens_details?.cached_tokens || 0
+                  promptTokens,
+                  ...(typeof data.service_tier === 'string' ? { serviceTier: data.service_tier } : {}),
+                  cacheReadTokens
                 }
               });
             }
@@ -789,13 +793,17 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
         const data = parseJsonStreamEvent(dataStr, model.provider);
         if (data.usage) {
           sawUsage = true;
+          const promptTokens = data.usage.prompt_tokens ?? 0;
+          const cacheReadTokens = data.usage.prompt_tokens_details?.cached_tokens ?? 0;
           stream.push({
             type: 'usage',
             usage: {
-              inputTokens: data.usage.prompt_tokens || 0,
+              inputTokens: Math.max(0, promptTokens - cacheReadTokens),
               outputTokens: data.usage.completion_tokens || 0,
               totalTokens: data.usage.total_tokens || 0,
-              cacheReadTokens: data.usage.prompt_tokens_details?.cached_tokens || 0
+              promptTokens,
+              ...(typeof data.service_tier === 'string' ? { serviceTier: data.service_tier } : {}),
+              cacheReadTokens
             }
           });
         }
@@ -991,6 +999,8 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
       let outputTokens = 0;
       let cacheReadTokens = 0;
       let cacheWriteTokens = 0;
+      let cacheWrite5mTokens: number | undefined;
+      let cacheWrite1hTokens: number | undefined;
       let sawMessageStop = false;
       const openToolCalls = new Map<
         number,
@@ -1010,6 +1020,9 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
             outputTokens,
             cacheReadTokens,
             cacheWriteTokens,
+            promptTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+            ...(cacheWrite5mTokens !== undefined ? { cacheWrite5mTokens } : {}),
+            ...(cacheWrite1hTokens !== undefined ? { cacheWrite1hTokens } : {}),
             totalTokens: inputTokens + outputTokens
           }
         });
@@ -1021,7 +1034,17 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
         if (data.type === 'message_start' && data.message?.usage) {
           inputTokens = data.message.usage.input_tokens || 0;
           cacheReadTokens = data.message.usage.cache_read_input_tokens || 0;
-          cacheWriteTokens = data.message.usage.cache_creation_input_tokens || 0;
+          const cacheCreation = data.message.usage.cache_creation;
+          cacheWrite5mTokens =
+            typeof cacheCreation?.ephemeral_5m_input_tokens === 'number'
+              ? cacheCreation.ephemeral_5m_input_tokens
+              : undefined;
+          cacheWrite1hTokens =
+            typeof cacheCreation?.ephemeral_1h_input_tokens === 'number'
+              ? cacheCreation.ephemeral_1h_input_tokens
+              : undefined;
+          cacheWriteTokens =
+            data.message.usage.cache_creation_input_tokens ?? (cacheWrite5mTokens ?? 0) + (cacheWrite1hTokens ?? 0);
           emitUsage();
         } else if (data.type === 'content_block_delta') {
           if (data.delta?.type === 'text_delta') {
@@ -1215,13 +1238,16 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
 
       const emitGeminiUsage = (usageMetadata: any) => {
         if (!usageMetadata) return;
+        const promptTokens = usageMetadata.promptTokenCount ?? 0;
+        const cacheReadTokens = usageMetadata.cachedContentTokenCount ?? 0;
         stream.push({
           type: 'usage',
           usage: {
-            inputTokens: usageMetadata.promptTokenCount || 0,
+            inputTokens: Math.max(0, promptTokens - cacheReadTokens),
             outputTokens: usageMetadata.candidatesTokenCount || 0,
             totalTokens: usageMetadata.totalTokenCount || 0,
-            cacheReadTokens: usageMetadata.cachedContentTokenCount || 0
+            promptTokens,
+            cacheReadTokens
           }
         });
       };
@@ -1338,7 +1364,8 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
                 usage: {
                   inputTokens: data.prompt_eval_count || 0,
                   outputTokens: data.eval_count || 0,
-                  totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+                  totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+                  promptTokens: data.prompt_eval_count || 0
                 }
               });
             }
@@ -1356,7 +1383,8 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
             usage: {
               inputTokens: data.prompt_eval_count || 0,
               outputTokens: data.eval_count || 0,
-              totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+              totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+              promptTokens: data.prompt_eval_count || 0
             }
           });
         }

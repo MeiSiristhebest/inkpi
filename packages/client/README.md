@@ -21,3 +21,7 @@ const client = await InkRpcClient.connectTcp(9876);
 await client.request('session.create', { sessionId: 'my_story' });
 await client.editorInsert(0, '# Chapter 1: The Awakening\n');
 ```
+
+## Image prompts
+
+`client.prompt(text, images)` sends image content inline in the `agent.prompt` JSON-RPC request. Each image is an `ImageContent` object with an `image` value containing base64 data or a URL and an optional `mimeType`. The server keeps the image block in the user message and in the session journal when one is configured. The protocol has no separate image upload or attachment ID; callers that need an external attachment ID must keep it in their own state.

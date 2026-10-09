@@ -6,6 +6,30 @@ export type ModelRole = 'planning' | 'drafting' | 'auditing' | 'polishing';
 
 export type ModelNetworkMode = 'offline' | 'optional' | 'required';
 
+export interface ModelPriceRates {
+  inputPerMillionUsd: number;
+  outputPerMillionUsd: number;
+  cacheReadPerMillionUsd?: number;
+  cacheWritePerMillionUsd?: number;
+}
+
+export type ModelPriceRateOverrides = Partial<ModelPriceRates>;
+
+export interface PromptLengthPricingTier {
+  /** This rate set applies at and above this prompt length. */
+  minimumPromptTokens: number;
+  rates: ModelPriceRateOverrides;
+}
+
+export interface ModelPriceDescriptor extends ModelPriceRates {
+  /** Exact provider service-tier rates. Missing usage tier data leaves cost unknown. */
+  serviceTierRates?: Record<string, ModelPriceRateOverrides>;
+  /** Long-prompt rate overrides selected by the highest matching minimum. */
+  promptLengthTiers?: PromptLengthPricingTier[];
+  /** Cache-write rates when the provider reports the write duration. */
+  cacheWritePerMillionUsdByTtl?: Partial<Record<'5m' | '1h', number>>;
+}
+
 /**
  * Complete, provider-neutral capability declaration used to build runtime
  * routes. Catalog entries may override these values, but callers should use
@@ -66,12 +90,7 @@ export interface ModelCatalogEntry {
    * 生成的目录条目默认不带此标记；可通过 registerModel 显式注入。
    */
   supportsMidConvoEffort?: boolean;
-  cost: {
-    inputPerMillionUsd: number;
-    outputPerMillionUsd: number;
-    cacheReadPerMillionUsd?: number;
-    cacheWritePerMillionUsd?: number;
-  };
+  cost: ModelPriceDescriptor;
   /** Optional explicit overrides for the canonical runtime capability matrix. */
   capabilities?: ModelCapabilityOverrides;
   description?: string;
@@ -240,9 +259,76 @@ function validateModelCatalogEntry(entry: ModelCatalogEntry): void {
   if (entry.priority !== undefined && !Number.isFinite(entry.priority)) {
     throw new Error('Model priority must be finite');
   }
+  validateModelPriceDescriptor(entry.cost);
   if (entry.capabilities !== undefined && !isRecord(entry.capabilities)) {
     throw new Error('Model capabilities override must be an object');
   }
+}
+
+function validateModelPriceDescriptor(pricing: ModelPriceDescriptor): void {
+  validatePriceRateOverrides(pricing, 'Model price', true);
+
+  if (pricing.serviceTierRates !== undefined) {
+    if (!isRecord(pricing.serviceTierRates)) throw new Error('Model service-tier prices must be an object');
+    for (const [serviceTier, rates] of Object.entries(pricing.serviceTierRates)) {
+      if (!serviceTier.trim()) throw new Error('Model service-tier name must not be empty');
+      validatePriceRateOverrides(rates, `Model service-tier price '${serviceTier}'`, false);
+    }
+  }
+
+  if (pricing.promptLengthTiers !== undefined) {
+    if (!Array.isArray(pricing.promptLengthTiers)) throw new Error('Model prompt-length prices must be an array');
+    const minimums = new Set<number>();
+    for (const tier of pricing.promptLengthTiers) {
+      if (!Number.isInteger(tier.minimumPromptTokens) || tier.minimumPromptTokens <= 0) {
+        throw new Error('Model prompt-length threshold must be a positive integer');
+      }
+      if (minimums.has(tier.minimumPromptTokens)) throw new Error('Model prompt-length thresholds must be unique');
+      minimums.add(tier.minimumPromptTokens);
+      validatePriceRateOverrides(tier.rates, `Model prompt-length price at ${tier.minimumPromptTokens}`, false);
+    }
+  }
+
+  if (pricing.cacheWritePerMillionUsdByTtl !== undefined) {
+    if (!isRecord(pricing.cacheWritePerMillionUsdByTtl))
+      throw new Error('Model cache-write TTL prices must be an object');
+    for (const [ttl, rate] of Object.entries(pricing.cacheWritePerMillionUsdByTtl)) {
+      if (!['5m', '1h'].includes(ttl)) throw new Error(`Unsupported model cache-write TTL: ${ttl}`);
+      if (!Number.isFinite(rate) || rate < 0)
+        throw new Error(`Model cache-write price for ${ttl} must be non-negative`);
+    }
+  }
+}
+
+// The generated OpenRouter catalog uses this value when a model's price is unknown.
+// Cost calculation already treats negative rates as unavailable, so validation must
+// preserve this legacy marker instead of rejecting the entire generated catalog.
+const UNKNOWN_MODEL_PRICE_SENTINEL = -1_000_000;
+
+function validatePriceRateOverrides(rates: unknown, label: string, requireInputAndOutput: boolean): void {
+  if (!isRecord(rates)) throw new Error(`${label} must be an object`);
+  const rateNames = [
+    'inputPerMillionUsd',
+    'outputPerMillionUsd',
+    'cacheReadPerMillionUsd',
+    'cacheWritePerMillionUsd'
+  ] as const;
+  let hasRate = false;
+  for (const name of rateNames) {
+    const rate = rates[name];
+    if (rate === undefined) {
+      if (requireInputAndOutput && (name === 'inputPerMillionUsd' || name === 'outputPerMillionUsd')) {
+        throw new Error(`${label} is missing ${name}`);
+      }
+      continue;
+    }
+    if (rate === UNKNOWN_MODEL_PRICE_SENTINEL) continue;
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0) {
+      throw new Error(`${label} ${name} must be a non-negative number`);
+    }
+    hasRate = true;
+  }
+  if (!requireInputAndOutput && !hasRate) throw new Error(`${label} must define at least one price`);
 }
 
 export function getThinkingBudgetForLevel(level: ThinkingLevel | 'minimal' | 'off' | null | undefined): number {
@@ -285,6 +371,12 @@ export function findModelInCatalog(idOrName: string): ModelCatalogEntry | undefi
   // Resolve explicit canonical aliases without substring guessing.
   const aliased = dynamicAliases.get(query);
   if (aliased) return findModelInCatalog(aliased);
+
+  // Prefer an exact catalog identity before matching a short suffix. The generated
+  // catalog contains both qualified IDs and short aliases, and suffix-first lookup
+  // can select the wrong entry (including a different price record).
+  const exactId = (KNOWN_MODELS || []).find((model) => model.id.toLowerCase() === query);
+  if (exactId) return exactId;
 
   const normalizedQuery = query.replace(/[./_-\s]/g, '');
   const found = (KNOWN_MODELS || []).find((m) => {
@@ -339,6 +431,9 @@ export function getDeclaredProviderCapabilityMatrix(
  */
 export class ModelCatalogManager {
   private models = new Map<string, ModelCatalogEntry>();
+  private excludedModelIds = new Set<string>();
+  private authoritativeCatalog = false;
+  private refreshGeneration = 0;
 
   constructor(initialModels: ModelCatalogEntry[] = KNOWN_MODELS) {
     for (const m of initialModels) {
@@ -353,15 +448,42 @@ export class ModelCatalogManager {
 
   public registerModel(entry: ModelCatalogEntry): void {
     modelCatalogEntryToCapabilityDeclaration(entry);
+    this.refreshGeneration += 1;
+    this.excludedModelIds.delete(entry.id);
     this.models.set(entry.id, entry);
   }
 
   public unregisterModel(id: string): boolean {
-    return this.models.delete(id);
+    const registered = this.models.get(id);
+    const canonical = findModelInCatalog(id) ?? registered;
+    const canonicalId = canonical?.id ?? id;
+    const slash = canonicalId.indexOf('/');
+    const shortId = slash >= 0 ? canonicalId.slice(slash + 1) : undefined;
+    let removed = false;
+    for (const [key, model] of this.models) {
+      if (
+        key === id ||
+        key === shortId ||
+        model.id === canonicalId ||
+        findModelInCatalog(model.id)?.id === canonicalId
+      ) {
+        removed = this.models.delete(key) || removed;
+      }
+    }
+    if (canonical) this.excludedModelIds.add(canonical.id);
+    this.excludedModelIds.add(id);
+    if (shortId) this.excludedModelIds.add(shortId);
+    this.refreshGeneration += 1;
+    return removed;
   }
 
   public getModel(id: string): ModelCatalogEntry | undefined {
-    return this.models.get(id) || findModelInCatalog(id);
+    const registered = this.models.get(id);
+    if (registered) return registered;
+    if (this.authoritativeCatalog) return undefined;
+    if (this.excludedModelIds.has(id)) return undefined;
+    const fallback = findModelInCatalog(id);
+    return fallback && !this.excludedModelIds.has(fallback.id) ? fallback : undefined;
   }
 
   public getAllModels(): ModelCatalogEntry[] {
@@ -452,13 +574,38 @@ export class ModelCatalogManager {
     return this.recommendFromCandidates(role, candidates);
   }
 
-  public async refreshCatalog(fetcher?: () => Promise<ModelCatalogEntry[]>): Promise<ModelCatalogEntry[]> {
+  public async refreshCatalog(
+    fetcher?: () => Promise<ModelCatalogEntry[]>,
+    options: { mode?: 'merge' | 'replace' } = {}
+  ): Promise<ModelCatalogEntry[]> {
     if (fetcher) {
+      const generation = ++this.refreshGeneration;
       const fetched = await fetcher();
       if (!Array.isArray(fetched)) throw new Error('Model catalog refresh must return an array');
       for (const model of fetched) modelCatalogEntryToCapabilityDeclaration(model);
-      for (const m of fetched) {
-        this.models.set(m.id, m);
+      if (generation !== this.refreshGeneration) return this.getAllModels();
+
+      if (options.mode === 'replace') {
+        const replacement = new Map<string, ModelCatalogEntry>();
+        const fetchedIds = new Set(fetched.map((model) => model.id));
+        for (const model of this.models.values()) {
+          if (!fetchedIds.has(model.id)) this.excludedModelIds.add(model.id);
+        }
+        for (const model of fetched) {
+          this.excludedModelIds.delete(model.id);
+          replacement.set(model.id, model);
+          const shortId = model.id.includes('/') ? model.id.split('/')[1] : model.id;
+          if (shortId && !fetchedIds.has(shortId) && !replacement.has(shortId)) {
+            replacement.set(shortId, { ...model, id: shortId });
+          }
+        }
+        this.models = replacement;
+        this.authoritativeCatalog = true;
+      } else {
+        for (const model of fetched) {
+          this.excludedModelIds.delete(model.id);
+          this.models.set(model.id, model);
+        }
       }
     }
     return this.getAllModels();

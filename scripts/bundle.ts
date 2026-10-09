@@ -61,6 +61,7 @@ if (hasBun) {
     console.log(`✅ [InkPi Bundler] Standalone binary created successfully at: ${outPath}`);
   } catch (err) {
     console.error('❌ Failed to compile standalone binary with Bun:', err);
+    process.exit(1);
   }
 } else {
   console.log(`ℹ️ [InkPi Bundler] Reviewed entrypoint selected at: ${entrypointPath}`);

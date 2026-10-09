@@ -177,7 +177,9 @@ export class StreamInvoker {
         }
       }
       if (ctx.state.streamingMessage) {
-        if (msgEvent.type === 'text_delta') {
+        if (msgEvent.type === 'attempt_reset') {
+          ctx.state.streamingMessage.content = [];
+        } else if (msgEvent.type === 'text_delta') {
           let textBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'text') as any;
           if (!textBlock) {
             textBlock = { type: 'text', text: '' };

@@ -79,6 +79,8 @@ export interface ModelCapabilities {
 export interface ModelRoute {
   id: string;
   model: ModelConfig;
+  /** Opaque host credential reference; resolved only for a provider request. */
+  credentialRef?: string;
   capabilities?: ModelCapabilities;
   /** Higher values sort first. Fallback routes always sort after non-fallback routes. */
   priority?: number;
@@ -249,7 +251,10 @@ export class CapabilityRouter {
       taskId: task.id,
       requirements,
       outputContract: task.outputContract,
-      routes: evaluations.map(({ route, missing }) => ({ routeId: route.id, missing }))
+      routes: evaluations.map(({ route, missing }) => ({
+        routeId: route.id,
+        missing
+      }))
     });
   }
 
@@ -601,7 +606,10 @@ function resolveWithRuntimeState(router: CapabilityRouter, task: AiTask): Resolv
     taskId: task.id,
     requirements,
     outputContract: task.outputContract,
-    routes: evaluations.map(({ route, missing }) => ({ routeId: route.id, missing }))
+    routes: evaluations.map(({ route, missing }) => ({
+      routeId: route.id,
+      missing
+    }))
   });
 }
 
@@ -716,12 +724,21 @@ function compareAvailability(
   left: ModelRouteAvailability | undefined,
   right: ModelRouteAvailability | undefined
 ): number {
-  const rank: Record<ModelRouteAvailability, number> = { available: 0, degraded: 1, unavailable: 2 };
+  const rank: Record<ModelRouteAvailability, number> = {
+    available: 0,
+    degraded: 1,
+    unavailable: 2
+  };
   return compareAscending(rank[left ?? 'available'], rank[right ?? 'available']);
 }
 
 function compareHealth(left: ModelRouteHealth | undefined, right: ModelRouteHealth | undefined): number {
-  const rank: Record<ModelRouteHealth, number> = { healthy: 0, degraded: 1, unknown: 2, unhealthy: 3 };
+  const rank: Record<ModelRouteHealth, number> = {
+    healthy: 0,
+    degraded: 1,
+    unknown: 2,
+    unhealthy: 3
+  };
   return compareAscending(rank[left ?? 'healthy'], rank[right ?? 'healthy']);
 }
 

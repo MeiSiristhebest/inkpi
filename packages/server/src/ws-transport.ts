@@ -7,6 +7,7 @@ import type { RpcTransport } from './transport.js';
 export class WebSocketRpcTransport implements RpcTransport {
   private ws: any;
   private handlers: ((message: string) => void)[] = [];
+  private closeHandlers: ((error?: Error) => void)[] = [];
   private open = true;
 
   constructor(ws: any) {
@@ -19,10 +20,10 @@ export class WebSocketRpcTransport implements RpcTransport {
         }
       });
       ws.on('close', () => {
-        this.open = false;
+        this.markClosed(new Error('RPC WebSocket connection closed'));
       });
-      ws.on('error', () => {
-        this.open = false;
+      ws.on('error', (error: Error) => {
+        this.markClosed(error);
       });
     } else if (typeof ws.addEventListener === 'function') {
       ws.addEventListener('message', (event: any) => {
@@ -32,7 +33,10 @@ export class WebSocketRpcTransport implements RpcTransport {
         }
       });
       ws.addEventListener('close', () => {
-        this.open = false;
+        this.markClosed(new Error('RPC WebSocket connection closed'));
+      });
+      ws.addEventListener('error', () => {
+        this.markClosed(new Error('RPC WebSocket connection failed'));
       });
     }
   }
@@ -48,8 +52,16 @@ export class WebSocketRpcTransport implements RpcTransport {
     this.handlers.push(handler);
   }
 
+  public onClose(handler: (error?: Error) => void): void {
+    if (!this.open) {
+      handler(new Error('RPC WebSocket connection is closed'));
+      return;
+    }
+    this.closeHandlers.push(handler);
+  }
+
   public close(): void {
-    this.open = false;
+    this.markClosed(new Error('RPC WebSocket connection closed'));
     if (typeof this.ws.close === 'function') {
       this.ws.close();
     }
@@ -57,5 +69,12 @@ export class WebSocketRpcTransport implements RpcTransport {
 
   public isOpen(): boolean {
     return this.open;
+  }
+
+  private markClosed(error?: Error): void {
+    if (!this.open) return;
+    this.open = false;
+    for (const handler of this.closeHandlers) handler(error);
+    this.closeHandlers = [];
   }
 }

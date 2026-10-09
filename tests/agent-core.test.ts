@@ -1,9 +1,47 @@
 import { Agent, ExtensionHost, ExtensionRunner, MessageQueue, SessionTree, ToolRegistry } from '@inkpi/agent-core';
 import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
 import type { AgentEvent, AgentMessage, AgentTool, UserMessage } from '@inkpi/protocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('@inkpi/agent-core', () => {
+  it('reuses incremental context between prompts and releases it after idle retention', async () => {
+    vi.useFakeTimers();
+    try {
+      const updates: Array<{ reset: boolean; roles: string[] }> = [];
+      const modelMessageRoles: string[][] = [];
+      const agent = new Agent({
+        initialState: { model: getModelPreset('mock-test') },
+        incrementalTransformContext: async (update) => {
+          updates.push({ reset: update.reset, roles: update.messages.map((message) => message.role) });
+          return update.reset ? [...update.messages] : [...update.previousView, ...update.messages];
+        },
+        streamFn: (_model, messages) => {
+          modelMessageRoles.push(messages.map((message) => message.role));
+          const stream = new AssistantEventStream();
+          stream.push({ type: 'text_delta', textDelta: 'ok' });
+          stream.end();
+          return stream;
+        }
+      });
+
+      await agent.prompt('first');
+      await agent.prompt('second');
+
+      expect(updates).toEqual([
+        { reset: true, roles: ['user'] },
+        { reset: false, roles: ['assistant', 'user'] }
+      ]);
+      expect(modelMessageRoles[1]).toEqual(['user', 'assistant', 'user']);
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      await agent.prompt('third');
+
+      expect(updates[2]).toEqual({ reset: true, roles: ['user', 'assistant', 'user', 'assistant', 'user'] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('should manage MessageQueues with different queue modes', () => {
     const queue = new MessageQueue();
     const msg1: AgentMessage = { role: 'user', content: '纠偏1' };
@@ -123,6 +161,7 @@ describe('@inkpi/agent-core', () => {
     expect(tree.getCurrentLeafId()).toBe('m2');
     expect(tree.getNode('m1')?.message).toEqual(msg1);
     expect(tree.getHistory().length).toBe(2);
+    expect(tree.getHistoryDelta('m1')).toEqual({ headId: 'm2', messages: [msg2], reset: false });
 
     // Fork from m1
     tree.selectLeaf('m1');
@@ -132,6 +171,12 @@ describe('@inkpi/agent-core', () => {
     const historyBranch2 = tree.getHistory();
     expect(historyBranch2.length).toBe(2);
     expect(historyBranch2[1].id).toBe('m3');
+    expect(tree.getHistoryDelta('m2')).toEqual({
+      headId: 'm3',
+      messages: [msg1, msg3],
+      reset: true
+    });
+    expect(tree.getHistoryDelta('m3')).toEqual({ headId: 'm3', messages: [], reset: false });
 
     // Navigation test
     expect(tree.navigate('m2')).toBe(true);
@@ -146,6 +191,24 @@ describe('@inkpi/agent-core', () => {
 
     tree.clear();
     expect(tree.size()).toBe(0);
+  });
+
+  it('returns only appended entries from a 10k-message history head', () => {
+    const tree = new SessionTree([], { clock: () => 1234 });
+    for (let index = 0; index < 10_000; index += 1) {
+      tree.addMessage({ id: `long_${index}`, role: 'user', content: `message ${index}` });
+    }
+
+    const delta = tree.getHistoryDelta('long_9997');
+    expect(delta).toEqual({
+      headId: 'long_9999',
+      messages: [
+        { id: 'long_9998', role: 'user', content: 'message 9998' },
+        { id: 'long_9999', role: 'user', content: 'message 9999' }
+      ],
+      reset: false
+    });
+    expect(tree.getHistory()).toHaveLength(10_000);
   });
 
   it('should generate stable unique IDs and valid branch marker messages', () => {

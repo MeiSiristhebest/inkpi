@@ -131,7 +131,11 @@ export class BranchSummarizer {
       return null;
     }
 
+    const revision = tree.getRevision();
     const details = await this.summarizeBranch(tree, effectiveFromId, toLeafId);
+    if (tree.getRevision() !== revision) {
+      throw new Error('Session tree changed while the branch summary was generated; retry the branch switch.');
+    }
     tree.selectLeaf(toLeafId);
 
     if (!details || details.divergedNodeCount === 0) {

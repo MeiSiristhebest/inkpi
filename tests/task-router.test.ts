@@ -1,4 +1,10 @@
-import { ContextPipeline, TaskRegistry, TaskRouter, TaskScheduler } from '@inkpi/agent-core';
+import {
+  ContextPipeline,
+  InMemoryTaskExecutionStore,
+  TaskRegistry,
+  TaskRouter,
+  TaskScheduler
+} from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -74,6 +80,48 @@ describe('TaskRegistry and TaskRouter', () => {
       progress: 0.5
     });
     expect(events).toEqual(['created', 'queued', 'started', 'progress', 'completed']);
+  });
+
+  it('accepts identical task retries once and rejects a reused id with a different payload', async () => {
+    const registry = new TaskRegistry();
+    const executionStore = new InMemoryTaskExecutionStore();
+    let executions = 0;
+    registry.register({
+      id: 'idempotent-handler',
+      kinds: ['test.idempotent'],
+      async execute() {
+        executions += 1;
+        return { output: { format: 'text', text: 'accepted once' } };
+      }
+    });
+    const router = new TaskRouter({ registry, executionStore });
+    const submitted = task({ id: 'retryable-task', kind: 'test.idempotent' });
+
+    const first = router.submitDurably(submitted);
+    const retry = router.submitDurably({ ...submitted, input: { text: 'hello' } });
+    await expect(first).resolves.toMatchObject({ taskId: 'retryable-task' });
+    await expect(retry).resolves.toMatchObject({ taskId: 'retryable-task' });
+    await router.wait('retryable-task');
+    await expect(router.submitDurably(submitted)).resolves.toMatchObject({
+      taskId: 'retryable-task',
+      status: 'completed'
+    });
+    expect(() => router.submit({ ...submitted, input: { text: 'different' } })).toThrow(
+      'Task already exists: retryable-task'
+    );
+    await expect(router.submitDurably({ ...submitted, input: { text: 'different' } })).rejects.toThrow(
+      'different payload'
+    );
+    expect(await router.wait('retryable-task')).toMatchObject({ output: { text: 'accepted once' } });
+    expect(executions).toBe(1);
+
+    const recoveredRouter = new TaskRouter({ registry, executionStore });
+    await recoveredRouter.ready;
+    await expect(recoveredRouter.submitDurably(submitted)).resolves.toMatchObject({
+      taskId: 'retryable-task',
+      status: 'completed'
+    });
+    expect(executions).toBe(1);
   });
 
   it('fails loudly when no handler or output contract is available', async () => {

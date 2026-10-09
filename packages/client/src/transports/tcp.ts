@@ -8,6 +8,7 @@ import { DEFAULT_RPC_HOST } from '../types.js';
 export class TcpSocketTransport implements RpcTransport {
   private socket: net.Socket;
   private handlers: ((message: string) => void)[] = [];
+  private closeHandlers: ((error?: Error) => void)[] = [];
   private buffer = '';
   private open = true;
 
@@ -31,11 +32,11 @@ export class TcpSocketTransport implements RpcTransport {
     });
 
     this.socket.on('close', () => {
-      this.open = false;
+      this.markClosed(new Error('RPC TCP connection closed'));
     });
 
-    this.socket.on('error', () => {
-      this.open = false;
+    this.socket.on('error', (error) => {
+      this.markClosed(error);
     });
   }
 
@@ -57,12 +58,27 @@ export class TcpSocketTransport implements RpcTransport {
     this.handlers.push(handler);
   }
 
+  public onClose(handler: (error?: Error) => void): void {
+    if (!this.open) {
+      handler(new Error('RPC TCP connection is closed'));
+      return;
+    }
+    this.closeHandlers.push(handler);
+  }
+
   public close(): void {
-    this.open = false;
+    this.markClosed(new Error('RPC TCP connection closed'));
     this.socket.destroy();
   }
 
   public isOpen(): boolean {
     return this.open && !this.socket.destroyed;
+  }
+
+  private markClosed(error?: Error): void {
+    if (!this.open) return;
+    this.open = false;
+    for (const handler of this.closeHandlers) handler(error);
+    this.closeHandlers = [];
   }
 }

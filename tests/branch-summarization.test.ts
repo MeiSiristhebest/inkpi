@@ -94,4 +94,31 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
       "Target branch node 'missing' not found"
     );
   });
+
+  it('rejects an async branch summary if the tree changes before commit', async () => {
+    const tree = new SessionTree();
+    tree.addMessage({ role: 'user', content: 'root' } as UserMessage);
+    const common = tree.addMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'base' }]
+    } as AssistantMessage);
+    const abandoned = tree.addMessage({ role: 'user', content: 'old route' } as UserMessage);
+    tree.addMessage({ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] } as AssistantMessage);
+    tree.selectLeaf(common);
+    const target = tree.addMessage({ role: 'user', content: 'new route' } as UserMessage);
+
+    let finishSummary!: (summary: string) => void;
+    const summaryPromise = new Promise<string>((resolve) => {
+      finishSummary = resolve;
+    });
+    const summarizer = new BranchSummarizer(() => summaryPromise, { idGenerator: () => 'stale_summary' });
+    const switchPromise = summarizer.switchBranchWithSummary(tree, target, abandoned);
+
+    tree.navigate(abandoned);
+    finishSummary('stale route summary');
+
+    await expect(switchPromise).rejects.toThrow('Session tree changed while the branch summary was generated');
+    expect(tree.getCurrentLeafId()).toBe(abandoned);
+    expect(tree.getNode('stale_summary')).toBeUndefined();
+  });
 });

@@ -123,6 +123,107 @@ describe('ContextTransformer (管线第 1 段)', () => {
     await new ContextTransformer().prepare(ctx);
     expect(seen).toEqual([1]);
   });
+
+  it('incremental transform receives only appends and rebuilds after history edits', async () => {
+    const first = { id: 'm1', role: 'user', content: 'one', timestamp: 1 } as AgentMessage;
+    const updates: Array<{
+      reset: boolean;
+      headId: string | null;
+      messages: string[];
+      previousView: string[];
+    }> = [];
+    const transformCalls: number[] = [];
+    const { ctx, state } = makeCtx({
+      state: makeState([first]),
+      options: {
+        incrementalTransformContext: async (update) => {
+          updates.push({
+            reset: update.reset,
+            headId: update.headId,
+            messages: update.messages.map((message) => String(message.id)),
+            previousView: update.previousView.map((message) => String(message.id))
+          });
+          return update.reset ? [...update.messages] : [...update.previousView, ...update.messages];
+        },
+        transformContext: async (messages) => {
+          transformCalls.push(messages.length);
+          return messages;
+        }
+      }
+    });
+    const transformer = new ContextTransformer();
+
+    await transformer.prepare(ctx);
+    state.messages.push({ id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'two' }], timestamp: 2 });
+    const appendedView = await transformer.prepare(ctx);
+    await transformer.prepare(ctx);
+
+    state.messages = [first, { id: 'branch', role: 'user', content: 'branch', timestamp: 3 } as AgentMessage];
+    await transformer.prepare(ctx);
+    state.messages[1] = { id: 'edited', role: 'user', content: 'edited', timestamp: 4 } as AgentMessage;
+    await transformer.prepare(ctx);
+
+    expect(appendedView.map((message) => String(message.id))).toEqual(['m1', 'm2']);
+    expect(updates).toEqual([
+      { reset: true, headId: 'm1', messages: ['m1'], previousView: [] },
+      { reset: false, headId: 'm2', messages: ['m2'], previousView: ['m1'] },
+      { reset: true, headId: 'branch', messages: ['m1', 'branch'], previousView: [] },
+      { reset: true, headId: 'edited', messages: ['m1', 'edited'], previousView: [] }
+    ]);
+    expect(transformCalls).toEqual([1, 2, 2, 2, 2]);
+  });
+
+  it('retries a failed incremental update from the last committed head', async () => {
+    const first = { id: 'm1', role: 'user', content: 'one', timestamp: 1 } as AgentMessage;
+    const attempts: string[][] = [];
+    let fail = false;
+    const { ctx, state } = makeCtx({
+      state: makeState([first]),
+      options: {
+        incrementalTransformContext: async (update) => {
+          attempts.push(update.messages.map((message) => String(message.id)));
+          if (fail) throw new Error('transform failed');
+          return update.reset ? [...update.messages] : [...update.previousView, ...update.messages];
+        }
+      }
+    });
+    const transformer = new ContextTransformer();
+
+    await transformer.prepare(ctx);
+    state.messages.push({ id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'two' }], timestamp: 2 });
+    fail = true;
+    await expect(transformer.prepare(ctx)).rejects.toThrow('transform failed');
+    fail = false;
+    await transformer.prepare(ctx);
+
+    expect(attempts).toEqual([['m1'], ['m2'], ['m2']]);
+  });
+
+  it('sends one new entry to the incremental transform for a 10k-message history', async () => {
+    const history = Array.from(
+      { length: 10_000 },
+      (_, index) => ({ id: `history-${index}`, role: 'user', content: `entry ${index}` }) as AgentMessage
+    );
+    const deltaSizes: number[] = [];
+    const { ctx, state } = makeCtx({
+      state: makeState(history),
+      options: {
+        incrementalTransformContext: async (update) => {
+          deltaSizes.push(update.messages.length);
+          return update.reset ? [...update.messages] : [...update.previousView, ...update.messages];
+        }
+      }
+    });
+    const transformer = new ContextTransformer();
+
+    expect(await transformer.prepare(ctx)).toHaveLength(10_000);
+    state.messages.push({ id: 'history-10000', role: 'user', content: 'entry 10000' } as AgentMessage);
+    const extendedView = await transformer.prepare(ctx);
+
+    expect(deltaSizes).toEqual([10_000, 1]);
+    expect(extendedView).toHaveLength(10_001);
+    expect(extendedView.at(-1)?.id).toBe('history-10000');
+  });
 });
 
 describe('TurnFinalizer (管线第 4 段)', () => {

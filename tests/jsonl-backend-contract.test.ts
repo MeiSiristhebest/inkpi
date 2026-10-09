@@ -6,11 +6,8 @@ import { JsonlSessionBackend } from '@inkpi/session-backends';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 // ---------------------------------------------------------------------------
-// JsonlSessionBackend 的容错契约。
-//
-// 评审指出一个跨后端 LSP 分歧：jsonl 遇到损坏行会**静默跳过**，而 sqlite
-// 会抛异常。这里不改变该行为（改变会破坏既有调用方），而是把它**显式成文**，
-// 让"静默降级"成为一个被测试锁定的、有意识的契约，而不是无人知晓的意外。
+// JsonlSessionBackend 的恢复契约：只忽略没有换行符的损坏尾记录；
+// 已提交的坏行和损坏快照必须显式报错，避免静默改变或覆盖持久化状态。
 // ---------------------------------------------------------------------------
 describe('JsonlSessionBackend fault-tolerance contract', () => {
   let dir: string;
@@ -62,16 +59,39 @@ describe('JsonlSessionBackend fault-tolerance contract', () => {
     expect(filtered.map((e) => e.id)).toEqual(['e2', 'e3']);
   });
 
-  it('getEntries: 跳过损坏行而非整体失败（契约：静默降级）', async () => {
+  it('getEntries: 内部损坏行显式失败', async () => {
     const backend = new JsonlSessionBackend(dir);
     await backend.initialize();
     await backend.appendEntry('sess_1', entry('good', 100));
-    fs.appendFileSync(path.join(dir, 'session_sess_1.jsonl'), '这不是合法的 JSON\n', 'utf8');
-    fs.appendFileSync(path.join(dir, 'session_sess_1.jsonl'), '{ 残缺的\n', 'utf8');
+    const journal = path.join(dir, 'session_sess_1.jsonl');
+    fs.appendFileSync(journal, '这不是合法的 JSON\n', 'utf8');
+    await backend.appendEntry('sess_1', entry('after_corruption', 200));
 
-    // 契约：损坏行被跳过，合法数据仍可读回
-    const entries = await backend.getEntries('sess_1');
-    expect(entries.map((e) => e.id)).toEqual(['good']);
+    await expect(backend.getEntries('sess_1')).rejects.toThrow(/line 2/);
+  });
+
+  it('getEntries: 忽略未换行的损坏尾记录，但拒绝在其后追加', async () => {
+    const backend = new JsonlSessionBackend(dir);
+    await backend.initialize();
+    await backend.appendEntry('sess_1', entry('good', 100));
+    const journal = path.join(dir, 'session_sess_1.jsonl');
+    fs.appendFileSync(journal, '{"id":"interrupted"', 'utf8');
+
+    await expect(backend.getEntries('sess_1')).resolves.toMatchObject([{ id: 'good' }]);
+    const beforeAppend = fs.readFileSync(journal, 'utf8');
+    await expect(backend.appendEntry('sess_1', entry('next', 200))).rejects.toThrow(/final JSONL record is incomplete/);
+    expect(fs.readFileSync(journal, 'utf8')).toBe(beforeAppend);
+  });
+
+  it('appendEntry: 在有效但未换行的尾记录后插入分隔符', async () => {
+    const backend = new JsonlSessionBackend(dir);
+    await backend.initialize();
+    const journal = path.join(dir, 'session_sess_1.jsonl');
+    fs.writeFileSync(journal, JSON.stringify(entry('first', 100)), 'utf8');
+
+    await backend.appendEntry('sess_1', entry('second', 200));
+
+    await expect(backend.getEntries('sess_1')).resolves.toMatchObject([{ id: 'first' }, { id: 'second' }]);
   });
 
   it('getSnapshot: 文件不存在返回 null', async () => {
@@ -80,21 +100,23 @@ describe('JsonlSessionBackend fault-tolerance contract', () => {
     await expect(backend.getSnapshot('nope')).resolves.toBeNull();
   });
 
-  it('getSnapshot / saveSnapshot: 快照文件损坏时重建，不抛异常', async () => {
+  it('getSnapshot / saveSnapshot: 损坏快照显式失败且保留原文件', async () => {
     const backend = new JsonlSessionBackend(dir);
     await backend.initialize();
-    fs.writeFileSync(path.join(dir, 'snapshots.json'), '{ 损坏内容', 'utf8');
+    const snapshotPath = path.join(dir, 'snapshots.json');
+    fs.writeFileSync(snapshotPath, '{ 损坏内容', 'utf8');
+    const original = fs.readFileSync(snapshotPath, 'utf8');
 
-    // 损坏文件不应让读取抛错
-    await expect(backend.getSnapshot('doc_1')).resolves.toBeNull();
+    await expect(backend.getSnapshot('doc_1')).rejects.toThrow(/corrupt/i);
 
     const snapshot: DocumentSnapshot = {
       documentId: 'doc_1',
       contentMarkdown: '江湖夜雨十年灯',
       updatedAt: 1000
     } as DocumentSnapshot;
-    await backend.saveSnapshot(snapshot);
-    await expect(backend.getSnapshot('doc_1')).resolves.toMatchObject({ documentId: 'doc_1' });
+    await expect(backend.saveSnapshot(snapshot)).rejects.toThrow(/corrupt/i);
+    await expect(backend.search('江湖')).rejects.toThrow(/corrupt/i);
+    expect(fs.readFileSync(snapshotPath, 'utf8')).toBe(original);
   });
 
   it('appendDelta: 尊重显式传入的 id，否则自增', async () => {
@@ -112,18 +134,17 @@ describe('JsonlSessionBackend fault-tolerance contract', () => {
     expect(deltas.map((d) => d.id)).toEqual([1, 2, 99]);
   });
 
-  it('getDeltas: 文件不存在返回空数组；损坏行被跳过', async () => {
+  it('getDeltas: 文件不存在返回空数组；已提交的损坏行显式失败', async () => {
     const backend = new JsonlSessionBackend(dir);
     await backend.initialize();
     await expect(backend.getDeltas('missing_doc')).resolves.toEqual([]);
 
     await backend.appendDelta({ documentId: 'd2', stepJson: '{}', clientTimestamp: 1, createdAt: 1 });
     fs.appendFileSync(path.join(dir, 'deltas_d2.jsonl'), '坏行\n', 'utf8');
-    const deltas = await backend.getDeltas('d2');
-    expect(deltas).toHaveLength(1);
+    await expect(backend.getDeltas('d2')).rejects.toThrow(/line 2/);
   });
 
-  it('search: 无快照文件返回空；损坏文件返回空；limit 生效', async () => {
+  it('search: 无快照文件返回空；损坏文件显式失败；limit 生效', async () => {
     const backend = new JsonlSessionBackend(dir);
     await backend.initialize();
     await expect(backend.search('江湖')).resolves.toEqual([]);
@@ -143,7 +164,7 @@ describe('JsonlSessionBackend fault-tolerance contract', () => {
     expect(limited.length).toBe(2);
 
     fs.writeFileSync(path.join(dir, 'snapshots.json'), '损坏', 'utf8');
-    await expect(backend.search('江湖')).resolves.toEqual([]);
+    await expect(backend.search('江湖')).rejects.toThrow(/corrupt/i);
   });
 
   it('close: jsonl 无持久连接，close 后数据仍可重新读回（与 memory 的破坏性 close 不同）', async () => {

@@ -163,6 +163,15 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
 
     for await (const event of this) {
       switch (event.type) {
+        case 'attempt_reset':
+          fullText = '';
+          fullThinking = '';
+          toolCallsMap.clear();
+          finalUsage = undefined;
+          hasError = false;
+          errorMessage = undefined;
+          providerError = undefined;
+          break;
         case 'text_delta':
           fullText += event.textDelta;
           break;
@@ -380,6 +389,7 @@ export interface ResilientStreamOptions extends RetryOptions {
 /**
  * 弹性流式包装器 (Resilient Stream Wrapper)
  * 遇网络抖动或提供商暂时中断时，自动重试并透明衔接事件流
+ * 重试前若上一尝试已输出事件，会发送 `attempt_reset`，清除该次尝试的部分结果。
  */
 export function createResilientStream(
   factory: (attempt: number) => AssistantEventStream | Promise<AssistantEventStream>,
@@ -393,6 +403,7 @@ export function createResilientStream(
     attempt++;
     let shouldRetry = false;
     let retryError: unknown = null;
+    let attemptHadOutput = false;
 
     try {
       const inner = await factory(attempt);
@@ -412,6 +423,7 @@ export function createResilientStream(
           }
         }
         outerStream.push(event);
+        attemptHadOutput = true;
       }
 
       if (shouldRetry) {
@@ -422,7 +434,7 @@ export function createResilientStream(
           normalizedRetry.maxDelayMs ?? options.maxDelayMs ?? Number.POSITIVE_INFINITY
         );
         options.onRetry?.(attempt, retryError, delay);
-        scheduleRetry(delay);
+        scheduleRetry(delay, attemptHadOutput);
         return;
       }
 
@@ -435,7 +447,7 @@ export function createResilientStream(
           normalized.maxDelayMs ?? options.maxDelayMs ?? Number.POSITIVE_INFINITY
         );
         options.onRetry?.(attempt, normalized, delay);
-        scheduleRetry(delay);
+        scheduleRetry(delay, attemptHadOutput);
       } else {
         outerStream.error(normalized);
       }
@@ -446,7 +458,8 @@ export function createResilientStream(
    * 计划一次重试：若已 abort（通过 signal 或 outerStream.abort()），则不再递归，
    * 避免游离递归在重入期间无视 AbortSignal 持续重试。
    */
-  function scheduleRetry(delayMs: number): void {
+  function scheduleRetry(delayMs: number, resetAttempt: boolean): void {
+    if (resetAttempt) outerStream.push({ type: 'attempt_reset' });
     setTimeout(() => {
       if (options.signal?.aborted || outerStream.isAborted) {
         return;

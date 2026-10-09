@@ -32,7 +32,11 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
       inputTokens: 100,
       outputTokens: 200,
       totalTokens: 300,
-      cacheReadTokens: 50
+      promptTokens: 250,
+      serviceTier: 'priority',
+      cacheReadTokens: 50,
+      cacheWrite5mTokens: 10,
+      cacheWrite1hTokens: 5
     };
     expect(Value.Check(UsageSchema, validUsage)).toBe(true);
 
@@ -42,6 +46,7 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
       totalTokens: 300
     };
     expect(Value.Check(UsageSchema, invalidUsage)).toBe(false);
+    expect(Value.Check(UsageSchema, { ...validUsage, cacheWrite5mTokens: -1 })).toBe(false);
   });
 
   it('should validate UserMessageSchema and AssistantMessageSchema', () => {

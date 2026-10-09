@@ -30,9 +30,13 @@ export const UsageSchema = Type.Object({
   inputTokens: Type.Integer({ minimum: 0 }),
   outputTokens: Type.Integer({ minimum: 0 }),
   totalTokens: Type.Integer({ minimum: 0 }),
+  promptTokens: Type.Optional(Type.Integer({ minimum: 0 })),
+  serviceTier: Type.Optional(Type.String({ minLength: 1 })),
   reasoningTokens: Type.Optional(Type.Integer({ minimum: 0 })),
   cacheReadTokens: Type.Optional(Type.Integer({ minimum: 0 })),
-  cacheWriteTokens: Type.Optional(Type.Integer({ minimum: 0 }))
+  cacheWriteTokens: Type.Optional(Type.Integer({ minimum: 0 })),
+  cacheWrite5mTokens: Type.Optional(Type.Integer({ minimum: 0 })),
+  cacheWrite1hTokens: Type.Optional(Type.Integer({ minimum: 0 }))
 });
 export type UsageType = Static<typeof UsageSchema>;
 

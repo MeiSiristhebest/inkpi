@@ -4,6 +4,8 @@
 export interface RpcTransport {
   send(message: string): Promise<void> | void;
   onMessage(handler: (message: string) => void): void;
+  /** Notifies pending RPC calls when the underlying connection closes. */
+  onClose?(handler: (error?: Error) => void): void;
   close(): Promise<void> | void;
   isOpen(): boolean;
 }

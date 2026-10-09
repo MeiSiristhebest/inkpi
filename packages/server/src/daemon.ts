@@ -99,6 +99,10 @@ import {
   validateModelRouteRuntimeState
 } from './model-capability-router.js';
 import { probeModelProvider } from './model-provider-probe.js';
+import {
+  type RuntimeCredentialResolver,
+  createRuntimeCredentialResolverFromEnvironment
+} from './runtime-credential-broker.js';
 import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
 import { InkRpcServer, type ServerContext } from './server.js';
 import { TaskModelHandler } from './task-model-handler.js';
@@ -112,6 +116,7 @@ export interface DaemonOptions {
   defaultModel?: ModelConfig;
   defaultModelCapabilities?: ModelCapabilities;
   modelRoutes?: readonly ModelRoute[];
+  credentialResolver?: RuntimeCredentialResolver;
   capabilityRouter?: CapabilityRouter;
   instructionRegistry?: InstructionRegistry;
   skillRuntime?: ProgressiveSkillRuntime;
@@ -156,6 +161,7 @@ export class InkPiDaemon {
   private readonly removedBaseModelRoutes = new Set<string>();
   private readonly modelRouteStates = new Map<string, import('./model-capability-router.js').ModelRouteRuntimeState>();
   private readonly taskObservability: TaskObservability;
+  private readonly credentialResolver?: RuntimeCredentialResolver;
   private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
   private readonly firstPartyPluginRuntime: FirstPartyPluginRuntimeRegistration;
   private cachePersistenceRestored = false;
@@ -167,6 +173,7 @@ export class InkPiDaemon {
       ...options
     };
     this.cacheCoordinator = options.cacheCoordinator ?? new RuntimeCacheCoordinator();
+    this.credentialResolver = options.credentialResolver ?? createRuntimeCredentialResolverFromEnvironment();
     this.taskObservability = new TaskObservability(options.observability);
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
     this.instructionRegistry =
@@ -210,6 +217,7 @@ export class InkPiDaemon {
         defaultModelCapabilities: options.defaultModelCapabilities,
         routes: options.modelRoutes,
         capabilityRouter: options.capabilityRouter,
+        credentialResolver: this.credentialResolver,
         cacheCoordinator: this.cacheCoordinator
       });
       this.modelHandler = modelHandler;
@@ -478,7 +486,10 @@ export class InkPiDaemon {
     this.rpcServer.registerMethod('model.routes.list', () => this.listRuntimeModelRoutes());
     this.rpcServer.registerMethod(
       'model.provider.probe',
-      (params: RuntimeModelProviderProbeParams): Promise<RuntimeModelProviderProbeResult> => probeModelProvider(params)
+      (params: RuntimeModelProviderProbeParams): Promise<RuntimeModelProviderProbeResult> =>
+        probeModelProvider(params, {
+          resolveCredential: this.credentialResolver
+        })
     );
     this.rpcServer.registerMethod(
       'model.routes.configure',
@@ -491,16 +502,16 @@ export class InkPiDaemon {
     );
     this.rpcServer.registerMethod(
       'model.routes.health',
-      (params: RuntimeModelRouteHealthParams): RuntimeModelRouteHealthResult =>
+      (params: RuntimeModelRouteHealthParams): Promise<RuntimeModelRouteHealthResult> =>
         this.updateRuntimeModelRouteHealth(params)
     );
 
-    this.rpcServer.registerMethod('task.submit', (params: TaskSubmitParams) => {
+    this.rpcServer.registerMethod('task.submit', async (params: TaskSubmitParams) => {
       const handler = this.taskRouter.registry.resolve(params.task);
       if (handler.id === 'runtime.model') {
         this.capabilityRouter?.resolve(params.task);
       }
-      return this.taskRouter.submit(params.task);
+      return this.taskRouter.submitDurably(params.task);
     });
 
     this.rpcServer.registerMethod('task.cancel', (params: TaskCancelParams) => {
@@ -746,7 +757,9 @@ export class InkPiDaemon {
     this.modelRouteStates.set(normalizedRouteId, { ...state });
   }
 
-  private updateRuntimeModelRouteHealth(params: RuntimeModelRouteHealthParams): RuntimeModelRouteHealthResult {
+  private async updateRuntimeModelRouteHealth(
+    params: RuntimeModelRouteHealthParams
+  ): Promise<RuntimeModelRouteHealthResult> {
     const rawParams: { routeId?: unknown; state?: unknown } = params;
     if (rawParams.state !== undefined) {
       throw new Error('model.routes.health is read-only; Runtime health monitors own route state');
@@ -766,10 +779,13 @@ export class InkPiDaemon {
       availability: 'available' as const,
       health: 'unknown' as const
     };
+    const resolvedCredential = route.credentialRef
+      ? await this.credentialResolver?.(route.credentialRef)
+      : route.model.apiKey;
     return {
       routeId,
       exists: true,
-      credentialConfigured: typeof route.model.apiKey === 'string' && route.model.apiKey.length > 0,
+      credentialConfigured: typeof resolvedCredential === 'string' && resolvedCredential.length > 0,
       state: { ...state },
       model: { id: route.model.id, provider: String(route.model.provider) }
     };
@@ -788,6 +804,7 @@ export class InkPiDaemon {
     if (this.capabilityRouter) return this.capabilityRouter;
     const modelHandler = new TaskModelHandler({
       routes,
+      credentialResolver: this.credentialResolver,
       cacheCoordinator: this.cacheCoordinator
     });
     this.modelHandler = modelHandler;
@@ -1040,7 +1057,7 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
       'id',
       'name',
       'provider',
-      'apiKey',
+      'credentialRef',
       'baseUrl',
       'temperature',
       'topP',
@@ -1101,11 +1118,14 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
   const modelId = routeString(entry.model.id, `model id for route '${id}'`);
   const name = routeString(entry.model.name ?? modelId, `model name for route '${id}'`);
   const provider = routeString(entry.model.provider, `model provider for route '${id}'`);
+  const credentialRef =
+    entry.model.credentialRef === undefined
+      ? undefined
+      : routeCredentialRef(entry.model.credentialRef, `credential reference for route '${id}'`);
   const model = {
     id: modelId,
     name,
     provider: provider as AiModelConfig['provider'],
-    ...(typeof entry.model.apiKey === 'string' && entry.model.apiKey.length > 0 ? { apiKey: entry.model.apiKey } : {}),
     ...(typeof entry.model.baseUrl === 'string' ? { baseUrl: entry.model.baseUrl } : {}),
     ...(finiteNumber(entry.model.temperature) ? { temperature: entry.model.temperature } : {}),
     ...(finiteNumber(entry.model.topP) ? { topP: entry.model.topP } : {}),
@@ -1131,6 +1151,7 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
   return {
     id,
     model,
+    ...(credentialRef ? { credentialRef } : {}),
     ...(entry.capabilities ? { capabilities: { ...entry.capabilities } } : {}),
     ...(finiteNumber(entry.priority) ? { priority: entry.priority } : {}),
     ...(entry.ranking ? { ranking: { ...entry.ranking } } : {}),
@@ -1173,6 +1194,14 @@ function routeString(value: unknown, field: string): string {
     throw new Error(`Model route ${field} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function routeCredentialRef(value: unknown, field: string): string {
+  const reference = routeString(value, field);
+  if (!reference.startsWith('inkpi.model.') || reference.length > 256 || /[\u0000-\u001f\u007f]/.test(reference)) {
+    throw new Error(`Model route ${field} is invalid`);
+  }
+  return reference;
 }
 
 function assertAllowedKeys(value: unknown, allowed: readonly string[], context: string): void {

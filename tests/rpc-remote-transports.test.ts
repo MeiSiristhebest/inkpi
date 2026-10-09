@@ -1,5 +1,13 @@
 import type * as net from 'node:net';
+import { Agent } from '@inkpi/agent-core';
+import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
+import {
+  InkRpcClient as ClientInkRpcClient,
+  MemoryTransport as ClientMemoryTransport,
+  RemoteStreamTransport as ClientRemoteStreamTransport
+} from '@inkpi/client';
 import { HeadlessEditorState } from '@inkpi/editor-core';
+import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import {
   InkRpcClient,
   InkRpcServer,
@@ -8,6 +16,7 @@ import {
   TcpSocketTransport,
   WebSocketRpcTransport
 } from '@inkpi/server';
+import { AppendOnlySessionJournal } from '@inkpi/storage';
 import { afterEach, describe, expect, it } from 'vitest';
 
 describe('InkPi RPC Remote Transports & Server/Client', () => {
@@ -39,6 +48,91 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     const updated = await client.getEditorText();
     const updatedText = typeof updated === 'string' ? updated : updated.text;
     expect(updatedText).toBe('最初的灵感片段\n第二段设定');
+  });
+
+  it('rejects pending RPC calls when the remote transport closes', async () => {
+    const [tServer, tClient] = MemoryTransport.createPair();
+    const clientTransport = new RemoteStreamTransport(tClient);
+    const pending = clientTransport.sendRequest({ jsonrpc: '2.0', id: 1, method: 'test' });
+
+    tServer.close();
+
+    await expect(pending).rejects.toThrow('RPC memory connection closed');
+    await expect(clientTransport.sendRequest({ jsonrpc: '2.0', id: 2, method: 'test' })).rejects.toThrow(
+      'RPC transport is closed'
+    );
+  });
+
+  it('client package rejects pending RPC calls when the remote transport closes', async () => {
+    const [tServer, tClient] = ClientMemoryTransport.createPair();
+    const clientTransport = new ClientRemoteStreamTransport(tClient);
+    const pending = clientTransport.sendRequest({ jsonrpc: '2.0', id: 1, method: 'test' });
+
+    tServer.close();
+
+    await expect(pending).rejects.toThrow('RPC memory connection closed');
+  });
+
+  it('preserves inline image content across client RPC, agent state, and session journal', async () => {
+    const prompt = 'Describe the attached image.';
+    const image: ImageContent = { type: 'image', image: 'AQID', mimeType: 'image/png' };
+    const modelInputs: AgentMessage[][] = [];
+    let nextJournalId = 0;
+    const journal = new AppendOnlySessionJournal({
+      sessionId: 'image-session',
+      idGenerator: () => `image-event-${++nextJournalId}`,
+      clock: () => 1234
+    });
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      journal,
+      clock: () => 1234,
+      streamFn: (_model, messages) => {
+        modelInputs.push(messages);
+        const stream = new AssistantEventStream();
+        stream.push({ type: 'text_delta', textDelta: 'received' });
+        stream.end();
+        return stream;
+      }
+    });
+    server = new InkRpcServer({ agent });
+
+    const [tServer, tClient] = MemoryTransport.createPair();
+    server.bindTransport(tServer);
+    const client = new ClientInkRpcClient(new ClientRemoteStreamTransport(tClient));
+
+    await client.prompt(prompt, [image]);
+
+    const expectedUserMessage = {
+      role: 'user',
+      content: [{ type: 'text', text: prompt }, image],
+      timestamp: 1234
+    };
+    expect(agent.state.messages[0]).toEqual(expectedUserMessage);
+    expect(modelInputs[0]?.[0]).toEqual(expectedUserMessage);
+
+    const persisted = journal.getEntriesByType('user_message');
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.payload).toEqual(expectedUserMessage);
+
+    const restoredJournal = new AppendOnlySessionJournal({ sessionId: 'image-session' });
+    restoredJournal.importFromJsonl(journal.exportToJsonl());
+    expect(restoredJournal.getEntriesByType('user_message')[0]?.payload).toEqual(expectedUserMessage);
+  });
+
+  it('removes a pending RPC call when sending fails', async () => {
+    const transport = {
+      send: () => {
+        throw new Error('send failed');
+      },
+      onMessage: () => {},
+      close: () => {},
+      isOpen: () => true
+    };
+    const clientTransport = new RemoteStreamTransport(transport);
+
+    await expect(clientTransport.sendRequest({ jsonrpc: '2.0', id: 1, method: 'test' })).rejects.toThrow('send failed');
+    await expect(clientTransport.sendRequest({ jsonrpc: '2.0', id: 1, method: 'test' })).rejects.toThrow('send failed');
   });
 
   it('should support WebSocketRpcTransport interface', () => {

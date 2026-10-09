@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type {
   AiTask,
   ExecutionSnapshot,
@@ -190,6 +191,28 @@ export class TaskRouter {
     this.emit({ type: 'queued', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
     this.queueExecution(record, persistence);
     return { taskId: task.id, status: snapshot.status };
+  }
+
+  /** Submit and acknowledge only after the initial execution record is persisted. */
+  async submitDurably(task: AiTask): Promise<TaskSubmitResult> {
+    validateTask(task);
+    if (this.recoveryPending) {
+      throw new Error('Task router is recovering; await router.ready before submitting');
+    }
+    const existing = this.records.get(task.id);
+    if (existing) {
+      if (!isDeepStrictEqual(existing.task, task)) {
+        throw new Error(`Task id '${task.id}' was already submitted with a different payload`);
+      }
+    } else {
+      this.submit(task);
+    }
+    await this.persistenceTail;
+    const record = this.getRecord(task.id);
+    if (record.persistenceFailed) {
+      throw new Error(`Task submission '${task.id}' could not be durably accepted`);
+    }
+    return { taskId: task.id, status: record.snapshot.status };
   }
 
   cancel(taskId: string): TaskCancelResult {

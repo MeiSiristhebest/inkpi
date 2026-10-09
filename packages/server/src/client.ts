@@ -76,6 +76,7 @@ export class InMemoryTransport implements Transport {
  */
 export class RemoteStreamTransport implements Transport {
   private transport: RpcTransport;
+  private closed = false;
   private pendingRequests = new Map<
     string | number,
     { resolve: (res: RpcResponse) => void; reject: (err: any) => void }
@@ -84,6 +85,7 @@ export class RemoteStreamTransport implements Transport {
 
   constructor(transport: RpcTransport) {
     this.transport = transport;
+    this.transport.onClose?.((error) => this.failPending(error ?? new Error('RPC transport closed')));
     this.transport.onMessage((msgStr) => {
       try {
         const parsed = JSON.parse(msgStr);
@@ -105,9 +107,25 @@ export class RemoteStreamTransport implements Transport {
   }
 
   public async sendRequest(req: RpcRequest): Promise<RpcResponse> {
+    if (this.closed || !this.transport.isOpen()) {
+      return Promise.reject(new Error('RPC transport is closed'));
+    }
+
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(req.id, { resolve, reject });
-      this.transport.send(JSON.stringify(req));
+      if (this.pendingRequests.has(req.id)) {
+        reject(new Error(`RPC request id is already pending: ${req.id}`));
+        return;
+      }
+
+      const pending = { resolve, reject };
+      this.pendingRequests.set(req.id, pending);
+      try {
+        void Promise.resolve(this.transport.send(JSON.stringify(req))).catch((error) => {
+          this.failRequest(req.id, pending, error);
+        });
+      } catch (error) {
+        this.failRequest(req.id, pending, error);
+      }
     });
   }
 
@@ -120,7 +138,26 @@ export class RemoteStreamTransport implements Transport {
   }
 
   public close(): void {
+    if (this.closed) return;
+    this.failPending(new Error('RPC transport closed while awaiting a response'));
     this.transport.close();
+  }
+
+  private failRequest(
+    id: string | number,
+    pending: { resolve: (res: RpcResponse) => void; reject: (err: any) => void },
+    error: unknown
+  ): void {
+    if (this.pendingRequests.get(id) !== pending) return;
+    this.pendingRequests.delete(id);
+    pending.reject(error);
+  }
+
+  private failPending(error: Error): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const pending of this.pendingRequests.values()) pending.reject(error);
+    this.pendingRequests.clear();
   }
 }
 

@@ -84,6 +84,7 @@ if (hasBun && !isDryRun) {
     console.log(`🎉 [SUCCESS] Single-file binary compiled: ${finalOutPath}`);
   } catch (err) {
     console.error('❌ Bun compilation error:', err);
+    process.exit(1);
   }
 } else {
   // SEA Config Dry-Run Generation

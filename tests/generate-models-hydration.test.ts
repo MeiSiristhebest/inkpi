@@ -79,6 +79,7 @@ describe('AI Model Catalog Generation & Hydration Suite (1:1 Aligned with Pi)', 
     );
 
     // Total = 0.30 + 0.30 + 0.015 + 0.0375 = 0.6525
+    expect(cost).not.toBeNull();
     expect(cost).toBeCloseTo(0.6525, 4);
   });
 

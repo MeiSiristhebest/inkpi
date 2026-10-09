@@ -122,21 +122,64 @@ describe('capability-aware model routing', () => {
       capabilities: { outputFormats: ['text'] }
     }));
     const states = new Map<string, ModelRouteRuntimeState>([
-      ['ready', { availability: 'available', health: 'healthy', quota: { remaining: 10 } }],
-      ['degraded', { availability: 'degraded', health: 'degraded', quota: { remaining: 5 } }],
-      ['unhealthy', { availability: 'available', health: 'unhealthy', quota: { remaining: 10 } }],
-      ['unavailable', { availability: 'unavailable', health: 'healthy', quota: { remaining: 10 } }],
-      ['exhausted', { availability: 'available', health: 'healthy', quota: { remaining: 0 } }]
+      [
+        'ready',
+        {
+          availability: 'available',
+          health: 'healthy',
+          quota: { remaining: 10 }
+        }
+      ],
+      [
+        'degraded',
+        {
+          availability: 'degraded',
+          health: 'degraded',
+          quota: { remaining: 5 }
+        }
+      ],
+      [
+        'unhealthy',
+        {
+          availability: 'available',
+          health: 'unhealthy',
+          quota: { remaining: 10 }
+        }
+      ],
+      [
+        'unavailable',
+        {
+          availability: 'unavailable',
+          health: 'healthy',
+          quota: { remaining: 10 }
+        }
+      ],
+      [
+        'exhausted',
+        {
+          availability: 'available',
+          health: 'healthy',
+          quota: { remaining: 0 }
+        }
+      ]
     ]);
     const router = new CapabilityRouter(routes, { routeStates: states });
     const textTask = task({ outputContract: { format: 'text' } });
 
     expect(router.resolveCandidates(textTask).map((route) => route.id)).toEqual(['ready', 'degraded']);
 
-    states.set('ready', { availability: 'unavailable', health: 'healthy', quota: { remaining: 10 } });
+    states.set('ready', {
+      availability: 'unavailable',
+      health: 'healthy',
+      quota: { remaining: 10 }
+    });
     expect(router.resolve(textTask).id).toBe('degraded');
 
-    states.set('degraded', { availability: 'unavailable', health: 'degraded', quota: { remaining: 5 } });
+    states.set('degraded', {
+      availability: 'unavailable',
+      health: 'degraded',
+      quota: { remaining: 5 }
+    });
     expect(() => router.resolve(textTask)).toThrow(CapabilityMismatchError);
   });
 
@@ -148,13 +191,48 @@ describe('capability-aware model routing', () => {
       ranking
     });
     const routes = [
-      route('slow', { userPreference: 1, quality: 0.8, latencyMs: 100, costUsd: 0.01 }),
-      route('fast', { userPreference: 1, quality: 0.8, latencyMs: 10, costUsd: 0.8 }),
-      route('cheap', { userPreference: 1, quality: 0.8, latencyMs: 10, costUsd: 0.1 }),
-      route('quality', { userPreference: 1, quality: 0.9, latencyMs: 1_000, costUsd: 2 }),
-      route('preferred', { userPreference: 2, quality: 0.1, latencyMs: 1_000, costUsd: 2 }),
-      route('tie-b', { userPreference: 0, quality: 0.7, latencyMs: 20, costUsd: 0.2 }),
-      route('tie-a', { userPreference: 0, quality: 0.7, latencyMs: 20, costUsd: 0.2 })
+      route('slow', {
+        userPreference: 1,
+        quality: 0.8,
+        latencyMs: 100,
+        costUsd: 0.01
+      }),
+      route('fast', {
+        userPreference: 1,
+        quality: 0.8,
+        latencyMs: 10,
+        costUsd: 0.8
+      }),
+      route('cheap', {
+        userPreference: 1,
+        quality: 0.8,
+        latencyMs: 10,
+        costUsd: 0.1
+      }),
+      route('quality', {
+        userPreference: 1,
+        quality: 0.9,
+        latencyMs: 1_000,
+        costUsd: 2
+      }),
+      route('preferred', {
+        userPreference: 2,
+        quality: 0.1,
+        latencyMs: 1_000,
+        costUsd: 2
+      }),
+      route('tie-b', {
+        userPreference: 0,
+        quality: 0.7,
+        latencyMs: 20,
+        costUsd: 0.2
+      }),
+      route('tie-a', {
+        userPreference: 0,
+        quality: 0.7,
+        latencyMs: 20,
+        costUsd: 0.2
+      })
     ];
     const router = new CapabilityRouter(routes);
     const textTask = task({ outputContract: { format: 'text' } });
@@ -220,19 +298,34 @@ describe('capability-aware model routing', () => {
 
   it('ranks compatible primary routes ahead of fallback routes without explicit requirements', () => {
     const router = new CapabilityRouter([
-      { id: 'fallback', model: baseModel, fallback: true, capabilities: { outputFormats: ['text'] } },
+      {
+        id: 'fallback',
+        model: baseModel,
+        fallback: true,
+        capabilities: { outputFormats: ['text'] }
+      },
       {
         id: 'primary',
         model: { ...baseModel, id: 'primary-model' },
         capabilities: { outputFormats: ['text'] }
       }
     ]);
-    expect(router.resolve({ id: 'no-requirements', kind: 'test.capability', input: {} }).id).toBe('primary');
+    expect(
+      router.resolve({
+        id: 'no-requirements',
+        kind: 'test.capability',
+        input: {}
+      }).id
+    ).toBe('primary');
   });
 
   it('treats explicit toolCalling support as satisfying tool requirements', () => {
     const router = new CapabilityRouter([
-      { id: 'tools', model: baseModel, capabilities: { toolCalling: true, outputFormats: ['text'] } }
+      {
+        id: 'tools',
+        model: baseModel,
+        capabilities: { toolCalling: true, outputFormats: ['text'] }
+      }
     ]);
     expect(
       router.resolve({
@@ -299,7 +392,11 @@ describe('capability-aware model routing', () => {
       conservative.getCapabilityRouter().resolve(
         task({
           outputContract: { format: 'text' },
-          requirements: { capabilities: ['creative-writing'], needsTools: true, needsReasoning: true }
+          requirements: {
+            capabilities: ['creative-writing'],
+            needsTools: true,
+            needsReasoning: true
+          }
         })
       )
     ).toThrow(CapabilityMismatchError);
@@ -360,14 +457,19 @@ describe('capability-aware model routing', () => {
   });
 
   it('returns capability mismatch from task.submit before queueing the task', async () => {
-    const daemon = new InkPiDaemon({ defaultModel: baseModel, defaultModelCapabilities: {} });
+    const daemon = new InkPiDaemon({
+      defaultModel: baseModel,
+      defaultModelCapabilities: {}
+    });
     daemons.push(daemon);
 
     const response = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 2,
       method: 'task.submit',
-      params: { task: task({ id: 'mismatch-task', requirements: { needsTools: true } }) }
+      params: {
+        task: task({ id: 'mismatch-task', requirements: { needsTools: true } })
+      }
     });
 
     expect(response).toMatchObject({
@@ -380,16 +482,46 @@ describe('capability-aware model routing', () => {
   });
 
   it('configures secret-free Runtime model route summaries and health state', async () => {
-    const daemon = new InkPiDaemon({ defaultModel: baseModel });
+    const daemon = new InkPiDaemon({
+      defaultModel: baseModel,
+      credentialResolver: async (reference) =>
+        reference === 'inkpi.model.openai.writer' ? 'secret-route-key' : undefined
+    });
     daemons.push(daemon);
 
     const rejectedRoute = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 9,
       method: 'model.routes.configure',
-      params: { routes: [{ id: 'bad', model: { id: 'bad', provider: 'openai', unsupported: true } }] }
+      params: {
+        routes: [
+          {
+            id: 'bad',
+            model: { id: 'bad', provider: 'openai', unsupported: true }
+          }
+        ]
+      }
     });
     expect(rejectedRoute.error?.message).toContain('unsupported fields');
+
+    const rejectedDirectCredential = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 91,
+      method: 'model.routes.configure',
+      params: {
+        routes: [
+          {
+            id: 'direct-key',
+            model: {
+              id: 'direct-key',
+              provider: 'openai',
+              apiKey: 'must-not-cross-rpc'
+            }
+          }
+        ]
+      }
+    });
+    expect(rejectedDirectCredential.error?.message).toContain('unsupported fields');
 
     const configured = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
@@ -404,7 +536,7 @@ describe('capability-aware model routing', () => {
               name: 'Writer',
               provider: 'openai',
               baseUrl: 'https://api.openai.com/v1',
-              apiKey: 'secret-route-key'
+              credentialRef: 'inkpi.model.openai.writer'
             },
             capabilities: { outputFormats: ['text'], streaming: true },
             priority: 20
@@ -424,6 +556,7 @@ describe('capability-aware model routing', () => {
       model: { id: 'writer', provider: 'openai' }
     });
     expect(JSON.stringify(configured)).not.toContain('secret-route-key');
+    expect(JSON.stringify(configured)).not.toContain('credentialRef');
 
     const rejectedHealthMutation = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
@@ -475,8 +608,16 @@ describe('capability-aware model routing', () => {
       }
     };
     const routes: ModelRoute[] = [
-      { ...base, id: 'route-a', model: { ...baseModel, id: 'model-a', provider: 'deepseek' } },
-      { ...base, id: 'route-b', model: { ...baseModel, id: 'model-b', provider: 'openai' } }
+      {
+        ...base,
+        id: 'route-a',
+        model: { ...baseModel, id: 'model-a', provider: 'deepseek' }
+      },
+      {
+        ...base,
+        id: 'route-b',
+        model: { ...baseModel, id: 'model-b', provider: 'openai' }
+      }
     ];
     const router = new CapabilityRouter(routes);
 

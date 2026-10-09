@@ -1,10 +1,14 @@
 import {
   type ModelCatalogEntry,
+  type ModelPriceDescriptor,
+  type ModelPriceRateOverrides,
   modelCatalogEntryToCapabilityDeclaration,
   modelCatalogEntryToConfig
 } from './catalog.js';
 import { type ProviderHandler, getProvider } from './providers.js';
 import type { ModelConfig, ProviderType } from './types.js';
+
+export type ModelOperation = 'chat' | 'image' | 'classify';
 
 export type ModelAuthenticationKind = 'none' | 'api-key' | 'oauth' | 'custom';
 
@@ -55,6 +59,9 @@ export interface ModelPricingDescriptor {
   outputPerMillionUsd: number;
   cacheReadPerMillionUsd?: number;
   cacheWritePerMillionUsd?: number;
+  serviceTierRates?: Record<string, ModelPriceRateOverrides>;
+  promptLengthTiers?: ModelPriceDescriptor['promptLengthTiers'];
+  cacheWritePerMillionUsdByTtl?: Partial<Record<'5m' | '1h', number>>;
 }
 
 /** JSON-safe catalog metadata. Executable handlers live in the manager registry. */
@@ -83,12 +90,21 @@ export interface ModelCatalogV2Entry
   };
   authentication?: ModelAuthenticationDescriptor;
   availability?: ModelAvailabilityDescriptor;
+  /** Supported model actions. Legacy entries default to chat only. */
+  operations?: readonly ModelOperation[];
 }
 
 export interface ExecutableModelRoute {
   route: ModelRouteDescriptor;
   config: ModelConfig;
   handler: ProviderHandler;
+}
+
+export interface ResolvedModelOperation {
+  operation: ModelOperation;
+  canonicalId: string;
+  route: ModelRouteDescriptor;
+  config: ModelConfig;
 }
 
 interface CatalogRecord {
@@ -112,7 +128,10 @@ export class ModelCatalogV2 {
   }
 
   public registerModel(entry: ModelCatalogV2Entry): void {
-    modelCatalogEntryToCapabilityDeclaration(toLegacyCatalogEntry(entry));
+    validateModelOperations(entry.operations);
+    const legacyEntry = toLegacyCatalogEntry(entry);
+    modelCatalogEntryToCapabilityDeclaration(legacyEntry);
+    if (entry.pricing) modelCatalogEntryToCapabilityDeclaration({ ...legacyEntry, cost: entry.pricing });
     const canonicalId = normalizeRequired(entry.canonicalId ?? entry.id, 'canonical model id');
     const route = createRouteDescriptor(entry, canonicalId);
     const aliases = collectAliases(entry, canonicalId, route.modelId).map((alias) =>
@@ -184,7 +203,12 @@ export class ModelCatalogV2 {
     const canonicalId = this.resolveCanonicalId(idOrAlias);
     const entry = canonicalId ? this.records.get(canonicalId)?.entry : undefined;
     const pricing = entry?.pricing ?? entry?.cost;
-    return pricing ? { ...pricing } : undefined;
+    return pricing ? clonePricing(pricing) : undefined;
+  }
+
+  public getOperations(idOrAlias: string): ModelOperation[] | undefined {
+    const entry = this.getModel(idOrAlias);
+    return entry ? [...(entry.operations ?? ['chat'])] : undefined;
   }
 
   public getRoute(idOrAlias: string): ModelRouteDescriptor | undefined {
@@ -223,24 +247,44 @@ export class ModelCatalogV2 {
   }
 
   public resolveExecutableModel(idOrAlias: string): ExecutableModelRoute {
+    return this.resolveExecutableOperation(idOrAlias, 'chat');
+  }
+
+  /** Resolve a text operation route and its registered provider handler. */
+  public resolveExecutableOperation(idOrAlias: string, operation: 'chat' | 'classify'): ExecutableModelRoute {
+    const resolved = this.resolveOperation(idOrAlias, operation);
+
+    const handler =
+      this.handlers.get(resolved.route.provider.toLowerCase()) ?? getProvider(resolved.route.provider as ProviderType);
+
+    return {
+      route: resolved.route,
+      config: resolved.config,
+      handler
+    };
+  }
+
+  /** Resolve shared identity, route, authentication metadata, and config for an operation. */
+  public resolveOperation(idOrAlias: string, operation: ModelOperation): ResolvedModelOperation {
     const canonicalId = this.requireCanonicalId(idOrAlias);
     const record = this.records.get(canonicalId);
     if (!record) throw new Error(`Model '${idOrAlias}' is not registered.`);
+    const operations = record.entry.operations ?? ['chat'];
+    if (!operations.includes(operation)) {
+      throw new Error(`Model '${idOrAlias}' does not support the '${operation}' operation.`);
+    }
 
-    const handler =
-      this.handlers.get(record.route.provider.toLowerCase()) ?? getProvider(record.route.provider as ProviderType);
     const baseConfig = modelCatalogEntryToConfig(toLegacyCatalogEntry(record.entry));
-    const config: ModelConfig = {
-      ...baseConfig,
-      id: record.route.modelId,
-      provider: record.route.provider as ProviderType,
-      ...(record.route.baseUrl ? { baseUrl: record.route.baseUrl } : {})
-    };
-
     return {
+      operation,
+      canonicalId,
       route: cloneRoute(record.route),
-      config,
-      handler
+      config: {
+        ...baseConfig,
+        id: record.route.modelId,
+        provider: record.route.provider as ProviderType,
+        ...(record.route.baseUrl ? { baseUrl: record.route.baseUrl } : {})
+      }
     };
   }
 
@@ -277,6 +321,20 @@ export class ModelCatalogV2 {
   }
 }
 
+function validateModelOperations(operations: readonly ModelOperation[] | undefined): void {
+  if (operations === undefined) return;
+  if (!Array.isArray(operations) || operations.length === 0) {
+    throw new Error('Model operations must be a non-empty array.');
+  }
+  const allowed: readonly string[] = ['chat', 'image', 'classify'];
+  const seen = new Set<string>();
+  for (const operation of operations) {
+    if (!allowed.includes(operation)) throw new Error(`Unsupported model operation: ${String(operation)}.`);
+    if (seen.has(operation)) throw new Error(`Duplicate model operation: ${operation}.`);
+    seen.add(operation);
+  }
+}
+
 function toLegacyCatalogEntry(entry: ModelCatalogV2Entry): ModelCatalogEntry {
   return {
     ...entry,
@@ -285,7 +343,7 @@ function toLegacyCatalogEntry(entry: ModelCatalogV2Entry): ModelCatalogEntry {
     supportsThinking: entry.supportsThinking ?? false,
     supportsTools: entry.supportsTools ?? false,
     supportsVision: entry.supportsVision,
-    cost: entry.cost ?? { inputPerMillionUsd: 0, outputPerMillionUsd: 0 }
+    cost: entry.cost ?? entry.pricing ?? { inputPerMillionUsd: 0, outputPerMillionUsd: 0 }
   };
 }
 
@@ -308,7 +366,7 @@ function createRouteDescriptor(entry: ModelCatalogV2Entry, canonicalId: string):
     },
     authentication,
     availability,
-    ...((entry.pricing ?? entry.cost) ? { pricing: { ...(entry.pricing ?? entry.cost)! } } : {})
+    ...((entry.pricing ?? entry.cost) ? { pricing: clonePricing((entry.pricing ?? entry.cost)!) } : {})
   };
 }
 
@@ -394,6 +452,25 @@ function cloneRoute(route: ModelRouteDescriptor): ModelRouteDescriptor {
     transport: { ...route.transport },
     authentication: { ...route.authentication },
     availability: cloneAvailability(route.availability),
-    ...(route.pricing ? { pricing: { ...route.pricing } } : {})
+    ...(route.pricing ? { pricing: clonePricing(route.pricing) } : {})
+  };
+}
+
+function clonePricing(pricing: ModelPricingDescriptor): ModelPricingDescriptor {
+  return {
+    ...pricing,
+    ...(pricing.serviceTierRates
+      ? {
+          serviceTierRates: Object.fromEntries(
+            Object.entries(pricing.serviceTierRates).map(([key, rates]) => [key, { ...rates }])
+          )
+        }
+      : {}),
+    ...(pricing.promptLengthTiers
+      ? { promptLengthTiers: pricing.promptLengthTiers.map((tier) => ({ ...tier, rates: { ...tier.rates } })) }
+      : {}),
+    ...(pricing.cacheWritePerMillionUsdByTtl
+      ? { cacheWritePerMillionUsdByTtl: { ...pricing.cacheWritePerMillionUsdByTtl } }
+      : {})
   };
 }

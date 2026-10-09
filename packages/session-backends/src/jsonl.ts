@@ -4,6 +4,76 @@ import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } f
 import { BackendClosedError } from './errors.js';
 import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 
+function parseJsonl<T>(content: string, filePath: string): T[] {
+  if (!content) return [];
+
+  const endedWithNewline = content.endsWith('\n');
+  const lines = content.split('\n');
+  if (endedWithNewline) lines.pop();
+
+  const records: T[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+
+    try {
+      records.push(JSON.parse(line) as T);
+    } catch (cause) {
+      if (!endedWithNewline && index === lines.length - 1) {
+        // A crash can leave only the final append unfinished. It is safe to ignore
+        // on read, but writers must not append after it and turn it into interior corruption.
+        return records;
+      }
+      throw new Error(`Corrupt JSONL record in "${filePath}" at line ${index + 1}.`, { cause });
+    }
+  }
+
+  return records;
+}
+
+function appendJsonl(filePath: string, content: string): void {
+  let separator = '';
+  if (fs.existsSync(filePath)) {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size > 0) {
+        const lastByte = Buffer.alloc(1);
+        fs.readSync(fd, lastByte, 0, 1, size - 1);
+        if (lastByte[0] !== 0x0a) {
+          let cursor = size;
+          let lineStart = 0;
+          while (cursor > 0) {
+            const length = Math.min(cursor, 4096);
+            cursor -= length;
+            const chunk = Buffer.alloc(length);
+            const bytesRead = fs.readSync(fd, chunk, 0, length, cursor);
+            const newline = chunk.subarray(0, bytesRead).lastIndexOf(0x0a);
+            if (newline >= 0) {
+              lineStart = cursor + newline + 1;
+              break;
+            }
+          }
+
+          const tailLength = size - lineStart;
+          const tail = Buffer.alloc(tailLength);
+          fs.readSync(fd, tail, 0, tailLength, lineStart);
+          try {
+            JSON.parse(tail.toString('utf8'));
+          } catch (cause) {
+            throw new Error(`Cannot append to "${filePath}": its final JSONL record is incomplete.`, { cause });
+          }
+          separator = '\n';
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  fs.appendFileSync(filePath, `${separator}${content}`, 'utf8');
+}
+
 /**
  * 纯文件系统单追加写 JSONL 存储适配器 (JsonlSessionBackend)
  * 零 C++ 原生绑定，跨平台无编译分发，适合轻量 CLI、Serverless 与边缘环境。
@@ -59,7 +129,7 @@ export class JsonlSessionBackend implements ISessionBackend {
     this.assertOpen();
     const filePath = this.getSessionJournalPath(sessionId);
     const line = `${JSON.stringify(entry)}\n`;
-    fs.appendFileSync(filePath, line, 'utf8');
+    appendJsonl(filePath, line);
   }
 
   public async loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void> {
@@ -67,7 +137,7 @@ export class JsonlSessionBackend implements ISessionBackend {
     if (entries.length === 0) return;
     const filePath = this.getSessionJournalPath(sessionId);
     const lines = entries.map((e) => `${JSON.stringify(e)}\n`).join('');
-    fs.appendFileSync(filePath, lines, 'utf8');
+    appendJsonl(filePath, lines);
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
@@ -75,49 +145,38 @@ export class JsonlSessionBackend implements ISessionBackend {
     const filePath = this.getSessionJournalPath(sessionId);
     if (!fs.existsSync(filePath)) return [];
 
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = content.split('\n').filter((l) => l.trim().length > 0);
-    const entries: SessionEntry[] = [];
+    const records = parseJsonl<SessionEntry>(fs.readFileSync(filePath, 'utf8'), filePath);
+    return fromTimestamp === undefined ? records : records.filter((entry) => entry.timestamp >= fromTimestamp);
+  }
 
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line) as SessionEntry;
-        if (fromTimestamp === undefined || parsed.timestamp >= fromTimestamp) {
-          entries.push(parsed);
-        }
-      } catch {
-        // Skip malformed trailing lines
-      }
+  private readSnapshots(): Record<string, DocumentSnapshot> | null {
+    const filePath = this.getSnapshotsPath();
+    if (!fs.existsSync(filePath)) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (cause) {
+      throw new Error(`Snapshot file "${filePath}" is corrupt and was not modified.`, { cause });
     }
-
-    return entries;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`Snapshot file "${filePath}" must contain a JSON object.`);
+    }
+    return parsed as Record<string, DocumentSnapshot>;
   }
 
   public async saveSnapshot(snapshot: DocumentSnapshot): Promise<void> {
     this.assertOpen();
     const filePath = this.getSnapshotsPath();
-    let map: Record<string, DocumentSnapshot> = {};
-    if (fs.existsSync(filePath)) {
-      try {
-        map = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      } catch {
-        map = {};
-      }
-    }
+    const map = this.readSnapshots() ?? {};
     map[snapshot.documentId] = snapshot;
     fs.writeFileSync(filePath, JSON.stringify(map, null, 2), 'utf8');
   }
 
   public async getSnapshot(documentId: string): Promise<DocumentSnapshot | null> {
     this.assertOpen();
-    const filePath = this.getSnapshotsPath();
-    if (!fs.existsSync(filePath)) return null;
-    try {
-      const map = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      return map[documentId] || null;
-    } catch {
-      return null;
-    }
+    const map = this.readSnapshots();
+    return map?.[documentId] ?? null;
   }
 
   public async appendDelta(delta: DocumentDelta): Promise<void> {
@@ -126,7 +185,7 @@ export class JsonlSessionBackend implements ISessionBackend {
     const existing = await this.getDeltas(delta.documentId);
     const nextId = delta.id !== undefined ? delta.id : existing.length + 1;
     const entry = { ...delta, id: nextId };
-    fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, 'utf8');
+    appendJsonl(filePath, `${JSON.stringify(entry)}\n`);
   }
 
   public async getDeltas(documentId: string, fromId?: number): Promise<DocumentDelta[]> {
@@ -134,54 +193,35 @@ export class JsonlSessionBackend implements ISessionBackend {
     const filePath = this.getDeltasPath(documentId);
     if (!fs.existsSync(filePath)) return [];
 
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = content.split('\n').filter((l) => l.trim().length > 0);
-    const deltas: DocumentDelta[] = [];
-
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line) as DocumentDelta;
-        if (fromId === undefined || (parsed.id || 0) >= fromId) {
-          deltas.push(parsed);
-        }
-      } catch {
-        // Skip malformed
-      }
-    }
-
-    return deltas;
+    const records = parseJsonl<DocumentDelta>(fs.readFileSync(filePath, 'utf8'), filePath);
+    return fromId === undefined ? records : records.filter((delta) => (delta.id || 0) >= fromId);
   }
 
   public async search(query: string, limit = 20): Promise<FtsSearchResult[]> {
     this.assertOpen();
-    const snapPath = this.getSnapshotsPath();
-    if (!fs.existsSync(snapPath)) return [];
+    const map = this.readSnapshots();
+    if (!map) return [];
 
-    try {
-      const map: Record<string, DocumentSnapshot> = JSON.parse(fs.readFileSync(snapPath, 'utf8'));
-      const results: FtsSearchResult[] = [];
-      const lower = query.toLowerCase();
-      let idxOrder = 1;
+    const results: FtsSearchResult[] = [];
+    const lower = query.toLowerCase();
+    let idxOrder = 1;
 
-      for (const [docId, snap] of Object.entries(map)) {
-        if (snap.contentMarkdown?.toLowerCase().includes(lower)) {
-          const idx = snap.contentMarkdown.toLowerCase().indexOf(lower);
-          const snippet = snap.contentMarkdown.slice(
-            Math.max(0, idx - 20),
-            Math.min(snap.contentMarkdown.length, idx + 80)
-          );
-          results.push({
-            documentId: docId,
-            title: `Document ${docId}`,
-            snippet: snippet.trim(),
-            orderIndex: idxOrder++
-          });
-          if (results.length >= limit) break;
-        }
+    for (const [docId, snap] of Object.entries(map)) {
+      if (snap.contentMarkdown?.toLowerCase().includes(lower)) {
+        const idx = snap.contentMarkdown.toLowerCase().indexOf(lower);
+        const snippet = snap.contentMarkdown.slice(
+          Math.max(0, idx - 20),
+          Math.min(snap.contentMarkdown.length, idx + 80)
+        );
+        results.push({
+          documentId: docId,
+          title: `Document ${docId}`,
+          snippet: snippet.trim(),
+          orderIndex: idxOrder++
+        });
+        if (results.length >= limit) break;
       }
-      return results;
-    } catch {
-      return [];
     }
+    return results;
   }
 }

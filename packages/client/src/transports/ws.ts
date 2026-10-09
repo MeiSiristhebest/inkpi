@@ -14,6 +14,7 @@ export interface MinimalWebSocket {
 export class WebSocketTransport implements RpcTransport {
   private ws: MinimalWebSocket;
   private handlers: ((message: string) => void)[] = [];
+  private closeHandlers: ((error?: Error) => void)[] = [];
   private open = true;
 
   constructor(ws: MinimalWebSocket) {
@@ -27,11 +28,11 @@ export class WebSocketTransport implements RpcTransport {
     });
 
     this.ws.addEventListener('close', () => {
-      this.open = false;
+      this.markClosed(new Error('RPC WebSocket connection closed'));
     });
 
     this.ws.addEventListener('error', () => {
-      this.open = false;
+      this.markClosed(new Error('RPC WebSocket connection failed'));
     });
   }
 
@@ -44,12 +45,27 @@ export class WebSocketTransport implements RpcTransport {
     this.handlers.push(handler);
   }
 
+  public onClose(handler: (error?: Error) => void): void {
+    if (!this.open) {
+      handler(new Error('RPC WebSocket connection is closed'));
+      return;
+    }
+    this.closeHandlers.push(handler);
+  }
+
   public close(): void {
-    this.open = false;
+    this.markClosed(new Error('RPC WebSocket connection closed'));
     this.ws.close();
   }
 
   public isOpen(): boolean {
     return this.open && this.ws.readyState === 1; // 1 = OPEN
+  }
+
+  private markClosed(error?: Error): void {
+    if (!this.open) return;
+    this.open = false;
+    for (const handler of this.closeHandlers) handler(error);
+    this.closeHandlers = [];
   }
 }
