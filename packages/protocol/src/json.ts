@@ -93,6 +93,9 @@ function findJsonValueErrorInternal(value: unknown, path: string, ancestors: Set
 
   ancestors.add(value);
   try {
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      return { path, message: 'Symbol-keyed properties are not valid JSON', value };
+    }
     if (Array.isArray(value)) {
       for (let index = 0; index < value.length; index += 1) {
         if (!(index in value)) {
@@ -112,10 +115,6 @@ function findJsonValueErrorInternal(value: unknown, path: string, ancestors: Set
         }
       }
       return undefined;
-    }
-
-    if (Object.getOwnPropertySymbols(value).length > 0) {
-      return { path, message: 'Symbol-keyed properties are not valid JSON', value };
     }
 
     for (const [key, nestedValue] of Object.entries(value)) {

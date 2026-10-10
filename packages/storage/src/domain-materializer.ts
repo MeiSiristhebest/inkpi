@@ -1,4 +1,5 @@
-import type { DomainChange, DomainChangeSet } from '@inkpi/protocol';
+import { type DomainChange, type DomainChangeSet, assertJsonValue } from '@inkpi/protocol';
+import { deserializeDomainChanges } from './domain-change-codec.js';
 import type { IDb } from './ports.js';
 
 type JsonRecord = Record<string, unknown>;
@@ -229,7 +230,7 @@ export class DomainMaterializer {
       sourceDeviceId: String(row.source_device_id),
       baseRevision: Number(row.base_revision),
       revision: Number(row.revision),
-      changes: JSON.parse(String(row.changes_json)) as DomainChange[],
+      changes: deserializeDomainChanges(String(row.changes_json)),
       checksum: String(row.checksum ?? ''),
       createdAt: Number(row.created_at)
     }));
@@ -586,12 +587,8 @@ function assertGenericProjectionCoordinate(value: string, label: string): void {
 }
 
 function serializeProjectionPayload(payload: unknown): string {
-  try {
-    const serialized = JSON.stringify(payload, (_key, value: unknown) => (value === undefined ? null : value));
-    return serialized === undefined ? 'null' : serialized;
-  } catch {
-    throw new Error('Generic domain projection payload must be JSON serializable');
-  }
+  assertJsonValue(payload, 'Generic domain projection payload');
+  return JSON.stringify(payload);
 }
 
 function parseGenericProjection(row: GenericDomainProjectionRow): GenericDomainProjection {

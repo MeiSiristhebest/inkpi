@@ -69,7 +69,7 @@ export class AssistantFrameEncoder {
         const state = this.toolCallState.get(event.toolCall.id);
         if (!state || !state.open) return null;
         state.open = false;
-        return { type: 'tool_call_end', index: state.index, toolCall: event.toolCall };
+        return { type: 'tool_call_end', index: state.index, toolCall: structuredClone(event.toolCall) };
       }
       case 'usage':
       case 'error':
@@ -161,7 +161,7 @@ export function reduceAssistantFrames(frames: readonly AssistantStreamFrame[]): 
         // tool_call_end 帧携带权威块值；未 start 过的块直接忽略（帧流自洽性由编码器保证）。
         const existing = content[frame.index];
         if (!existing || existing.type !== 'toolCall') break;
-        content[frame.index] = { ...frame.toolCall };
+        content[frame.index] = structuredClone(frame.toolCall);
         rawArgsByIndex.delete(frame.index);
         break;
       }

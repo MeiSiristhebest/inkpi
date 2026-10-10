@@ -54,6 +54,15 @@ export interface MaterializedSessionState<TState extends RuntimeState = RuntimeS
   pendingAssistantFrames: AssistantStreamFrame[];
 }
 
+/** Owned snapshots are read-only by convention; custom adapters receive a mutable copy. */
+function mergeOwnedState<TState extends RuntimeState>(
+  adapter: SessionStateAdapter<TState>,
+  state: TState,
+  patch: unknown
+): TState {
+  return adapter.merge(adapter === genericRuntimeStateAdapter ? state : structuredClone(state), structuredClone(patch));
+}
+
 function resolveStateAdapter<TState extends RuntimeState>(
   stateAdapter?: SessionStateAdapter<TState>
 ): SessionStateAdapter<TState> {
@@ -64,7 +73,7 @@ export function createInitialSessionState<TState extends RuntimeState = RuntimeS
   sessionId = 'default',
   stateAdapter?: SessionStateAdapter<TState>
 ): MaterializedSessionState<TState> {
-  const runtimeState = resolveStateAdapter(stateAdapter).createInitialState();
+  const runtimeState = structuredClone(resolveStateAdapter(stateAdapter).createInitialState());
   return {
     sessionId,
     currentLeafId: null,
@@ -115,7 +124,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
   stateAdapter?: SessionStateAdapter<TState>
 ): MaterializedSessionState<TState> {
   const adapter = resolveStateAdapter(stateAdapter);
-  const runtimeState = structuredClone(state.runtimeState ?? state.factsLedger ?? adapter.createInitialState());
+  const runtimeState = state.runtimeState ?? state.factsLedger ?? structuredClone(adapter.createInitialState());
   const next: MaterializedSessionState<TState> = {
     ...state,
     messages: [...state.messages],
@@ -194,13 +203,13 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
       // "base restore does not read it"——base 物化不依赖帧，归约结束时才重建残留部分消息）。
       const frame = entry.payload?.frame;
       if (frame && typeof frame === 'object' && typeof frame.type === 'string') {
-        next.pendingAssistantFrames.push(frame);
+        next.pendingAssistantFrames.push(structuredClone(frame));
       }
       break;
     }
 
     case 'operation_intent': {
-      const op = entry.payload;
+      const op = structuredClone(entry.payload);
       if (op && typeof op.id === 'string') {
         const existing = next.operations.get(op.id);
         const storedIntent = mergeOperationIntent(op);
@@ -219,7 +228,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
     }
 
     case 'operation_settlement': {
-      const op = entry.payload;
+      const op = structuredClone(entry.payload);
       if (op && typeof op.id === 'string') {
         const existing = next.operations.get(op.id);
         const isError = Boolean(op.error);
@@ -249,7 +258,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
             ? payload.ledger
             : payload;
       if (isRecord(statePatch)) {
-        next.runtimeState = adapter.merge(next.runtimeState, statePatch);
+        next.runtimeState = mergeOwnedState(adapter, next.runtimeState, statePatch);
         next.factsLedger = next.runtimeState;
       }
       break;
@@ -267,7 +276,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
     case 'compaction': {
       const summary = entry.payload?.summary;
       if (summary) {
-        next.runtimeState = adapter.merge(next.runtimeState, { _lastCompactionSummary: summary });
+        next.runtimeState = mergeOwnedState(adapter, next.runtimeState, { _lastCompactionSummary: summary });
         next.factsLedger = next.runtimeState;
       }
       break;
@@ -294,7 +303,7 @@ export function messageFromSessionEntry(entry: SessionEntry): AgentMessage | und
     return {
       ...identity,
       role: 'user',
-      content: typeof payload === 'string' ? payload : (payload?.content ?? payload?.text ?? '')
+      content: typeof payload === 'string' ? payload : structuredClone(payload?.content ?? payload?.text ?? '')
     };
   if (entry.type === 'agent_turn')
     return {

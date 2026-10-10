@@ -5,9 +5,9 @@ export function emptyRuntimeState(): RuntimeState {
   return {};
 }
 
-/** Merge opaque runtime state without interpreting product-domain fields. */
+/** Merge an external patch into owned state, sharing unchanged state branches. */
 export function mergeRuntimeState(base: RuntimeState, addition: unknown): RuntimeState {
-  const patch = isRecord(addition) ? addition : {};
+  const patch = isRecord(addition) ? structuredClone(addition) : {};
   const result: RuntimeState = { ...base, ...patch };
 
   for (const [key, value] of Object.entries(patch)) {

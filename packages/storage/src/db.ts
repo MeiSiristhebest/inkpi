@@ -1,5 +1,6 @@
 import { type DomainChangeSet, calculateDomainChangeSetChecksum } from '@inkpi/protocol';
 import { SESSION_ENTRIES_DDL, STORAGE_SCHEMA_DDL } from './ddl.js';
+import { deserializeDomainChanges } from './domain-change-codec.js';
 import type { IDb, PreparedStatement } from './ports.js';
 
 /** Increment when the Runtime's persisted SQLite shape changes. */
@@ -152,7 +153,7 @@ export class InkDb implements IDb {
       if (existing) continue;
       let changes: unknown;
       try {
-        changes = JSON.parse(String(row.changes_json));
+        changes = deserializeDomainChanges(String(row.changes_json));
       } catch (error) {
         throw new Error(`Invalid domain change set JSON for ${String(row.id)}`, { cause: error });
       }

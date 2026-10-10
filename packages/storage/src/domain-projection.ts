@@ -5,7 +5,8 @@ import type {
   DomainProjectionCursor,
   DomainProjectionSnapshot
 } from '@inkpi/protocol';
-import { calculateDomainChangeSetChecksum } from '@inkpi/protocol';
+import { assertJsonValue, calculateDomainChangeSetChecksum } from '@inkpi/protocol';
+import { deserializeDomainChanges, serializeDomainChanges } from './domain-change-codec.js';
 import { DomainMaterializer, type GenericDomainProjection } from './domain-materializer.js';
 import type { IDb } from './ports.js';
 
@@ -78,7 +79,7 @@ export class DomainProjectionStore {
           changeSet.sourceDeviceId,
           changeSet.baseRevision,
           changeSet.revision,
-          serializeChanges(changeSet.changes),
+          serializeDomainChanges(changeSet.changes),
           changeSet.checksum,
           changeSet.createdAt
         );
@@ -142,7 +143,7 @@ export class DomainProjectionStore {
         sourceDeviceId: String(row.source_device_id),
         baseRevision: Number(row.base_revision),
         revision: Number(row.revision),
-        changes: deserializeChanges(String(row.changes_json)),
+        changes: deserializeDomainChanges(String(row.changes_json)),
         checksum: String(row.checksum),
         createdAt: Number(row.created_at)
       } satisfies DomainChangeSet;
@@ -200,7 +201,7 @@ export class DomainProjectionStore {
             changeSet.sourceDeviceId,
             changeSet.baseRevision,
             changeSet.revision,
-            serializeChanges(changeSet.changes),
+            serializeDomainChanges(changeSet.changes),
             changeSet.checksum,
             changeSet.createdAt
           );
@@ -258,7 +259,13 @@ function validateChangeSet(changeSet: DomainChangeSet): void {
     if (!change.id || !change.aggregateType || !change.aggregateId) {
       throw new Error('Domain changes require ids and aggregate coordinates');
     }
+    if (change.operation !== 'upsert' && change.operation !== 'delete')
+      throw new Error('Domain changes require an upsert or delete operation');
+    if (change.operation === 'upsert' || change.payload !== undefined)
+      assertJsonValue(change.payload, 'Domain change payload');
   }
+  const { changes: _changes, ...metadata } = changeSet;
+  assertJsonValue(metadata, 'Domain change set metadata');
   const { checksum: _checksum, ...unsigned } = changeSet;
   if (calculateDomainChangeSetChecksum(unsigned) !== changeSet.checksum) {
     throw new Error('Domain change set checksum mismatch');
@@ -288,26 +295,4 @@ function validateSnapshot(snapshot: DomainProjectionSnapshot): void {
   }
   if (snapshot.revision !== expected - 1)
     throw new Error('Domain projection snapshot cursor does not match its changes');
-}
-
-const UNDEFINED_SENTINEL = '__inkpi_domain_projection_undefined__';
-
-/** JSON cannot represent undefined, but the wire checksum can. Round-trip it. */
-function serializeChanges(changes: DomainChangeSet['changes']): string {
-  return JSON.stringify(changes, (_key, value: unknown) =>
-    value === undefined ? { [UNDEFINED_SENTINEL]: true } : value
-  );
-}
-
-function deserializeChanges(serialized: string): DomainChangeSet['changes'] {
-  return restoreUndefined(JSON.parse(serialized)) as DomainChangeSet['changes'];
-}
-
-function restoreUndefined(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(restoreUndefined);
-  if (!value || typeof value !== 'object') return value;
-  const record = value as Record<string, unknown>;
-  if (Object.keys(record).length === 1 && record[UNDEFINED_SENTINEL] === true) return undefined;
-  for (const key of Object.keys(record)) record[key] = restoreUndefined(record[key]);
-  return record;
 }
