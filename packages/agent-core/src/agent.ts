@@ -489,10 +489,10 @@ export class Agent {
           }
           return this.extensionHost.transformContext(transformed, signal);
         },
-        beforeToolCall: async (event) => {
+        beforeToolCall: async (event, signal) => {
           // 优先触发 Agent 显式 options.beforeToolCall
           if (this.options.beforeToolCall) {
-            const res = await this.options.beforeToolCall(event);
+            const res = await this.options.beforeToolCall(event, signal);
             if (res?.block) return res;
           }
           // 自动桥接第三方扩展注册的 beforeToolCall
@@ -509,10 +509,10 @@ export class Agent {
           }
           return undefined;
         },
-        afterToolCall: async (event) => {
+        afterToolCall: async (event, signal) => {
           // 优先触发 Agent 显式 options.afterToolCall
           if (this.options.afterToolCall) {
-            const res = await this.options.afterToolCall(event);
+            const res = await this.options.afterToolCall(event, signal);
             if (res) return res;
           }
           // 自动桥接第三方扩展注册的 afterToolCall

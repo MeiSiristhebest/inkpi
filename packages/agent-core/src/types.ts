@@ -127,8 +127,8 @@ export interface AgentOptions {
   journal?: any;
   /** Branch-aware canonical model context, normally constructed from a readable journal. */
   conversation?: ConversationContext;
-  beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
-  afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
+  beforeToolCall?: (ctx: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
+  afterToolCall?: (ctx: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
   /** Runs before every provider request, including a context-overflow retry. */
   prepareRequest?: (
     request: AgentRequestContext,

@@ -1,4 +1,5 @@
 import {
+  type AgentTool,
   type AssistantMessage,
   type ToolCallContent,
   type ToolResultMessage,
@@ -23,11 +24,22 @@ interface TerminationFlag {
   value: boolean;
 }
 
+interface PreparedCall {
+  call: ToolCallContent;
+  tool?: AgentTool;
+  declaration?: string;
+  argumentsError?: string;
+  blockReason?: string;
+  error?: string;
+  terminate?: boolean;
+}
+
 /**
  * 管线第三段：执行 assistant 消息中的工具调用。
  *
- * 单个工具的生命周期为：预保留 invocationId → journal 意图登记 → 中断检查 →
- * `tool_execution_start` → `beforeToolCall` 门控 → 实际执行或拦截 →
+ * 批次先顺序完成参数校验与 `beforeToolCall` 门控。
+ * 单个工具随后保留 invocationId → journal 意图登记 → 中断检查 →
+ * `tool_execution_start` → 实际执行或拦截 →
  * `afterToolCall` 覆写 → journal 结算 → `tool_execution_end`。
  * 并发策略由 `options.toolExecution` 决定，统一走 `runWithConcurrency`。
  *
@@ -49,6 +61,11 @@ export class ToolDispatcher {
 
     if (toolCalls.length === 0) {
       return { toolResults, shouldTerminate: false };
+    }
+    const callIds = new Set<string>();
+    for (const call of toolCalls) {
+      if (!call.id || callIds.has(call.id)) throw new Error(`Duplicate or empty tool call identity '${call.id}'.`);
+      callIds.add(call.id);
     }
 
     // 源序映射：toolCallContent 块在 assistant content 中的下标。
@@ -115,9 +132,12 @@ export class ToolDispatcher {
       return { toolResults, shouldTerminate: false };
     }
 
+    const prepared: PreparedCall[] = [];
+    for (const call of toolCalls) prepared.push(await this.prepareCall(ctx, call, assistantMessage));
     const results = await runWithConcurrency(
-      toolCalls,
-      (call) => this.executeOne(ctx, call, assistantMessage, termination, sourceIndexByCallId.get(call.id)),
+      prepared,
+      (preparation) =>
+        this.executeOne(ctx, preparation, assistantMessage, termination, sourceIndexByCallId.get(preparation.call.id)),
       ctx.options.toolExecution === 'sequential' ? 'sequential' : 'parallel'
     );
 
@@ -136,7 +156,43 @@ export class ToolDispatcher {
     if (ctx.options.idGenerator) {
       return ctx.options.idGenerator();
     }
-    return `inv_${ctx.clock()}_${(ctx.clock() % 1000000).toString(36)}`;
+    return `inv_${crypto.randomUUID()}`;
+  }
+
+  private async prepareCall(
+    ctx: TurnContext,
+    call: ToolCallContent,
+    assistantMessage: AssistantMessage
+  ): Promise<PreparedCall> {
+    const preparation: PreparedCall = { call };
+    preparation.argumentsError = this.getJournalArgumentsError(ctx, call);
+    if (preparation.argumentsError) return preparation;
+    if (ctx.signal?.aborted) return { call, blockReason: 'Tool execution aborted by signal' };
+    const tool = ctx.toolRegistry.get(call.name);
+    if (!tool) return { call, blockReason: `Tool '${call.name}' not found in registry` };
+    const validation = ctx.toolRegistry.validateParameters(tool, call.arguments);
+    if (!validation.valid) return { call, blockReason: `Parameter Validation Error: ${validation.error}` };
+    preparation.tool = tool;
+    preparation.declaration = JSON.stringify({ description: tool.description, parameters: tool.parameters });
+    try {
+      const before = await ctx.options.beforeToolCall?.(
+        {
+          assistantMessage: structuredClone(assistantMessage),
+          toolCall: structuredClone(call),
+          args: structuredClone(call.arguments),
+          context: { messages: structuredClone(ctx.state.messages) }
+        },
+        ctx.signal
+      );
+      if (before?.block) {
+        preparation.blockReason = before.reason || 'Tool execution blocked by gate';
+        preparation.terminate = before.terminate;
+      }
+    } catch (error) {
+      preparation.error = error instanceof Error ? error.message : String(error);
+      preparation.terminate = true;
+    }
+    return preparation;
   }
 
   private getJournalArgumentsError(ctx: TurnContext, call: ToolCallContent): string | undefined {
@@ -209,21 +265,25 @@ export class ToolDispatcher {
 
   private async executeOne(
     ctx: TurnContext,
-    call: ToolCallContent,
+    preparation: PreparedCall,
     assistantMessage: AssistantMessage,
     termination: TerminationFlag,
     sourceIndex?: number
   ): Promise<ToolResultMessage & { terminate?: boolean }> {
     const { options, toolRegistry, emitEvent, signal, clock } = ctx;
+    const { call } = preparation;
     const toolOpId = `op_tool_${call.id}`;
-    const invalidArgumentsError = this.getJournalArgumentsError(ctx, call);
+    const invalidArgumentsError = preparation.argumentsError;
 
     if (invalidArgumentsError) {
       return this.rejectInvalidArguments(ctx, call, invalidArgumentsError, sourceIndex);
     }
 
     const invocationId = this.reserveInvocationId(ctx);
-    const replay = toolRegistry.get(call.name)?.replay ?? 'safe';
+    const replay =
+      preparation.blockReason || preparation.error || signal?.aborted
+        ? 'never'
+        : (toolRegistry.get(call.name)?.replay ?? 'safe');
     if (options.journal) {
       await commitJournal(options.journal, [
         {
@@ -318,23 +378,18 @@ export class ToolDispatcher {
     let toolRes: ToolResultMessage & { terminate?: boolean };
     let executedDuration: number | undefined;
     try {
-      let blocked = false;
-      let blockReason = 'Tool execution blocked by gate';
-      if (options.beforeToolCall) {
-        const beforeRes = await options.beforeToolCall({
-          assistantMessage,
-          toolCall: call,
-          args: call.arguments,
-          context: { messages: ctx.state.messages }
-        });
-        if (beforeRes?.block) {
-          blocked = true;
-          blockReason = beforeRes.reason || blockReason;
-          if (beforeRes.terminate) termination.value = true;
-        }
-      }
-
-      if (blocked) {
+      if (preparation.terminate) termination.value = true;
+      if (preparation.error) throw new Error(preparation.error);
+      let blockReason = preparation.blockReason;
+      const current = toolRegistry.get(call.name);
+      if (
+        !blockReason &&
+        (current !== preparation.tool ||
+          JSON.stringify({ description: current?.description, parameters: current?.parameters }) !==
+            preparation.declaration)
+      )
+        blockReason = 'Tool registration changed during preflight';
+      if (blockReason) {
         toolRes = {
           role: 'toolResult',
           toolCallId: call.id,
@@ -351,13 +406,16 @@ export class ToolDispatcher {
       }
 
       if (options.afterToolCall) {
-        const afterRes = await options.afterToolCall({
-          assistantMessage,
-          toolCall: call,
-          args: call.arguments,
-          result: { content: toolRes.content, details: toolRes.details },
-          isError: toolRes.isError ?? false
-        });
+        const afterRes = await options.afterToolCall(
+          {
+            assistantMessage,
+            toolCall: call,
+            args: call.arguments,
+            result: { content: toolRes.content, details: toolRes.details },
+            isError: toolRes.isError ?? false
+          },
+          signal
+        );
         if (afterRes) {
           if (afterRes.content) toolRes.content = afterRes.content;
           if (afterRes.details !== undefined) toolRes.details = afterRes.details;
