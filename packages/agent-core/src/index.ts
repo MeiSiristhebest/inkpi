@@ -9,6 +9,7 @@ export * from './queues.js';
 export * from './tools.js';
 export * from './tree.js';
 export * from './extension-host.js';
+export type { ExtensionGenerationAPI } from './extension-generation.js';
 export * from './loop.js';
 export * from './concurrency.js';
 export * from './agent.js';

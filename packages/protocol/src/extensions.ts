@@ -286,4 +286,7 @@ export interface ExtensionModule {
   version?: string;
   description?: string;
   factory: ExtensionFactory;
+  /** Runtime extension names that must be active before this module is loaded. */
+  dependencies?: readonly string[];
+  dispose?: () => void | Promise<void>;
 }

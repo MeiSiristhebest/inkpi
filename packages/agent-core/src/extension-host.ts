@@ -15,10 +15,20 @@ import type {
   ToolRegistrationOptions,
   UIDelegate
 } from '@inkpi/protocol';
+import { ExtensionGeneration } from './extension-generation.js';
 import { consoleLogger } from './ports/index.js';
 import { createToolRegistrationDescriptor } from './tools.js';
 
 type ToolHooks = Parameters<ExtensionToolHooks['registerToolHooks']>[0];
+
+/** @internal Registration identities used for atomic generation replacement. */
+export interface ExtensionMount {
+  readonly tools: ReadonlyMap<string, any>;
+  readonly commands: ReadonlyMap<string, any>;
+  readonly shortcuts: ReadonlyMap<string, any>;
+  owns(kind: 'tools' | 'commands' | 'shortcuts', name: string): boolean;
+  dispose(): void;
+}
 
 export interface CommandDefinition {
   name: string;
@@ -42,6 +52,12 @@ export class ExtensionHost implements ExtensionAPI {
   private pipelineHooks: PipelineHooks[] = [];
   private toolHooks: ToolHooks[] = [];
   private uiDelegate?: UIDelegate;
+  private readonly generationInvalidators = new Set<() => void>();
+  private readonly registrationTokens = {
+    tools: new Map<string, symbol>(),
+    commands: new Map<string, symbol>(),
+    shortcuts: new Map<string, symbol>()
+  };
 
   constructor(uiDelegate?: UIDelegate) {
     if (uiDelegate) {
@@ -75,7 +91,7 @@ export class ExtensionHost implements ExtensionAPI {
   public async emit(event: string, ...args: any[]): Promise<void> {
     const list = this.listeners.get(event);
     if (!list || list.length === 0) return;
-    for (const listener of list) {
+    for (const listener of [...list]) {
       try {
         await listener(...args);
       } catch (err) {
@@ -91,14 +107,17 @@ export class ExtensionHost implements ExtensionAPI {
     const descriptor = createToolRegistrationDescriptor(tool, options);
     this.tools.set(tool.name, tool);
     this.toolRegistrations.set(tool.name, descriptor);
+    const token = Symbol();
+    this.registrationTokens.tools.set(tool.name, token);
     return () => {
-      if (this.tools.get(tool.name) === tool) this.unregisterTool(tool.name);
+      if (this.registrationTokens.tools.get(tool.name) === token) this.unregisterTool(tool.name);
     };
   }
 
   public unregisterTool(name: string): boolean {
     const removed = this.tools.delete(name);
     this.toolRegistrations.delete(name);
+    this.registrationTokens.tools.delete(name);
     return removed;
   }
 
@@ -136,13 +155,16 @@ export class ExtensionHost implements ExtensionAPI {
       this.commands.set(cleanName, nameOrConfig);
     }
 
+    const token = Symbol();
+    this.registrationTokens.commands.set(cleanName, token);
     return () => {
-      this.commands.delete(cleanName);
+      if (this.registrationTokens.commands.get(cleanName) === token) this.unregisterCommand(cleanName);
     };
   }
 
   public unregisterCommand(name: string): boolean {
     const cleanName = name.startsWith('/') ? name.slice(1) : name;
+    this.registrationTokens.commands.delete(cleanName);
     return this.commands.delete(cleanName);
   }
 
@@ -182,12 +204,15 @@ export class ExtensionHost implements ExtensionAPI {
             }
     };
     this.shortcuts.set(key, shortcutObj);
+    const token = Symbol();
+    this.registrationTokens.shortcuts.set(key, token);
     return () => {
-      this.shortcuts.delete(key);
+      if (this.registrationTokens.shortcuts.get(key) === token) this.unregisterShortcut(key);
     };
   }
 
   public unregisterShortcut(key: string): boolean {
+    this.registrationTokens.shortcuts.delete(key);
     return this.shortcuts.delete(key);
   }
 
@@ -207,7 +232,7 @@ export class ExtensionHost implements ExtensionAPI {
 
   public async transformContext(messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]> {
     let current = [...messages];
-    for (const tf of this.transformers) {
+    for (const tf of [...this.transformers]) {
       if (signal?.aborted) break;
       current = await tf(current, signal);
     }
@@ -260,7 +285,7 @@ export class ExtensionHost implements ExtensionAPI {
     event: import('@inkpi/protocol').ToolExecutionEvent
   ): Promise<import('@inkpi/protocol').BeforeToolHookResult> {
     let currentParams = { ...event.parameters };
-    for (const h of this.toolHooks) {
+    for (const h of [...this.toolHooks]) {
       if (h.beforeToolCall) {
         const res = await h.beforeToolCall({ ...event, parameters: currentParams });
         if (res?.block) {
@@ -280,7 +305,7 @@ export class ExtensionHost implements ExtensionAPI {
     const currentResult = { ...event.result };
     let overridden = false;
     let terminate = false;
-    for (const h of this.toolHooks) {
+    for (const h of [...this.toolHooks]) {
       if (h.afterToolCall) {
         const res = await h.afterToolCall({ ...event, result: currentResult });
         if (res) {
@@ -300,6 +325,8 @@ export class ExtensionHost implements ExtensionAPI {
   }
 
   public clear(): void {
+    for (const invalidate of [...this.generationInvalidators]) invalidate();
+    this.generationInvalidators.clear();
     this.listeners.clear();
     this.commands.clear();
     this.shortcuts.clear();
@@ -308,12 +335,107 @@ export class ExtensionHost implements ExtensionAPI {
     this.transformers = [];
     this.pipelineHooks = [];
     this.toolHooks = [];
+    this.registrationTokens.tools.clear();
+    this.registrationTokens.commands.clear();
+    this.registrationTokens.shortcuts.clear();
+  }
+
+  /** @internal All validation precedes the synchronous registry cutover. */
+  public mountGeneration(stage: ExtensionHost, previous?: ExtensionMount): ExtensionMount {
+    const check = (kind: 'tools' | 'commands' | 'shortcuts', current: Map<string, any>, next: Map<string, any>) => {
+      for (const name of next.keys()) {
+        if (current.has(name) && !previous?.owns(kind, name)) {
+          throw new Error(`Extension registration '${name}' belongs to another owner.`);
+        }
+      }
+    };
+    check('tools', this.tools, stage.tools);
+    check('commands', this.commands, stage.commands);
+    check('shortcuts', this.shortcuts, stage.shortcuts);
+    const tools = new Map(stage.tools);
+    const commands = new Map(stage.commands);
+    const shortcuts = new Map(stage.shortcuts);
+    const listeners = [...stage.listeners].flatMap(([event, list]) => list.map((listener) => ({ event, listener })));
+    const transformers = [...stage.transformers];
+    const pipelineHooks = [...stage.pipelineHooks];
+    const toolHooks = [...stage.toolHooks];
+    const tokens = {
+      tools: new Map<string, symbol>(),
+      commands: new Map<string, symbol>(),
+      shortcuts: new Map<string, symbol>()
+    };
+    previous?.dispose();
+    for (const [name, tool] of tools) {
+      this.tools.set(name, tool);
+      this.toolRegistrations.set(name, stage.toolRegistrations.get(name)!);
+    }
+    for (const [name, command] of commands) this.commands.set(name, command);
+    for (const [name, shortcut] of shortcuts) this.shortcuts.set(name, shortcut);
+    for (const kind of ['tools', 'commands', 'shortcuts'] as const) {
+      for (const name of stage[kind].keys()) {
+        const token = Symbol();
+        tokens[kind].set(name, token);
+        this.registrationTokens[kind].set(name, token);
+      }
+    }
+    for (const { event, listener } of listeners) {
+      const list = this.listeners.get(event) ?? [];
+      list.push(listener);
+      this.listeners.set(event, list);
+    }
+    this.transformers.push(...transformers);
+    this.pipelineHooks.push(...pipelineHooks);
+    this.toolHooks.push(...toolHooks);
+    const owns = (kind: 'tools' | 'commands' | 'shortcuts', name: string) =>
+      tokens[kind].has(name) && this.registrationTokens[kind].get(name) === tokens[kind].get(name);
+    return {
+      tools,
+      commands,
+      shortcuts,
+      owns,
+      dispose: () => {
+        for (const name of tools.keys()) if (owns('tools', name)) this.unregisterTool(name);
+        for (const name of commands.keys()) if (owns('commands', name)) this.unregisterCommand(name);
+        for (const name of shortcuts.keys()) if (owns('shortcuts', name)) this.unregisterShortcut(name);
+        for (const { event, listener } of listeners) this.off(event, listener);
+        this.transformers = this.transformers.filter((entry) => !transformers.includes(entry));
+        this.pipelineHooks = this.pipelineHooks.filter((entry) => !pipelineHooks.includes(entry));
+        this.toolHooks = this.toolHooks.filter((entry) => !toolHooks.includes(entry));
+      }
+    };
+  }
+
+  /** @internal Clearing a host must also fence references retained by old modules. */
+  public registerGenerationInvalidator(invalidate: () => void): () => void {
+    this.generationInvalidators.add(invalidate);
+    return () => {
+      this.generationInvalidators.delete(invalidate);
+    };
+  }
+
+  /** @internal No live registration changes until the complete group passes preflight. */
+  public mountGenerationBatch(stages: readonly ExtensionHost[], previous: readonly ExtensionMount[]): ExtensionMount[] {
+    for (const kind of ['tools', 'commands', 'shortcuts'] as const) {
+      const seen = new Set<string>();
+      for (const stage of stages)
+        for (const name of stage[kind].keys()) {
+          if (seen.has(name)) throw new Error(`Duplicate extension registration '${name}' in replacement group.`);
+          seen.add(name);
+          if (this[kind].has(name) && !previous.some((mount) => mount.owns(kind, name)))
+            throw new Error(`Extension registration '${name}' belongs to another owner.`);
+        }
+    }
+    for (const mount of previous) mount.dispose();
+    return stages.map((stage) => this.mountGeneration(stage));
   }
 }
 
 export class ExtensionRunner {
   private host: ExtensionHost;
   private loadedModules = new Map<string, ExtensionModule>();
+  private generations = new Map<string, ExtensionGeneration>();
+  private mutationQueue: Promise<unknown> = Promise.resolve();
+  private nextGeneration = 1;
 
   constructor(host?: ExtensionHost) {
     this.host = host || new ExtensionHost();
@@ -328,37 +450,176 @@ export class ExtensionRunner {
   }
 
   public async loadExtension(ext: ExtensionModule | ExtensionFactory | any, name?: string): Promise<boolean> {
-    try {
-      if (typeof ext === 'function') {
-        await ext(this.host);
-        const modName = name || 'anonymous-extension';
-        this.loadedModules.set(modName, { name: modName, factory: ext });
-      } else if (ext && typeof ext.factory === 'function') {
-        await ext.factory(this.host);
-        this.loadedModules.set(ext.name || name || 'anonymous-extension', ext);
-      } else if (ext && typeof ext.init === 'function') {
-        await ext.init(this.host);
-        this.loadedModules.set(ext.name || name || 'anonymous-extension', ext);
+    return this.serialize(async () => {
+      let generation: ExtensionGeneration | undefined;
+      try {
+        const module: ExtensionModule = normalizeExtensionModule(ext, name);
+        if (!module.name.trim()) throw new Error('Extension name must not be empty.');
+        validateExtensionDependencies(new Map([...this.liveModules(), [module.name, module]]));
+        generation = new ExtensionGeneration(this.host, new ExtensionHost(), this.nextGeneration++);
+        if (module.dispose) generation.api.onDispose(module.dispose);
+        await module.factory(generation.api);
+        const previous = this.generations.get(module.name);
+        generation.commit(previous);
+        this.generations.set(module.name, generation);
+        this.loadedModules.set(module.name, module);
+        if (previous) await this.cleanup(previous);
+        return true;
+      } catch (err) {
+        if (generation) await this.cleanup(generation);
+        consoleLogger.error('[ExtensionRunner] Failed to load extension:', err);
+        return false;
       }
-      return true;
-    } catch (err) {
-      consoleLogger.error('[ExtensionRunner] Failed to load extension:', err);
-      return false;
-    }
+    });
   }
 
-  public async loadAll(extensions: Array<{ name: string; factory: ExtensionFactory }>): Promise<void> {
-    for (const ext of extensions) {
-      await this.loadExtension(ext.factory, ext.name);
+  public async loadAll(extensions: ExtensionModule[]): Promise<void> {
+    return this.serialize(async () => {
+      const combined = this.liveModules();
+      const seen = new Set<string>();
+      for (const input of extensions) {
+        const module = normalizeExtensionModule(input);
+        if (seen.has(module.name)) throw new Error(`Duplicate extension '${module.name}'.`);
+        seen.add(module.name);
+        combined.set(module.name, module);
+      }
+      const order = validateExtensionDependencies(combined).filter((module) => seen.has(module.name));
+      const prepared: Array<{
+        module: ExtensionModule;
+        generation: ExtensionGeneration;
+        previous?: ExtensionGeneration;
+      }> = [];
+      try {
+        for (const module of order) {
+          const generation = new ExtensionGeneration(this.host, new ExtensionHost(), this.nextGeneration++);
+          prepared.push({ module, generation, previous: this.generations.get(module.name) });
+          if (module.dispose) generation.api.onDispose(module.dispose);
+          await module.factory(generation.api);
+        }
+        for (const entry of prepared) entry.generation.assertPreparing();
+        const mounts = this.host.mountGenerationBatch(
+          prepared.map((entry) => entry.generation.getStage()),
+          prepared.flatMap((entry) => (entry.previous?.getMount() ? [entry.previous.getMount()!] : []))
+        );
+        for (let index = 0; index < prepared.length; index++) {
+          const entry = prepared[index];
+          entry.generation.adopt(mounts[index]);
+          this.generations.set(entry.module.name, entry.generation);
+          this.loadedModules.set(entry.module.name, entry.module);
+        }
+        for (const entry of prepared) entry.previous?.invalidate();
+      } catch (error) {
+        for (const entry of [...prepared].reverse()) await this.cleanup(entry.generation);
+        throw error;
+      }
+      for (const entry of [...prepared].reverse()) if (entry.previous) await this.cleanup(entry.previous);
+    });
+  }
+
+  public async unloadExtension(name: string): Promise<void> {
+    return this.serialize(async () => {
+      const dependent = [...this.liveModules().values()].find((module) => module.dependencies?.includes(name));
+      if (dependent) throw new Error(`Extension '${name}' is required by '${dependent.name}'.`);
+      const generation = this.generations.get(name);
+      this.generations.delete(name);
+      this.loadedModules.delete(name);
+      if (generation) await generation.dispose();
+    });
+  }
+
+  public async dispose(): Promise<void> {
+    return this.serialize(async () => {
+      const errors: unknown[] = [];
+      for (const module of validateExtensionDependencies(this.loadedModules).reverse()) {
+        const generation = this.generations.get(module.name);
+        this.generations.delete(module.name);
+        this.loadedModules.delete(module.name);
+        try {
+          await generation?.dispose();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length) throw new AggregateError(errors, 'Extension disposal failed.');
+    });
+  }
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.mutationQueue.catch(() => undefined).then(operation);
+    this.mutationQueue = pending.then(
+      () => undefined,
+      () => undefined
+    );
+    return pending;
+  }
+
+  private async cleanup(generation: ExtensionGeneration): Promise<void> {
+    try {
+      await generation.dispose();
+    } catch (error) {
+      consoleLogger.error('[ExtensionRunner] Cleanup failed:', error);
     }
   }
 
   public getLoadedModules(): ExtensionModule[] {
-    return Array.from(this.loadedModules.values());
+    return Array.from(this.liveModules().values()).map((module) => ({
+      ...module,
+      ...(module.dependencies ? { dependencies: [...module.dependencies] } : {})
+    }));
+  }
+
+  private liveModules(): Map<string, ExtensionModule> {
+    return new Map([...this.loadedModules].filter(([name]) => this.generations.get(name)?.isActive()));
   }
 
   /** @deprecated 名实不符（返回的是模块而非文档），已由 getLoadedModules 取代。 */
   public getLoadedExtensions(): ExtensionModule[] {
     return this.getLoadedModules();
   }
+}
+
+function normalizeExtensionModule(ext: any, name?: string): ExtensionModule {
+  const factory = typeof ext === 'function' ? ext : (ext?.factory ?? ext?.init);
+  if (typeof factory !== 'function') throw new Error('Extension requires a factory function.');
+  const moduleName = name ?? (typeof ext === 'object' ? ext.name : undefined) ?? 'anonymous-extension';
+  if (typeof moduleName !== 'string' || !moduleName.trim()) throw new Error('Extension name must not be empty.');
+  if (ext?.dependencies !== undefined && !Array.isArray(ext.dependencies))
+    throw new Error('Extension dependencies must be an array.');
+  return {
+    ...(typeof ext === 'object' ? ext : {}),
+    name: moduleName,
+    factory,
+    ...(ext?.dependencies === undefined ? {} : { dependencies: [...ext.dependencies] })
+  };
+}
+
+function validateExtensionDependencies(modules: ReadonlyMap<string, ExtensionModule>): ExtensionModule[] {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: ExtensionModule[] = [];
+  const visit = (name: string) => {
+    if (visited.has(name)) return;
+    if (visiting.has(name)) throw new Error(`Cyclic extension dependency '${name}'.`);
+    const module = modules.get(name);
+    if (!module) throw new Error(`Missing extension dependency '${name}'.`);
+    if (
+      !name.trim() ||
+      typeof module.factory !== 'function' ||
+      (module.dispose !== undefined && typeof module.dispose !== 'function')
+    )
+      throw new Error('Invalid extension module.');
+    if (
+      module.dependencies !== undefined &&
+      (!Array.isArray(module.dependencies) ||
+        module.dependencies.some((dependency) => typeof dependency !== 'string' || !dependency.trim()))
+    )
+      throw new Error(`Invalid dependencies for extension '${name}'.`);
+    visiting.add(name);
+    for (const dependency of module.dependencies ?? []) visit(dependency);
+    visiting.delete(name);
+    visited.add(name);
+    ordered.push(module);
+  };
+  for (const name of modules.keys()) visit(name);
+  return ordered;
 }

@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ExtensionAPI, ExtensionFactory } from '@inkpi/protocol';
+import { ExtensionHost, ExtensionRunner } from '../extension-host.js';
 import { consoleLogger } from '../ports/index.js';
 
 export interface DynamicLoadSummary {
@@ -15,9 +16,16 @@ export interface DynamicLoadSummary {
  */
 export class DynamicPluginLoader {
   private extensionHost: ExtensionAPI;
+  private runner?: ExtensionRunner;
 
-  constructor(extensionHost: ExtensionAPI) {
+  constructor(extensionHost: ExtensionAPI, runner?: ExtensionRunner) {
     this.extensionHost = extensionHost;
+    if (runner && runner.getHost() !== extensionHost) throw new Error('Plugin runner must own the supplied host.');
+    if (extensionHost instanceof ExtensionHost) this.runner = runner ?? new ExtensionRunner(extensionHost);
+  }
+
+  public async dispose(): Promise<void> {
+    await this.runner?.dispose();
   }
 
   /**
@@ -50,7 +58,7 @@ export class DynamicPluginLoader {
     const entries = fs.readdirSync(resolvedDir, { withFileTypes: true });
 
     for (const entry of entries) {
-      const isScript = entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.mjs'));
+      const isScript = entry.isFile() && /\.(?:js|mjs|cjs)$/.test(entry.name);
       const isSubmodule = entry.isDirectory() && fs.existsSync(path.join(resolvedDir, entry.name, 'package.json'));
 
       if (!isScript && !isSubmodule) continue;
@@ -74,6 +82,7 @@ export class DynamicPluginLoader {
         if (entryFile.endsWith('.cjs') || fileContent.includes('module.exports') || fileContent.includes('exports.')) {
           const { createRequire } = await import('node:module');
           const requireFn = createRequire(import.meta.url);
+          delete requireFn.cache[requireFn.resolve(entryFile)];
           const cjsMod = requireFn(entryFile);
           factory = cjsMod.default || cjsMod.extension || cjsMod.activate || cjsMod;
         } else {
@@ -85,7 +94,10 @@ export class DynamicPluginLoader {
         }
 
         if (typeof factory === 'function') {
-          await factory(this.extensionHost);
+          if (this.runner) {
+            if (!(await this.runner.loadExtension(factory, entryFile)))
+              throw new Error(`Plugin '${entry.name}' initialization failed.`);
+          } else await factory(this.extensionHost);
           summary.loaded.push(entry.name);
           consoleLogger.info(`[DynamicPluginLoader] Successfully mounted plugin: ${entry.name}`);
         } else {

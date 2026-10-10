@@ -126,7 +126,7 @@ export class Agent {
   public async loadWorkspacePlugins(baseDir?: string): Promise<void> {
     const targetDir = baseDir || (typeof process !== 'undefined' ? process.cwd() : '.');
     const { DynamicPluginLoader } = await import('./package-manager/dynamic-loader.js');
-    const loader = new DynamicPluginLoader(this.extensionHost);
+    const loader = new DynamicPluginLoader(this.extensionHost, this.extensionRunner);
     await loader.loadDefaultDirectories(targetDir);
   }
 
