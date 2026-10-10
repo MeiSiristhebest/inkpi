@@ -16,6 +16,8 @@ import type {
   DomainProjectionApplyResult,
   DomainProjectionCursor,
   DomainProjectionSnapshot,
+  DomainSyncPage,
+  DomainSyncPageParams,
   DomainSyncPullParams,
   DomainSyncPushParams,
   DomainSyncRestoreParams,
@@ -269,6 +271,7 @@ export interface DaemonRpcMethodMap {
   'cache.status': RpcMethodContract<void, CacheStatus>;
   'daemon.status': RpcMethodContract<void, DaemonStatus>;
   'domain.sync.pull': RpcMethodContract<DomainSyncPullParams, DomainChangeSet[]>;
+  'domain.sync.page': RpcMethodContract<DomainSyncPageParams, DomainSyncPage>;
   'domain.sync.push': RpcMethodContract<DomainSyncPushParams, DomainProjectionApplyResult>;
   'domain.sync.restore': RpcMethodContract<DomainSyncRestoreParams, DomainProjectionCursor>;
   'domain.sync.snapshot': RpcMethodContract<DomainSyncSnapshotParams, DomainProjectionSnapshot>;
@@ -337,6 +340,7 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'cache.status',
   'daemon.status',
   'domain.sync.pull',
+  'domain.sync.page',
   'domain.sync.push',
   'domain.sync.restore',
   'domain.sync.snapshot',

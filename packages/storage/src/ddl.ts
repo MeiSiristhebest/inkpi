@@ -199,7 +199,8 @@ CREATE INDEX IF NOT EXISTS idx_domain_change_sets_workspace
 CREATE TABLE IF NOT EXISTS domain_projection_cursors (
   workspace_id TEXT PRIMARY KEY,
   revision INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  epoch TEXT NOT NULL DEFAULT ''
 );
 
 -- Generic domain aggregate projections (derived, rebuildable, no domain schema)

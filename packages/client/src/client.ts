@@ -9,6 +9,10 @@ import type {
   DomainChangeSet,
   DomainProjectionApplyResult,
   DomainProjectionSnapshot,
+  DomainSyncPage,
+  DomainSyncPageParams,
+  DomainWatchEvent,
+  DomainWatchOptions,
   ProposalProjectionSnapshot,
   ProposalProjectionState,
   ProposalSyncPushResult,
@@ -26,7 +30,7 @@ import type {
   ToolRegistrationDescriptor,
   ToolResultMessage
 } from '@inkpi/protocol';
-import { calculateProposalProjectionStateHash, observeTaskResult } from '@inkpi/protocol';
+import { calculateProposalProjectionStateHash, observeTaskResult, watchDomainChanges } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import { TcpSocketTransport } from './transports/tcp.js';
 import { WebSocketTransport } from './transports/ws.js';
@@ -415,6 +419,14 @@ export class InkRpcClient {
 
   public snapshotDomain(workspaceId: string): Promise<DomainProjectionSnapshot> {
     return this.request<DomainProjectionSnapshot>('domain.sync.snapshot', { workspaceId });
+  }
+
+  public pullDomainChangePage(params: DomainSyncPageParams): Promise<DomainSyncPage> {
+    return this.request<DomainSyncPage>('domain.sync.page', { ...params });
+  }
+
+  public watchDomain(workspaceId: string, options?: DomainWatchOptions): AsyncIterableIterator<DomainWatchEvent> {
+    return watchDomainChanges(this, workspaceId, options);
   }
 
   public restoreDomainSnapshot(

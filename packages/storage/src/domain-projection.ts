@@ -5,7 +5,13 @@ import type {
   DomainProjectionCursor,
   DomainProjectionSnapshot
 } from '@inkpi/protocol';
-import { assertJsonValue, calculateDomainChangeSetChecksum } from '@inkpi/protocol';
+import {
+  type DomainSyncPage,
+  type DomainSyncPageParams,
+  assertJsonValue,
+  calculateDomainChangeSetChecksum,
+  restoreDomainChangeSetWireValue
+} from '@inkpi/protocol';
 import { deserializeDomainChanges, serializeDomainChanges } from './domain-change-codec.js';
 import { DomainMaterializer, type GenericDomainProjection } from './domain-materializer.js';
 import type { IDb } from './ports.js';
@@ -25,7 +31,8 @@ export class DomainProjectionStore {
     this.materializer = new DomainMaterializer(db);
   }
 
-  public apply(changeSet: DomainChangeSet): DomainProjectionApplyResult {
+  public apply(input: DomainChangeSet): DomainProjectionApplyResult {
+    const changeSet = restoreDomainChangeSetWireValue(input);
     validateChangeSet(changeSet);
     return this.db.transaction(() => {
       const existing = this.db
@@ -87,8 +94,8 @@ export class DomainProjectionStore {
       const updatedAt = this.now();
       this.db
         .prepare(
-          `INSERT INTO domain_projection_cursors (workspace_id, revision, updated_at)
-           VALUES (?, ?, ?)
+          `INSERT INTO domain_projection_cursors (workspace_id, revision, updated_at, epoch)
+           VALUES (?, ?, ?, lower(hex(randomblob(16))))
            ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at`
         )
         .run(changeSet.workspaceId, changeSet.revision, updatedAt);
@@ -125,16 +132,18 @@ export class DomainProjectionStore {
     return this.materializer.listGenericProjections(workspaceId, aggregateType);
   }
 
-  public list(workspaceId: string, afterRevision = 0): DomainChangeSet[] {
+  public list(workspaceId: string, afterRevision = 0, limit?: number): DomainChangeSet[] {
     if (!workspaceId.trim() || !Number.isInteger(afterRevision) || afterRevision < 0) {
       throw new Error('Domain projection query has invalid workspace or cursor');
     }
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000))
+      throw new Error('Domain projection page limit must be between 1 and 1000');
     const rows = this.db
       .prepare(
         `SELECT * FROM domain_change_sets
-         WHERE workspace_id = ? AND revision > ? ORDER BY revision ASC`
+         WHERE workspace_id = ? AND revision > ? ORDER BY revision ASC${limit === undefined ? '' : ' LIMIT ?'}`
       )
-      .all(workspaceId, afterRevision) as Array<Record<string, unknown>>;
+      .all(workspaceId, afterRevision, ...(limit === undefined ? [] : [limit])) as Array<Record<string, unknown>>;
     let expectedRevision = afterRevision + 1;
     return rows.map((row) => {
       const changeSet = {
@@ -170,6 +179,10 @@ export class DomainProjectionStore {
   }
 
   public createSnapshot(workspaceId: string): DomainProjectionSnapshot {
+    return this.db.transaction(() => this.captureSnapshot(workspaceId));
+  }
+
+  private captureSnapshot(workspaceId: string): DomainProjectionSnapshot {
     const cursor = this.getCursor(workspaceId);
     const changeSets = this.list(workspaceId);
     if ((changeSets.at(-1)?.revision ?? 0) !== cursor.revision) {
@@ -179,11 +192,71 @@ export class DomainProjectionStore {
       workspaceId,
       revision: cursor.revision,
       changeSets,
-      createdAt: this.now()
+      createdAt: this.now(),
+      epoch: this.getEpoch(workspaceId)
     };
   }
 
-  public restoreSnapshot(snapshot: DomainProjectionSnapshot): DomainProjectionCursor {
+  public readPage(params: DomainSyncPageParams): DomainSyncPage {
+    return this.db.transaction(() => {
+      if (typeof params.epoch !== 'string' || !Number.isSafeInteger(params.afterRevision) || params.afterRevision < 0)
+        throw new Error('Invalid domain page cursor');
+      const limit = params.limit ?? 100;
+      if (
+        typeof params.workspaceId !== 'string' ||
+        !params.workspaceId.trim() ||
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        limit > 1000
+      )
+        throw new Error('Invalid domain page workspace or limit');
+      const revision = this.getCursor(params.workspaceId).revision;
+      const epoch = this.getEpoch(params.workspaceId);
+      const reset =
+        params.afterRevision > revision ||
+        (params.epoch !== epoch && !(params.afterRevision === 0 && params.epoch === ''));
+      const page: DomainSyncPage = {
+        workspaceId: params.workspaceId,
+        afterRevision: params.afterRevision,
+        revision,
+        epoch,
+        reset,
+        changeSets: []
+      };
+      if (reset) return page;
+      const headers = this.db
+        .prepare(`SELECT
+        length(CAST(changes_json AS BLOB)) + 6 * (length(CAST(id AS BLOB)) +
+          length(CAST(workspace_id AS BLOB)) + length(CAST(source_device_id AS BLOB))) + 256 AS bytes
+        FROM domain_change_sets WHERE workspace_id = ? AND revision > ? ORDER BY revision ASC LIMIT ?`)
+        .all(params.workspaceId, params.afterRevision, limit) as Array<{ bytes: number }>;
+      let bytes = 0;
+      let count = 0;
+      for (const { bytes: size } of headers) {
+        if (bytes + size > 1024 * 1024) {
+          if (!count) throw new Error('Domain change set exceeds the 1 MiB page limit');
+          break;
+        }
+        count++;
+        bytes += size;
+      }
+      if (count) page.changeSets = this.list(params.workspaceId, params.afterRevision, count);
+      if (!page.changeSets.length && params.afterRevision !== revision)
+        throw new Error('Domain projection cursor does not match its change log');
+      return page;
+    });
+  }
+
+  private getEpoch(workspaceId: string): string {
+    const row = this.db
+      .prepare('SELECT epoch FROM domain_projection_cursors WHERE workspace_id = ?')
+      .get(workspaceId) as { epoch: string } | undefined;
+    return row?.epoch ?? '';
+  }
+
+  public restoreSnapshot(input: DomainProjectionSnapshot): DomainProjectionCursor {
+    if (!Array.isArray(input.changeSets)) throw new Error('Domain projection snapshot is missing change sets');
+    const snapshot = { ...input, changeSets: input.changeSets.map(restoreDomainChangeSetWireValue) };
     validateSnapshot(snapshot);
     return this.db.transaction(() => {
       this.db.prepare('DELETE FROM domain_change_sets WHERE workspace_id = ?').run(snapshot.workspaceId);
@@ -210,9 +283,10 @@ export class DomainProjectionStore {
       const updatedAt = this.now();
       this.db
         .prepare(
-          `INSERT INTO domain_projection_cursors (workspace_id, revision, updated_at)
-           VALUES (?, ?, ?)
-           ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at`
+          `INSERT INTO domain_projection_cursors (workspace_id, revision, updated_at, epoch)
+           VALUES (?, ?, ?, lower(hex(randomblob(16))))
+           ON CONFLICT(workspace_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at,
+             epoch = excluded.epoch`
         )
         .run(snapshot.workspaceId, snapshot.revision, updatedAt);
       return {

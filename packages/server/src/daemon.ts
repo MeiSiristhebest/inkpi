@@ -43,6 +43,7 @@ import type {
   CacheLayer,
   CacheStatus,
   DiagnosticSnapshot,
+  DomainSyncPageParams,
   DomainSyncPullParams,
   DomainSyncPushParams,
   DomainSyncRestoreParams,
@@ -353,6 +354,10 @@ export class InkPiDaemon {
 
     this.rpcServer.registerMethod('domain.sync.pull', (params: DomainSyncPullParams) => {
       return this.withDomainProjection().list(params.workspaceId, params.afterRevision);
+    });
+
+    this.rpcServer.registerMethod('domain.sync.page', (params: DomainSyncPageParams) => {
+      return this.withDomainProjection().readPage(params);
     });
 
     this.rpcServer.registerMethod('domain.sync.snapshot', (params: DomainSyncSnapshotParams) => {
@@ -1063,6 +1068,7 @@ export class InkPiDaemon {
       removeCapabilities(capabilities, [
         'domain.sync.push',
         'domain.sync.pull',
+        'domain.sync.page',
         'domain.sync.snapshot',
         'domain.sync.restore'
       ]);

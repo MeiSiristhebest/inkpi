@@ -13,6 +13,7 @@ export * from './task-wait.js';
 export * from './execution.js';
 export * from './diagnostics.js';
 export * from './domain-sync.js';
+export * from './domain-watch.js';
 export * from './domain-proposal.js';
 export * from './proposal-sync.js';
 export * from './artifact.js';

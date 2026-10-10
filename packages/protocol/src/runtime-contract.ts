@@ -51,6 +51,7 @@ export const RUNTIME_CAPABILITIES = [
   'cache.invalidate',
   'domain.sync.push',
   'domain.sync.pull',
+  'domain.sync.page',
   'domain.sync.snapshot',
   'domain.sync.restore',
   'proposal.sync.push',

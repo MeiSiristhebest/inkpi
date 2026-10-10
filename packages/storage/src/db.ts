@@ -4,7 +4,7 @@ import { deserializeDomainChanges } from './domain-change-codec.js';
 import type { IDb, PreparedStatement } from './ports.js';
 
 /** Increment when the Runtime's persisted SQLite shape changes. */
-export const STORAGE_SCHEMA_VERSION = 2;
+export const STORAGE_SCHEMA_VERSION = 3;
 
 interface SqliteDatabase {
   exec(sql: string): void;
@@ -68,6 +68,8 @@ export class InkDb implements IDb {
       // metadata required for guarded lane fast-forward merges.
       this.ensureColumn('lanes', 'parent_lane_id', 'TEXT');
       this.ensureColumn('domain_change_sets', 'checksum', "TEXT NOT NULL DEFAULT ''");
+      this.ensureColumn('domain_projection_cursors', 'epoch', "TEXT NOT NULL DEFAULT ''");
+      this.db.exec("UPDATE domain_projection_cursors SET epoch = lower(hex(randomblob(16))) WHERE epoch = ''");
       this.ensureColumn('task_executions', 'run_json', 'TEXT');
       this.ensureColumn('task_executions', 'steps_json', 'TEXT');
       this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
@@ -127,7 +129,14 @@ export class InkDb implements IDb {
   }
 
   private ensureColumn(
-    table: 'artifacts' | 'lanes' | 'branch_tips' | 'domain_change_sets' | 'task_executions' | 'writer_leases',
+    table:
+      | 'artifacts'
+      | 'lanes'
+      | 'branch_tips'
+      | 'domain_change_sets'
+      | 'domain_projection_cursors'
+      | 'task_executions'
+      | 'writer_leases',
     column: string,
     definition: string
   ): boolean {

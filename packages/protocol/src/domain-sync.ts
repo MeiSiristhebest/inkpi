@@ -1,3 +1,5 @@
+import { assertJsonValue } from './json.js';
+
 export type DomainChangeOperation = 'upsert' | 'delete';
 
 export interface DomainChange {
@@ -54,6 +56,46 @@ export interface DomainProjectionSnapshot {
   revision: number;
   changeSets: DomainChangeSet[];
   createdAt: number;
+  /** Host-owned history generation; changes when a snapshot replaces the log. */
+  epoch?: string;
+}
+
+export interface DomainSyncPageParams {
+  workspaceId: string;
+  afterRevision: number;
+  epoch: string;
+  limit?: number;
+}
+export interface DomainSyncPage {
+  workspaceId: string;
+  afterRevision: number;
+  revision: number;
+  epoch: string;
+  reset: boolean;
+  changeSets: DomainChangeSet[];
+}
+
+/** Restore the historical optional delete field dropped by a JSON wire hop. */
+export function restoreDomainChangeSetWireValue(input: DomainChangeSet): DomainChangeSet {
+  const { changes, ...metadata } = input;
+  assertJsonValue(metadata, 'Domain change set metadata');
+  if (!Array.isArray(changes)) throw new Error('Domain change set has invalid changes');
+  for (const change of changes) {
+    const { payload, ...changeMetadata } = change;
+    assertJsonValue(changeMetadata, 'Domain change metadata');
+    if (change.operation !== 'delete' || payload !== undefined) assertJsonValue(payload, 'Domain change payload');
+  }
+  const changeSet = structuredClone(input);
+  const { checksum, ...unsigned } = changeSet;
+  if (calculateDomainChangeSetChecksum(unsigned) === checksum) return changeSet;
+  if (Array.isArray(changeSet.changes)) {
+    changeSet.changes = changeSet.changes.map((change) =>
+      change.operation === 'delete' && !Object.hasOwn(change, 'payload') ? { ...change, payload: undefined } : change
+    );
+  }
+  const { checksum: _checksum, ...legacy } = changeSet;
+  if (calculateDomainChangeSetChecksum(legacy) !== checksum) throw new Error('Domain change set checksum mismatch');
+  return changeSet;
 }
 
 export interface DomainSyncSnapshotParams {
