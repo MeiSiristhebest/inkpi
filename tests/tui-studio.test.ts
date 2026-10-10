@@ -34,11 +34,49 @@ describe('TerminalStudio (Terminal Workstation)', () => {
     expect(thirdDiff.content.length).toBeLessThan(studio.renderScreen().length);
   });
 
+  it('should wrap long CJK documents to the visible editor rows', () => {
+    const studio = new TerminalStudio({ width: 100, height: 26 });
+    studio.editor.insert(
+      `开篇标记${'林玄在青云山下停住脚步，远处云海翻涌，剑鸣从石阶尽头传来。'.repeat(3000)}\n末尾标记`
+    );
+
+    const frame = studio.renderScreen();
+    expect(frame).toContain('末尾标记');
+    expect(Buffer.byteLength(frame)).toBeLessThan(20_000);
+
+    studio.renderDifferential();
+    studio.editor.insert('新增结尾。');
+    const diff = studio.renderDifferential();
+    expect(diff.isDiff).toBe(true);
+    expect(Buffer.byteLength(diff.content)).toBeLessThan(Buffer.byteLength(studio.renderScreen()));
+
+    studio.setDimensions(140, 35);
+    const resizeDiff = studio.renderDifferential();
+    expect(resizeDiff.isDiff).toBe(true);
+
+    studio.setFocus('outline');
+    const focusDiff = studio.renderDifferential();
+    expect(focusDiff.isDiff).toBe(true);
+    expect(focusDiff.content).toContain('\x1b[33m');
+  });
+
   it('should support document navigation and focus switching', () => {
     const studio = new TerminalStudio({
       initialResources: [
-        { id: '1', title: 'Doc 1', wordCount: 0, status: 'draft', active: true },
-        { id: '2', title: 'Doc 2', wordCount: 0, status: 'draft', active: false }
+        {
+          id: '1',
+          title: 'Doc 1',
+          wordCount: 0,
+          status: 'draft',
+          active: true
+        },
+        {
+          id: '2',
+          title: 'Doc 2',
+          wordCount: 0,
+          status: 'draft',
+          active: false
+        }
       ]
     });
 
@@ -58,7 +96,9 @@ describe('TerminalStudio (Terminal Workstation)', () => {
   });
 
   it('should handle interactive input, ghost text acceptance, and commands', async () => {
-    const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') }
+    });
     const studio = new TerminalStudio({ agent });
 
     // 1. Text input
@@ -85,7 +125,9 @@ describe('TerminalStudio (Terminal Workstation)', () => {
   });
 
   it('should handle dimensions, document navigation boundaries, and agent event streaming', async () => {
-    const agent = new Agent({ initialState: { model: getModelPreset('mock-test') } });
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') }
+    });
     const studio = new TerminalStudio({ agent, width: 100, height: 28 });
 
     studio.setDimensions(140, 35);

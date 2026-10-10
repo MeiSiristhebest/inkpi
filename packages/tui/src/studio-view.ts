@@ -2,6 +2,7 @@ import { formatTypography } from '@inkpi/editor-core';
 import type { StateLedger } from '@inkpi/protocol';
 import { ANSI, DifferentialRenderer, drawBox } from './render.js';
 import type { StudioModel } from './studio-model.js';
+import { wrapTextToWidth } from './width.js';
 
 /**
  * Studio 三层分离之 **View**：从 Model 读取状态，纯渲染，不做任何状态迁移。
@@ -105,15 +106,21 @@ export class StudioView {
     const rawContent = this.model.editor.getText();
     const typography = this.model.getTypography();
     const formattedContent = typography ? formatTypography(rawContent, typography) : rawContent;
-    const contentLines = formattedContent ? formattedContent.split('\n') : [labels.emptyContentText || '(empty)'];
+    const editorContentWidth = Math.max(10, centerWidth - 2);
+    const editorContentHeight = Math.max(0, mainHeight - 2);
+    const ghostText = this.model.ghost.hasGhostText() ? this.model.ghost.getGhostText() : undefined;
+    const contentLines = formattedContent
+      ? wrapTextToWidth(
+          formattedContent,
+          editorContentWidth,
+          Math.max(0, editorContentHeight - Number(Boolean(ghostText)))
+        )
+      : [labels.emptyContentText || '(empty)'];
 
-    if (this.model.ghost.hasGhostText()) {
-      const gt = this.model.ghost.getGhostText();
-      if (gt) {
-        contentLines.push(
-          `${ANSI.FG_GRAY}${labels.ghostSuggestion || 'Suggestion'}: ${gt.text} ${ANSI.FG_YELLOW}(${labels.acceptSuggestion || 'Tab to accept'})${ANSI.RESET}`
-        );
-      }
+    if (ghostText) {
+      contentLines.push(
+        `${ANSI.FG_GRAY}${labels.ghostSuggestion || 'Suggestion'}: ${ghostText.text} ${ANSI.FG_YELLOW}(${labels.acceptSuggestion || 'Tab to accept'})${ANSI.RESET}`
+      );
     }
     const spinnerPrefix = isStreaming ? `${ANSI.FG_CYAN}⠋ ` : '';
     const title = `${spinnerPrefix}${labels.editorTitle || 'Editor'} - ${currentResource.title} (${labels.resourceMetric?.(this.model.editor.getWordCount()) || this.model.editor.getWordCount()})${isStreaming ? ANSI.RESET : ''}`;

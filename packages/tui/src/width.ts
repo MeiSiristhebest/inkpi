@@ -53,18 +53,19 @@ interface GraphemeToken {
   width: number;
 }
 
-function graphemeSegments(text: string): Array<{ segment: string; index: number }> {
+function* graphemeSegments(text: string): IterableIterator<{ segment: string; index: number }> {
   if (GRAPHEME_SEGMENTER) {
-    return Array.from(GRAPHEME_SEGMENTER.segment(text), ({ segment, index }) => ({ segment, index }));
+    for (const { segment, index } of GRAPHEME_SEGMENTER.segment(text)) {
+      yield { segment, index };
+    }
+    return;
   }
 
-  const segments: Array<{ segment: string; index: number }> = [];
   let index = 0;
   for (const segment of text) {
-    segments.push({ segment, index });
+    yield { segment, index };
     index += segment.length;
   }
-  return segments;
 }
 
 function widthOfGrapheme(segment: string): number {
@@ -94,7 +95,10 @@ function ansiAt(text: string, index: number): string | undefined {
   return ANSI_AT_POSITION_REGEX.exec(text)?.[0];
 }
 
-function tokenizeGraphemes(text: string): { tokens: GraphemeToken[]; trailingAnsi: string } {
+function tokenizeGraphemes(text: string): {
+  tokens: GraphemeToken[];
+  trailingAnsi: string;
+} {
   const plainParts: string[] = [];
   const rawStarts: number[] = [];
   const rawEnds: number[] = [];
@@ -162,6 +166,44 @@ export function visibleWidth(text: string): number {
   let width = 0;
   for (const { segment } of graphemeSegments(clean)) width += widthOfGrapheme(segment);
   return width;
+}
+
+/** Wrap plain text at grapheme boundaries and retain only the trailing viewport rows. */
+export function wrapTextToWidth(text: string, maxColumns: number, maxLines = Number.POSITIVE_INFINITY): string[] {
+  const widthLimit = Math.floor(maxColumns);
+  const lineLimit = Number.isFinite(maxLines) ? Math.max(0, Math.floor(maxLines)) : Number.POSITIVE_INFINITY;
+  if (widthLimit <= 0 || lineLimit === 0) return [];
+
+  const lines: string[] = [];
+  const pushLine = (line: string): void => {
+    if (lines.length >= lineLimit) lines.shift();
+    lines.push(line);
+  };
+
+  let currentLine = '';
+  let currentWidth = 0;
+  for (const { segment } of graphemeSegments(text)) {
+    if (segment === '\n' || segment === '\r' || segment === '\r\n') {
+      pushLine(currentLine);
+      currentLine = '';
+      currentWidth = 0;
+      continue;
+    }
+
+    const segmentWidth = widthOfGrapheme(segment);
+    if (currentWidth > 0 && currentWidth + segmentWidth > widthLimit) {
+      pushLine(currentLine);
+      currentLine = '';
+      currentWidth = 0;
+    }
+    currentLine += segment;
+    currentWidth += segmentWidth;
+  }
+
+  if (currentLine.length > 0 || text.length === 0 || text.endsWith('\n') || text.endsWith('\r')) {
+    pushLine(currentLine);
+  }
+  return lines;
 }
 
 /**

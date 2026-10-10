@@ -8,7 +8,8 @@ import {
   extractCursorPosition,
   padOrTruncateLine,
   sliceWithWidth,
-  visibleWidth
+  visibleWidth,
+  wrapTextToWidth
 } from '../packages/tui/src/index.js';
 
 class MockModalBox extends Component {
@@ -46,6 +47,11 @@ describe('TUI Hardware Cursor, Wide Characters & Overlay System (Aligned with Pi
     expect(visibleWidth('🇨🇳')).toBe(2);
     expect(visibleWidth('👨‍👩‍👧‍👦')).toBe(2);
     expect(visibleWidth('1️⃣')).toBe(2);
+  });
+
+  it('should wrap grapheme clusters and retain only the trailing viewport rows', () => {
+    expect(wrapTextToWidth('e\u0301你好', 3)).toEqual(['e\u0301你', '好']);
+    expect(wrapTextToWidth('第一行\n第二行\n末尾', 4, 2)).toEqual(['行', '末尾']);
   });
 
   it('should slice text precisely with ANSI awareness and wide character protection', () => {
