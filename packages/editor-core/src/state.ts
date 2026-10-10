@@ -4,6 +4,8 @@ export class HeadlessEditorState {
   private doc: DocumentNode;
   private selection: SelectionRange = { from: 0, to: 0 };
   private version = 1;
+  private cachedWordCountVersion = 0;
+  private cachedWordCount = 0;
   private undoStack: EditorTransaction[] = [];
   private redoStack: EditorTransaction[] = [];
 
@@ -51,12 +53,20 @@ export class HeadlessEditorState {
   }
 
   public getWordCount(): number {
+    if (this.cachedWordCountVersion === this.version) return this.cachedWordCount;
+
     const text = this.getText();
-    if (!text.trim()) return 0;
+    if (!text.trim()) {
+      this.cachedWordCount = 0;
+      this.cachedWordCountVersion = this.version;
+      return this.cachedWordCount;
+    }
     // Chinese characters + English words
     const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
     const englishWords = (text.replace(/[\u4e00-\u9fa5]/g, ' ').match(/[a-zA-Z0-9_-]+/g) || []).length;
-    return chineseChars + englishWords;
+    this.cachedWordCount = chineseChars + englishWords;
+    this.cachedWordCountVersion = this.version;
+    return this.cachedWordCount;
   }
 
   public insert(text: string): EditorTransaction {

@@ -4,6 +4,14 @@ import { ANSI, DifferentialRenderer, drawBox } from './render.js';
 import type { StudioModel } from './studio-model.js';
 import { wrapTextToWidth } from './width.js';
 
+interface EditorLinesCache {
+  editorVersion: number;
+  contentWidth: number;
+  contentHeight: number;
+  typography: ReturnType<StudioModel['getTypography']>;
+  lines: string[];
+}
+
 /**
  * Studio 三层分离之 **View**：从 Model 读取状态，纯渲染，不做任何状态迁移。
  *
@@ -13,6 +21,7 @@ import { wrapTextToWidth } from './width.js';
 export class StudioView {
   private readonly model: StudioModel;
   private readonly differentialRenderer = new DifferentialRenderer();
+  private editorLinesCache?: EditorLinesCache;
 
   constructor(model: StudioModel) {
     this.model = model;
@@ -103,19 +112,32 @@ export class StudioView {
     const currentResource = this.model.resources[this.model.activeResourceIndex] || {
       title: 'Untitled resource'
     };
-    const rawContent = this.model.editor.getText();
     const typography = this.model.getTypography();
-    const formattedContent = typography ? formatTypography(rawContent, typography) : rawContent;
     const editorContentWidth = Math.max(10, centerWidth - 2);
     const editorContentHeight = Math.max(0, mainHeight - 2);
     const ghostText = this.model.ghost.hasGhostText() ? this.model.ghost.getGhostText() : undefined;
-    const contentLines = formattedContent
-      ? wrapTextToWidth(
-          formattedContent,
-          editorContentWidth,
-          Math.max(0, editorContentHeight - Number(Boolean(ghostText)))
-        )
-      : [labels.emptyContentText || '(empty)'];
+    const availableContentHeight = Math.max(0, editorContentHeight - Number(Boolean(ghostText)));
+    const editorVersion = this.model.editor.getVersion();
+    const cached = this.editorLinesCache;
+    if (
+      !cached ||
+      cached.editorVersion !== editorVersion ||
+      cached.contentWidth !== editorContentWidth ||
+      cached.contentHeight !== availableContentHeight ||
+      cached.typography !== typography
+    ) {
+      const rawContent = this.model.editor.getText();
+      const formattedContent = typography ? formatTypography(rawContent, typography) : rawContent;
+      this.editorLinesCache = {
+        editorVersion,
+        contentWidth: editorContentWidth,
+        contentHeight: availableContentHeight,
+        typography,
+        lines: formattedContent ? wrapTextToWidth(formattedContent, editorContentWidth, availableContentHeight) : []
+      };
+    }
+    const cachedLines = this.editorLinesCache?.lines ?? [];
+    const contentLines = cachedLines.length ? [...cachedLines] : [labels.emptyContentText || '(empty)'];
 
     if (ghostText) {
       contentLines.push(

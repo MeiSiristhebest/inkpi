@@ -1,7 +1,7 @@
 import { Agent } from '@inkpi/agent-core';
 import { getModelPreset } from '@inkpi/ai';
 import { TerminalStudio } from '@inkpi/tui';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('TerminalStudio (Terminal Workstation)', () => {
   it('should initialize with default 3-pane layout and render full screen', () => {
@@ -58,6 +58,31 @@ describe('TerminalStudio (Terminal Workstation)', () => {
     const focusDiff = studio.renderDifferential();
     expect(focusDiff.isDiff).toBe(true);
     expect(focusDiff.content).toContain('\x1b[33m');
+  });
+
+  it('should reuse wrapped editor content until text or viewport dimensions change', () => {
+    const studio = new TerminalStudio({ width: 120, height: 30 });
+    const getText = vi.spyOn(studio.editor, 'getText');
+    studio.editor.insert('林玄在青云山下停住脚步。'.repeat(500));
+    getText.mockClear();
+
+    studio.renderScreen();
+    expect(getText).toHaveBeenCalledTimes(2);
+
+    getText.mockClear();
+    studio.renderScreen();
+    studio.setFocus('outline');
+    studio.renderScreen();
+    expect(getText).not.toHaveBeenCalled();
+
+    studio.setDimensions(140, 35);
+    studio.renderScreen();
+    expect(getText).toHaveBeenCalledTimes(1);
+
+    studio.editor.insert('新增内容。');
+    getText.mockClear();
+    studio.renderScreen();
+    expect(getText).toHaveBeenCalledTimes(2);
   });
 
   it('should support document navigation and focus switching', () => {
