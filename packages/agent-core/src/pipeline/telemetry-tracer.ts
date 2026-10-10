@@ -22,14 +22,19 @@ export class TelemetryTracer {
   }
 
   /** 正常收尾。 */
-  public endStage(span: TelemetrySpanHandle | undefined, usage?: Usage): void {
+  public endStage(span: TelemetrySpanHandle | undefined, usage?: Usage, modelId?: string): void {
     if (!span) return;
-    this.supplier()?.endSpan(span.id, usage);
+    this.supplier()?.endSpan(span.id, usage, undefined, modelId);
   }
 
   /** 以失败原因收尾。 */
-  public failStage(span: TelemetrySpanHandle | undefined, usage: Usage | undefined, error: string): void {
+  public failStage(
+    span: TelemetrySpanHandle | undefined,
+    usage: Usage | undefined,
+    error: string,
+    modelId?: string
+  ): void {
     if (!span) return;
-    this.supplier()?.endSpan(span.id, usage, error);
+    this.supplier()?.endSpan(span.id, usage, error, modelId);
   }
 }

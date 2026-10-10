@@ -1,3 +1,5 @@
+import { calculateDynamicModelCost, calculateModelCost } from '@inkpi/ai';
+import type { CostCalculationResult } from '@inkpi/ai';
 import type {
   AssistantMessage,
   CreativeInteractionMetrics,
@@ -8,6 +10,20 @@ import type {
 } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
 import { sanitizeTelemetryData } from './private-data.js';
+
+type TelemetryCostStatus = 'known' | 'partial' | 'unknown';
+
+function combineCostStatus(current: TelemetryCostStatus, next: TelemetryCostStatus): TelemetryCostStatus {
+  const rank: Record<TelemetryCostStatus, number> = { known: 0, partial: 1, unknown: 2 };
+  return rank[current] >= rank[next] ? current : next;
+}
+
+function knownCostSubtotal(cost: CostCalculationResult): number {
+  return [cost.inputCostUsd, cost.outputCostUsd, cost.cacheReadCostUsd, cost.cacheWriteCostUsd].reduce<number>(
+    (sum, value) => sum + (value ?? 0),
+    0
+  );
+}
 
 /**
  * OpenTelemetry 规范全链路可观测性度量收集器。
@@ -51,6 +67,8 @@ export class TelemetryCollector {
   private inputTokens = 0;
   private cacheReadTokens = 0;
   private thinkingTokens = 0;
+  private estimatedCostUsd = 0;
+  private estimatedCostStatus: TelemetryCostStatus = 'known';
   private spans: TelemetrySpan[] = [];
   private activeSpans = new Map<string, TelemetrySpan>();
   private eventListeners: Array<(event: TelemetryEvent) => void> = [];
@@ -78,28 +96,28 @@ export class TelemetryCollector {
     conflictRules: new Set<string>()
   };
 
-  /**
-   * 成本估算单价（USD / 1M tokens）。
-   * 默认值只是**占位示例价**，不是任何真实厂商的报价——
-   * 生产环境必须经构造函数注入真实价目，否则 costUsd 仅有相对比较意义。
-   */
-  private modelInputCostPerM = 2.0;
-  private modelOutputCostPerM = 8.0;
-  private modelCacheReadCostPerM = 0.5;
-
-  /** 成本单价（USD / 1M tokens），可部分覆盖。 */
+  /** Explicit flat rates remain available for callers that do not have a catalog model ID. */
+  private pricing?: {
+    inputUsdPerMTokens?: number;
+    outputUsdPerMTokens?: number;
+    cacheReadUsdPerMTokens?: number;
+    cacheWriteUsdPerMTokens?: number;
+  };
   private idGenerator?: () => string;
 
   constructor(
     clock: Clock,
-    pricing?: { inputUsdPerMTokens?: number; outputUsdPerMTokens?: number; cacheReadUsdPerMTokens?: number },
+    pricing?: {
+      inputUsdPerMTokens?: number;
+      outputUsdPerMTokens?: number;
+      cacheReadUsdPerMTokens?: number;
+      cacheWriteUsdPerMTokens?: number;
+    },
     idGenerator?: () => string
   ) {
     this.clock = clock;
     this.idGenerator = idGenerator;
-    if (pricing?.inputUsdPerMTokens !== undefined) this.modelInputCostPerM = pricing.inputUsdPerMTokens;
-    if (pricing?.outputUsdPerMTokens !== undefined) this.modelOutputCostPerM = pricing.outputUsdPerMTokens;
-    if (pricing?.cacheReadUsdPerMTokens !== undefined) this.modelCacheReadCostPerM = pricing.cacheReadUsdPerMTokens;
+    this.pricing = pricing;
   }
 
   public onEvent(listener: (event: TelemetryEvent) => void): () => void {
@@ -130,6 +148,8 @@ export class TelemetryCollector {
     this.inputTokens = 0;
     this.cacheReadTokens = 0;
     this.thinkingTokens = 0;
+    this.estimatedCostUsd = 0;
+    this.estimatedCostStatus = 'known';
     this.spans = [];
     this.activeSpans.clear();
   }
@@ -140,12 +160,17 @@ export class TelemetryCollector {
     }
   }
 
-  public recordUsage(usage: AssistantMessage['usage']): void {
-    if (!usage) return;
+  public recordUsage(usage: AssistantMessage['usage'], modelId?: string): CostCalculationResult | undefined {
+    if (!usage) return undefined;
     this.inputTokens += usage.inputTokens || 0;
     this.totalOutputTokens += usage.outputTokens || 0;
     this.cacheReadTokens += usage.cacheReadTokens || 0;
     this.thinkingTokens += usage.reasoningTokens || 0;
+
+    const cost = this.calculateUsageCost(usage, modelId);
+    this.estimatedCostUsd += knownCostSubtotal(cost);
+    this.estimatedCostStatus = combineCostStatus(this.estimatedCostStatus, cost.status);
+    return cost;
   }
 
   /**
@@ -260,7 +285,7 @@ export class TelemetryCollector {
   /**
    * 结束 Span 并结算 Token 与耗时
    */
-  public endSpan(spanId: string, usage?: Usage, error?: string): TelemetrySpan | undefined {
+  public endSpan(spanId: string, usage?: Usage, error?: string, modelId?: string): TelemetrySpan | undefined {
     const span = this.activeSpans.get(spanId);
     if (!span) return undefined;
 
@@ -272,12 +297,14 @@ export class TelemetryCollector {
       span.outputTokens = usage.outputTokens;
       span.cachedTokens = usage.cacheReadTokens;
       span.thinkingTokens = usage.reasoningTokens;
-      span.costUsd =
-        ((usage.inputTokens || 0) / 1_000_000) * this.modelInputCostPerM +
-        ((usage.outputTokens || 0) / 1_000_000) * this.modelOutputCostPerM +
-        ((usage.cacheReadTokens || 0) / 1_000_000) * this.modelCacheReadCostPerM;
-
-      this.recordUsage(usage);
+      const cost = this.recordUsage(usage, modelId ?? this.modelIdForSpan(span));
+      if (cost) {
+        span.costUsd = knownCostSubtotal(cost);
+        span.costStatus = cost.status;
+      }
+      if (modelId) {
+        span.attributes = { ...span.attributes, modelId: sanitizeTelemetryData(modelId) };
+      }
     }
 
     if (error && span.attributes) {
@@ -310,23 +337,43 @@ export class TelemetryCollector {
     const totalInput = this.inputTokens + this.cacheReadTokens;
     const cacheHitRate = totalInput > 0 ? this.cacheReadTokens / totalInput : 0;
 
-    const estimatedCostUsd =
-      (this.inputTokens / 1_000_000) * this.modelInputCostPerM +
-      (this.totalOutputTokens / 1_000_000) * this.modelOutputCostPerM +
-      (this.cacheReadTokens / 1_000_000) * this.modelCacheReadCostPerM;
-
     const stats: TelemetryStats = {
       ttftMs,
       totalDurationMs: durationMs,
       tokensPerSecond: Math.round(tokensPerSecond * 10) / 10,
       cacheHitRate: Math.round(cacheHitRate * 100) / 100,
-      estimatedCostUsd: Math.round(estimatedCostUsd * 100000) / 100000,
+      estimatedCostUsd: Math.round(this.estimatedCostUsd * 100000) / 100000,
+      estimatedCostStatus: this.estimatedCostStatus,
       thinkingTokens: this.thinkingTokens,
       spans: this.getSpans(),
       creativeMetrics: this.getCreativeMetrics()
     };
 
     return stats;
+  }
+
+  private modelIdForSpan(span: TelemetrySpan): string | undefined {
+    const modelId = span.attributes?.modelId;
+    return typeof modelId === 'string' && modelId.trim().length > 0 ? modelId : undefined;
+  }
+
+  private calculateUsageCost(usage: Usage, modelId?: string): CostCalculationResult {
+    const fallbackRates = this.pricing
+      ? {
+          // The cost helper treats negative rates as unknown and requires both base-rate fields.
+          inputPerMillionUsd: this.pricing.inputUsdPerMTokens ?? -1,
+          outputPerMillionUsd: this.pricing.outputUsdPerMTokens ?? -1,
+          ...(this.pricing.cacheReadUsdPerMTokens !== undefined
+            ? { cacheReadPerMillionUsd: this.pricing.cacheReadUsdPerMTokens }
+            : {}),
+          ...(this.pricing.cacheWriteUsdPerMTokens !== undefined
+            ? { cacheWritePerMillionUsd: this.pricing.cacheWriteUsdPerMTokens }
+            : {})
+        }
+      : undefined;
+    return modelId
+      ? calculateDynamicModelCost(modelId, usage, fallbackRates)
+      : calculateModelCost(fallbackRates, usage);
   }
 
   /** Finalize the current turn: snapshot stats and emit a `turn_telemetry` event. */
@@ -402,7 +449,8 @@ export class TelemetryCollector {
                     { key: 'tokens.input', value: { intValue: s.inputTokens || 0 } },
                     { key: 'tokens.output', value: { intValue: s.outputTokens || 0 } },
                     { key: 'tokens.cached', value: { intValue: s.cachedTokens || 0 } },
-                    { key: 'cost.usd', value: { doubleValue: s.costUsd || 0 } }
+                    { key: 'cost.usd', value: { doubleValue: s.costUsd || 0 } },
+                    { key: 'cost.status', value: { stringValue: s.costStatus || 'unknown' } }
                   ]
                 }))
               }

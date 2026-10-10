@@ -26,6 +26,7 @@ export interface WorkflowExecutorDeps {
 interface StageTrace {
   span?: TelemetrySpanHandle;
   usage?: Usage;
+  modelId?: string;
 }
 
 /**
@@ -114,7 +115,7 @@ export class WorkflowExecutor {
     });
 
     const prompt = await this.buildStagePrompt(stage, ctx);
-    const { outputText: rawOutput, usage } = await this.invokeStage(stage, roleId, roleConfig, prompt, ctx);
+    const { outputText: rawOutput, usage, modelId } = await this.invokeStage(stage, roleId, roleConfig, prompt, ctx);
 
     if (!rawOutput) {
       throw new Error(`Workflow stage '${stage.id}' returned empty output.`);
@@ -127,7 +128,7 @@ export class WorkflowExecutor {
       hooks: this.options.hooks || []
     });
 
-    outputText = await this.evaluateGate(stage, ctx, outputText, isGateActive, { span, usage });
+    outputText = await this.evaluateGate(stage, ctx, outputText, isGateActive, { span, usage, modelId });
 
     if (stage.transformOutput) {
       outputText = await stage.transformOutput(outputText, ctx);
@@ -172,7 +173,7 @@ export class WorkflowExecutor {
       this.applyStatePatch(ctx, stateExtractor(outputText, ctx));
     }
 
-    this.telemetry.endStage(span, usage);
+    this.telemetry.endStage(span, usage, modelId);
 
     await this.events.emit({
       type: 'stage_end',
@@ -220,7 +221,7 @@ export class WorkflowExecutor {
     roleConfig: { role: string; name: string; systemPrompt: string },
     prompt: string,
     ctx: WorkflowContext
-  ): Promise<{ outputText: string; usage?: Usage }> {
+  ): Promise<{ outputText: string; usage?: Usage; modelId?: string }> {
     if (stage.executor) {
       const res = await stage.executor(ctx, this.options.signal);
       let usage: Usage | undefined;
@@ -230,7 +231,8 @@ export class WorkflowExecutor {
           this.applyStatePatch(ctx, res.statePatch);
         }
       }
-      return { outputText: typeof res === 'string' ? res : res.text, usage };
+      const modelId = typeof res === 'object' ? res.modelId : undefined;
+      return { outputText: typeof res === 'string' ? res : res.text, usage, modelId };
     }
 
     if (this.options.customExecutor) {
@@ -247,7 +249,7 @@ export class WorkflowExecutor {
       signal: this.options.signal,
       stateFormatter: this.options.stateFormatter ?? this.options.ledgerFormatter
     });
-    return { outputText: res.text, usage: res.usage };
+    return { outputText: res.text, usage: res.usage, modelId: this.options.model?.id };
   }
 
   /**
@@ -291,7 +293,7 @@ export class WorkflowExecutor {
     await this.events.emit(this.strategy.buildGateResolvedEvent({ stageId: stage.id, decision }));
 
     if (!decision.approved) {
-      this.telemetry.failStage(trace.span, trace.usage, 'Quality Gate rejected');
+      this.telemetry.failStage(trace.span, trace.usage, 'Quality Gate rejected', trace.modelId);
       throw new Error(`门禁未通过: ${decision.feedback || '人工决策拒绝该阶段内容'}`);
     }
 

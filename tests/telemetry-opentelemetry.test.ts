@@ -1,9 +1,13 @@
 import { TelemetryCollector, WorkflowCoordinator } from '@inkpi/agent-core';
-import { getModelPreset } from '@inkpi/ai';
+import { getModelPreset, registerModelCost } from '@inkpi/ai';
 
 describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
   it('should track spans, tokens, TTFT, and export valid OpenTelemetry JSON', () => {
-    const telem = new TelemetryCollector(Date.now);
+    const telem = new TelemetryCollector(Date.now, {
+      inputUsdPerMTokens: 2,
+      outputUsdPerMTokens: 8,
+      cacheReadUsdPerMTokens: 0.5
+    });
     telem.startTurn();
 
     const span1 = telem.startSpan('architect_stage', 'outline', 'architect');
@@ -40,6 +44,16 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
   it('should collect OpenTelemetry spans automatically during 4-phase pipeline execution', async () => {
     const model = getModelPreset('mock-test');
     model.fauxScript = { text: 'telemetry provider output', inputTokens: 5, outputTokens: 7 };
+    registerModelCost({
+      id: model.id,
+      name: 'Telemetry Workflow Model',
+      provider: 'openai',
+      contextWindow: 1_000_000,
+      maxTokens: 16_000,
+      supportsThinking: false,
+      supportsTools: true,
+      cost: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 }
+    });
     const telem = new TelemetryCollector(Date.now);
     const pipeline = new WorkflowCoordinator({
       telemetry: telem,
@@ -66,6 +80,70 @@ describe('OpenTelemetry Spans & Multi-Agent Telemetry Metrics', () => {
 
     const stats = telem.endTurn();
     expect(stats.spans?.length).toBe(4);
+    expect(stats.estimatedCostUsd).toBeCloseTo(0.00008, 9);
+    expect(stats.estimatedCostStatus).toBe('known');
+    expect(stats.spans?.every((span) => span.costStatus === 'known')).toBe(true);
+  });
+
+  it('uses catalog tier prices and reports missing prices as unknown', () => {
+    registerModelCost({
+      id: 'telemetry-tiered-model',
+      name: 'Telemetry Tiered Model',
+      provider: 'openai',
+      contextWindow: 1_000_000,
+      maxTokens: 16_000,
+      supportsThinking: false,
+      supportsTools: true,
+      cost: {
+        inputPerMillionUsd: 1,
+        outputPerMillionUsd: 2,
+        cacheReadPerMillionUsd: 0.5,
+        cacheWritePerMillionUsd: 1,
+        serviceTierRates: { priority: { inputPerMillionUsd: 2, outputPerMillionUsd: 3 } },
+        promptLengthTiers: [{ minimumPromptTokens: 100_000, rates: { inputPerMillionUsd: 4, outputPerMillionUsd: 5 } }],
+        cacheWritePerMillionUsdByTtl: { '5m': 3, '1h': 6 }
+      }
+    });
+
+    const telem = new TelemetryCollector(() => 10);
+    telem.startTurn();
+    const span = telem.startSpan('writer', 'draft', 'writer');
+    telem.endSpan(
+      span.id,
+      {
+        inputTokens: 100_000,
+        outputTokens: 50_000,
+        promptTokens: 100_000,
+        serviceTier: 'priority',
+        cacheReadTokens: 10_000,
+        cacheWriteTokens: 40_000,
+        cacheWrite5mTokens: 20_000,
+        cacheWrite1hTokens: 20_000,
+        totalTokens: 150_000
+      },
+      undefined,
+      'telemetry-tiered-model'
+    );
+
+    const stats = telem.endTurn();
+    expect(span.costUsd).toBeCloseTo(0.835, 6);
+    expect(span.costStatus).toBe('known');
+    expect(stats.estimatedCostUsd).toBeCloseTo(0.835, 6);
+    expect(stats.estimatedCostStatus).toBe('known');
+
+    const unknown = new TelemetryCollector(() => 10);
+    unknown.startTurn();
+    unknown.recordUsage({ inputTokens: 100, outputTokens: 50, totalTokens: 150 });
+    const unknownStats = unknown.endTurn();
+    expect(unknownStats.estimatedCostUsd).toBe(0);
+    expect(unknownStats.estimatedCostStatus).toBe('unknown');
+
+    const partial = new TelemetryCollector(() => 10, { inputUsdPerMTokens: 2 });
+    partial.startTurn();
+    partial.recordUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000, totalTokens: 2_000_000 });
+    const partialStats = partial.endTurn();
+    expect(partialStats.estimatedCostUsd).toBe(2);
+    expect(partialStats.estimatedCostStatus).toBe('partial');
   });
 
   it('should handle edge cases in span lifecycle and usage calculations', () => {

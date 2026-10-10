@@ -66,6 +66,8 @@ export interface AgentRoleConfig {
 export interface StageResult {
   text: string;
   usage?: Usage;
+  /** Model used to produce this usage, for catalog-based telemetry pricing. */
+  modelId?: string;
   metadata?: Record<string, unknown>;
   /** Optional opaque state patch handled by an injected WorkflowStateAdapter. */
   statePatch?: unknown;

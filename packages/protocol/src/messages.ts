@@ -216,6 +216,7 @@ export interface TelemetrySpan {
   cachedTokens?: number;
   thinkingTokens?: number;
   costUsd?: number;
+  costStatus?: 'known' | 'partial' | 'unknown';
   attributes?: Record<string, unknown>;
 }
 
@@ -269,6 +270,8 @@ export interface TelemetryStats {
   tokensPerSecond: number;
   cacheHitRate: number; // 0.0 - 1.0
   estimatedCostUsd: number;
+  /** Cost status distinguishes a known zero from missing or incomplete pricing. */
+  estimatedCostStatus?: 'known' | 'partial' | 'unknown';
   thinkingTokens?: number;
   spans?: TelemetrySpan[];
   creativeMetrics?: CreativeInteractionMetrics;
