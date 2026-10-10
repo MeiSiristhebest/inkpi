@@ -11,6 +11,32 @@ export interface OutputGuardOptions {
 
 export const DEFAULT_MAX_OUTPUT_CHARS = 32_000;
 
+/** Retain the newest bounded window while counting all discarded UTF-16 characters. */
+export class RetainedOutputWindow {
+  private content = '';
+  private totalCharacters = 0;
+
+  constructor(private readonly maxCharacters = DEFAULT_MAX_OUTPUT_CHARS) {
+    if (!Number.isSafeInteger(maxCharacters) || maxCharacters < 1) throw new Error('Invalid output window size.');
+  }
+
+  append(text: string): void {
+    this.totalCharacters += text.length;
+    let retained = (this.content + text).slice(-this.maxCharacters);
+    const first = retained.charCodeAt(0);
+    if (first >= 0xdc00 && first <= 0xdfff) retained = retained.slice(1);
+    this.content = retained;
+  }
+
+  snapshot(): { content: string; totalCharacters: number; skippedCharacters: number } {
+    return {
+      content: this.content,
+      totalCharacters: this.totalCharacters,
+      skippedCharacters: this.totalCharacters - this.content.length
+    };
+  }
+}
+
 export interface GuardResult {
   content: string;
   truncated: boolean;

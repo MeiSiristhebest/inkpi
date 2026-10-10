@@ -1,4 +1,5 @@
 import type { AgentTool } from '@inkpi/protocol';
+import type { TextReadRequest, TextReadResult } from '../ports/execution-env.js';
 import { enforceOutputGuard } from './output-guard.js';
 
 /** A generic resource summary returned by an injected adapter. */
@@ -41,7 +42,9 @@ export interface ResourceMutationReceipt {
  * authoritative store and decides how a proposal becomes a reviewed commit.
  */
 export interface DocumentResourceAdapter {
-  read(resourceId: string): Promise<string | null>;
+  read(resourceId: string, signal?: AbortSignal): Promise<string | null>;
+  /** Scan and bound data at the owning store before returning it to the Runtime. */
+  readRange?(resourceId: string, request: TextReadRequest, signal?: AbortSignal): Promise<TextReadResult | null>;
   list(): Promise<ResourceDescriptor[]>;
   search?(query: string, limit?: number): Promise<ResourceSearchHit[]>;
   proposeMutation(proposal: ResourceMutationProposal): Promise<ResourceMutationReceipt>;
@@ -63,14 +66,29 @@ export function createDocumentResourceTools(adapter: DocumentResourceAdapter): A
       type: 'object',
       properties: {
         resourceId: { type: 'string', description: 'Stable resource identifier' },
-        startLine: { type: 'number', description: '1-based starting line' },
-        maxLines: { type: 'number', description: 'Maximum number of lines' }
+        startLine: { type: 'integer', minimum: 1, description: '1-based starting line' },
+        maxLines: { type: 'integer', minimum: 1, maximum: 10000, description: 'Maximum number of lines' },
+        maxBytes: { type: 'integer', minimum: 1, maximum: 32000 }
       },
       required: ['resourceId']
     },
-    execute: async (_toolCallId, args) => {
+    execute: async (_toolCallId, args, signal) => {
       const resourceId = String(args.resourceId);
-      const content = await adapter.read(resourceId);
+      signal?.throwIfAborted();
+      if (adapter.readRange) {
+        const result = await adapter.readRange(
+          resourceId,
+          { startLine: args.startLine ?? 1, maxLines: args.maxLines ?? 200, maxBytes: args.maxBytes ?? 32000 },
+          signal
+        );
+        signal?.throwIfAborted();
+        if (result === null)
+          return { content: [{ type: 'text', text: `Resource '${resourceId}' not found.` }], isError: true };
+        const { text, ...details } = result;
+        return { content: [{ type: 'text', text: enforceOutputGuard(text).content }], details };
+      }
+      const content = await adapter.read(resourceId, signal);
+      signal?.throwIfAborted();
       if (content === null) {
         return {
           content: [{ type: 'text', text: `Resource '${resourceId}' not found.` }],
@@ -104,7 +122,7 @@ export function createDocumentResourceTools(adapter: DocumentResourceAdapter): A
         const size = typeof resource.size === 'number' ? ` (${resource.size} units)` : '';
         return `- [${resource.resourceId}] ${resource.title || resource.resourceId}${size}`;
       });
-      return { content: [{ type: 'text', text: lines.join('\n') }] };
+      return { content: [{ type: 'text', text: enforceOutputGuard(lines.join('\n')).content }] };
     }
   };
 
@@ -135,7 +153,7 @@ export function createDocumentResourceTools(adapter: DocumentResourceAdapter): A
           (hit, index) => `[${index + 1}] ${hit.title || hit.resourceId}\n${enforceOutputGuard(hit.snippet).content}`
         )
         .join('\n\n');
-      return { content: [{ type: 'text', text }] };
+      return { content: [{ type: 'text', text: enforceOutputGuard(text).content }] };
     }
   };
 

@@ -1,6 +1,7 @@
 import type * as net from 'node:net';
 import {
   ContextPipeline,
+  type ExecutionEnv,
   type InstructionDefinition,
   type InstructionEntry,
   InstructionRegistry,
@@ -16,7 +17,8 @@ import {
   TaskObservability,
   type TaskObservabilityOptions,
   TaskRouter,
-  type TaskRunObserver
+  type TaskRunObserver,
+  createExecutionEnvTools
 } from '@inkpi/agent-core';
 import type { ModelConfig as AiModelConfig } from '@inkpi/ai';
 import {
@@ -112,6 +114,8 @@ import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST, DEFAULT_RPC_PORT } from './transport.js';
 
 export interface DaemonOptions {
+  /** Explicit host-bound file/process grants for task tools. Omitted by default. */
+  executionEnv?: ExecutionEnv;
   port?: number;
   host?: string;
   wsPort?: number;
@@ -224,6 +228,21 @@ export class InkPiDaemon {
         cacheCoordinator: this.cacheCoordinator
       });
     const existingModelHandler = this.taskRouter.registry.list().find((handler) => handler.id === 'runtime.model');
+    if (options.executionEnv) {
+      const environmentTools = createExecutionEnvTools(options.executionEnv);
+      for (const tool of environmentTools) {
+        if (this.taskRouter.toolRegistry.get(tool.name))
+          throw new Error(`Execution environment tool '${tool.name}' is already registered.`);
+      }
+      for (const tool of environmentTools)
+        this.taskRouter.toolRegistry.register(tool, {
+          source: 'execution-env',
+          capabilities: [
+            'execution-env',
+            tool.name === 'env_run_process' ? 'process-execute' : tool.replay === 'safe' ? 'file-read' : 'file-write'
+          ]
+        });
+    }
     if (!this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.batch')) {
       this.taskRouter.registry.register(new TaskBatchHandler());
     }

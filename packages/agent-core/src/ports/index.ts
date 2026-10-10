@@ -13,6 +13,8 @@ import type { EventStream, StreamOptions } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessageEvent, ModelConfig } from '@inkpi/protocol';
 import type { ManagedSession, SessionCreateOptions, SessionSummary } from '../rpc/session-registry.js';
 
+export * from './execution-env.js';
+
 /** Wall-clock / monotonic time source. Inject a test clock; never call `Date.now()` directly. */
 export type Clock = () => number;
 
