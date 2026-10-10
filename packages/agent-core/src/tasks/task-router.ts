@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type {
   AiTask,
   ExecutionSnapshot,
+  TaskAdmissionReceipt,
   TaskCancelResult,
   TaskError,
   TaskResult,
@@ -10,6 +11,7 @@ import type {
   TaskSubmitResult
 } from '@inkpi/protocol';
 import type { ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
+import { awaitWithAbort } from '@inkpi/protocol';
 import type { RuntimeCacheCoordinatorPort, RuntimeCacheStats } from '../context/cache-contract.js';
 import { ContextPipeline } from '../context/index.js';
 import { InstructionRegistry } from '../instructions/instruction-registry.js';
@@ -80,6 +82,8 @@ interface TaskRecord {
   persistenceFailed?: boolean;
   scheduled?: { id: string; cancel: () => boolean };
   scheduleSequence: number;
+  admissionWrite?: Promise<void>;
+  admitted: boolean;
 }
 
 interface AtomicTaskStateStore {
@@ -102,6 +106,7 @@ export class TaskRouter {
   private readonly cacheCoordinator?: RuntimeCacheCoordinatorPort;
   private readonly retryDelayMs: number;
   private readonly records = new Map<string, TaskRecord>();
+  private readonly requests = new Map<string, string>();
   private readonly listeners = new Set<TaskRouterListener>();
   private persistenceTail: Promise<void> = Promise.resolve();
   private recoveryPending = true;
@@ -144,12 +149,14 @@ export class TaskRouter {
     return () => this.listeners.delete(listener);
   }
 
-  submit(task: AiTask): TaskSubmitResult {
+  submit(task: AiTask, requestId = task.id): TaskSubmitResult {
     validateTask(task);
+    validateRequestId(requestId);
     if (this.recoveryPending) {
       throw new Error('Task router is recovering; await router.ready before submitting');
     }
     if (this.records.has(task.id)) throw new Error(`Task already exists: ${task.id}`);
+    if (this.requests.has(requestId)) throw new Error(`Request id '${requestId}' already exists`);
     const submittedTask = cloneValue(task);
     const controller = new AbortController();
     let resolveCompletion!: (result: TaskResult) => void;
@@ -169,7 +176,8 @@ export class TaskRouter {
       taskId: task.id,
       status: 'queued',
       attempts: 0,
-      updatedAt: this.now()
+      updatedAt: this.now(),
+      admission: { version: 1, requestId, taskId: task.id, acceptedAt: this.now() }
     };
     const record: TaskRecord = {
       task: submittedTask,
@@ -183,10 +191,19 @@ export class TaskRouter {
       executionSteps: [],
       executionAttempts: [],
       steering: [],
-      scheduleSequence: 0
+      scheduleSequence: 0,
+      admitted: false
     };
     this.records.set(task.id, record);
+    this.requests.set(requestId, task.id);
     const persistence = this.persist(record);
+    record.admissionWrite = persistence;
+    void persistence.then(
+      () => {
+        record.admitted = true;
+      },
+      () => undefined
+    );
     this.emit({ type: 'created', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
     this.emit({ type: 'queued', taskId: task.id, snapshot: cloneSnapshot(snapshot) });
     this.queueExecution(record, persistence);
@@ -194,25 +211,43 @@ export class TaskRouter {
   }
 
   /** Submit and acknowledge only after the initial execution record is persisted. */
-  async submitDurably(task: AiTask): Promise<TaskSubmitResult> {
+  async submitDurably(task: AiTask, requestId = task.id): Promise<TaskSubmitResult> {
     validateTask(task);
+    validateRequestId(requestId);
     if (this.recoveryPending) {
       throw new Error('Task router is recovering; await router.ready before submitting');
     }
-    const existing = this.records.get(task.id);
+    const acceptedTaskId = this.requests.get(requestId);
+    const existing = this.records.get(acceptedTaskId ?? task.id);
     if (existing) {
       if (!isDeepStrictEqual(existing.task, task)) {
-        throw new Error(`Task id '${task.id}' was already submitted with a different payload`);
+        throw new Error(`Request id '${requestId}' was already submitted with a different payload`);
       }
+      if (existing.executionRun.admission?.requestId !== requestId)
+        throw new Error(`Task id '${task.id}' was already submitted with a different request id`);
     } else {
-      this.submit(task);
+      this.submit(task, requestId);
     }
-    await this.persistenceTail;
     const record = this.getRecord(task.id);
+    await record.admissionWrite;
     if (record.persistenceFailed) {
       throw new Error(`Task submission '${task.id}' could not be durably accepted`);
     }
     return { taskId: task.id, status: record.snapshot.status };
+  }
+
+  async admission(requestId: string): Promise<TaskAdmissionReceipt | null> {
+    validateRequestId(requestId);
+    await this.ready;
+    const taskId = this.requests.get(requestId);
+    if (!taskId) return null;
+    const record = this.getRecord(taskId);
+    try {
+      await record.admissionWrite;
+    } catch {
+      return null;
+    }
+    return record.admitted ? cloneValue(record.executionRun.admission!) : null;
   }
 
   cancel(taskId: string): TaskCancelResult {
@@ -235,11 +270,11 @@ export class TaskRouter {
     return cloneSnapshot(this.getRecord(taskId).snapshot);
   }
 
-  async wait(taskId: string): Promise<TaskResult> {
-    await this.ready;
-    const result = await this.getRecord(taskId).completion;
-    await this.persistenceTail;
-    return result;
+  async wait(taskId: string, signal?: AbortSignal): Promise<TaskResult> {
+    await awaitWithAbort(this.ready, signal);
+    const result = await awaitWithAbort(this.getRecord(taskId).completion, signal);
+    await awaitWithAbort(this.persistenceTail, signal);
+    return cloneValue(result);
   }
 
   getTask(taskId: string): AiTask {
@@ -811,24 +846,44 @@ export class TaskRouter {
       resolveCompletion,
       attempts: stored.attempts,
       maxAttempts: Math.max(1, stored.task.executionPolicy?.maxAttempts ?? 1),
-      executionRun: stored.run ?? {
-        id: snapshot.executionRunId ?? `run:${stored.task.id}`,
-        taskId: stored.task.id,
-        status: snapshot.status,
-        startedAt: snapshot.startedAt,
-        finishedAt: snapshot.finishedAt,
-        attempts: stored.attempts,
-        updatedAt: stored.updatedAt,
-        resumeToken: stored.resumeToken
-      },
+      executionRun: stored.run
+        ? cloneValue(stored.run)
+        : {
+            id: snapshot.executionRunId ?? `run:${stored.task.id}`,
+            taskId: stored.task.id,
+            status: snapshot.status,
+            startedAt: snapshot.startedAt,
+            finishedAt: snapshot.finishedAt,
+            attempts: stored.attempts,
+            updatedAt: stored.updatedAt,
+            resumeToken: stored.resumeToken
+          },
       executionSteps: stored.steps ? cloneValue(stored.steps) : [],
       executionAttempts: stored.executionAttempts ? cloneValue(stored.executionAttempts) : [],
       resumeToken: stored.resumeToken ?? stored.run?.resumeToken,
       executionSnapshot: stored.executionSnapshot ? cloneValue(stored.executionSnapshot) : undefined,
       steering: stored.steering ? cloneValue(stored.steering) : [],
-      scheduleSequence: 0
+      scheduleSequence: 0,
+      admitted: true
     };
     snapshot.executionRunId = record.executionRun.id;
+    record.executionRun.admission ??= {
+      version: 1,
+      requestId: record.task.id,
+      taskId: record.task.id,
+      acceptedAt: stored.updatedAt
+    };
+    const receipt = record.executionRun.admission;
+    if (
+      receipt.version !== 1 ||
+      receipt.taskId !== record.task.id ||
+      typeof receipt.acceptedAt !== 'number' ||
+      !Number.isFinite(receipt.acceptedAt)
+    )
+      throw new Error(`Invalid task admission for '${record.task.id}'`);
+    validateRequestId(receipt.requestId);
+    if (this.requests.has(receipt.requestId)) throw new Error(`Duplicate task admission '${receipt.requestId}'`);
+    this.requests.set(receipt.requestId, record.task.id);
     snapshot.attempts = stored.attempts;
     if (snapshot.status === 'interrupted') {
       record.executionRun.status = 'interrupted';
@@ -925,6 +980,10 @@ function validateTask(task: AiTask): void {
   if (!task.id.trim()) throw new Error('Task id must not be empty');
   if (!task.kind.trim()) throw new Error('Task kind must not be empty');
   if (!task.input || typeof task.input !== 'object') throw new Error('Task input must be an object');
+}
+
+function validateRequestId(requestId: string): void {
+  if (typeof requestId !== 'string' || !requestId.trim()) throw new Error('Request id must not be empty');
 }
 
 function validateOutput(task: AiTask, result: TaskHandlerResult): TaskError | undefined {

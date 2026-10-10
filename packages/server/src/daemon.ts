@@ -68,6 +68,7 @@ import type {
   SkillLoadResult,
   SkillResolveQuery,
   SkillResolveResult,
+  TaskAdmissionParams,
   TaskCancelParams,
   TaskExecutionParams,
   TaskExecutionSnapshot,
@@ -522,8 +523,12 @@ export class InkPiDaemon {
       if (handler.id === 'runtime.model') {
         this.capabilityRouter?.resolve(params.task);
       }
-      return this.taskRouter.submitDurably(params.task);
+      return this.taskRouter.submitDurably(params.task, params.requestId);
     });
+
+    this.rpcServer.registerMethod('task.admission', (params: TaskAdmissionParams) =>
+      this.taskRouter.admission(params.requestId)
+    );
 
     this.rpcServer.registerMethod('task.cancel', (params: TaskCancelParams) => {
       return this.taskRouter.cancel(params.taskId);

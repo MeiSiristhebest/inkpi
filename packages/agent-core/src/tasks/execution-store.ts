@@ -1,4 +1,12 @@
-import type { AiTask, ExecutionSnapshot, TaskError, TaskResult, TaskStatus, TaskStatusSnapshot } from '@inkpi/protocol';
+import type {
+  AiTask,
+  ExecutionSnapshot,
+  TaskAdmissionReceipt,
+  TaskError,
+  TaskResult,
+  TaskStatus,
+  TaskStatusSnapshot
+} from '@inkpi/protocol';
 
 export interface ExecutionRun {
   id: string;
@@ -9,6 +17,7 @@ export interface ExecutionRun {
   attempts: number;
   updatedAt: number;
   resumeToken?: ResumeToken;
+  admission?: TaskAdmissionReceipt;
 }
 
 export interface ExecutionStep {

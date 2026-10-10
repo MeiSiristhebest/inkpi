@@ -1,4 +1,4 @@
-import type { TaskCheckpoint, TaskExecutionRecord } from '@inkpi/agent-core';
+import { type TaskCheckpoint, type TaskExecutionRecord, TaskRegistry, TaskRouter } from '@inkpi/agent-core';
 import type { AiTask } from '@inkpi/protocol';
 import { InkDb } from '@inkpi/storage';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,6 +9,38 @@ describe('SqliteTaskExecutionStore', () => {
 
   afterEach(() => {
     for (const db of dbs.splice(0)) db.close();
+  });
+
+  it('restores request receipts from SQLite and reuses completed work after router restart', async () => {
+    const db = new InkDb();
+    dbs.push(db);
+    const task: AiTask = { id: 'sqlite-admission', kind: 'test.receipt', input: { text: 'chapter' } };
+    const registry = new TaskRegistry();
+    let executions = 0;
+    registry.register({
+      id: 'receipt',
+      kinds: [task.kind],
+      execute: async () => {
+        executions++;
+        return {};
+      }
+    });
+    const first = new TaskRouter({ registry, executionStore: new SqliteTaskExecutionStore(db), now: () => 123 });
+    await first.submitDurably(task, 'request-before-disconnection');
+    await first.wait(task.id);
+    const restarted = new TaskRouter({ registry, executionStore: new SqliteTaskExecutionStore(db) });
+    await restarted.ready;
+    expect(await restarted.admission('request-before-disconnection')).toEqual({
+      version: 1,
+      requestId: 'request-before-disconnection',
+      taskId: task.id,
+      acceptedAt: 123
+    });
+    await expect(restarted.submitDurably(task, 'request-before-disconnection')).resolves.toMatchObject({
+      taskId: task.id,
+      status: 'completed'
+    });
+    expect(executions).toBe(1);
   });
 
   it('round-trips all execution metadata and keeps old optional fields absent', () => {

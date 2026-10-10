@@ -200,6 +200,7 @@ export interface TaskExecutionRun {
   attempts: number;
   updatedAt: number;
   resumeToken?: TaskExecutionResumeToken;
+  admission?: TaskAdmissionReceipt;
 }
 
 export interface TaskExecutionStep {
@@ -242,6 +243,19 @@ export interface TaskExecutionSnapshot {
 export interface TaskSubmitParams {
   /** Stable submission identity. Repeating the same id and payload returns its existing task. */
   task: AiTask;
+  /** Network retry identity, defaulting to task.id. */
+  requestId?: string;
+}
+
+export interface TaskAdmissionReceipt {
+  version: 1;
+  requestId: string;
+  taskId: string;
+  acceptedAt: number;
+}
+
+export interface TaskAdmissionParams {
+  requestId: string;
 }
 
 export interface TaskSubmitResult {

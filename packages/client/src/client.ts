@@ -15,6 +15,7 @@ import type {
   RpcNotification,
   RpcRequest,
   RpcResponse,
+  TaskAdmissionReceipt,
   TaskCancelResult,
   TaskExecutionSnapshot,
   TaskResult,
@@ -25,7 +26,7 @@ import type {
   ToolRegistrationDescriptor,
   ToolResultMessage
 } from '@inkpi/protocol';
-import { calculateProposalProjectionStateHash } from '@inkpi/protocol';
+import { calculateProposalProjectionStateHash, observeTaskResult } from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import { TcpSocketTransport } from './transports/tcp.js';
 import { WebSocketTransport } from './transports/ws.js';
@@ -360,8 +361,12 @@ export class InkRpcClient {
     return this.request<DiagnosticSnapshot>('runtime.diagnostics');
   }
 
-  public submitTask(task: AiTask): Promise<TaskSubmitResult> {
-    return this.request<TaskSubmitResult>('task.submit', { task });
+  public submitTask(task: AiTask, requestId?: string): Promise<TaskSubmitResult> {
+    return this.request<TaskSubmitResult>('task.submit', { task, ...(requestId === undefined ? {} : { requestId }) });
+  }
+
+  public getTaskAdmission(requestId: string): Promise<TaskAdmissionReceipt | null> {
+    return this.request<TaskAdmissionReceipt | null>('task.admission', { requestId });
   }
 
   public listTools(): Promise<ToolRegistrationDescriptor[]> {
@@ -388,27 +393,16 @@ export class InkRpcClient {
     return this.request<TaskSteerResult>('task.steer', { taskId, input });
   }
 
-  public waitForTask(taskId: string): Promise<TaskResult> {
-    return new Promise((resolve, reject) => {
-      const off = this.on('task.event', (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
-        if (event.taskId !== taskId) return;
-        if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(event.snapshot.status)) return;
-        off();
-        if (event.snapshot.result) resolve(event.snapshot.result);
-        else reject(new Error(`Task ${taskId} ended without a result`));
-      });
-      void this.getTaskStatus(taskId)
-        .then((snapshot) => {
-          if (!['waiting-user', 'completed', 'failed', 'cancelled'].includes(snapshot.status)) return;
-          off();
-          if (snapshot.result) resolve(snapshot.result);
-          else reject(new Error(`Task ${taskId} ended without a result`));
-        })
-        .catch((error) => {
-          off();
-          reject(error);
-        });
-    });
+  public waitForTask(taskId: string, signal?: AbortSignal): Promise<TaskResult> {
+    return observeTaskResult(
+      taskId,
+      () => this.getTaskStatus(taskId),
+      (listener) =>
+        this.on('task.event', (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
+          if (event.taskId === taskId) listener(event.snapshot);
+        }),
+      signal
+    );
   }
 
   public pushDomainChangeSet(changeSet: DomainChangeSet): Promise<DomainProjectionApplyResult> {

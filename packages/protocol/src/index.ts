@@ -9,6 +9,7 @@ export * from './skills.js';
 export * from './rpc.js';
 export * from './pipeline.js';
 export * from './task.js';
+export * from './task-wait.js';
 export * from './execution.js';
 export * from './diagnostics.js';
 export * from './domain-sync.js';

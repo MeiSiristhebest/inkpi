@@ -297,7 +297,10 @@ export const TaskExecutionRunSchema = Type.Object({
   finishedAt: Type.Optional(TimestampSchema),
   attempts: Type.Integer({ minimum: 0 }),
   updatedAt: TimestampSchema,
-  resumeToken: Type.Optional(TaskExecutionResumeTokenSchema)
+  resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
+  admission: Type.Optional(
+    Type.Object({ version: Type.Literal(1), requestId: IdSchema, taskId: IdSchema, acceptedAt: TimestampSchema })
+  )
 });
 
 export const TaskExecutionStepSchema = Type.Object({

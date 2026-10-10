@@ -62,6 +62,8 @@ import type {
 } from './skills.js';
 import type { ContextEdit, ModelLoadout, SessionEntry, WorkspacePurgeParams, WorkspacePurgeResult } from './storage.js';
 import type {
+  TaskAdmissionParams,
+  TaskAdmissionReceipt,
   TaskCancelParams,
   TaskCancelResult,
   TaskExecutionParams,
@@ -307,6 +309,7 @@ export interface DaemonRpcMethodMap {
   'skill.snapshot': RpcMethodContract<void, SkillRuntimeRegistrationSnapshot>;
   'skill.status': RpcMethodContract<void, SkillRuntimeRegistrationSnapshot>;
   'task.cancel': RpcMethodContract<TaskCancelParams, TaskCancelResult>;
+  'task.admission': RpcMethodContract<TaskAdmissionParams, TaskAdmissionReceipt | null>;
   'task.execution': RpcMethodContract<TaskExecutionParams, TaskExecutionSnapshot>;
   'task.fork': RpcMethodContract<TaskForkParams, TaskSubmitResult>;
   'task.replay': RpcMethodContract<TaskReplayParams, TaskSubmitResult>;
@@ -373,6 +376,7 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'skill.resolve',
   'skill.snapshot',
   'skill.status',
+  'task.admission',
   'task.cancel',
   'task.execution',
   'task.fork',

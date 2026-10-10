@@ -4,6 +4,41 @@ import { InMemoryTransport, InkPiDaemon, InkRpcClient } from '@inkpi/server';
 import { describe, expect, it } from 'vitest';
 
 describe('task RPC surface', () => {
+  it('queries durable admission and retries through both clients after a disconnected response', async () => {
+    const daemon = new InkPiDaemon();
+    let executions = 0;
+    const task: AiTask = { id: 'rpc-admission', kind: 'test.receipt', input: { text: 'chapter' } };
+    daemon.getTaskRouter().registry.register({
+      id: 'receipt',
+      kinds: [task.kind],
+      execute: async () => {
+        executions++;
+        return {};
+      }
+    });
+    const first = new InkRpcClient(new InMemoryTransport(daemon.getRpcServer()));
+    await first.submitTask(task, 'disconnected-request');
+    await first.close();
+    const reconnected = new ClientInkRpcClient(new ClientInMemoryTransport(daemon.getRpcServer()));
+    try {
+      expect(await reconnected.getTaskAdmission('disconnected-request')).toMatchObject({
+        version: 1,
+        requestId: 'disconnected-request',
+        taskId: task.id
+      });
+      expect(await reconnected.getTaskAdmission('unknown')).toBeNull();
+      await reconnected.submitTask(task, 'disconnected-request');
+      await expect(reconnected.waitForTask(task.id)).resolves.toMatchObject({ status: 'completed' });
+      await expect(
+        reconnected.submitTask({ ...task, input: { text: 'changed' } }, 'disconnected-request')
+      ).rejects.toThrow('different payload');
+      expect(executions).toBe(1);
+    } finally {
+      await reconnected.close();
+      await daemon.stop();
+    }
+  });
+
   it('submits, observes, and completes a task through the daemon', async () => {
     const daemon = new InkPiDaemon();
     daemon.getTaskRouter().registry.register({
