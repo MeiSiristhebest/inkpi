@@ -1,5 +1,6 @@
 import type { AgentMessage } from '@inkpi/protocol';
 import { ContextBudgetPlanner } from '../compaction/context-budget.js';
+import type { ConversationContext } from '../conversation-context.js';
 import { adoptMessage, commitMessage } from '../journal-commit.js';
 import type { AgentOptions, AgentState, IncrementalContextUpdate } from '../types.js';
 import type { TurnContext } from './turn-context.js';
@@ -119,6 +120,13 @@ function messageHeadId(messages: readonly AgentMessage[], revision: number): str
  */
 export class ContextTransformer {
   private incrementalCache?: IncrementalContextCache;
+  private canonicalIncrementalCache?: {
+    conversation: ConversationContext;
+    headId: string | null;
+    processedLength: number;
+    transformer: NonNullable<AgentOptions['incrementalTransformContext']>;
+    view: readonly AgentMessage[];
+  };
 
   /** 返回应当发送给模型的消息列表。 */
   public async prepare(ctx: TurnContext): Promise<AgentMessage[]> {
@@ -129,7 +137,7 @@ export class ContextTransformer {
     let workingMessages = ctx.options.incrementalTransformContext
       ? await this.transformIncrementally(ctx, ctx.options.incrementalTransformContext)
       : ctx.options.conversation
-        ? ctx.options.conversation.getContext().messages
+        ? ctx.options.conversation.getModelMessages()
         : [...ctx.state.messages];
     if (ctx.options.transformContext) {
       workingMessages = await ctx.options.transformContext(workingMessages, ctx.signal);
@@ -143,7 +151,20 @@ export class ContextTransformer {
     if (!compactor || ctx.signal?.aborted) return false;
     const conversation = ctx.options.conversation;
     const headId = conversation?.getHeadId() ?? null;
-    const input = conversation ? conversation.getContext().messages : [...ctx.state.messages];
+    const input = conversation ? conversation.getModelMessages() : [...ctx.state.messages];
+    const configuration = () =>
+      JSON.stringify({
+        model: {
+          id: ctx.state.model?.id,
+          provider: ctx.state.model?.provider,
+          baseUrl: ctx.state.model?.baseUrl,
+          contextWindow: ctx.state.model?.contextWindow,
+          maxTokens: ctx.state.model?.maxTokens
+        },
+        instructions: ctx.state.systemPrompt,
+        tools: ctx.toolRegistry.getAll().map(({ name, description, parameters }) => ({ name, description, parameters }))
+      });
+    const originalConfiguration = configuration();
     const planner = ctx.options.contextBudgetPlanner ?? new ContextBudgetPlanner();
     if (
       !force &&
@@ -161,7 +182,7 @@ export class ContextTransformer {
     const history = input.filter((message) => message.role !== 'system');
     if (!compactor.canCompact(history)) return false;
     const compacted = await compactor.compact(history, ctx.signal);
-    if (ctx.signal?.aborted) return false;
+    if (ctx.signal?.aborted || configuration() !== originalConfiguration) return false;
     if (conversation) {
       if (!(await conversation.commitCompaction(compacted, headId, ctx.signal))) return false;
     } else {
@@ -179,14 +200,32 @@ export class ContextTransformer {
   /** Release the cached view after an idle retention period or an explicit reset. */
   public clearIncrementalCache(): void {
     this.incrementalCache = undefined;
+    this.canonicalIncrementalCache = undefined;
   }
 
   private async transformIncrementally(
     ctx: TurnContext,
     transformer: NonNullable<AgentOptions['incrementalTransformContext']>
   ): Promise<AgentMessage[]> {
-    const tracker = ctx.options.conversation ? undefined : trackMessageHistory(ctx.state);
-    const history = ctx.options.conversation ? ctx.options.conversation.getContext().messages : ctx.state.messages;
+    const conversation = ctx.options.conversation;
+    if (conversation) {
+      const prior = this.canonicalIncrementalCache;
+      const cache = prior?.conversation === conversation && prior.transformer === transformer ? prior : undefined;
+      const update = conversation.getModelUpdate(cache?.headId, cache?.processedLength);
+      if (cache && update.headId === cache.headId && !update.reset) return [...cache.view];
+      const view = await transformer({ ...update, previousView: update.reset ? [] : (cache?.view ?? []) }, ctx.signal);
+      const ownedView = Object.freeze(structuredClone(view));
+      this.canonicalIncrementalCache = {
+        conversation,
+        headId: update.headId,
+        processedLength: update.totalMessageCount,
+        transformer,
+        view: ownedView
+      };
+      return [...ownedView];
+    }
+    const tracker = trackMessageHistory(ctx.state);
+    const history = ctx.state.messages;
     const cache = this.incrementalCache;
     const canAppend =
       tracker !== undefined &&

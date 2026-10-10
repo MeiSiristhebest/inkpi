@@ -310,6 +310,7 @@ export class Agent {
     this.runActive = false;
     this.abortController = null;
     this.resolveIdleWaitIfIdle();
+    this.scheduleContextViewExpiry();
   }
 
   private toolDefinition(tool: Pick<AgentTool, 'name' | 'description' | 'parameters'>): ModelToolDefinition {
@@ -572,11 +573,14 @@ export class Agent {
 
   private scheduleContextViewExpiry(): void {
     this.clearContextViewIdleTimer();
-    if (!this.options.incrementalTransformContext) return;
+    if (!this.options.incrementalTransformContext && !this.conversation) return;
 
     this.contextViewIdleTimer = setTimeout(() => {
       this.contextViewIdleTimer = undefined;
-      if (!this.runActive) this.loopRunner.clearIncrementalContextCache();
+      if (!this.runActive && !this.compactionPromise) {
+        this.loopRunner.clearIncrementalContextCache();
+        this.conversation?.clearCache();
+      }
     }, INCREMENTAL_CONTEXT_IDLE_RETENTION_MS);
     (this.contextViewIdleTimer as unknown as { unref?: () => void }).unref?.();
   }
