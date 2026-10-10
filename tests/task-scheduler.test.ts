@@ -26,6 +26,70 @@ describe('task scheduler lifecycle', () => {
     expect(await second.promise).toBe('second');
   });
 
+  it('prioritizes a ready burst and keeps ID ordering for equal priorities', async () => {
+    const scheduler = new TaskScheduler({ maxForeground: 1 });
+    const startOrder: string[] = [];
+    let releaseBlocker!: () => void;
+    let markBlockerStarted!: () => void;
+    const blockerStarted = new Promise<void>((resolve) => {
+      markBlockerStarted = resolve;
+    });
+    const blocker = scheduler.schedule({
+      id: 'blocker',
+      mode: 'foreground',
+      run: () =>
+        new Promise<string>((resolve) => {
+          startOrder.push('blocker');
+          markBlockerStarted();
+          releaseBlocker = () => resolve('blocker');
+        })
+    });
+    await blockerStarted;
+
+    const low = scheduler.schedule({
+      id: 'low',
+      mode: 'foreground',
+      priority: 0,
+      run: async () => {
+        startOrder.push('low');
+        return 'low';
+      }
+    });
+    const tieZ = scheduler.schedule({
+      id: 'tie-z',
+      mode: 'foreground',
+      priority: 1,
+      run: async () => {
+        startOrder.push('tie-z');
+        return 'tie-z';
+      }
+    });
+    const high = scheduler.schedule({
+      id: 'high',
+      mode: 'foreground',
+      priority: 2,
+      run: async () => {
+        startOrder.push('high');
+        return 'high';
+      }
+    });
+    const tieA = scheduler.schedule({
+      id: 'tie-a',
+      mode: 'foreground',
+      priority: 1,
+      run: async () => {
+        startOrder.push('tie-a');
+        return 'tie-a';
+      }
+    });
+
+    releaseBlocker();
+    await Promise.all([blocker.promise, low.promise, tieZ.promise, high.promise, tieA.promise]);
+
+    expect(startOrder).toEqual(['blocker', 'high', 'tie-a', 'tie-z', 'low']);
+    await scheduler.stop();
+  });
+
   it('cancels queued work and transitions to stopped', async () => {
     const scheduler = new TaskScheduler();
     const work = scheduler.schedule({ id: 'queued', mode: 'background', run: async () => 'never' });
@@ -56,6 +120,42 @@ describe('task scheduler lifecycle', () => {
       await vi.advanceTimersByTimeAsync(1);
       await expect(work.promise).resolves.toBe('done');
       expect(runs).toBe(1);
+      await scheduler.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('prioritizes all debounced tasks that share a ready time', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new TaskScheduler({ maxForeground: 1 });
+      const startOrder: string[] = [];
+      const low = scheduler.schedule({
+        id: 'debounced-low',
+        mode: 'foreground',
+        priority: 0,
+        debounceMs: 25,
+        run: async () => {
+          startOrder.push('low');
+          return 'low';
+        }
+      });
+      const high = scheduler.schedule({
+        id: 'debounced-high',
+        mode: 'foreground',
+        priority: 2,
+        debounceMs: 25,
+        run: async () => {
+          startOrder.push('high');
+          return 'high';
+        }
+      });
+
+      await vi.advanceTimersByTimeAsync(25);
+      await Promise.all([low.promise, high.promise]);
+
+      expect(startOrder).toEqual(['high', 'low']);
       await scheduler.stop();
     } finally {
       vi.useRealTimers();

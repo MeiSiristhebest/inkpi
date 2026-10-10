@@ -97,13 +97,104 @@ interface ScheduledRecord<T> {
   reject: (error: unknown) => void;
   attempts: number;
   readyAt: number;
-  readyTimer?: ReturnType<typeof setTimeout>;
+  priority: number;
+  sequence: number;
+  dedupeKey?: string;
+  slotAcquired: boolean;
   generation: number;
   resumeFrom?: ScheduledCheckpoint;
 }
 
+class ScheduledPriorityQueue {
+  private readonly entries: ScheduledRecord<unknown>[] = [];
+  private readonly positions = new Map<string, number>();
+
+  constructor(private readonly compare: (left: ScheduledRecord<unknown>, right: ScheduledRecord<unknown>) => number) {}
+
+  peek(): ScheduledRecord<unknown> | undefined {
+    return this.entries[0];
+  }
+
+  push(record: ScheduledRecord<unknown>): void {
+    if (this.positions.has(record.work.id)) return;
+    const index = this.entries.length;
+    this.entries.push(record);
+    this.positions.set(record.work.id, index);
+    this.siftUp(index);
+  }
+
+  pop(): ScheduledRecord<unknown> | undefined {
+    return this.removeAt(0);
+  }
+
+  remove(id: string): boolean {
+    const index = this.positions.get(id);
+    if (index === undefined) return false;
+    this.removeAt(index);
+    return true;
+  }
+
+  private removeAt(index: number): ScheduledRecord<unknown> | undefined {
+    if (index < 0 || index >= this.entries.length) return undefined;
+    const removed = this.entries[index]!;
+    const last = this.entries.pop()!;
+    this.positions.delete(removed.work.id);
+    if (index < this.entries.length) {
+      this.entries[index] = last;
+      this.positions.set(last.work.id, index);
+      if (index > 0 && this.compare(this.entries[index]!, this.entries[parentIndex(index)]!) < 0) {
+        this.siftUp(index);
+      } else {
+        this.siftDown(index);
+      }
+    }
+    return removed;
+  }
+
+  private siftUp(start: number): void {
+    let index = start;
+    while (index > 0) {
+      const parent = parentIndex(index);
+      if (this.compare(this.entries[index]!, this.entries[parent]!) >= 0) return;
+      this.swap(index, parent);
+      index = parent;
+    }
+  }
+
+  private siftDown(start: number): void {
+    let index = start;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      let first = index;
+      if (left < this.entries.length && this.compare(this.entries[left]!, this.entries[first]!) < 0) {
+        first = left;
+      }
+      if (right < this.entries.length && this.compare(this.entries[right]!, this.entries[first]!) < 0) {
+        first = right;
+      }
+      if (first === index) return;
+      this.swap(index, first);
+      index = first;
+    }
+  }
+
+  private swap(left: number, right: number): void {
+    const leftEntry = this.entries[left]!;
+    const rightEntry = this.entries[right]!;
+    this.entries[left] = rightEntry;
+    this.entries[right] = leftEntry;
+    this.positions.set(leftEntry.work.id, right);
+    this.positions.set(rightEntry.work.id, left);
+  }
+}
+
 export class TaskScheduler {
   private readonly records = new Map<string, ScheduledRecord<unknown>>();
+  private readonly foregroundReady = new ScheduledPriorityQueue(compareScheduledRecords);
+  private readonly backgroundReady = new ScheduledPriorityQueue(compareScheduledRecords);
+  private readonly delayedReady = new ScheduledPriorityQueue(compareReadyRecords);
+  private readonly dedupeIndex = new Map<string, Set<ScheduledRecord<unknown>>>();
   private readonly maxForeground: number;
   private readonly maxBackground: number;
   private readonly now: () => number;
@@ -111,6 +202,11 @@ export class TaskScheduler {
   private readonly listeners = new Set<(event: SchedulerEvent) => void | Promise<void>>();
   private persistenceTail: Promise<void> = Promise.resolve();
   private state: LifecycleState = 'idle';
+  private nextSequence = 0;
+  private runningForeground = 0;
+  private runningBackground = 0;
+  private readyTimer?: { readyAt: number; handle: ReturnType<typeof setTimeout> };
+  private pumpScheduled = false;
 
   constructor(options: TaskSchedulerOptions = {}) {
     this.maxForeground = Math.max(1, options.maxForeground ?? 1);
@@ -137,11 +233,7 @@ export class TaskScheduler {
   schedule<T>(work: ScheduledWork<T>): ScheduledHandle<T> {
     if (this.state === 'stopping' || this.state === 'stopped') throw new Error('Task scheduler is stopping');
     if (!work.id.trim()) throw new Error(`Scheduled task id is unavailable: ${work.id}`);
-    const duplicate = work.dedupeKey
-      ? [...this.records.values()].find(
-          (record) => record.work.dedupeKey === work.dedupeKey && !isTerminal(record.snapshot.status)
-        )
-      : undefined;
+    const duplicate = this.findDuplicate(work.dedupeKey);
     if (duplicate) {
       return {
         promise: duplicate.promise as Promise<T | undefined>,
@@ -165,9 +257,14 @@ export class TaskScheduler {
       reject,
       attempts: 0,
       readyAt: this.now() + Math.max(0, work.debounceMs ?? 0),
+      priority: normalizePriority(work.priority),
+      sequence: this.nextSequence++,
+      dedupeKey: work.dedupeKey,
+      slotAcquired: false,
       generation: 0
     };
     this.records.set(work.id, record);
+    this.registerDedupe(record);
     this.persist(record);
     this.emit({ type: 'created', snapshot: this.status(work.id) });
     this.emit({ type: 'queued', snapshot: this.status(work.id) });
@@ -204,6 +301,8 @@ export class TaskScheduler {
     record.generation += 1;
     record.controller.abort();
     const resolveWaiting = record.resolve;
+    this.releaseSlot(record);
+    this.releaseDedupe(record);
     record.snapshot.status = 'waiting-user';
     record.snapshot.error = undefined;
     record.snapshot.finishedAt = this.now();
@@ -220,10 +319,8 @@ export class TaskScheduler {
     if (!record || isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return false;
     record.generation += 1;
     record.controller.abort();
-    if (record.readyTimer) {
-      clearTimeout(record.readyTimer);
-      record.readyTimer = undefined;
-    }
+    this.removeReady(record);
+    this.releaseSlot(record);
     const resolveInterrupted = record.resolve;
     record.snapshot.status = 'interrupted';
     record.snapshot.error = interruptedError();
@@ -254,10 +351,6 @@ export class TaskScheduler {
       if (!normalized) throw new Error('Scheduled task checkpoint step is unavailable');
       record.snapshot.checkpoint = normalized;
     }
-    if (record.readyTimer) {
-      clearTimeout(record.readyTimer);
-      record.readyTimer = undefined;
-    }
     record.generation += 1;
     record.controller = new AbortController();
     record.resumeFrom = record.snapshot.checkpoint ? cloneCheckpoint(record.snapshot.checkpoint) : undefined;
@@ -271,6 +364,7 @@ export class TaskScheduler {
     record.resolve = resolve;
     record.reject = reject;
     record.snapshot.status = 'queued';
+    this.registerDedupe(record);
     record.snapshot.startedAt = undefined;
     record.snapshot.finishedAt = undefined;
     record.snapshot.error = undefined;
@@ -328,6 +422,10 @@ export class TaskScheduler {
       reject,
       attempts: Math.max(0, stored.attempts),
       readyAt: Number.isFinite(stored.readyAt) ? stored.readyAt : this.now(),
+      priority: normalizePriority(work.priority),
+      sequence: this.nextSequence++,
+      dedupeKey: work.dedupeKey,
+      slotAcquired: false,
       generation: 0
     };
     // A queued record may have been persisted after reaching a checkpoint
@@ -339,6 +437,7 @@ export class TaskScheduler {
     }
     record.snapshot.attempts ??= record.attempts;
     this.records.set(work.id, record);
+    this.registerDedupe(record);
     if (this.state === 'idle') this.state = 'running';
     if (snapshot.status === 'queued') {
       this.emit({ type: 'queued', snapshot: this.status(work.id) });
@@ -412,14 +511,14 @@ export class TaskScheduler {
   }
 
   private arm(record: ScheduledRecord<unknown>): void {
-    const delay = record.readyAt - this.now();
-    if (delay > 0) {
-      record.readyTimer = setTimeout(() => {
-        record.readyTimer = undefined;
-        this.pump();
-      }, delay);
+    this.removeReady(record, false);
+    const readyNow = record.readyAt <= this.now();
+    if (record.snapshot.status === 'queued' && !record.controller.signal.aborted) {
+      if (readyNow) this.readyQueue(record.work.mode).push(record);
+      else this.delayedReady.push(record);
     }
-    queueMicrotask(() => this.pump());
+    this.scheduleReadyTimer();
+    if (readyNow) this.schedulePump();
   }
 
   private persist(record: ScheduledRecord<unknown>): void {
@@ -433,28 +532,120 @@ export class TaskScheduler {
 
   private pump(): void {
     if (this.state === 'stopping' || this.state === 'stopped') return;
-    let runningForeground = this.runningCount('interactive') + this.runningCount('foreground');
-    let runningBackground = this.runningCount('background') + this.runningCount('batch');
-    const available = [...this.records.values()]
-      .filter((record) => record.snapshot.status === 'queued' && record.readyAt <= this.now())
-      .sort(
-        (left, right) =>
-          (right.work.priority ?? 0) - (left.work.priority ?? 0) || left.work.id.localeCompare(right.work.id)
-      );
-    for (const record of available) {
-      const foreground = record.work.mode === 'interactive' || record.work.mode === 'foreground';
-      const canStart = foreground ? runningForeground < this.maxForeground : runningBackground < this.maxBackground;
-      if (!canStart) continue;
-      if (foreground) runningForeground += 1;
-      else runningBackground += 1;
+    this.promoteReady();
+    while (true) {
+      const foreground = this.runningForeground < this.maxForeground ? this.foregroundReady.peek() : undefined;
+      const background = this.runningBackground < this.maxBackground ? this.backgroundReady.peek() : undefined;
+      if (!foreground && !background) return;
+      const queue =
+        !background || (foreground && compareScheduledRecords(foreground, background) <= 0)
+          ? this.foregroundReady
+          : this.backgroundReady;
+      const record = queue.pop();
+      if (!record || record.snapshot.status !== 'queued' || record.controller.signal.aborted) continue;
+      this.acquireSlot(record);
       void this.execute(record);
     }
   }
 
-  private runningCount(mode: ScheduledMode): number {
-    return [...this.records.values()].filter(
-      (record) => record.snapshot.status === 'running' && record.work.mode === mode
-    ).length;
+  private schedulePump(): void {
+    if (this.pumpScheduled) return;
+    this.pumpScheduled = true;
+    queueMicrotask(() => {
+      this.pumpScheduled = false;
+      this.pump();
+    });
+  }
+
+  private promoteReady(): void {
+    const now = this.now();
+    while (true) {
+      const record = this.delayedReady.peek();
+      if (!record || record.readyAt > now) break;
+      this.delayedReady.pop();
+      if (record.snapshot.status === 'queued' && !record.controller.signal.aborted) {
+        this.readyQueue(record.work.mode).push(record);
+      }
+    }
+    this.scheduleReadyTimer();
+  }
+
+  private scheduleReadyTimer(): void {
+    const next = this.delayedReady.peek();
+    if (!next) {
+      if (this.readyTimer) clearTimeout(this.readyTimer.handle);
+      this.readyTimer = undefined;
+      return;
+    }
+    if (this.readyTimer?.readyAt === next.readyAt) return;
+    if (this.readyTimer) clearTimeout(this.readyTimer.handle);
+    const readyAt = next.readyAt;
+    const handle = setTimeout(
+      () => {
+        this.readyTimer = undefined;
+        this.promoteReady();
+        this.schedulePump();
+      },
+      Math.max(0, readyAt - this.now())
+    );
+    this.readyTimer = { readyAt, handle };
+  }
+
+  private readyQueue(mode: ScheduledMode): ScheduledPriorityQueue {
+    return isForegroundMode(mode) ? this.foregroundReady : this.backgroundReady;
+  }
+
+  private removeReady(record: ScheduledRecord<unknown>, refreshTimer = true): void {
+    this.readyQueue(record.work.mode).remove(record.work.id);
+    const removedDelayed = this.delayedReady.remove(record.work.id);
+    if (removedDelayed && refreshTimer) this.scheduleReadyTimer();
+  }
+
+  private acquireSlot(record: ScheduledRecord<unknown>): void {
+    if (record.slotAcquired) return;
+    if (isForegroundMode(record.work.mode)) this.runningForeground += 1;
+    else this.runningBackground += 1;
+    record.slotAcquired = true;
+  }
+
+  private releaseSlot(record: ScheduledRecord<unknown>): void {
+    if (!record.slotAcquired) return;
+    if (isForegroundMode(record.work.mode)) this.runningForeground -= 1;
+    else this.runningBackground -= 1;
+    record.slotAcquired = false;
+  }
+
+  private findDuplicate(dedupeKey?: string): ScheduledRecord<unknown> | undefined {
+    if (!dedupeKey) return undefined;
+    const candidates = this.dedupeIndex.get(dedupeKey);
+    if (!candidates) return undefined;
+    let duplicate: ScheduledRecord<unknown> | undefined;
+    for (const record of candidates) {
+      if (isTerminal(record.snapshot.status)) {
+        candidates.delete(record);
+      } else if (!duplicate || record.sequence < duplicate.sequence) {
+        duplicate = record;
+      }
+    }
+    if (candidates.size === 0) this.dedupeIndex.delete(dedupeKey);
+    return duplicate;
+  }
+
+  private registerDedupe(record: ScheduledRecord<unknown>): void {
+    const dedupeKey = record.dedupeKey;
+    if (!dedupeKey || isTerminal(record.snapshot.status)) return;
+    const candidates = this.dedupeIndex.get(dedupeKey) ?? new Set<ScheduledRecord<unknown>>();
+    candidates.add(record);
+    this.dedupeIndex.set(dedupeKey, candidates);
+  }
+
+  private releaseDedupe(record: ScheduledRecord<unknown>): void {
+    const dedupeKey = record.dedupeKey;
+    if (!dedupeKey) return;
+    const candidates = this.dedupeIndex.get(dedupeKey);
+    if (!candidates) return;
+    candidates.delete(record);
+    if (candidates.size === 0) this.dedupeIndex.delete(dedupeKey);
   }
 
   private async execute(record: ScheduledRecord<unknown>): Promise<void> {
@@ -489,14 +680,17 @@ export class TaskScheduler {
         this.finishCancelled(record);
         return;
       }
+      this.releaseSlot(record);
       record.snapshot.status = 'completed';
       record.snapshot.finishedAt = this.now();
+      this.releaseDedupe(record);
       this.persist(record);
       this.emit({ type: 'completed', snapshot: this.status(record.work.id) });
       record.resolve(value);
     } catch (error) {
       if (!this.isCurrent(record, generation)) return;
       if (isRetryable(error) && record.attempts < Math.max(1, record.work.maxAttempts ?? 1)) {
+        this.releaseSlot(record);
         record.controller = new AbortController();
         record.generation += 1;
         record.snapshot.status = 'queued';
@@ -504,17 +698,13 @@ export class TaskScheduler {
         record.readyAt = this.now() + delay;
         this.persist(record);
         this.emit({ type: 'retrying', snapshot: this.status(record.work.id) });
-        const schedule = () => {
-          if (record.snapshot.status !== 'queued') return;
-          record.readyAt = this.now();
-          this.pump();
-        };
-        if (delay > 0) setTimeout(schedule, delay);
-        else queueMicrotask(schedule);
+        this.arm(record);
       } else if (controller.signal.aborted) {
         this.finishCancelled(record);
       } else {
+        this.releaseSlot(record);
         record.snapshot.status = 'failed';
+        this.releaseDedupe(record);
         record.snapshot.error = error instanceof Error ? error : new Error(String(error));
         record.snapshot.finishedAt = this.now();
         this.persist(record);
@@ -571,9 +761,11 @@ export class TaskScheduler {
 
   private finishCancelled(record: ScheduledRecord<unknown>): void {
     if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
-    if (record.readyTimer) clearTimeout(record.readyTimer);
+    this.removeReady(record);
+    this.releaseSlot(record);
     record.snapshot.status = 'cancelled';
     record.snapshot.finishedAt = this.now();
+    this.releaseDedupe(record);
     this.persist(record);
     this.emit({ type: 'cancelled', snapshot: this.status(record.work.id) });
     record.resolve(undefined);
@@ -587,6 +779,26 @@ export class TaskScheduler {
 
 function isTerminal(status: ScheduledStatus): boolean {
   return status === 'waiting-user' || status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+function normalizePriority(priority: number | undefined): number {
+  return typeof priority === 'number' && Number.isFinite(priority) ? priority : 0;
+}
+
+function compareScheduledRecords(left: ScheduledRecord<unknown>, right: ScheduledRecord<unknown>): number {
+  return right.priority - left.priority || left.work.id.localeCompare(right.work.id);
+}
+
+function compareReadyRecords(left: ScheduledRecord<unknown>, right: ScheduledRecord<unknown>): number {
+  return left.readyAt - right.readyAt || compareScheduledRecords(left, right);
+}
+
+function isForegroundMode(mode: ScheduledMode): boolean {
+  return mode === 'interactive' || mode === 'foreground';
+}
+
+function parentIndex(index: number): number {
+  return Math.floor((index - 1) / 2);
 }
 
 function isRetryable(error: unknown): boolean {
