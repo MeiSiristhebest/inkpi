@@ -142,6 +142,7 @@ export type TaskStatus =
   | 'created'
   | 'queued'
   | 'running'
+  | 'completing'
   | 'checkpointed'
   | 'waiting-user'
   | 'interrupted'
@@ -167,6 +168,8 @@ export interface TaskResult {
   artifactIds?: string[];
   proposalIds?: string[];
   provenance?: Record<string, unknown>;
+  /** Settled results of children owned by this task, in submission order. */
+  childResults?: TaskResult[];
 }
 
 export interface TaskStatusSnapshot {
@@ -201,6 +204,19 @@ export interface TaskExecutionRun {
   updatedAt: number;
   resumeToken?: TaskExecutionResumeToken;
   admission?: TaskAdmissionReceipt;
+  parent?: TaskParent;
+  completion?: TaskPendingCompletion;
+}
+
+export interface TaskParent {
+  taskId: string;
+  /** Detached work has its own cancellation and completion lifetime. */
+  detached: boolean;
+}
+
+export interface TaskPendingCompletion {
+  version: 1;
+  result: TaskResult;
 }
 
 export interface TaskExecutionStep {

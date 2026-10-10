@@ -1,4 +1,11 @@
-import type { AiTask, ExecutionSnapshot, TaskOutput, ToolCallContent, ToolResultMessage } from '@inkpi/protocol';
+import type {
+  AiTask,
+  ExecutionSnapshot,
+  TaskOutput,
+  TaskSubmitResult,
+  ToolCallContent,
+  ToolResultMessage
+} from '@inkpi/protocol';
 import type { ContextPacket } from '../context/types.js';
 import type { ComposedInstructions } from '../instructions/instruction-registry.js';
 import type { ToolRegistry } from '../tools.js';
@@ -14,6 +21,8 @@ export interface TaskHandlerContext {
   /** Existing generic ToolRegistry, exposed without creating a second tool runtime. */
   toolRegistry?: ToolRegistry;
   executeTool?(call: ToolCallContent): Promise<ToolResultMessage & { terminate?: boolean }>;
+  /** Await admission, then return from the handler so children can use its scheduler slot. */
+  spawnChild?(task: AiTask, options?: { requestId?: string; detached?: boolean }): Promise<TaskSubmitResult>;
   /** Returns and clears public human steering submitted while the task runs. */
   consumeSteering(): unknown[];
   checkpoint?: TaskCheckpoint;

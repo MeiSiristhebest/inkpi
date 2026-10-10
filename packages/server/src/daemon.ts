@@ -12,6 +12,7 @@ import {
   type RuntimeCacheCoordinatorPort,
   type SessionCreateOptions,
   SessionRegistry,
+  TaskBatchHandler,
   TaskObservability,
   type TaskObservabilityOptions,
   TaskRouter,
@@ -223,6 +224,9 @@ export class InkPiDaemon {
         cacheCoordinator: this.cacheCoordinator
       });
     const existingModelHandler = this.taskRouter.registry.list().find((handler) => handler.id === 'runtime.model');
+    if (!this.taskRouter.registry.list().some((handler) => handler.id === 'runtime.batch')) {
+      this.taskRouter.registry.register(new TaskBatchHandler());
+    }
     if ((options.defaultModel || options.modelRoutes?.length || options.capabilityRouter) && !existingModelHandler) {
       const modelHandler = new TaskModelHandler({
         model: options.defaultModel,

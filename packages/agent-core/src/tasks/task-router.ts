@@ -5,6 +5,7 @@ import type {
   TaskAdmissionReceipt,
   TaskCancelResult,
   TaskError,
+  TaskParent,
   TaskResult,
   TaskStatus,
   TaskStatusSnapshot,
@@ -37,6 +38,7 @@ export interface TaskRouterEvent {
     | 'created'
     | 'queued'
     | 'started'
+    | 'completing'
     | 'progress'
     | 'checkpointed'
     | 'waiting-user'
@@ -85,6 +87,12 @@ interface TaskRecord {
   admissionWrite?: Promise<void>;
   admitted: boolean;
   committed?: TaskExecutionRecord;
+  ownedChildren: Set<string>;
+  activeExecution?: Promise<void>;
+  settling?: boolean;
+  cancelling?: boolean;
+  failing?: boolean;
+  notifications: Promise<void>;
 }
 
 interface AtomicTaskStateStore {
@@ -152,6 +160,10 @@ export class TaskRouter {
   }
 
   submit(task: AiTask, requestId = task.id): TaskSubmitResult {
+    return this.createTask(task, requestId);
+  }
+
+  private createTask(task: AiTask, requestId: string, parent?: TaskParent): TaskSubmitResult {
     validateTask(task);
     validateRequestId(requestId);
     if (this.recoveryPending) {
@@ -179,7 +191,8 @@ export class TaskRouter {
       status: 'queued',
       attempts: 0,
       updatedAt: this.now(),
-      admission: { version: 1, requestId, taskId: task.id, acceptedAt: this.now() }
+      admission: { version: 1, requestId, taskId: task.id, acceptedAt: this.now() },
+      ...(parent ? { parent: cloneValue(parent) } : {})
     };
     const record: TaskRecord = {
       task: submittedTask,
@@ -194,9 +207,12 @@ export class TaskRouter {
       executionAttempts: [],
       steering: [],
       scheduleSequence: 0,
-      admitted: false
+      admitted: false,
+      ownedChildren: new Set(),
+      notifications: Promise.resolve()
     };
     this.records.set(task.id, record);
+    if (parent && !parent.detached) this.getRecord(parent.taskId).ownedChildren.add(task.id);
     this.requests.set(requestId, task.id);
     const persistence = this.persist(record, ['created', 'queued']);
     record.admissionWrite = persistence;
@@ -252,13 +268,12 @@ export class TaskRouter {
 
   cancel(taskId: string): TaskCancelResult {
     const record = this.getRecord(taskId);
-    const terminal = isTerminal(record.snapshot.status);
+    const terminal =
+      isTerminal(record.snapshot.status) && (record.snapshot.status !== 'waiting-user' || !record.ownedChildren.size);
     if (terminal || record.snapshot.status === 'interrupted' || record.task.executionPolicy?.cancellable === false) {
       return { taskId, cancelled: false, status: record.snapshot.status };
     }
-    record.controller.abort();
-    this.unschedule(record);
-    this.finishCancelled(record);
+    this.cancelOwnedTree(record);
     return {
       taskId,
       cancelled: true,
@@ -273,9 +288,9 @@ export class TaskRouter {
 
   async wait(taskId: string, signal?: AbortSignal): Promise<TaskResult> {
     await awaitWithAbort(this.ready, signal);
-    const result = await awaitWithAbort(this.getRecord(taskId).completion, signal);
-    await awaitWithAbort(this.persistenceTail, signal);
-    await awaitWithAbort(this.notificationTail, signal);
+    const record = this.getRecord(taskId);
+    const result = await awaitWithAbort(record.completion, signal);
+    await awaitWithAbort(record.notifications, signal);
     return cloneValue(result);
   }
 
@@ -329,6 +344,23 @@ export class TaskRouter {
     if (!['waiting-user', 'failed', 'cancelled', 'interrupted'].includes(record.snapshot.status)) {
       throw new Error(`Task ${taskId} cannot be resumed from ${record.snapshot.status}`);
     }
+    if (record.executionRun.completion) {
+      record.controller = new AbortController();
+      record.cancelling = false;
+      record.settling = false;
+      record.failing = false;
+      this.resetCompletion(record);
+      record.snapshot.error = undefined;
+      record.snapshot.finishedAt = undefined;
+      record.snapshot.result = undefined;
+      record.executionRun.finishedAt = undefined;
+      for (const childId of record.ownedChildren) {
+        if (this.getRecord(childId).snapshot.status === 'interrupted') await this.resume(childId);
+      }
+      await this.update(record, { status: 'completing' }, 'completing');
+      void this.completeOwnedTask(record);
+      return { taskId, status: 'completing' };
+    }
     const checkpoint = await this.checkpointStore.load(taskId);
     if (!checkpoint && record.snapshot.status === 'waiting-user') {
       throw new Error(`Task ${taskId} has no checkpoint to resume`);
@@ -349,6 +381,9 @@ export class TaskRouter {
       }
     }
     record.controller = new AbortController();
+    record.cancelling = false;
+    record.settling = false;
+    record.failing = false;
     record.attempts = 0;
     record.executionRun.status = 'queued';
     record.executionRun.attempts = 0;
@@ -397,9 +432,16 @@ export class TaskRouter {
       if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') continue;
       // Runtime shutdown is distinct from user cancellation: preserve the
       // execution record as resumable even for tasks that allow cancellation.
-      this.finishInterrupted(record);
+      this.interruptOwnedTree(record);
     }
     await this.scheduler.stop();
+    await Promise.allSettled(
+      [...this.records.values()]
+        .filter(
+          (record) => record.ownedChildren.size || (record.executionRun.parent && !record.executionRun.parent.detached)
+        )
+        .map((record) => record.activeExecution)
+    );
     await this.persistenceTail;
     await this.notificationTail;
   }
@@ -445,6 +487,7 @@ export class TaskRouter {
     record.executionRun.updatedAt = attemptStartedAt;
     record.snapshot.attempts = record.attempts;
     const cacheStatsBefore = this.cacheCoordinator?.stats();
+    const attemptController = record.controller;
     try {
       await this.update(record, { status: 'running', startedAt: record.snapshot.startedAt ?? this.now() });
       if (record.controller.signal.aborted || isInterrupted(record) || record.persistenceFailed) return;
@@ -484,6 +527,7 @@ export class TaskRouter {
               taskId: record.task.id,
               executionRunId: record.executionRun.id
             }),
+          spawnChild: (task, options) => this.spawnChild(record, attemptController, task, options),
           consumeSteering: () => {
             const steering = record.steering.splice(0);
             return steering.map((input) => cloneValue(input));
@@ -570,23 +614,13 @@ export class TaskRouter {
           instructionProvenance: instructions.references ?? instructions.entryIds.map((id) => ({ id }))
         }
       };
-      if (status !== 'waiting-user') {
-        await this.checkpointStore.clear(record.task.id);
-        record.snapshot.checkpoint = undefined;
+      if (record.ownedChildren.size && status === 'completed') {
+        record.executionRun.completion = { version: 1, result: cloneValue(result) };
+        await this.update(record, { status: 'completing' }, 'completing');
+        void this.completeOwnedTask(record);
+      } else {
+        await this.completeResult(record, result, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()));
       }
-      record.snapshot.result = result;
-      record.snapshot.status = status;
-      record.snapshot.finishedAt = this.now();
-      this.markExecutionSettled(record, status);
-      await this.persist(record, [status === 'waiting-user' ? 'waiting-user' : 'completed']);
-      this.observe(() =>
-        this.observer?.finished?.(
-          cloneValue(record.task),
-          observationFromSnapshot(record.snapshot, cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats()))
-        )
-      );
-      await this.notificationTail;
-      record.resolveCompletion(result);
     } catch (error) {
       if (isInterrupted(record) || record.persistenceFailed) return;
       const cacheStats = cacheStatsDelta(cacheStatsBefore, this.cacheCoordinator?.stats());
@@ -609,6 +643,7 @@ export class TaskRouter {
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
+        for (const childId of record.ownedChildren) this.cancelOwnedTree(this.getRecord(childId));
         record.controller.abort();
         reject(new TaskTimeoutError(timeoutMs));
       }, timeoutMs);
@@ -621,14 +656,27 @@ export class TaskRouter {
     }
   }
 
-  private finishCancelled(record: TaskRecord, cacheStats?: RuntimeCacheStats): void {
-    if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
+  private finishCancelled(record: TaskRecord, cacheStats?: RuntimeCacheStats, force = false): void {
+    if ((!force && isTerminal(record.snapshot.status)) || record.snapshot.status === 'interrupted' || record.cancelling)
+      return;
+    record.cancelling = true;
     const result: TaskResult = {
       taskId: record.task.id,
       kind: record.task.kind,
       status: 'cancelled',
       error: { code: 'TASK_CANCELLED', message: 'Task was cancelled', retryable: true }
     };
+    const children = [...record.ownedChildren].map((id) => this.getRecord(id));
+    if (children.length) {
+      void Promise.allSettled([...children.map((child) => child.activeExecution), record.activeExecution])
+        .then(async () => {
+          await Promise.all(children.map((child) => child.completion));
+          if (!isInterrupted(record) && !record.persistenceFailed)
+            await this.completeResult(record, result, cacheStats);
+        })
+        .catch(() => undefined);
+      return;
+    }
     record.snapshot.status = 'cancelled';
     record.snapshot.result = result;
     record.snapshot.finishedAt = this.now();
@@ -638,14 +686,16 @@ export class TaskRouter {
         this.observe(() =>
           this.observer?.finished?.(cloneValue(record.task), observationFromSnapshot(record.snapshot, cacheStats))
         );
-        await this.notificationTail;
+        await record.notifications;
         record.resolveCompletion(result);
+        this.reconcileOwner(record);
       })
       .catch(() => undefined);
   }
 
   private finishFailed(record: TaskRecord, error: TaskError, cacheStats?: RuntimeCacheStats): void {
-    if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted') return;
+    if (isTerminal(record.snapshot.status) || record.snapshot.status === 'interrupted' || record.failing) return;
+    record.failing = true;
     const safeError = sanitizeTaskError(error);
     const result: TaskResult = {
       taskId: record.task.id,
@@ -653,6 +703,19 @@ export class TaskRouter {
       status: 'failed',
       error: safeError
     };
+    for (const childId of record.ownedChildren) this.cancelOwnedTree(this.getRecord(childId));
+    const children = [...record.ownedChildren].map((id) => this.getRecord(id));
+    if (children.length) {
+      record.controller.abort();
+      void Promise.allSettled([...children.map((child) => child.activeExecution), record.activeExecution])
+        .then(async () => {
+          await Promise.all(children.map((child) => child.completion));
+          if (!isInterrupted(record) && !record.persistenceFailed)
+            await this.completeResult(record, result, cacheStats);
+        })
+        .catch(() => undefined);
+      return;
+    }
     record.snapshot.status = 'failed';
     record.snapshot.error = safeError;
     record.snapshot.result = result;
@@ -663,14 +726,15 @@ export class TaskRouter {
         this.observe(() =>
           this.observer?.finished?.(cloneValue(record.task), observationFromSnapshot(record.snapshot, cacheStats))
         );
-        await this.notificationTail;
+        await record.notifications;
         record.resolveCompletion(result);
+        this.reconcileOwner(record);
       })
       .catch(() => undefined);
   }
 
   private retryOrFail(record: TaskRecord, error: TaskError, cacheStats?: RuntimeCacheStats): void {
-    if (error.retryable && record.attempts < record.maxAttempts) {
+    if (!record.ownedChildren.size && error.retryable && record.attempts < record.maxAttempts) {
       record.controller = new AbortController();
       record.snapshot.status = 'queued';
       record.snapshot.error = error;
@@ -787,7 +851,13 @@ export class TaskRouter {
           // A running attempt is cancelled through the durable task controller;
           // retain the scheduler slot until execute() unwinds.
           record.scheduled = undefined;
-          await this.execute(record);
+          const active = this.execute(record);
+          record.activeExecution = active;
+          try {
+            await active;
+          } finally {
+            if (record.activeExecution === active) record.activeExecution = undefined;
+          }
         }
       });
       record.scheduled = { id: scheduleId, cancel: scheduled.cancel };
@@ -833,7 +903,13 @@ export class TaskRouter {
   }
 
   private finishRecovery(records: TaskExecutionRecord[]): Promise<void> {
+    validateTaskOwnership(records);
     for (const record of records) this.hydrate(record);
+    for (const record of this.records.values()) {
+      const parent = record.executionRun.parent;
+      if (!parent) continue;
+      if (!parent.detached) this.getRecord(parent.taskId).ownedChildren.add(record.task.id);
+    }
     // Hydration normalizes in-flight records to `interrupted` and queues a
     // durable write. Do not release the recovery gate before that write lands.
     return this.persistenceTail;
@@ -881,7 +957,9 @@ export class TaskRouter {
       steering: stored.steering ? cloneValue(stored.steering) : [],
       scheduleSequence: 0,
       admitted: true,
-      committed: cloneValue(stored)
+      committed: cloneValue(stored),
+      ownedChildren: new Set(),
+      notifications: Promise.resolve()
     };
     snapshot.executionRunId = record.executionRun.id;
     record.executionRun.admission ??= {
@@ -891,6 +969,13 @@ export class TaskRouter {
       acceptedAt: stored.updatedAt
     };
     const receipt = record.executionRun.admission;
+    const pending = record.executionRun.completion;
+    if (
+      pending &&
+      (pending.version !== 1 || pending.result.taskId !== record.task.id || pending.result.status !== 'completed')
+    ) {
+      throw new Error(`Invalid pending task completion for '${record.task.id}'`);
+    }
     if (
       receipt.version !== 1 ||
       receipt.taskId !== record.task.id ||
@@ -938,6 +1023,7 @@ export class TaskRouter {
   private finishPersistenceFailure(record: TaskRecord, error: unknown): void {
     if (record.persistenceFailed) return;
     record.persistenceFailed = true;
+    for (const childId of record.ownedChildren) this.cancelOwnedTree(this.getRecord(childId));
     record.controller.abort();
     this.unschedule(record);
     const taskError: TaskError = {
@@ -962,8 +1048,15 @@ export class TaskRouter {
     // This diagnostic describes the failed write; it is never presented as a durable business result.
     record.committed = this.persistedRecord(record);
     this.observe(() => this.observer?.finished?.(cloneValue(record.task), observationFromSnapshot(record.snapshot)));
-    void this.emit({ type: 'failed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) }).then(() => {
+    const children = [...record.ownedChildren].map((id) => this.getRecord(id));
+    void Promise.allSettled([
+      ...children.map((child) => child.activeExecution),
+      ...(children.length ? [record.activeExecution] : [])
+    ]).then(async () => {
+      await Promise.all(children.map((child) => child.completion));
+      await this.emit({ type: 'failed', taskId: record.task.id, snapshot: cloneSnapshot(record.snapshot) });
       record.resolveCompletion(result);
+      this.reconcileOwner(record);
     });
   }
 
@@ -997,6 +1090,8 @@ export class TaskRouter {
       [...this.listeners].map(async (listener) => listener(cloneValue(event)))
     ).then(() => undefined);
     this.notificationTail = Promise.all([this.notificationTail, notification]).then(() => undefined);
+    const record = this.getRecord(event.taskId);
+    record.notifications = Promise.all([record.notifications, notification]).then(() => undefined);
     return notification;
   }
 
@@ -1006,6 +1101,128 @@ export class TaskRouter {
     } catch {
       // Observation failures cannot change an accepted task's result.
     }
+  }
+
+  private async spawnChild(
+    owner: TaskRecord,
+    controller: AbortController,
+    task: AiTask,
+    options: { requestId?: string; detached?: boolean } = {}
+  ): Promise<TaskSubmitResult> {
+    controller.signal.throwIfAborted();
+    if (options.detached !== undefined && typeof options.detached !== 'boolean')
+      throw new Error('Invalid child detachment');
+    if (owner.controller !== controller || !['running', 'checkpointed'].includes(owner.snapshot.status)) {
+      throw new Error('A settled task handler cannot create child work');
+    }
+    validateTask(task);
+    this.registry.resolve(task);
+    const requestId = options.requestId ?? task.id;
+    const parent: TaskParent = { taskId: owner.task.id, detached: options.detached ?? false };
+    const accepted = this.records.get(this.requests.get(requestId) ?? task.id);
+    if (accepted) {
+      if (!isDeepStrictEqual(accepted.executionRun.parent, parent)) throw new Error('Child task ownership conflicts');
+    } else {
+      this.createTask(task, requestId, parent);
+    }
+    return this.submitDurably(task, requestId);
+  }
+
+  private cancelOwnedTree(record: TaskRecord): void {
+    if (
+      record.cancelling ||
+      record.snapshot.status === 'interrupted' ||
+      ['completed', 'failed', 'cancelled'].includes(record.snapshot.status)
+    )
+      return;
+    for (const childId of record.ownedChildren) this.cancelOwnedTree(this.getRecord(childId));
+    record.controller.abort();
+    this.unschedule(record);
+    const paused = record.snapshot.status === 'waiting-user';
+    if (paused) this.resetCompletion(record);
+    this.finishCancelled(record, undefined, paused);
+  }
+
+  private interruptOwnedTree(record: TaskRecord): void {
+    if (record.snapshot.status === 'interrupted' || isTerminal(record.snapshot.status)) return;
+    for (const childId of record.ownedChildren) this.interruptOwnedTree(this.getRecord(childId));
+    this.finishInterrupted(record);
+  }
+
+  private resetCompletion(record: TaskRecord): void {
+    record.completion = new Promise((resolve) => {
+      record.resolveCompletion = resolve;
+    });
+  }
+
+  private reconcileOwner(record: TaskRecord): void {
+    const parent = record.executionRun.parent;
+    if (parent && !parent.detached) void this.completeOwnedTask(this.getRecord(parent.taskId));
+  }
+
+  private async completeOwnedTask(record: TaskRecord): Promise<void> {
+    const pending = record.executionRun.completion;
+    if (!pending || record.snapshot.status !== 'completing' || record.settling || record.controller.signal.aborted)
+      return;
+    const children = [...record.ownedChildren].map((id) => this.getRecord(id));
+    const failed = children.some((child) =>
+      ['failed', 'cancelled'].includes(child.committed?.snapshot.status ?? 'created')
+    );
+    if (failed) for (const child of children) this.cancelOwnedTree(child);
+    if (
+      children.some(
+        (child) => !['completed', 'failed', 'cancelled'].includes(child.committed?.snapshot.status ?? 'created')
+      )
+    )
+      return;
+    record.settling = true;
+    try {
+      await Promise.allSettled([...children.map((child) => child.activeExecution), record.activeExecution]);
+      if (record.controller.signal.aborted || isInterrupted(record) || record.persistenceFailed) return;
+      const childResults = children.map((child) => cloneValue(child.committed!.snapshot.result!));
+      const result: TaskResult = {
+        ...cloneValue(pending.result),
+        childResults,
+        ...(failed
+          ? {
+              status: 'failed' as const,
+              error: {
+                code: 'OWNED_CHILD_FAILED',
+                message: 'An owned child task did not complete',
+                details: {
+                  taskIds: childResults.filter((child) => child.status !== 'completed').map((child) => child.taskId)
+                }
+              }
+            }
+          : {})
+      };
+      await this.completeResult(record, result);
+    } catch (error) {
+      record.settling = false;
+      if (!record.persistenceFailed && !isInterrupted(record)) this.finishFailed(record, toTaskError(error));
+    }
+  }
+
+  private async completeResult(record: TaskRecord, result: TaskResult, cacheStats?: RuntimeCacheStats): Promise<void> {
+    if (isInterrupted(record) || record.persistenceFailed || isTerminal(record.snapshot.status)) return;
+    if (result.status === 'completed') {
+      await this.checkpointStore.clear(record.task.id);
+      if (record.controller.signal.aborted || isInterrupted(record)) return;
+      record.snapshot.checkpoint = undefined;
+      record.executionRun.completion = undefined;
+    }
+    record.snapshot.result = cloneValue(result);
+    record.snapshot.error = result.error;
+    record.snapshot.status = result.status;
+    record.snapshot.finishedAt = this.now();
+    this.markExecutionSettled(record, result.status, result.error);
+    await this.persist(record, [result.status]);
+    this.observe(() =>
+      this.observer?.finished?.(cloneValue(record.task), observationFromSnapshot(record.snapshot, cacheStats))
+    );
+    await record.notifications;
+    record.resolveCompletion(result);
+    this.reconcileOwner(record);
   }
 
   private getRecord(taskId: string): TaskRecord {
@@ -1030,6 +1247,44 @@ function validateTask(task: AiTask): void {
 
 function validateRequestId(requestId: string): void {
   if (typeof requestId !== 'string' || !requestId.trim()) throw new Error('Request id must not be empty');
+}
+
+function validateTaskOwnership(records: TaskExecutionRecord[]): void {
+  const byId = new Map(records.map((record) => [record.task.id, record]));
+  if (byId.size !== records.length) throw new Error('Duplicate persisted task id');
+  for (const record of records) {
+    const pending = record.run?.completion;
+    if (
+      pending &&
+      (pending.version !== 1 ||
+        !pending.result ||
+        pending.result.taskId !== record.task.id ||
+        pending.result.kind !== record.task.kind ||
+        pending.result.status !== 'completed')
+    ) {
+      throw new Error(`Invalid pending task completion for '${record.task.id}'`);
+    }
+    const parent = record.run?.parent;
+    if (!parent) continue;
+    if (typeof parent.detached !== 'boolean' || typeof parent.taskId !== 'string' || !byId.has(parent.taskId)) {
+      throw new Error(`Invalid task parent for '${record.task.id}'`);
+    }
+    if (
+      !parent.detached &&
+      ['completed', 'failed', 'cancelled'].includes(record.snapshot.status) &&
+      !record.snapshot.result
+    ) {
+      throw new Error(`Owned child '${record.task.id}' has no durable result`);
+    }
+    const visited = new Set([record.task.id]);
+    let ancestor: TaskExecutionRecord | undefined = byId.get(parent.taskId);
+    while (ancestor) {
+      if (visited.has(ancestor.task.id)) throw new Error('Task ownership contains a cycle');
+      visited.add(ancestor.task.id);
+      const next: TaskParent | undefined = ancestor.run?.parent;
+      ancestor = next ? byId.get(next.taskId) : undefined;
+    }
+  }
 }
 
 function validateOutput(task: AiTask, result: TaskHandlerResult): TaskError | undefined {

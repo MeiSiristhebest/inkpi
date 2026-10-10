@@ -3,6 +3,8 @@ import type {
   ExecutionSnapshot,
   TaskAdmissionReceipt,
   TaskError,
+  TaskParent,
+  TaskPendingCompletion,
   TaskResult,
   TaskStatus,
   TaskStatusSnapshot
@@ -18,6 +20,8 @@ export interface ExecutionRun {
   updatedAt: number;
   resumeToken?: ResumeToken;
   admission?: TaskAdmissionReceipt;
+  parent?: TaskParent;
+  completion?: TaskPendingCompletion;
 }
 
 export interface ExecutionStep {

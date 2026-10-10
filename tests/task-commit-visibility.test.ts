@@ -134,4 +134,27 @@ describe('task commit visibility', () => {
     await expect(router.wait(task().id)).resolves.toMatchObject({ status: 'completed' });
     expect(router.execution(task().id).snapshot.status).toBe('completed');
   });
+
+  it('does not make one task wait for an unrelated background task observer', async () => {
+    const registry = new TaskRegistry();
+    const backgroundStarted = gate();
+    const observerFinished = gate();
+    registry.register({ id: 'commit', kinds: [task().kind], execute: async () => ({}) });
+    const router = new TaskRouter({ registry });
+    router.subscribe(async (event) => {
+      if (event.taskId === 'background' && event.type === 'started') {
+        backgroundStarted.release();
+        await observerFinished.promise;
+      }
+    });
+    await router.submitDurably({ ...task(), id: 'background', executionPolicy: { mode: 'background' } });
+    await backgroundStarted.promise;
+    try {
+      await router.submitDurably(task());
+      await expect(router.wait(task().id)).resolves.toMatchObject({ status: 'completed' });
+    } finally {
+      observerFinished.release();
+      await router.wait('background');
+    }
+  });
 });

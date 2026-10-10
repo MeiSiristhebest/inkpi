@@ -244,6 +244,7 @@ export const TaskStatusSchema = Type.Union([
   Type.Literal('created'),
   Type.Literal('queued'),
   Type.Literal('running'),
+  Type.Literal('completing'),
   Type.Literal('checkpointed'),
   Type.Literal('waiting-user'),
   Type.Literal('interrupted'),
@@ -300,7 +301,9 @@ export const TaskExecutionRunSchema = Type.Object({
   resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
   admission: Type.Optional(
     Type.Object({ version: Type.Literal(1), requestId: IdSchema, taskId: IdSchema, acceptedAt: TimestampSchema })
-  )
+  ),
+  parent: Type.Optional(Type.Object({ taskId: IdSchema, detached: Type.Boolean() })),
+  completion: Type.Optional(Type.Object({ version: Type.Literal(1), result: Type.Any() }))
 });
 
 export const TaskExecutionStepSchema = Type.Object({
