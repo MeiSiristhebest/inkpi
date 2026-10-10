@@ -68,7 +68,7 @@ export class StreamInvoker {
     const toolsMetadata = toolRegistry.getAll().map((t) => ({
       name: t.name,
       description: t.description,
-      parameters: t.parameters
+      parameters: t.parameters ?? { type: 'object' }
     }));
     const prepared = await options.prepareRequest?.(
       {
@@ -82,6 +82,14 @@ export class StreamInvoker {
     signal?.throwIfAborted();
     const requestModel = prepared?.model ?? state.model;
     const requestMessages = prepared?.messages ? [...prepared.messages] : llmMessages;
+    const requestTools = prepared?.tools ?? toolsMetadata;
+    if (options.conversation) {
+      const update = await options.conversation.recordLoadout(
+        prepared?.systemPrompt ?? state.systemPrompt,
+        requestTools
+      );
+      if (update) requestMessages.push(update);
+    }
     if (options.journal) {
       await commitJournal(options.journal, [
         {
@@ -108,9 +116,9 @@ export class StreamInvoker {
     const stream = streamFn(requestModel, requestMessages, {
       signal,
       providerSessionId: state.providerSessionId,
-      systemPrompt: prepared?.systemPrompt ?? state.systemPrompt,
+      systemPrompt: options.conversation ? '' : (prepared?.systemPrompt ?? state.systemPrompt),
       ...(thinkingEffort !== undefined ? { thinkingEffort } : { thinkingBudget }),
-      tools: prepared?.tools ?? toolsMetadata
+      tools: requestTools
     });
 
     const abortStream = (): void => stream.abort();

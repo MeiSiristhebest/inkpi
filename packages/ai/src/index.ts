@@ -1,4 +1,5 @@
 export * from './types.js';
+export * from './transcript.js';
 export * from './stream.js';
 export * from './http-client.js';
 export * from './sanitize.js';

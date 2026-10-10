@@ -1,4 +1,5 @@
 import type { AgentMessage } from '@inkpi/protocol';
+import { ContextBudgetPlanner } from '../compaction/context-budget.js';
 import { adoptMessage, commitMessage } from '../journal-commit.js';
 import type { AgentOptions, AgentState, IncrementalContextUpdate } from '../types.js';
 import type { TurnContext } from './turn-context.js';
@@ -123,20 +124,56 @@ export class ContextTransformer {
   public async prepare(ctx: TurnContext): Promise<AgentMessage[]> {
     await this.drainSteering(ctx);
 
-    const compactionInput = ctx.options.sessionCompactor ? [...ctx.state.messages] : undefined;
-    if (compactionInput && ctx.options.sessionCompactor?.shouldCompact(compactionInput)) {
-      const compacted = await ctx.options.sessionCompactor.compact(compactionInput, ctx.signal);
-      ctx.state.messages = compacted.compactedMessages;
-    }
+    await this.compact(ctx);
 
     let workingMessages = ctx.options.incrementalTransformContext
       ? await this.transformIncrementally(ctx, ctx.options.incrementalTransformContext)
-      : [...ctx.state.messages];
+      : ctx.options.conversation
+        ? ctx.options.conversation.getContext().messages
+        : [...ctx.state.messages];
     if (ctx.options.transformContext) {
       workingMessages = await ctx.options.transformContext(workingMessages, ctx.signal);
     }
 
     return ctx.options.convertToLlm ? await ctx.options.convertToLlm(workingMessages) : workingMessages;
+  }
+
+  public async compact(ctx: TurnContext, force = false): Promise<boolean> {
+    const compactor = ctx.options.sessionCompactor;
+    if (!compactor || ctx.signal?.aborted) return false;
+    const conversation = ctx.options.conversation;
+    const headId = conversation?.getHeadId() ?? null;
+    const input = conversation ? conversation.getContext().messages : [...ctx.state.messages];
+    const planner = ctx.options.contextBudgetPlanner ?? new ContextBudgetPlanner();
+    if (
+      !force &&
+      !planner.shouldCompact(
+        {
+          messages: input,
+          contextWindowTokens: ctx.state.model?.contextWindow,
+          outputReserveTokens: ctx.state.model?.maxTokens
+        },
+        compactor
+      )
+    )
+      return false;
+    // Instructions and tool definitions remain in the canonical transcript.
+    const history = input.filter((message) => message.role !== 'system');
+    if (!compactor.canCompact(history)) return false;
+    const compacted = await compactor.compact(history, ctx.signal);
+    if (ctx.signal?.aborted) return false;
+    if (conversation) {
+      if (!(await conversation.commitCompaction(compacted, headId, ctx.signal))) return false;
+    } else {
+      if (
+        ctx.state.messages.length !== input.length ||
+        ctx.state.messages.some((message, index) => message !== input[index])
+      )
+        return false;
+      ctx.state.messages = [...input.filter((message) => message.role === 'system'), ...compacted.compactedMessages];
+    }
+    this.clearIncrementalCache();
+    return true;
   }
 
   /** Release the cached view after an idle retention period or an explicit reset. */
@@ -148,8 +185,8 @@ export class ContextTransformer {
     ctx: TurnContext,
     transformer: NonNullable<AgentOptions['incrementalTransformContext']>
   ): Promise<AgentMessage[]> {
-    const tracker = trackMessageHistory(ctx.state);
-    const history = ctx.state.messages;
+    const tracker = ctx.options.conversation ? undefined : trackMessageHistory(ctx.state);
+    const history = ctx.options.conversation ? ctx.options.conversation.getContext().messages : ctx.state.messages;
     const cache = this.incrementalCache;
     const canAppend =
       tracker !== undefined &&

@@ -625,6 +625,26 @@ export class InkPiDaemon {
       };
     });
 
+    this.rpcServer.registerMethod(
+      'session.context.read',
+      (params: import('@inkpi/protocol').SessionContextReadParams) =>
+        this.withSession(params.sessionId).agent.getModelContext(params.headId)
+    );
+    this.rpcServer.registerMethod(
+      'session.context.edit',
+      async (params: import('@inkpi/protocol').SessionContextEditParams) => {
+        await this.withSession(params.sessionId).agent.editContext(params.edit);
+        return { success: true };
+      }
+    );
+    this.rpcServer.registerMethod(
+      'session.context.select',
+      async (params: import('@inkpi/protocol').SessionContextSelectParams) => {
+        await this.withSession(params.sessionId).agent.selectContextHead(params.headId);
+        return { success: true };
+      }
+    );
+
     this.rpcServer.registerMethod('session.close', (params: { sessionId: string }) => {
       return { success: this.sessionManager.closeSession(params?.sessionId) };
     });

@@ -3,6 +3,7 @@ import { ProviderError, ProviderNotImplementedError, classifyProviderError, prov
 import { getHttpClient } from './http-client.js';
 import { sanitizeMessagesForProvider } from './sanitize.js';
 import { AssistantEventStream } from './stream.js';
+import { resolveModelTranscript } from './transcript.js';
 import type {
   AnthropicEffort,
   EventStream,
@@ -556,7 +557,12 @@ export function applyCompatToOpenAiPayload(
   }
 }
 
-export const openAiCompatibleProvider: ProviderHandler = (model, messages, options) => {
+export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
+  const { messages, options } = resolveModelTranscript(
+    inputMessages,
+    inputOptions,
+    model.compat?.supportsMidConvoSystemMessages === true
+  );
   const stream = new AssistantEventStream();
   const baseUrl = resolveProviderBaseUrl(model.provider, model.baseUrl);
   const apiKeyEnv = resolveProviderApiKeyEnv(model.provider);
@@ -909,7 +915,8 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
 // ----------------------------------------------------------------------
 // 3. Anthropic Messages API Provider
 // ----------------------------------------------------------------------
-export const anthropicProvider: ProviderHandler = (model, messages, options) => {
+export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
+  const { messages, options } = resolveModelTranscript(inputMessages, inputOptions);
   const stream = new AssistantEventStream();
   const baseUrl = model.baseUrl || 'https://api.anthropic.com/v1';
   const apiKey = model.apiKey || process.env.ANTHROPIC_API_KEY || '';
@@ -1166,7 +1173,8 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
 // ----------------------------------------------------------------------
 // 4. Google Generative AI Provider (Gemini SSE)
 // ----------------------------------------------------------------------
-export const geminiProvider: ProviderHandler = (model, messages, options) => {
+export const geminiProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
+  const { messages, options } = resolveModelTranscript(inputMessages, inputOptions);
   const stream = new AssistantEventStream();
   const apiKey = model.apiKey || process.env.GEMINI_API_KEY || '';
 
@@ -1332,7 +1340,12 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
 // ----------------------------------------------------------------------
 // 5. Ollama Provider for Local Offline inference
 // ----------------------------------------------------------------------
-export const ollamaProvider: ProviderHandler = (model, messages, options) => {
+export const ollamaProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
+  const { messages, options } = resolveModelTranscript(
+    inputMessages,
+    inputOptions,
+    model.compat?.supportsMidConvoSystemMessages === true
+  );
   const stream = new AssistantEventStream();
   const baseUrl = model.baseUrl || 'http://localhost:11434';
   const standardMessages = convertMessagesToStandard(messages, options?.systemPrompt);

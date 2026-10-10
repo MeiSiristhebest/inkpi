@@ -94,6 +94,16 @@ export interface ToolResultMessage extends BaseMessage {
 export interface SystemMessage extends BaseMessage {
   role: 'system';
   content: string;
+  sections?: Record<string, string | null>;
+  toolsAdded?: ModelToolDefinition[];
+  toolsRemoved?: Array<{ name: string }>;
+}
+
+/** Persistable tool declaration; executable functions remain in the host. */
+export interface ModelToolDefinition {
+  name: string;
+  description: string;
+  parameters: unknown;
 }
 
 export interface CustomMessage extends BaseMessage {
@@ -146,6 +156,7 @@ export interface ModelConfig {
   apiKey?: string;
   temperature?: number;
   maxTokens?: number;
+  contextWindow?: number;
   supportsThinking?: boolean;
   supportsTools?: boolean;
   presencePenalty?: number;

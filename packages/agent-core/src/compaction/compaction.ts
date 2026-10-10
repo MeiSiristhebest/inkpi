@@ -151,6 +151,9 @@ export class SessionCompactor {
         break;
       case 'system':
         characterCount += message.content.length;
+        characterCount += estimateJsonValue(message.sections);
+        characterCount += estimateJsonValue(message.toolsAdded);
+        characterCount += estimateJsonValue(message.toolsRemoved);
         break;
       case 'custom':
         characterCount += message.customType.length;
@@ -258,21 +261,27 @@ export class SessionCompactor {
     };
   }
 
+  public canCompact(messages: AgentMessage[], task?: CompactionTask): boolean {
+    const split = this.findSplitIndex(messages, this.resolveBudget(task));
+    return split > 0 && split < messages.length;
+  }
+
   private findSplitIndex(messages: AgentMessage[], budget: CompactionBudget): number {
     let splitIndex = Math.max(1, messages.length - budget.preserveRecentCount);
-    if (budget.preserveRecentTokens === undefined) return splitIndex;
-
-    let retainedTokens = 0;
-    let retainedCount = 0;
-    while (
-      splitIndex > 0 &&
-      (retainedCount < budget.preserveRecentCount || retainedTokens < budget.preserveRecentTokens)
-    ) {
-      splitIndex -= 1;
-      retainedCount += 1;
-      retainedTokens += this.estimateMessageTokens(messages[splitIndex]);
+    if (budget.preserveRecentTokens !== undefined) {
+      let retainedTokens = 0;
+      let retainedCount = 0;
+      while (
+        splitIndex > 1 &&
+        (retainedCount < budget.preserveRecentCount || retainedTokens < budget.preserveRecentTokens)
+      ) {
+        splitIndex -= 1;
+        retainedCount += 1;
+        retainedTokens += this.estimateMessageTokens(messages[splitIndex]);
+      }
     }
-    return Math.max(1, splitIndex);
+    while (splitIndex > 0 && messages[splitIndex]?.role === 'toolResult') splitIndex -= 1;
+    return splitIndex;
   }
 }
 

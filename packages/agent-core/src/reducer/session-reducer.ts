@@ -135,7 +135,12 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
   next.currentLeafId = entry.id;
 
   // 源序放置：工具结果只在遇到下一条"会话推进"条目（或归约结束）时才物化。
-  if (entry.type !== 'tool_execution' && entry.type !== 'assistant_frame') {
+  if (
+    entry.type === 'user_message' ||
+    entry.type === 'agent_turn' ||
+    entry.type === 'compaction' ||
+    entry.type === 'custom'
+  ) {
     const flushed = flushPendingToolResults(next);
     next.messages = flushed.messages;
     next.pendingToolResults = flushed.pendingToolResults;
@@ -150,33 +155,14 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
     }
 
     case 'user_message': {
-      const payload = entry.payload;
-      const userMsg: UserMessage = {
-        id: entry.id,
-        role: 'user',
-        content: typeof payload === 'string' ? payload : (payload?.content ?? payload?.text ?? ''),
-        timestamp: entry.timestamp
-      };
+      const userMsg = messageFromSessionEntry(entry) as UserMessage;
       next.messages.push(userMsg);
       break;
     }
 
     case 'agent_turn': {
       const payload = entry.payload;
-      const assistantMsg: AssistantMessage = {
-        id: entry.id,
-        role: 'assistant',
-        content: Array.isArray(payload?.content)
-          ? payload.content
-          : [{ type: 'text', text: payload?.content || payload?.text || '' }],
-        stopReason: payload?.stopReason || 'stop',
-        errorMessage: payload?.errorMessage,
-        providerError: payload?.providerError,
-        providerThinkingLevel: payload?.providerThinkingLevel,
-        usage: payload?.usage,
-        ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
-        timestamp: entry.timestamp
-      };
+      const assistantMsg = messageFromSessionEntry(entry) as AssistantMessage;
       next.messages.push(assistantMsg);
 
       if (payload?.usage) {
@@ -194,24 +180,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
 
     case 'tool_execution': {
       const payload = entry.payload;
-      const toolMsg: ToolResultMessage = {
-        ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
-        id: entry.id,
-        role: 'toolResult',
-        toolCallId: payload?.toolCallId || payload?.id || entry.id,
-        toolName: payload?.toolName || payload?.name || 'unknown_tool',
-        content: Array.isArray(payload?.content)
-          ? payload.content
-          : [
-              {
-                type: 'text',
-                text: typeof payload?.result === 'string' ? payload.result : JSON.stringify(payload?.result || '')
-              }
-            ],
-        details: payload?.details,
-        isError: Boolean(payload?.isError || payload?.error),
-        timestamp: entry.timestamp
-      };
+      const toolMsg = messageFromSessionEntry(entry) as ToolResultMessage;
       // 源序放置：journal 是完成序，先入缓冲，等待重排物化（见 flushPendingToolResults）。
       const sourceIndex = typeof payload?.sourceIndex === 'number' ? payload.sourceIndex : undefined;
       next.pendingToolResults.push({ message: toolMsg, sourceIndex });
@@ -302,11 +271,64 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
       break;
     }
 
+    case 'custom': {
+      const message = messageFromSessionEntry(entry);
+      if (message) next.messages.push(message);
+      break;
+    }
+
     default:
       break;
   }
 
   return next;
+}
+
+/** Normalize legacy payloads while preserving all settled message metadata. */
+export function messageFromSessionEntry(entry: SessionEntry): AgentMessage | undefined {
+  const payload = entry.payload;
+  const identity = { id: entry.id, timestamp: entry.timestamp };
+  if (entry.type === 'user_message')
+    return {
+      ...identity,
+      role: 'user',
+      content: typeof payload === 'string' ? payload : (payload?.content ?? payload?.text ?? '')
+    };
+  if (entry.type === 'agent_turn')
+    return {
+      ...identity,
+      role: 'assistant',
+      content: Array.isArray(payload?.content)
+        ? structuredClone(payload.content)
+        : [{ type: 'text', text: payload?.content || payload?.text || '' }],
+      stopReason: payload?.stopReason || 'stop',
+      ...(payload?.errorMessage !== undefined ? { errorMessage: payload.errorMessage } : {}),
+      ...(payload?.providerError !== undefined ? { providerError: structuredClone(payload.providerError) } : {}),
+      ...(payload?.providerThinkingLevel !== undefined ? { providerThinkingLevel: payload.providerThinkingLevel } : {}),
+      ...(payload?.usage !== undefined ? { usage: structuredClone(payload.usage) } : {}),
+      ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {})
+    };
+  if (entry.type === 'tool_execution')
+    return {
+      ...identity,
+      role: 'toolResult',
+      toolCallId: payload?.toolCallId || payload?.id || entry.id,
+      toolName: payload?.toolName || payload?.name || 'unknown_tool',
+      content: Array.isArray(payload?.content)
+        ? structuredClone(payload.content)
+        : [
+            {
+              type: 'text',
+              text: typeof payload?.result === 'string' ? payload.result : JSON.stringify(payload?.result || '')
+            }
+          ],
+      ...(payload?.details !== undefined ? { details: structuredClone(payload.details) } : {}),
+      isError: Boolean(payload?.isError || payload?.error),
+      ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {})
+    };
+  if (entry.type === 'custom' && (payload?.role === 'custom' || payload?.role === 'system'))
+    return { ...structuredClone(payload), ...identity };
+  return undefined;
 }
 
 /**

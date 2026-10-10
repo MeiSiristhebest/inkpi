@@ -133,6 +133,11 @@ export const SystemMessageSchema = Type.Object({
   id: Type.Optional(IdSchema),
   role: Type.Literal('system'),
   content: Type.String(),
+  sections: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]))),
+  toolsAdded: Type.Optional(
+    Type.Array(Type.Object({ name: IdSchema, description: Type.String(), parameters: JsonValueSchema }))
+  ),
+  toolsRemoved: Type.Optional(Type.Array(Type.Object({ name: IdSchema }))),
   timestamp: Type.Optional(TimestampSchema)
 });
 

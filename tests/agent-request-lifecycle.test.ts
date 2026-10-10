@@ -153,7 +153,10 @@ describe('agent request and turn lifecycle', () => {
     let requests = 0;
     const compactor = new SessionCompactor({ clock: () => 1, summarizer: async () => 'summary' });
     const agent = new Agent({
-      initialState: { model: getModelPreset('mock-test') },
+      initialState: {
+        model: getModelPreset('mock-test'),
+        messages: [{ role: 'user', content: 'previous context to compact' }]
+      },
       sessionCompactor: compactor,
       prepareRequest: prepare,
       streamFn: () => {

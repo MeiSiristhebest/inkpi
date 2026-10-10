@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentMessage } from '@inkpi/protocol';
+import { commitJournal } from '../journal-commit.js';
 import type { Clock } from '../ports/index.js';
 import type { MessageQueue } from '../queues.js';
 import type { ToolRegistry } from '../tools.js';
@@ -78,10 +79,23 @@ export class AgentLoopRunner {
           !overflowRecoveryUsed
         ) {
           overflowRecoveryUsed = true;
-          const compacted = await ctx.options.sessionCompactor.compact(ctx.state.messages, signal);
-          ctx.state.messages = compacted.compactedMessages;
-          llmMessages = await this.contextTransformer.prepare(ctx);
-          assistantMessage = await this.streamInvoker.invoke(ctx, llmMessages);
+          if (ctx.options.conversation && assistantMessage.id) {
+            await commitJournal(ctx.options.journal, [
+              {
+                type: 'context_edit',
+                payload: {
+                  version: 1,
+                  edits: [{ action: 'exclude', messageId: assistantMessage.id }]
+                }
+              }
+            ]);
+          } else {
+            ctx.state.messages = ctx.state.messages.filter((message) => message !== assistantMessage);
+          }
+          if (await this.contextTransformer.compact(ctx, true)) {
+            llmMessages = await this.contextTransformer.prepare(ctx);
+            assistantMessage = await this.streamInvoker.invoke(ctx, llmMessages);
+          }
         }
         const { toolResults, shouldTerminate } = await this.toolDispatcher.dispatch(ctx, assistantMessage);
 

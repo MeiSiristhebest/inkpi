@@ -29,6 +29,8 @@ export interface ModelConfig {
   baseUrl?: string;
   apiKey?: string;
   maxTokens?: number;
+  /** Declared total context capacity, distinct from the output limit. */
+  contextWindow?: number;
   temperature?: number;
   topP?: number;
   presencePenalty?: number;
@@ -90,6 +92,8 @@ export interface ModelCompatConfig {
   extraHeaders?: Record<string, string>;
   /** Explicit gateway session-affinity header; OpenRouter defaults to x-session-id. */
   sessionAffinityHeader?: string;
+  /** Preserve instruction updates at their original transcript positions. */
+  supportsMidConvoSystemMessages?: boolean;
   /**
    * 是否开启报错自动自愈重试（默认 true）。
    * 遭遇 400 时自动剥离 stream_options / thinking / tools 畸形字段并重新发起单次请求。

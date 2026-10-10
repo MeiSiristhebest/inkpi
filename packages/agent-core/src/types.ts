@@ -11,6 +11,7 @@ import type {
   Usage
 } from '@inkpi/protocol';
 import type { ContextBudgetPlanner, SessionCompactor } from './compaction/index.js';
+import type { ConversationContext } from './conversation-context.js';
 import type { Clock, IdGenerator, ModelStreamer, ThinkingMapper } from './ports/index.js';
 
 export type { ToolExecutionMode };
@@ -124,6 +125,8 @@ export interface AgentOptions {
   providerSessionId?: string;
   providerSessionIdGenerator?: IdGenerator;
   journal?: any;
+  /** Branch-aware canonical model context, normally constructed from a readable journal. */
+  conversation?: ConversationContext;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
   afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
   /** Runs before every provider request, including a context-overflow retry. */

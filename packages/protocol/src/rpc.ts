@@ -60,7 +60,7 @@ import type {
   SkillResolveResult,
   SkillRuntimeRegistrationSnapshot
 } from './skills.js';
-import type { SessionEntry, WorkspacePurgeParams, WorkspacePurgeResult } from './storage.js';
+import type { ContextEdit, ModelLoadout, SessionEntry, WorkspacePurgeParams, WorkspacePurgeResult } from './storage.js';
 import type {
   TaskCancelParams,
   TaskCancelResult,
@@ -147,6 +147,26 @@ export interface SessionCreateOptions {
 export interface SessionForkParams {
   sourceSessionId: string;
   options?: Omit<SessionCreateOptions, 'entries'>;
+}
+
+export interface SessionContextReadParams {
+  sessionId: string;
+  headId?: string | null;
+}
+export interface SessionContextEditParams {
+  sessionId: string;
+  edit: ContextEdit;
+}
+export interface SessionContextSelectParams {
+  sessionId: string;
+  headId: string | null;
+}
+export interface SessionModelContextResult {
+  headId: string | null;
+  messages: AgentMessage[];
+  rawMessages: AgentMessage[];
+  loadout?: ModelLoadout;
+  usageTotals: { inputTokens: number; outputTokens: number; totalTokens: number };
 }
 
 export interface SessionSummary {
@@ -266,6 +286,9 @@ export interface DaemonRpcMethodMap {
   'session.close': RpcMethodContract<SessionRefParams, SessionAckResult>;
   'session.create': RpcMethodContract<SessionCreateOptions, SessionCreateResult>;
   'session.fork': RpcMethodContract<SessionForkParams, SessionCreateResult>;
+  'session.context.read': RpcMethodContract<SessionContextReadParams, SessionModelContextResult>;
+  'session.context.edit': RpcMethodContract<SessionContextEditParams, SessionAckResult>;
+  'session.context.select': RpcMethodContract<SessionContextSelectParams, SessionAckResult>;
   'session.editor.insert': RpcMethodContract<SessionEditorInsertParams, SessionEditorTextResult>;
   'session.editor.redo': RpcMethodContract<SessionRefParams, SessionEditorEditResult>;
   'session.editor.undo': RpcMethodContract<SessionRefParams, SessionEditorEditResult>;
@@ -330,6 +353,9 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'session.close',
   'session.create',
   'session.fork',
+  'session.context.read',
+  'session.context.edit',
+  'session.context.select',
   'session.editor.insert',
   'session.editor.redo',
   'session.editor.undo',

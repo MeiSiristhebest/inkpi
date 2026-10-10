@@ -1,3 +1,4 @@
+import type { AgentMessage, ModelToolDefinition } from './messages.js';
 import type { RuntimeState } from './pipeline.js';
 
 export interface Workspace {
@@ -218,6 +219,8 @@ export function mergeOperationIntent(operation: Record<string, unknown>): unknow
 export type SessionEntryType =
   | 'session_start'
   | 'provider_session'
+  | 'model_loadout'
+  | 'context_edit'
   | 'user_message'
   | 'agent_turn'
   | 'draft_revision'
@@ -264,6 +267,19 @@ export interface JournalAppend {
   payload: unknown;
   id?: string;
   parentId?: string | null;
+}
+
+export interface ModelLoadout {
+  version: 1;
+  systemPrompt: string;
+  tools: ModelToolDefinition[];
+}
+
+export interface ContextEdit {
+  version: 1;
+  edits: Array<
+    { action: 'exclude'; messageId: string } | { action: 'replace'; messageId: string; message: AgentMessage }
+  >;
 }
 
 /** Unknown outcomes require reconstruction before further session writes. */

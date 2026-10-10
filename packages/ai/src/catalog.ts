@@ -403,6 +403,7 @@ export function modelCatalogEntryToConfig(entry: ModelCatalogEntry): ModelConfig
     supportsThinking: declaration.reasoning,
     ...(entry.supportsMidConvoEffort !== undefined ? { supportsMidConvoEffort: entry.supportsMidConvoEffort } : {}),
     maxTokens: declaration.maxOutputTokens,
+    contextWindow: declaration.contextTokens,
     supportsPromptCache: declaration.promptCaching
   };
 }

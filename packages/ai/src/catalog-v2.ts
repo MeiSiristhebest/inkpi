@@ -275,6 +275,7 @@ export class ModelCatalogV2 {
     }
 
     const baseConfig = modelCatalogEntryToConfig(toLegacyCatalogEntry(record.entry));
+    if (record.entry.contextWindow === undefined) baseConfig.contextWindow = undefined;
     return {
       operation,
       canonicalId,

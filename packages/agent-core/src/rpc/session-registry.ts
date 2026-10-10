@@ -83,8 +83,12 @@ export class SessionRegistry implements SessionStore {
       providerSessionIdGenerator: this.options.providerSessionIdGenerator,
       initialState: {
         model: resolvedModel,
-        systemPrompt: options.systemPrompt || 'You are an expert creative AI co-writer and assistant.',
-        messages: restored.messages
+        systemPrompt:
+          options.systemPrompt ??
+          (entries.some((entry) => entry.type === 'model_loadout')
+            ? undefined
+            : 'You are an expert creative AI co-writer and assistant.'),
+        messages: journal ? undefined : restored.messages
       }
     });
 
@@ -105,7 +109,10 @@ export class SessionRegistry implements SessionStore {
       // 恢复语义（对齐上游 pi tool-durability "unsafe orphan synthesis"）：
       // 对被中断且 replay: 'never' 的工具调用，合成"结果未知"占位结果并入历史，
       // 绝不重跑外部副作用；'safe' 的调用由调用方按 planInterruptedRecovery 决策重放。
-      const recovered = detectAndMarkInterruptedOperations(restored, this.clock);
+      const recovered = detectAndMarkInterruptedOperations(
+        journal ? reduceSession(agent.getConversationPath()) : restored,
+        this.clock
+      );
       for (const plan of planInterruptedRecovery(recovered.state)) {
         if (plan.action !== 'synthesize') continue;
         const synthetic = synthesizeInterruptedToolResult(plan, this.clock);
@@ -135,22 +142,30 @@ export class SessionRegistry implements SessionStore {
     if (!source.agent.isIdle) throw new Error('Wait for the source session to become idle before forking.');
     if (options.sessionId && this.sessions.has(options.sessionId)) throw new Error('Fork requires a new sessionId.');
     const messages = structuredClone(source.agent.state.messages);
-    const entries: SessionEntry[] = messages.map((message, index) => ({
-      id: message.id ?? `fork_message_${index + 1}`,
-      sessionId: options.sessionId ?? '',
-      seq: index + 1,
-      parentId: index > 0 ? (messages[index - 1].id ?? `fork_message_${index}`) : null,
-      timestamp: message.timestamp ?? this.clock(),
-      type:
-        message.role === 'user'
-          ? 'user_message'
-          : message.role === 'assistant'
-            ? 'agent_turn'
-            : message.role === 'toolResult'
-              ? 'tool_execution'
-              : 'custom',
-      payload: message
-    }));
+    const path = source.agent.getConversationPath().filter((entry) => entry.type !== 'provider_session');
+    const entries: SessionEntry[] = path.length
+      ? path.map((entry, index) => ({
+          ...entry,
+          sessionId: options.sessionId ?? '',
+          seq: index + 1,
+          parentId: index > 0 ? path[index - 1].id : null
+        }))
+      : messages.map((message, index) => ({
+          id: message.id ?? `fork_message_${index + 1}`,
+          sessionId: options.sessionId ?? '',
+          seq: index + 1,
+          parentId: index > 0 ? (messages[index - 1].id ?? `fork_message_${index}`) : null,
+          timestamp: message.timestamp ?? this.clock(),
+          type:
+            message.role === 'user'
+              ? 'user_message'
+              : message.role === 'assistant'
+                ? 'agent_turn'
+                : message.role === 'toolResult'
+                  ? 'tool_execution'
+                  : 'custom',
+          payload: message
+        }));
     return this.createSession({
       ...options,
       model: options.model ?? source.agent.state.model,

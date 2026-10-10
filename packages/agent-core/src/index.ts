@@ -1,4 +1,5 @@
 export * from './types.js';
+export * from './conversation-context.js';
 export * from './errors.js';
 export type { Clock, IdGenerator, Logger, FileSystem, ModelStreamer, SessionStore } from './ports/index.js';
 export { REAL_CLOCK, MONOTONIC_CLOCK } from './ports/index.js';

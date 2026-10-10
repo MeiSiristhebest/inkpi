@@ -1,5 +1,17 @@
-import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMessage } from '@inkpi/protocol';
+import type {
+  AgentEvent,
+  AgentEventListener,
+  AgentMessage,
+  AgentTool,
+  ContextEdit,
+  ImageContent,
+  JournalEntry,
+  ModelToolDefinition,
+  ToolRegistrationDescriptor,
+  UserMessage
+} from '@inkpi/protocol';
 import { SessionCommitError } from '@inkpi/protocol';
+import { ConversationContext, type ConversationModelContext } from './conversation-context.js';
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
 import { adoptMessage, commitJournal, commitMessage } from './journal-commit.js';
 import { consoleLogger } from './ports/index.js';
@@ -43,10 +55,20 @@ export class Agent {
 
   private clock: () => number;
   private providerSessionPersisted = false;
+  private readonly conversation?: ConversationContext;
+  private initialMessagesRecorded = false;
+  private readonly historicalTools = new Map<string, { tool: AgentTool; registration?: ToolRegistrationDescriptor }>();
 
   constructor(options: AgentOptions = {}) {
     this.options = { ...options };
     this.clock = options.clock || REAL_CLOCK;
+    this.conversation =
+      options.conversation ??
+      (options.journal?.getEntries ? new ConversationContext(options.journal, this.clock) : undefined);
+    if (this.conversation) {
+      this.options.conversation = this.conversation;
+      this.options.journal = this.conversation;
+    }
     this.toolRegistry = new ToolRegistry(this.clock, options.monotonicClock);
     this.steeringMode = options.steeringMode || 'all';
     this.followUpMode = options.followUpMode || 'one-at-a-time';
@@ -69,11 +91,11 @@ export class Agent {
     if (!providerSessionId.trim()) throw new Error('providerSessionIdGenerator returned an empty identity.');
     this.providerSessionPersisted = restoredIdentity !== undefined;
     this.state = {
-      systemPrompt: init.systemPrompt ?? '',
+      systemPrompt: init.systemPrompt ?? this.conversation?.getContext().loadout?.systemPrompt ?? '',
       model: init.model,
       thinkingLevel: init?.thinkingLevel || 'low',
       tools: init?.tools || [],
-      messages: init?.messages ? [...init.messages] : [],
+      messages: init?.messages ? [...init.messages] : (this.conversation?.getContext().rawMessages ?? []),
       isStreaming: false,
       streamingMessage: undefined,
       pendingToolCalls: new Set(),
@@ -139,6 +161,7 @@ export class Agent {
       }
 
       await this.persistProviderSession();
+      await this.initializeConversation();
       msg = await commitMessage(this.options.journal, msg);
       adoptMessage(this.state, this.options.journal, msg);
       await this.emitEvent({ type: 'message_start', message: msg });
@@ -156,6 +179,7 @@ export class Agent {
     this.claimRun();
     try {
       await this.persistProviderSession();
+      await this.initializeConversation();
       return this.run();
     } catch (error) {
       this.latchJournalFault(error);
@@ -170,6 +194,129 @@ export class Agent {
       { type: 'provider_session', payload: { version: 1, id: this.state.providerSessionId } }
     ]);
     this.providerSessionPersisted = true;
+  }
+
+  private async initializeConversation(): Promise<void> {
+    if (!this.conversation) return;
+    if (!this.initialMessagesRecorded) {
+      const existing = new Set(this.conversation.getContext().rawMessages.map((message) => message.id));
+      const captured: AgentMessage[] = [];
+      for (const message of this.state.messages) {
+        captured.push(
+          message.id && existing.has(message.id) ? message : await commitMessage(this.options.journal, message)
+        );
+      }
+      if (captured.some((message, index) => message !== this.state.messages[index])) this.state.messages = captured;
+      this.initialMessagesRecorded = true;
+    }
+    const tools = [
+      ...new Map(
+        [...this.toolRegistry.getAll(), ...this.extensionHost.getTools()].map((tool) => [tool.name, tool])
+      ).values()
+    ];
+    for (const tool of tools)
+      this.historicalTools.set(this.toolKey(tool), {
+        tool,
+        registration: this.extensionHost.getTools().includes(tool)
+          ? this.extensionHost.getToolRegistration(tool.name)
+          : this.toolRegistry.getRegistration(tool.name)
+      });
+    await this.conversation.recordLoadout(
+      this.state.systemPrompt,
+      tools.map((tool) => this.toolDefinition(tool))
+    );
+  }
+
+  public getModelContext(headId?: string | null): ConversationModelContext {
+    if (this.conversation) return this.conversation.getContext(headId);
+    const messages = structuredClone(this.state.messages);
+    const usageTotals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    for (const message of messages)
+      if (message.role === 'assistant' && message.usage) {
+        usageTotals.inputTokens += message.usage.inputTokens;
+        usageTotals.outputTokens += message.usage.outputTokens;
+        usageTotals.totalTokens += message.usage.totalTokens;
+      }
+    return {
+      headId: messages[messages.length - 1]?.id ?? null,
+      messages,
+      rawMessages: structuredClone(messages),
+      usageTotals
+    };
+  }
+
+  public getConversationPath(): JournalEntry[] {
+    return this.conversation?.getPath() ?? [];
+  }
+
+  public async editContext(edit: ContextEdit): Promise<void> {
+    if (!this.conversation) throw new Error('Context edits require a readable session journal.');
+    this.claimRun();
+    try {
+      await this.initializeConversation();
+      await commitJournal(this.options.journal, [{ type: 'context_edit', payload: edit }]);
+      this.loopRunner.clearIncrementalContextCache();
+    } catch (error) {
+      this.latchJournalFault(error);
+      throw error;
+    } finally {
+      this.finishContextMutation();
+    }
+  }
+
+  public async selectContextHead(headId: string | null): Promise<void> {
+    if (!this.conversation) throw new Error('Context selection requires a readable session journal.');
+    this.claimRun();
+    const previousHead = this.conversation.getHeadId();
+    try {
+      for (const tool of this.toolRegistry.getAll())
+        this.historicalTools.set(this.toolKey(tool), {
+          tool,
+          registration: this.toolRegistry.getRegistration(tool.name)
+        });
+      const context = this.conversation.getContext(headId);
+      const tools = (context.loadout?.tools ?? []).map((definition) => {
+        const historical = this.historicalTools.get(this.toolKey(definition));
+        if (!historical)
+          throw new Error(`Historical tool '${definition.name}' is not available with the recorded interface.`);
+        return historical;
+      });
+      this.conversation.selectHead(headId);
+      await commitJournal(this.options.journal, [
+        { type: 'custom', payload: { kind: 'context_head', version: 1, headId } }
+      ]);
+      try {
+        this.state.messages = context.rawMessages;
+        this.state.systemPrompt = context.loadout?.systemPrompt ?? '';
+        const registry = new ToolRegistry(this.clock, this.options.monotonicClock);
+        for (const { tool, registration } of tools) registry.register(tool, registration);
+        this.toolRegistry = registry;
+        this.state.tools = tools.map(({ tool }) => tool);
+      } catch (error) {
+        throw new SessionCommitError('Context head committed but adoption failed.', 'unknown', { cause: error });
+      }
+      this.initialMessagesRecorded = true;
+      this.loopRunner.clearIncrementalContextCache();
+    } catch (error) {
+      this.latchJournalFault(error);
+      if (!this.state.isFaulted) this.conversation.selectHead(previousHead);
+      throw error;
+    } finally {
+      this.finishContextMutation();
+    }
+  }
+
+  private finishContextMutation(): void {
+    this.runActive = false;
+    this.abortController = null;
+    this.resolveIdleWaitIfIdle();
+  }
+
+  private toolDefinition(tool: Pick<AgentTool, 'name' | 'description' | 'parameters'>): ModelToolDefinition {
+    return { name: tool.name, description: tool.description, parameters: tool.parameters ?? { type: 'object' } };
+  }
+  private toolKey(tool: Pick<AgentTool, 'name' | 'description' | 'parameters'>): string {
+    return JSON.stringify(this.toolDefinition(tool));
   }
 
   public steer(message: AgentMessage): void {
@@ -278,6 +425,7 @@ export class Agent {
     }
     this.abort();
     this.state.messages = [];
+    this.conversation?.selectHead(null);
     this.state.isStreaming = false;
     this.state.streamingMessage = undefined;
     this.state.pendingToolCalls.clear();
@@ -326,6 +474,8 @@ export class Agent {
     for (const t of this.extensionHost.getTools()) {
       mergedTools.register(t, this.extensionHost.getToolRegistration(t.name));
     }
+    for (const tool of mergedTools.getAll())
+      this.historicalTools.set(this.toolKey(tool), { tool, registration: mergedTools.getRegistration(tool.name) });
 
     const runPromise = this.loopRunner.run({
       state: this.state,
