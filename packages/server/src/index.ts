@@ -23,3 +23,4 @@ export type { ManagedSession, SessionCreateOptions, SessionSummary } from '@inkp
 export * from './observation-sink.js';
 export * from './observability-config.js';
 export * from './node-execution-env.js';
+export * from './mcp-tool-bridge.js';
