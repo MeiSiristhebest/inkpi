@@ -199,7 +199,15 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
     try {
       const load = await runtime.loadExtensions(path.join(INKPI_ROOT, '.phase20-21-no-plugin-fixture'));
       expect(load).toEqual({ loaded: [], failed: [] });
-      expect(toolRegistry.get(tool.name)).toBe(tool);
+      const registeredTool = toolRegistry.get(tool.name);
+      expect(registeredTool).toMatchObject({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters
+      });
+      await expect(registeredTool!.execute('audit-call', {}, new AbortController().signal)).resolves.toMatchObject({
+        content: [{ type: 'text', text: 'ok' }]
+      });
       expect(toolRegistry.getRegistration(tool.name)).toMatchObject({
         name: tool.name,
         source: 'phase20-21-audit',

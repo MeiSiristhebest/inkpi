@@ -1,5 +1,5 @@
 import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
-import type { AiTask } from '@inkpi/protocol';
+import { type AiTask, RPC_ERROR_CODES } from '@inkpi/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InkPiDaemon } from './daemon.js';
 import {
@@ -474,8 +474,9 @@ describe('capability-aware model routing', () => {
 
     expect(response).toMatchObject({
       error: {
-        code: 'CAPABILITY_MISMATCH',
-        message: expect.stringContaining('Capability mismatch')
+        code: RPC_ERROR_CODES.INTERNAL_ERROR,
+        message: expect.stringContaining('Capability mismatch'),
+        data: { domainCode: 'CAPABILITY_MISMATCH' }
       }
     });
     expect(() => daemon.getTaskRouter().status('mismatch-task')).toThrow('Unknown task');

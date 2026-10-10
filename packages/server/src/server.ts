@@ -346,14 +346,23 @@ export class InkRpcServer {
         ...(req.route ? { route: req.route } : {})
       };
     } catch (err: any) {
+      const code = Number.isInteger(err.code) ? err.code : RPC_ERROR_CODES.INTERNAL_ERROR;
+      const rawErrorData = err.data;
+      const errorData = normalizeRpcErrorData(
+        typeof err.code === 'string'
+          ? rawErrorData && typeof rawErrorData === 'object' && !Array.isArray(rawErrorData)
+            ? { ...rawErrorData, domainCode: err.code }
+            : { domainCode: err.code, ...(rawErrorData === undefined ? {} : { details: rawErrorData }) }
+          : rawErrorData
+      );
       return {
         jsonrpc: '2.0',
         id: req.id,
         ...(req.route ? { route: req.route } : {}),
         error: {
-          code: err.code || RPC_ERROR_CODES.INTERNAL_ERROR,
+          code,
           message: err.message || 'Internal server error',
-          ...(normalizeRpcErrorData(err.data) === undefined ? {} : { data: normalizeRpcErrorData(err.data) })
+          ...(errorData === undefined ? {} : { data: errorData })
         }
       };
     }

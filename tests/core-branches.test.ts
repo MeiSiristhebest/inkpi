@@ -352,10 +352,26 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     const emptyBatch = await reg.executeBatch([]);
     expect(emptyBatch.length).toBe(0);
 
+    let markRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
     const agent = new Agent({
       toolExecution: 'sequential',
       initialState: { model: getModelPreset('mock-test') },
-      transformContext: async (msgs) => msgs
+      transformContext: async (msgs) => msgs,
+      prepareRequest: async (_request, signal) => {
+        if (!signal) throw new Error('Agent request did not receive an abort signal');
+        markRequestStarted();
+        await new Promise<void>((_resolve, reject) => {
+          if (signal.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+        return undefined;
+      }
     });
 
     expect(agent.getExtensionHost()).toBeDefined();
@@ -369,8 +385,10 @@ describe('Headless Core In-Depth Branch Coverage Suite', () => {
     });
 
     const runP = agent.prompt('lookup_codex');
-    agent.abort();
-    await runP;
+    await requestStarted;
+    const runOutcome = expect(runP).rejects.toMatchObject({ name: 'AbortError' });
+    await agent.abort();
+    await runOutcome;
     expect(agent.state.messages.length).toBeGreaterThan(0);
 
     // Western typography
