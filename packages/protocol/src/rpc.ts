@@ -144,6 +144,11 @@ export interface SessionCreateOptions {
   entries?: SessionEntry[];
 }
 
+export interface SessionForkParams {
+  sourceSessionId: string;
+  options?: Omit<SessionCreateOptions, 'entries'>;
+}
+
 export interface SessionSummary {
   sessionId: string;
   createdAt: number;
@@ -260,6 +265,7 @@ export interface DaemonRpcMethodMap {
   'session.abort': RpcMethodContract<SessionRefParams, SessionAckResult>;
   'session.close': RpcMethodContract<SessionRefParams, SessionAckResult>;
   'session.create': RpcMethodContract<SessionCreateOptions, SessionCreateResult>;
+  'session.fork': RpcMethodContract<SessionForkParams, SessionCreateResult>;
   'session.editor.insert': RpcMethodContract<SessionEditorInsertParams, SessionEditorTextResult>;
   'session.editor.redo': RpcMethodContract<SessionRefParams, SessionEditorEditResult>;
   'session.editor.undo': RpcMethodContract<SessionRefParams, SessionEditorEditResult>;
@@ -323,6 +329,7 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'session.abort',
   'session.close',
   'session.create',
+  'session.fork',
   'session.editor.insert',
   'session.editor.redo',
   'session.editor.undo',

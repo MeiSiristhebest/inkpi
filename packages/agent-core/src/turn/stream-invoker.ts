@@ -103,6 +103,7 @@ export class StreamInvoker {
     const startedAt = monotonicClock();
     const stream = streamFn(requestModel, requestMessages, {
       signal,
+      providerSessionId: state.providerSessionId,
       systemPrompt: prepared?.systemPrompt ?? state.systemPrompt,
       ...(thinkingEffort !== undefined ? { thinkingEffort } : { thinkingBudget }),
       tools: prepared?.tools ?? toolsMetadata

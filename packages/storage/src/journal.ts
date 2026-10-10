@@ -364,6 +364,7 @@ export class AppendOnlySessionJournal {
 
 const JOURNAL_ENTRY_TYPES = new Set<JournalEntryType>([
   'session_start',
+  'provider_session',
   'user_message',
   'agent_turn',
   'draft_revision',

@@ -81,7 +81,7 @@ import type {
   ToolResultMessage
 } from '@inkpi/protocol';
 import type { DaemonStatus, RuntimeCapability } from '@inkpi/protocol';
-import { STORAGE_SCHEMA_VERSION } from '@inkpi/storage';
+import { AppendOnlySessionJournal, STORAGE_SCHEMA_VERSION } from '@inkpi/storage';
 import type { ProposalProjectionStore } from '@inkpi/storage';
 import { createConversationHistoryProvider } from './conversation-history-provider.js';
 import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
@@ -128,6 +128,8 @@ export interface DaemonOptions {
   /** Optional explicit cache lifecycle adapter. Disabled when omitted. */
   cachePersistence?: RuntimeCachePersistence;
   context?: Partial<ServerContext>;
+  /** Composition-root persistence for conversation journals. In-memory by default. */
+  sessionJournalFactory?: import('@inkpi/agent-core').SessionRegistryOptions['journalFactory'];
 }
 
 export type {
@@ -175,7 +177,16 @@ export class InkPiDaemon {
     this.cacheCoordinator = options.cacheCoordinator ?? new RuntimeCacheCoordinator();
     this.credentialResolver = options.credentialResolver ?? createRuntimeCredentialResolverFromEnvironment();
     this.taskObservability = new TaskObservability(options.observability);
-    this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel);
+    this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel, undefined, {
+      journalFactory:
+        options.sessionJournalFactory ??
+        ((sessionId, entries) => {
+          const journal = new AppendOnlySessionJournal({ sessionId });
+          if (entries?.length)
+            journal.importFromJsonl(entries.map((entry) => JSON.stringify({ ...entry, sessionId })).join('\n'));
+          return journal;
+        })
+    });
     this.instructionRegistry =
       options.instructionRegistry ?? options.context?.instructionRegistry ?? new InstructionRegistry();
     const contextPipeline =
@@ -600,6 +611,18 @@ export class InkPiDaemon {
 
     this.rpcServer.registerMethod('session.list', () => {
       return this.sessionManager.listSessions();
+    });
+
+    this.rpcServer.registerMethod('session.fork', (params: import('@inkpi/protocol').SessionForkParams) => {
+      const session = this.sessionManager.forkSession(params.sourceSessionId, params.options);
+      session.agent.subscribe((event) => {
+        this.rpcServer.notify('session.event', { sessionId: session.sessionId, event });
+      });
+      return {
+        sessionId: session.sessionId,
+        createdAt: session.createdAt,
+        messageCount: session.agent.state.messages.length
+      };
     });
 
     this.rpcServer.registerMethod('session.close', (params: { sessionId: string }) => {

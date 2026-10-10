@@ -41,7 +41,7 @@ export class SessionTree {
     }
   }
 
-  public addMessage(message: AgentMessage, parentId?: string, metadata?: Record<string, unknown>): string {
+  public addMessage(message: AgentMessage, parentId?: string | null, metadata?: Record<string, unknown>): string {
     const id = message.id || this.idGenerator();
     const effectiveParentId = parentId !== undefined ? parentId : this.currentLeafId;
 

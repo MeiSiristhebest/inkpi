@@ -449,6 +449,12 @@ export function resolveProviderBaseUrl(provider: string, explicitUrl?: string): 
   return defaultUrl;
 }
 
+function sessionAffinityHeaders(model: ModelConfig, options?: StreamOptions): Record<string, string> {
+  if (!options?.providerSessionId) return {};
+  const header = model.compat?.sessionAffinityHeader ?? (model.provider === 'openrouter' ? 'x-session-id' : undefined);
+  return header ? { [header]: options.providerSessionId } : {};
+}
+
 function parseJsonStreamEvent(payload: string, provider: string): any {
   try {
     return JSON.parse(payload);
@@ -589,6 +595,15 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
 
       // 应用声明式方言与参数抹平
       applyCompatToOpenAiPayload(payload, model, options);
+      if (
+        model.provider === 'openai' &&
+        options?.providerSessionId &&
+        model.supportsPromptCache !== false &&
+        options.cacheControl !== false &&
+        !(typeof options.cacheControl === 'object' && options.cacheControl.type === 'disabled')
+      ) {
+        payload.prompt_cache_key = options.providerSessionId;
+      }
 
       if (options?.tools && options.tools.length > 0) {
         payload.tools = options.tools.map((t) => ({
@@ -602,6 +617,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, messages, optio
       }
 
       const headers: Record<string, string> = {
+        ...sessionAffinityHeaders(model, options),
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`
       };
@@ -967,6 +983,7 @@ export const anthropicProvider: ProviderHandler = (model, messages, options) => 
   (async () => {
     try {
       const headers: Record<string, string> = {
+        ...sessionAffinityHeaders(model, options),
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
@@ -1204,7 +1221,11 @@ export const geminiProvider: ProviderHandler = (model, messages, options) => {
 
       const response = await getHttpClient().fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          ...sessionAffinityHeaders(model, options),
+          'Content-Type': 'application/json',
+          ...model.compat?.extraHeaders
+        },
         body: JSON.stringify(geminiBody),
         signal: options?.signal
       });
@@ -1320,7 +1341,11 @@ export const ollamaProvider: ProviderHandler = (model, messages, options) => {
     try {
       const response = await getHttpClient().fetch(`${baseUrl}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          ...sessionAffinityHeaders(model, options),
+          'Content-Type': 'application/json',
+          ...model.compat?.extraHeaders
+        },
         body: JSON.stringify({
           model: model.id,
           messages: standardMessages,

@@ -2,9 +2,10 @@ import { GhostTextManager, HeadlessEditorState } from '@inkpi/editor-core';
 import { Agent } from '../agent.js';
 
 import { getModelPreset } from '@inkpi/ai';
-import type { ModelConfig, SessionCreateOptions, SessionSummary } from '@inkpi/protocol';
+import type { ModelConfig, SessionCreateOptions, SessionEntry, SessionSummary } from '@inkpi/protocol';
 import { NoModelConfiguredError } from '../errors.js';
 import type { Clock, SessionStore } from '../ports/index.js';
+import { restoreProviderSessionId } from '../provider-session.js';
 import {
   detectAndMarkInterruptedOperations,
   planInterruptedRecovery,
@@ -12,6 +13,7 @@ import {
   synthesizeInterruptedToolResult
 } from '../reducer/session-reducer.js';
 import { SessionTree } from '../tree.js';
+import type { AgentOptions } from '../types.js';
 
 export interface ManagedSession {
   sessionId: string;
@@ -28,6 +30,11 @@ export interface ManagedSession {
 // re-exported here because agent-core publishes its session surface from this module.
 export type { SessionCreateOptions, SessionSummary } from '@inkpi/protocol';
 
+export interface SessionRegistryOptions {
+  journalFactory?: (sessionId: string, entries?: readonly SessionEntry[]) => AgentOptions['journal'];
+  providerSessionIdGenerator?: () => string;
+}
+
 /**
  * 实时多会话注册表 (SessionRegistry)
  * 多会话注册表：支持多 Client 并发挂载不同活跃 Session，实现 SessionStore 端口。
@@ -39,7 +46,12 @@ export class SessionRegistry implements SessionStore {
 
   private idGenerator?: () => string;
 
-  constructor(clock: Clock, defaultModel?: ModelConfig, idGenerator?: () => string) {
+  constructor(
+    clock: Clock,
+    defaultModel?: ModelConfig,
+    idGenerator?: () => string,
+    private readonly options: SessionRegistryOptions = {}
+  ) {
     // 注意：不再静默回落到假模型。defaultModel 可选，但当会话既未显式指定模型、
     // 管理器也无默认模型时，createSession 会抛出明确的错误。
     this.defaultModel = defaultModel;
@@ -48,9 +60,7 @@ export class SessionRegistry implements SessionStore {
   }
 
   public createSession(options: SessionCreateOptions = {}): ManagedSession {
-    const sessionId =
-      options.sessionId ||
-      (this.idGenerator ? this.idGenerator() : `sess_${this.clock()}_${(this.clock() % 100000).toString(36)}`);
+    const sessionId = options.sessionId || (this.idGenerator ? this.idGenerator() : `sess_${crypto.randomUUID()}`);
     if (this.sessions.has(sessionId)) {
       return this.sessions.get(sessionId)!;
     }
@@ -62,32 +72,40 @@ export class SessionRegistry implements SessionStore {
       throw new NoModelConfiguredError();
     }
 
+    const journal = this.options.journalFactory?.(sessionId, options.entries);
+    const entries: SessionEntry[] = journal?.getEntries?.() ?? options.entries ?? [];
+    const restored = reduceSession(entries);
     const agent = new Agent({
+      clock: this.clock,
+      sessionId,
+      journal,
+      providerSessionId: restoreProviderSessionId(entries),
+      providerSessionIdGenerator: this.options.providerSessionIdGenerator,
       initialState: {
         model: resolvedModel,
-        systemPrompt: options.systemPrompt || 'You are an expert creative AI co-writer and assistant.'
+        systemPrompt: options.systemPrompt || 'You are an expert creative AI co-writer and assistant.',
+        messages: restored.messages
       }
     });
 
     const editor = new HeadlessEditorState(options.initialText || '');
     const ghost = new GhostTextManager(editor);
-    const tree = new SessionTree();
+    const tree = new SessionTree(undefined, { clock: this.clock });
 
-    if (options.entries && options.entries.length > 0) {
-      for (const entry of options.entries) {
-        if (entry.type === 'user_message' || entry.type === 'agent_turn') {
-          const msg = entry.payload as import('@inkpi/protocol').AgentMessage;
-          if (msg && 'role' in msg) {
-            agent.state.messages.push(msg);
-            tree.addMessage(msg, entry.parentId || undefined);
-          }
-        }
+    if (entries.length > 0) {
+      const messages = new Map(restored.messages.map((message) => [message.id, message]));
+      const messageParent = new Map<string, string | null>();
+      for (const entry of entries) {
+        const parent = entry.parentId ? (messageParent.get(entry.parentId) ?? null) : null;
+        const message = messages.get(entry.id);
+        if (message) tree.addMessage(message, parent);
+        messageParent.set(entry.id, message ? entry.id : parent);
       }
 
       // 恢复语义（对齐上游 pi tool-durability "unsafe orphan synthesis"）：
       // 对被中断且 replay: 'never' 的工具调用，合成"结果未知"占位结果并入历史，
       // 绝不重跑外部副作用；'safe' 的调用由调用方按 planInterruptedRecovery 决策重放。
-      const recovered = detectAndMarkInterruptedOperations(reduceSession(options.entries), this.clock);
+      const recovered = detectAndMarkInterruptedOperations(restored, this.clock);
       for (const plan of planInterruptedRecovery(recovered.state)) {
         if (plan.action !== 'synthesize') continue;
         const synthetic = synthesizeInterruptedToolResult(plan, this.clock);
@@ -109,6 +127,37 @@ export class SessionRegistry implements SessionStore {
 
     this.sessions.set(sessionId, managed);
     return managed;
+  }
+
+  public forkSession(sourceSessionId: string, options: SessionCreateOptions = {}): ManagedSession {
+    const source = this.sessions.get(sourceSessionId);
+    if (!source) throw new Error(`Session '${sourceSessionId}' not found.`);
+    if (!source.agent.isIdle) throw new Error('Wait for the source session to become idle before forking.');
+    if (options.sessionId && this.sessions.has(options.sessionId)) throw new Error('Fork requires a new sessionId.');
+    const messages = structuredClone(source.agent.state.messages);
+    const entries: SessionEntry[] = messages.map((message, index) => ({
+      id: message.id ?? `fork_message_${index + 1}`,
+      sessionId: options.sessionId ?? '',
+      seq: index + 1,
+      parentId: index > 0 ? (messages[index - 1].id ?? `fork_message_${index}`) : null,
+      timestamp: message.timestamp ?? this.clock(),
+      type:
+        message.role === 'user'
+          ? 'user_message'
+          : message.role === 'assistant'
+            ? 'agent_turn'
+            : message.role === 'toolResult'
+              ? 'tool_execution'
+              : 'custom',
+      payload: message
+    }));
+    return this.createSession({
+      ...options,
+      model: options.model ?? source.agent.state.model,
+      systemPrompt: options.systemPrompt ?? source.agent.state.systemPrompt,
+      initialText: options.initialText ?? source.editor.getText(),
+      entries
+    });
   }
 
   public getSession(sessionId: string): ManagedSession | undefined {

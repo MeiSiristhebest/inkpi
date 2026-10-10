@@ -217,6 +217,7 @@ export function mergeOperationIntent(operation: Record<string, unknown>): unknow
 /** 事件溯源日志类型 */
 export type SessionEntryType =
   | 'session_start'
+  | 'provider_session'
   | 'user_message'
   | 'agent_turn'
   | 'draft_revision'

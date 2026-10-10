@@ -2,6 +2,7 @@ import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMe
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
 import { consoleLogger } from './ports/index.js';
 import { REAL_CLOCK } from './ports/index.js';
+import { restoreProviderSessionId } from './provider-session.js';
 import { MessageQueue } from './queues.js';
 import { ToolRegistry } from './tools.js';
 import { AgentLoopRunner } from './turn/agent-loop-runner.js';
@@ -39,9 +40,10 @@ export class Agent {
   private idleWait: { promise: Promise<void>; resolve: () => void } | null = null;
 
   private clock: () => number;
+  private providerSessionPersisted = false;
 
   constructor(options: AgentOptions = {}) {
-    this.options = options;
+    this.options = { ...options };
     this.clock = options.clock || REAL_CLOCK;
     this.toolRegistry = new ToolRegistry(this.clock, options.monotonicClock);
     this.steeringMode = options.steeringMode || 'all';
@@ -52,6 +54,18 @@ export class Agent {
     if (!init?.model) {
       throw new Error('Agent requires an explicit model configuration. Use initialState.model or a test fixture.');
     }
+    const restoredIdentity = restoreProviderSessionId(options.journal?.getEntries?.() ?? []);
+    const requestedIdentity = options.providerSessionId ?? init.providerSessionId;
+    if (requestedIdentity !== undefined && !requestedIdentity.trim()) {
+      throw new Error('providerSessionId must not be empty.');
+    }
+    if (requestedIdentity && restoredIdentity && requestedIdentity !== restoredIdentity) {
+      throw new Error('providerSessionId conflicts with the persisted conversation identity.');
+    }
+    const providerSessionId =
+      restoredIdentity ?? requestedIdentity ?? options.providerSessionIdGenerator?.() ?? crypto.randomUUID();
+    if (!providerSessionId.trim()) throw new Error('providerSessionIdGenerator returned an empty identity.');
+    this.providerSessionPersisted = restoredIdentity !== undefined;
     this.state = {
       systemPrompt: init.systemPrompt ?? '',
       model: init.model,
@@ -61,7 +75,9 @@ export class Agent {
       isStreaming: false,
       streamingMessage: undefined,
       pendingToolCalls: new Set(),
-      errorMessage: undefined
+      errorMessage: undefined,
+      sessionId: options.sessionId ?? init.sessionId ?? options.journal?.sessionId,
+      providerSessionId
     };
 
     if (init?.tools) {
@@ -120,6 +136,7 @@ export class Agent {
         msg = prompt;
       }
 
+      await this.persistProviderSession();
       this.state.messages.push(msg);
       if (this.options.journal) {
         this.options.journal.append('user_message', msg);
@@ -136,7 +153,19 @@ export class Agent {
 
   public async continue(): Promise<void> {
     this.claimRun();
-    return this.run();
+    try {
+      await this.persistProviderSession();
+      return this.run();
+    } catch (error) {
+      if (!this.currentRunPromise) this.runActive = false;
+      throw error;
+    }
+  }
+
+  private async persistProviderSession(): Promise<void> {
+    if (this.providerSessionPersisted || !this.options.journal) return;
+    await this.options.journal.append('provider_session', { version: 1, id: this.state.providerSessionId });
+    this.providerSessionPersisted = true;
   }
 
   public steer(message: AgentMessage): void {

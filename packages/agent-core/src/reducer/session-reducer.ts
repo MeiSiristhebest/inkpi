@@ -171,6 +171,8 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
           : [{ type: 'text', text: payload?.content || payload?.text || '' }],
         stopReason: payload?.stopReason || 'stop',
         errorMessage: payload?.errorMessage,
+        providerError: payload?.providerError,
+        providerThinkingLevel: payload?.providerThinkingLevel,
         usage: payload?.usage,
         ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
         timestamp: entry.timestamp

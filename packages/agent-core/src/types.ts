@@ -28,6 +28,7 @@ export interface AgentState {
   pendingToolCalls: Set<string>;
   errorMessage?: string;
   sessionId?: string;
+  providerSessionId?: string;
   operations?: Map<string, any>;
 }
 
@@ -117,6 +118,9 @@ export interface AgentOptions {
   clock?: Clock;
   monotonicClock?: Clock;
   sessionId?: string;
+  /** Independent provider cache identity. Restored from the journal when omitted. */
+  providerSessionId?: string;
+  providerSessionIdGenerator?: IdGenerator;
   journal?: any;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
   afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;

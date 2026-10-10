@@ -88,6 +88,8 @@ export interface ModelCompatConfig {
    * 自定义额外 Header（如租户 ID、特定路由 Flag）。
    */
   extraHeaders?: Record<string, string>;
+  /** Explicit gateway session-affinity header; OpenRouter defaults to x-session-id. */
+  sessionAffinityHeader?: string;
   /**
    * 是否开启报错自动自愈重试（默认 true）。
    * 遭遇 400 时自动剥离 stream_options / thinking / tools 畸形字段并重新发起单次请求。
@@ -116,6 +118,8 @@ export interface FauxScriptedResponse {
 
 export interface StreamOptions {
   signal?: AbortSignal;
+  /** Opaque conversation identity, independent of product session IDs and users. */
+  providerSessionId?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
