@@ -14,6 +14,7 @@ export interface RunLoopParams {
   state: AgentState;
   options: AgentOptions;
   toolRegistry: ToolRegistry;
+  currentTools?: () => ToolRegistry;
   steeringQueue: MessageQueue;
   followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;
@@ -52,6 +53,7 @@ export class AgentLoopRunner {
       state,
       options,
       toolRegistry,
+      currentTools: params.currentTools,
       steeringQueue,
       followUpQueue,
       emitEvent,

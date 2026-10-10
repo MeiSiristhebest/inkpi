@@ -18,8 +18,14 @@ import { consoleLogger } from './ports/index.js';
 import { REAL_CLOCK } from './ports/index.js';
 import { restoreProviderSessionId } from './provider-session.js';
 import { MessageQueue } from './queues.js';
+import {
+  detectAndMarkInterruptedOperations,
+  planInterruptedRecovery,
+  reduceSession
+} from './reducer/session-reducer.js';
 import { ToolRegistry } from './tools.js';
 import { AgentLoopRunner } from './turn/agent-loop-runner.js';
+import { ToolDispatcher } from './turn/tool-dispatcher.js';
 import type { AgentOptions, AgentState, QueueMode } from './types.js';
 
 const INCREMENTAL_CONTEXT_IDLE_RETENTION_MS = 5 * 60 * 1000;
@@ -57,6 +63,7 @@ export class Agent {
   private providerSessionPersisted = false;
   private readonly conversation?: ConversationContext;
   private initialMessagesRecorded = false;
+  private recoveryChecked = false;
   private readonly historicalTools = new Map<string, { tool: AgentTool; registration?: ToolRegistrationDescriptor }>();
 
   constructor(options: AgentOptions = {}) {
@@ -161,6 +168,8 @@ export class Agent {
       }
 
       await this.persistProviderSession();
+      await this.restoreInterruptedTools();
+      this.abortController?.signal.throwIfAborted();
       await this.initializeConversation();
       msg = await commitMessage(this.options.journal, msg);
       adoptMessage(this.state, this.options.journal, msg);
@@ -170,7 +179,7 @@ export class Agent {
       return this.run();
     } catch (error) {
       this.latchJournalFault(error);
-      if (!this.currentRunPromise) this.runActive = false;
+      if (!this.currentRunPromise) this.finishContextMutation();
       throw error;
     }
   }
@@ -179,11 +188,13 @@ export class Agent {
     this.claimRun();
     try {
       await this.persistProviderSession();
+      await this.restoreInterruptedTools();
+      this.abortController?.signal.throwIfAborted();
       await this.initializeConversation();
       return this.run();
     } catch (error) {
       this.latchJournalFault(error);
-      if (!this.currentRunPromise) this.runActive = false;
+      if (!this.currentRunPromise) this.finishContextMutation();
       throw error;
     }
   }
@@ -194,6 +205,43 @@ export class Agent {
       { type: 'provider_session', payload: { version: 1, id: this.state.providerSessionId } }
     ]);
     this.providerSessionPersisted = true;
+  }
+
+  public async recoverInterruptedTools(): Promise<void> {
+    this.claimRun();
+    this.recoveryChecked = false;
+    try {
+      await this.restoreInterruptedTools();
+    } catch (error) {
+      this.latchJournalFault(error);
+      throw error;
+    } finally {
+      this.abortController = null;
+      this.finishContextMutation();
+    }
+  }
+
+  private async restoreInterruptedTools(): Promise<void> {
+    if (this.recoveryChecked || !this.conversation) return;
+    const recovered = detectAndMarkInterruptedOperations(reduceSession(this.getConversationPath()), this.clock);
+    const toolRegistry = this.mergedToolRegistry();
+    const plans = planInterruptedRecovery(recovered.state, toolRegistry);
+    if (plans.length)
+      await new ToolDispatcher().recover(
+        {
+          state: this.state,
+          options: { ...this.options, ...this.toolHooks() },
+          toolRegistry,
+          currentTools: () => this.mergedToolRegistry(),
+          steeringQueue: this.steeringQueue,
+          followUpQueue: this.followUpQueue,
+          emitEvent: (event) => this.emitEvent(event),
+          signal: this.abortController?.signal,
+          clock: this.clock
+        },
+        plans
+      );
+    this.recoveryChecked = true;
   }
 
   private async initializeConversation(): Promise<void> {
@@ -296,6 +344,7 @@ export class Agent {
         throw new SessionCommitError('Context head committed but adoption failed.', 'unknown', { cause: error });
       }
       this.initialMessagesRecorded = true;
+      this.recoveryChecked = false;
       this.loopRunner.clearIncrementalContextCache();
     } catch (error) {
       this.latchJournalFault(error);
@@ -468,13 +517,7 @@ export class Agent {
       throw new Error('Agent run was not claimed before starting.');
     }
 
-    const mergedTools = new ToolRegistry(this.clock, this.options.monotonicClock);
-    for (const t of this.toolRegistry.getAll()) {
-      mergedTools.register(t, this.toolRegistry.getRegistration(t.name));
-    }
-    for (const t of this.extensionHost.getTools()) {
-      mergedTools.register(t, this.extensionHost.getToolRegistration(t.name));
-    }
+    const mergedTools = this.mergedToolRegistry();
     for (const tool of mergedTools.getAll())
       this.historicalTools.set(this.toolKey(tool), { tool, registration: mergedTools.getRegistration(tool.name) });
 
@@ -482,62 +525,17 @@ export class Agent {
       state: this.state,
       options: {
         ...this.options,
+        ...this.toolHooks(),
         transformContext: async (msgs, signal) => {
           let transformed = msgs;
           if (this.options.transformContext) {
             transformed = await this.options.transformContext(transformed, signal);
           }
           return this.extensionHost.transformContext(transformed, signal);
-        },
-        beforeToolCall: async (event, signal) => {
-          // 优先触发 Agent 显式 options.beforeToolCall
-          if (this.options.beforeToolCall) {
-            const res = await this.options.beforeToolCall(event, signal);
-            if (res?.block) return res;
-          }
-          // 自动桥接第三方扩展注册的 beforeToolCall
-          const extRes = await this.extensionHost.executeBeforeToolCall({
-            toolCallId: event.toolCall.id,
-            toolName: event.toolCall.name,
-            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<
-              string,
-              unknown
-            >
-          });
-          if (extRes?.block) {
-            return { block: true, reason: extRes.reason, terminate: extRes.terminate };
-          }
-          return undefined;
-        },
-        afterToolCall: async (event, signal) => {
-          // 优先触发 Agent 显式 options.afterToolCall
-          if (this.options.afterToolCall) {
-            const res = await this.options.afterToolCall(event, signal);
-            if (res) return res;
-          }
-          // 自动桥接第三方扩展注册的 afterToolCall
-          const extRes = await this.extensionHost.executeAfterToolCall({
-            toolCallId: event.toolCall.id,
-            toolName: event.toolCall.name,
-            parameters: (typeof event.args === 'object' && event.args !== null ? event.args : {}) as Record<
-              string,
-              unknown
-            >,
-            result: event.result,
-            isError: event.isError
-          });
-          if (extRes) {
-            return {
-              content: extRes.content,
-              details: extRes.details,
-              isError: extRes.isError,
-              terminate: extRes.terminate
-            };
-          }
-          return undefined;
         }
       },
       toolRegistry: mergedTools,
+      currentTools: () => this.mergedToolRegistry(),
       steeringQueue: this.steeringQueue,
       followUpQueue: this.followUpQueue,
       emitEvent: (ev) => this.emitEvent(ev),
@@ -569,6 +567,39 @@ export class Agent {
   private clearContextViewIdleTimer(): void {
     if (this.contextViewIdleTimer !== undefined) clearTimeout(this.contextViewIdleTimer);
     this.contextViewIdleTimer = undefined;
+  }
+
+  private mergedToolRegistry(): ToolRegistry {
+    const merged = new ToolRegistry(this.clock, this.options.monotonicClock);
+    for (const tool of this.toolRegistry.getAll()) merged.register(tool, this.toolRegistry.getRegistration(tool.name));
+    for (const tool of this.extensionHost.getTools())
+      merged.register(tool, this.extensionHost.getToolRegistration(tool.name));
+    return merged;
+  }
+
+  private toolHooks(): Pick<AgentOptions, 'beforeToolCall' | 'afterToolCall'> {
+    return {
+      beforeToolCall: async (event, signal) => {
+        const explicit = await this.options.beforeToolCall?.(event, signal);
+        if (explicit?.block) return explicit;
+        return this.extensionHost.executeBeforeToolCall({
+          toolCallId: event.toolCall.id,
+          toolName: event.toolCall.name,
+          parameters: event.toolCall.arguments
+        });
+      },
+      afterToolCall: async (event, signal) => {
+        const explicit = await this.options.afterToolCall?.(event, signal);
+        if (explicit) return explicit;
+        return this.extensionHost.executeAfterToolCall({
+          toolCallId: event.toolCall.id,
+          toolName: event.toolCall.name,
+          parameters: event.toolCall.arguments,
+          result: event.result,
+          isError: event.isError
+        });
+      }
+    };
   }
 
   private scheduleContextViewExpiry(): void {

@@ -27,6 +27,8 @@ function tool(name: string, execute: AgentTool['execute']): AgentTool {
   return {
     name,
     description: name,
+    replay: 'safe',
+    implementationVersion: '1',
     parameters: { type: 'object', properties: { query: { type: 'string' } } },
     execute
   };

@@ -107,13 +107,13 @@ export class SessionRegistry implements SessionStore {
       }
 
       // 恢复语义（对齐上游 pi tool-durability "unsafe orphan synthesis"）：
-      // 对被中断且 replay: 'never' 的工具调用，合成"结果未知"占位结果并入历史，
-      // 绝不重跑外部副作用；'safe' 的调用由调用方按 planInterruptedRecovery 决策重放。
+      // 无日志时只能提供未重跑的占位视图。可读日志的恢复由 Agent 执行，
+      // 在继续请求前验证当前工具契约并原子提交 settlement 与结果。
       const recovered = detectAndMarkInterruptedOperations(
         journal ? reduceSession(agent.getConversationPath()) : restored,
         this.clock
       );
-      for (const plan of planInterruptedRecovery(recovered.state)) {
+      for (const plan of journal ? [] : planInterruptedRecovery(recovered.state, agent.getToolRegistry())) {
         if (plan.action !== 'synthesize') continue;
         const synthetic = synthesizeInterruptedToolResult(plan, this.clock);
         agent.state.messages.push(synthetic);

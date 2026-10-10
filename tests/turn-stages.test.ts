@@ -587,14 +587,14 @@ describe('ToolDispatcher (管线第 3 段)', () => {
 
     expect(appended.map((a) => a.kind)).toEqual(['operation_intent', 'operation_settlement', 'tool_execution']);
     expect(appended[0].payload).toMatchObject({
-      id: 'op_tool_c1',
+      id: `op_tool_${appended[0].payload.invocationId}`,
       type: 'tool_call',
       invocationId: expect.any(String),
       replay: 'safe',
       intent: { name: 'echo', arguments: { a: 1 } }
     });
     expect(appended[1].payload).toMatchObject({
-      id: 'op_tool_c1',
+      id: appended[0].payload.id,
       type: 'tool_call',
       invocationId: appended[0].payload.invocationId,
       settlement: { content: [{ type: 'text', text: 'pong' }] }
@@ -699,10 +699,12 @@ describe('ToolDispatcher (管线第 3 段)', () => {
       }
 
       const invalidIntent = appended.find(
-        (entry) => entry.kind === 'operation_intent' && entry.payload.id === 'op_tool_c-invalid'
+        (entry) => entry.kind === 'operation_intent' && entry.payload.intent.toolCallId === 'c-invalid'
       );
       expect(invalidIntent?.payload.intent).toEqual({
         name: 'echo',
+        toolCallId: 'c-invalid',
+        sourceIndex: 0,
         invalidArguments: true
       });
       expect(invalidIntent?.payload.intent).not.toHaveProperty('arguments');

@@ -14,6 +14,8 @@ export interface TurnContext {
   state: AgentState;
   options: AgentOptions;
   toolRegistry: ToolRegistry;
+  /** Live registrations, used to reject a tool changed after preflight. */
+  currentTools?: () => ToolRegistry;
   steeringQueue: MessageQueue;
   followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;
@@ -27,6 +29,7 @@ export interface TurnContextParams {
   state: AgentState;
   options: AgentOptions;
   toolRegistry: ToolRegistry;
+  currentTools?: () => ToolRegistry;
   steeringQueue: MessageQueue;
   followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;

@@ -28,6 +28,8 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
     const lookupTool: AgentTool = {
       name: 'lookup_data',
       description: 'Lookup database facts',
+      replay: 'safe',
+      implementationVersion: '1',
       parameters: {
         type: 'object',
         required: ['query'],
@@ -97,7 +99,11 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
       type: 'tool_call',
       replay: 'safe',
       invocationId: 'call_interrupted_stream',
-      intent: { name: 'lookup_data', arguments: { query: 'recovery assets' } }
+      intent: {
+        name: 'lookup_data',
+        arguments: { query: 'recovery assets' },
+        contract: agent1.getToolRegistry().getReplayContract('lookup_data')
+      }
     });
 
     // Verify raw file exists on disk
@@ -139,13 +145,14 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
       }
     });
     expect(materializedState.operations.get('op_interrupted_stream')?.state).toBe('running');
-    expect(planInterruptedRecovery(recoveryResult.state)).toEqual([
+    expect(planInterruptedRecovery(recoveryResult.state, agent1.getToolRegistry())).toEqual([
       {
         invocationId: 'call_interrupted_stream',
         operationId: 'op_interrupted_stream',
         toolName: 'lookup_data',
         arguments: { query: 'recovery assets' },
         replay: 'safe',
+        contract: agent1.getToolRegistry().getReplayContract('lookup_data'),
         action: 'replay'
       }
     ]);
@@ -171,6 +178,7 @@ describe('Crash Recovery & Durable Event Sourcing E2E', () => {
     });
 
     await resumedAgent.prompt('Continue next turn');
+    expect(toolCallsMade).toEqual(['creative assets', 'recovery assets']);
     const lastMsg = resumedAgent.state.messages[resumedAgent.state.messages.length - 1];
     expect(lastMsg.role).toBe('assistant');
     expect((lastMsg as any).content[0].text).toContain('Resuming cleanly');

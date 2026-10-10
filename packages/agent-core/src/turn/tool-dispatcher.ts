@@ -9,6 +9,8 @@ import {
 } from '@inkpi/protocol';
 import { runWithConcurrency } from '../concurrency.js';
 import { adoptMessage, commitJournal } from '../journal-commit.js';
+import { type InterruptedToolRecoveryPlan, synthesizeInterruptedToolResult } from '../reducer/session-reducer.js';
+import { toolReplayContractsMatch } from '../tool-replay-contract.js';
 import { extractToolCalls } from './extract-tool-calls.js';
 import type { TurnContext } from './turn-context.js';
 
@@ -32,6 +34,7 @@ interface PreparedCall {
   blockReason?: string;
   error?: string;
   terminate?: boolean;
+  recovery?: InterruptedToolRecoveryPlan;
 }
 
 /**
@@ -53,6 +56,62 @@ interface PreparedCall {
  * - **replay 合约**：`replay: 'never'` 的工具中断后绝不重跑，恢复方必须合成占位结果。
  */
 export class ToolDispatcher {
+  /** Recover only calls admitted by both historical and current tool contracts. */
+  public async recover(ctx: TurnContext, plans: InterruptedToolRecoveryPlan[]): Promise<void> {
+    const preparations: { prepared: PreparedCall; assistant: AssistantMessage; plan: InterruptedToolRecoveryPlan }[] =
+      [];
+    for (const original of plans) {
+      const currentTools = ctx.currentTools?.() ?? ctx.toolRegistry;
+      const refused =
+        original.action === 'replay' &&
+        (original.replay !== 'safe' ||
+          currentTools.get(original.toolName)?.replay !== 'safe' ||
+          !toolReplayContractsMatch(original.contract, currentTools.getReplayContract(original.toolName)) ||
+          !currentTools.validateParameters(currentTools.get(original.toolName)!, original.arguments ?? {}).valid);
+      const plan: InterruptedToolRecoveryPlan = refused
+        ? { ...original, action: 'synthesize', reason: 'current-contract-refused' }
+        : original;
+      const call: ToolCallContent = {
+        type: 'toolCall',
+        id: plan.toolCallId ?? (plan.operationId.startsWith('op_tool_') ? plan.operationId.slice(8) : plan.operationId),
+        name: plan.toolName,
+        arguments: structuredClone(plan.arguments ?? {})
+      };
+      const assistant = [...ctx.state.messages]
+        .reverse()
+        .find(
+          (message): message is AssistantMessage =>
+            message.role === 'assistant' &&
+            message.content.some((block) => block.type === 'toolCall' && block.id === call.id)
+        ) ?? { role: 'assistant', content: [call], timestamp: ctx.clock() };
+      const prepared = plan.action === 'replay' ? await this.prepareCall(ctx, call, assistant) : { call };
+      preparations.push({ prepared: { ...prepared, recovery: plan }, assistant, plan });
+    }
+    const termination: TerminationFlag = { value: false };
+    const results = await runWithConcurrency(
+      preparations,
+      async ({ prepared, assistant, plan }) => {
+        if (plan.action === 'replay') return this.executeOne(ctx, prepared, assistant, termination, plan.sourceIndex);
+        const synthetic = synthesizeInterruptedToolResult(plan, ctx.clock);
+        return this.settleTool(
+          ctx,
+          prepared.call,
+          synthetic,
+          plan.invocationId,
+          plan.sourceIndex,
+          'Interrupted tool effect is unknown',
+          plan.operationId
+        );
+      },
+      ctx.options.toolExecution === 'sequential' ? 'sequential' : 'parallel'
+    );
+    for (const result of results) {
+      adoptMessage(ctx.state, ctx.options.journal, result);
+      await ctx.emitEvent({ type: 'message_start', message: result });
+      await ctx.emitEvent({ type: 'message_end', message: result });
+    }
+  }
+
   /** 执行工具调用，并把结果消息并入会话历史。 */
   public async dispatch(ctx: TurnContext, assistantMessage: AssistantMessage): Promise<ToolDispatchResult> {
     const toolCalls = extractToolCalls(assistantMessage);
@@ -98,7 +157,7 @@ export class ToolDispatcher {
         if (ctx.options.journal && !invalidArgumentsError) {
           // 截断拦截同样遵守"意图 → 结算 → 结果物化"三段持久化，保证恢复路径完整。
           const invocationId = this.reserveInvocationId(ctx);
-          const toolOpId = `op_tool_${call.id}`;
+          const toolOpId = `op_tool_${invocationId}`;
           await commitJournal(ctx.options.journal, [
             {
               type: 'operation_intent',
@@ -109,6 +168,10 @@ export class ToolDispatcher {
                 replay: 'never',
                 intent: {
                   name: call.name,
+                  toolCallId: call.id,
+                  ...(sourceIndexByCallId.get(call.id) !== undefined
+                    ? { sourceIndex: sourceIndexByCallId.get(call.id) }
+                    : {}),
                   arguments: call.arguments,
                   intercepted: 'output_length'
                 }
@@ -173,7 +236,7 @@ export class ToolDispatcher {
     const validation = ctx.toolRegistry.validateParameters(tool, call.arguments);
     if (!validation.valid) return { call, blockReason: `Parameter Validation Error: ${validation.error}` };
     preparation.tool = tool;
-    preparation.declaration = JSON.stringify({ description: tool.description, parameters: tool.parameters });
+    preparation.declaration = this.toolDeclaration(ctx, call.name);
     try {
       const before = await ctx.options.beforeToolCall?.(
         {
@@ -213,7 +276,7 @@ export class ToolDispatcher {
   ): Promise<ToolResultMessage> {
     const { options, emitEvent, clock } = ctx;
     const invocationId = this.reserveInvocationId(ctx);
-    const toolOpId = `op_tool_${call.id}`;
+    const toolOpId = `op_tool_${invocationId}`;
     const errorText = `Tool arguments rejected before execution: ${error}`;
     let result: ToolResultMessage = {
       role: 'toolResult',
@@ -233,7 +296,12 @@ export class ToolDispatcher {
             type: 'tool_call',
             invocationId,
             replay: 'never',
-            intent: { name: call.name, invalidArguments: true }
+            intent: {
+              name: call.name,
+              toolCallId: call.id,
+              ...(sourceIndex !== undefined ? { sourceIndex } : {}),
+              invalidArguments: true
+            }
           }
         }
       ]);
@@ -272,19 +340,20 @@ export class ToolDispatcher {
   ): Promise<ToolResultMessage & { terminate?: boolean }> {
     const { options, toolRegistry, emitEvent, signal, clock } = ctx;
     const { call } = preparation;
-    const toolOpId = `op_tool_${call.id}`;
     const invalidArgumentsError = preparation.argumentsError;
 
     if (invalidArgumentsError) {
       return this.rejectInvalidArguments(ctx, call, invalidArgumentsError, sourceIndex);
     }
 
-    const invocationId = this.reserveInvocationId(ctx);
+    const invocationId = preparation.recovery?.invocationId ?? this.reserveInvocationId(ctx);
+    const toolOpId = preparation.recovery?.operationId ?? `op_tool_${invocationId}`;
     const replay =
       preparation.blockReason || preparation.error || signal?.aborted
         ? 'never'
-        : (toolRegistry.get(call.name)?.replay ?? 'safe');
-    if (options.journal) {
+        : (toolRegistry.get(call.name)?.replay ?? 'never');
+    const contract = toolRegistry.getReplayContract(call.name);
+    if (options.journal && !preparation.recovery) {
       await commitJournal(options.journal, [
         {
           type: 'operation_intent',
@@ -293,7 +362,13 @@ export class ToolDispatcher {
             type: 'tool_call',
             invocationId,
             replay,
-            intent: { name: call.name, arguments: call.arguments }
+            intent: {
+              name: call.name,
+              toolCallId: call.id,
+              arguments: call.arguments,
+              ...(sourceIndex !== undefined ? { sourceIndex } : {}),
+              ...(contract ? { contract } : {})
+            }
           }
         }
       ]);
@@ -315,7 +390,8 @@ export class ToolDispatcher {
           abortedRes,
           invocationId,
           sourceIndex,
-          'Tool execution aborted by signal'
+          'Tool execution aborted by signal',
+          toolOpId
         );
       }
       return abortedRes;
@@ -381,12 +457,10 @@ export class ToolDispatcher {
       if (preparation.terminate) termination.value = true;
       if (preparation.error) throw new Error(preparation.error);
       let blockReason = preparation.blockReason;
-      const current = toolRegistry.get(call.name);
+      const current = (ctx.currentTools?.() ?? toolRegistry).get(call.name);
       if (
         !blockReason &&
-        (current !== preparation.tool ||
-          JSON.stringify({ description: current?.description, parameters: current?.parameters }) !==
-            preparation.declaration)
+        (current !== preparation.tool || this.toolDeclaration(ctx, call.name) !== preparation.declaration)
       )
         blockReason = 'Tool registration changed during preflight';
       if (blockReason) {
@@ -457,7 +531,8 @@ export class ToolDispatcher {
         toolRes,
         invocationId,
         sourceIndex,
-        toolRes.isError ? (toolRes.content?.[0] as { text?: string })?.text || 'Tool execution error' : undefined
+        toolRes.isError ? (toolRes.content?.[0] as { text?: string })?.text || 'Tool execution error' : undefined,
+        toolOpId
       );
     }
 
@@ -477,14 +552,15 @@ export class ToolDispatcher {
     result: T,
     invocationId: string,
     sourceIndex?: number,
-    error?: string
+    error?: string,
+    operationId = `op_tool_${invocationId}`
   ): Promise<T> {
     const { details, ...message } = result;
     const entries = await commitJournal(ctx.options.journal, [
       {
         type: 'operation_settlement',
         payload: {
-          id: `op_tool_${call.id}`,
+          id: operationId,
           type: 'tool_call',
           invocationId,
           error,
@@ -504,5 +580,16 @@ export class ToolDispatcher {
     ]);
     const entry = entries[entries.length - 1];
     return entry ? { ...result, id: entry.id } : result;
+  }
+
+  private toolDeclaration(ctx: TurnContext, name: string): string {
+    const tools = ctx.currentTools?.() ?? ctx.toolRegistry;
+    const tool = tools.get(name);
+    return JSON.stringify({
+      description: tool?.description,
+      parameters: tool?.parameters,
+      replay: tool?.replay ?? 'never',
+      contract: tools.getReplayContract(name)
+    });
   }
 }

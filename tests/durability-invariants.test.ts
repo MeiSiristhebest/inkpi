@@ -242,18 +242,27 @@ describe('P1：replay 合约与恢复规划', () => {
     expect(planInterruptedRecovery(settledState)).toHaveLength(0);
     expect(settledState.operations.get('op_tool_call_x')?.state).toBe('settled');
 
-    // safe → replay
+    // Both historical and current safe declarations plus an unchanged versioned contract permit replay.
+    const current = new ToolRegistry();
+    current.register({
+      name: 'read_doc',
+      description: 'read',
+      parameters: { type: 'object' },
+      replay: 'safe',
+      implementationVersion: '1',
+      execute: async () => ({ content: [] })
+    });
     const safeEntries: SessionEntry[] = [
       mk('i2', 'operation_intent', {
         id: 'op_tool_call_y',
         type: 'tool_call',
         invocationId: 'inv_2',
         replay: 'safe',
-        intent: { name: 'read_doc', arguments: {} }
+        intent: { name: 'read_doc', arguments: {}, contract: current.getReplayContract('read_doc') }
       })
     ];
     const safeInterrupted = detectAndMarkInterruptedOperations(reduceSession(safeEntries), () => 2000);
-    expect(planInterruptedRecovery(safeInterrupted.state)[0]?.action).toBe('replay');
+    expect(planInterruptedRecovery(safeInterrupted.state, current)[0]?.action).toBe('replay');
   });
 
   it('合成占位结果：不重跑副作用，明确"结果未知"', () => {

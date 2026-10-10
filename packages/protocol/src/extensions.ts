@@ -5,7 +5,7 @@ export type ToolExecutionMode = 'parallel' | 'sequential';
 
 /**
  * 工具重放策略（对齐上游 pi tool-durability 的 `replay` 合约）：
- * - `'safe'`（默认）：中断后允许携带原 invocationId 重放（工具幂等或副作用可接受）；
+ * - `'safe'`：历史与当前契约兼容时允许携带原 invocationId 重放；
  * - `'never'`：中断后绝不重跑外部副作用，恢复方必须合成"结果未知"的占位结果。
  */
 export type ToolReplayPolicy = 'safe' | 'never';
@@ -36,8 +36,10 @@ export interface AgentTool<TParams = any> {
   readonly description: string;
   readonly parameters?: unknown; // TypeBox or JSON Schema
   readonly executionMode?: ToolExecutionMode;
-  /** 中断后的重放策略，缺省视为 `'safe'`（见 {@link ToolReplayPolicy}）。 */
+  /** 中断后的重放策略，缺省视为 `'never'`。 */
   readonly replay?: ToolReplayPolicy;
+  /** Explicit implementation identity. Change it when execution semantics change. */
+  readonly implementationVersion?: string;
   execute(
     toolCallId: string,
     params: TParams,
@@ -67,6 +69,17 @@ export interface ToolRegistrationDescriptor {
   readonly skillId?: string;
   readonly skillVersion?: string;
   readonly capabilities: readonly string[];
+}
+
+/** Secret-free, versioned contract recorded before a replayable tool effect. */
+export interface ToolReplayContract {
+  version: 1;
+  implementationVersion: string;
+  schema: string;
+  source: string;
+  skillId?: string;
+  skillVersion?: string;
+  capabilities: string[];
 }
 
 /** Parameters for the explicit Desktop -> Runtime tool execution boundary. */

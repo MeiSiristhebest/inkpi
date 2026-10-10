@@ -5,6 +5,7 @@ import type {
   ToolCallContent,
   ToolRegistrationDescriptor,
   ToolRegistrationOptions,
+  ToolReplayContract,
   ToolResult,
   ToolResultMessage,
   ToolUpdateOptions
@@ -12,6 +13,7 @@ import type {
 import { runWithConcurrency } from './concurrency.js';
 import type { Clock } from './ports/index.js';
 import { MONOTONIC_CLOCK } from './ports/index.js';
+import { captureToolReplayContract } from './tool-replay-contract.js';
 import type { ToolExecutionMode } from './types.js';
 
 export {
@@ -81,6 +83,11 @@ export class ToolRegistry {
   public getRegistration(name: string): ToolRegistrationDescriptor | undefined {
     const registration = this.registrations.get(name);
     return registration ? cloneToolRegistrationDescriptor(registration) : undefined;
+  }
+
+  public getReplayContract(name: string): ToolReplayContract | undefined {
+    const tool = this.tools.get(name);
+    return tool ? captureToolReplayContract(tool, this.registrations.get(name)) : undefined;
   }
 
   public validateParameters(tool: AgentTool, args: Record<string, unknown>): { valid: boolean; error?: string } {

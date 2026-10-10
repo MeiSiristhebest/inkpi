@@ -18,6 +18,8 @@ import type {
 } from '@inkpi/protocol';
 import type { WorkflowStateAdapter } from '@inkpi/protocol';
 import { genericRuntimeStateAdapter } from '../pipeline/ledger-merge.js';
+import { toolReplayContractsMatch } from '../tool-replay-contract.js';
+import type { ToolRegistry } from '../tools.js';
 import type { AssistantStreamFrame } from '../turn/assistant-frames.js';
 import { reduceAssistantFrames } from '../turn/assistant-frames.js';
 
@@ -381,7 +383,23 @@ export function detectAndMarkInterruptedOperations(
 } {
   const interruptedIds: string[] = [];
   const operations = new Map<string, OperationRecord>();
+  const durableToolResults = new Map(
+    state.messages
+      .filter((message): message is ToolResultMessage => message.role === 'toolResult' && Boolean(message.id))
+      .map((message) => [message.id, message])
+  );
   for (const [id, op] of state.operations.entries()) {
+    const intent = isRecord(op.intent) ? op.intent : {};
+    const result = typeof intent.invocationId === 'string' ? durableToolResults.get(intent.invocationId) : undefined;
+    if (op.type === 'tool_call' && result && ['running', 'pending', 'interrupted'].includes(op.state)) {
+      operations.set(id, {
+        ...op,
+        state: result.isError ? 'failed' : 'settled',
+        settlement: { content: result.content, ...(result.details !== undefined ? { details: result.details } : {}) },
+        updatedAt: result.timestamp ?? op.updatedAt
+      });
+      continue;
+    }
     if (op.state === 'running' || op.state === 'pending') {
       interruptedIds.push(id);
       operations.set(id, {
@@ -417,14 +435,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export interface InterruptedToolRecoveryPlan {
   /** 预保留的调用身份（tool_execution 条目 id），重放时必须复用。 */
   invocationId: string;
-  /** operation_intent 条目使用的操作 id（形如 `op_tool_<toolCallId>`）。 */
+  /** Independent operation identity recorded by operation_intent. */
   operationId: string;
+  toolCallId?: string;
+  sourceIndex?: number;
   toolName: string;
   arguments?: Record<string, unknown>;
-  /** 归一化后的重放策略：intent 未标注时视为 `'safe'`。 */
+  /** Historical declaration; missing policies are never replayable. */
   replay: 'safe' | 'never';
   /** `'replay'`：可安全重放；`'synthesize'`：绝不重跑，必须合成占位结果。 */
   action: 'replay' | 'synthesize';
+  contract?: unknown;
+  reason?: string;
 }
 
 /**
@@ -433,10 +455,14 @@ export interface InterruptedToolRecoveryPlan {
  * - 已有 settlement 的调用在归约时即变为 settled/failed，不会出现在本清单——
  *   这正是"结算不重放"不变量：结果一旦持久化，恢复时绝不重跑外部副作用；
  * - `replay: 'never'`（或被 output-length 拦截）的调用 → `synthesize`；
- * - `'safe'`/未标注 → `replay`（重放方应复用 plan.invocationId 保持日志一致）。
+ * - 历史与当前都显式允许 safe，且版本、schema 和注册权限兼容，才允许 replay。
  */
-export function planInterruptedRecovery(state: MaterializedSessionState): InterruptedToolRecoveryPlan[] {
+export function planInterruptedRecovery(
+  state: MaterializedSessionState,
+  tools?: ToolRegistry
+): InterruptedToolRecoveryPlan[] {
   const plans: InterruptedToolRecoveryPlan[] = [];
+  const invocationIds = new Set<string>();
   for (const op of state.operations.values()) {
     if (op.state !== 'interrupted' || op.type !== 'tool_call') continue;
     const intent = (op.intent ?? {}) as {
@@ -444,15 +470,40 @@ export function planInterruptedRecovery(state: MaterializedSessionState): Interr
       arguments?: Record<string, unknown>;
       replay?: unknown;
       invocationId?: unknown;
+      toolCallId?: unknown;
+      sourceIndex?: unknown;
+      contract?: unknown;
     };
-    const replay = intent.replay === 'never' ? 'never' : 'safe';
+    const replay = intent.replay === 'safe' ? 'safe' : 'never';
+    const invocationId = typeof intent.invocationId === 'string' ? intent.invocationId : op.id;
+    if (!invocationId || invocationIds.has(invocationId))
+      throw new Error('Ambiguous interrupted tool invocation identity');
+    invocationIds.add(invocationId);
+    const toolName = typeof intent.name === 'string' ? intent.name : 'unknown_tool';
+    const current = tools?.get(toolName);
+    const reason =
+      replay !== 'safe'
+        ? 'historical-policy'
+        : !current
+          ? 'tool-missing'
+          : current.replay !== 'safe'
+            ? 'current-policy'
+            : !toolReplayContractsMatch(intent.contract, tools?.getReplayContract(toolName))
+              ? 'contract-changed'
+              : !tools?.validateParameters(current, intent.arguments ?? {}).valid
+                ? 'invalid-arguments'
+                : undefined;
     plans.push({
-      invocationId: typeof intent.invocationId === 'string' ? intent.invocationId : op.id,
+      invocationId,
       operationId: op.id,
-      toolName: typeof intent.name === 'string' ? intent.name : 'unknown_tool',
-      arguments: intent.arguments,
+      toolName,
+      ...(typeof intent.toolCallId === 'string' ? { toolCallId: intent.toolCallId } : {}),
+      ...(typeof intent.sourceIndex === 'number' ? { sourceIndex: intent.sourceIndex } : {}),
+      arguments: intent.arguments === undefined ? undefined : structuredClone(intent.arguments),
       replay,
-      action: replay === 'never' ? 'synthesize' : 'replay'
+      action: reason ? 'synthesize' : 'replay',
+      ...(intent.contract !== undefined ? { contract: structuredClone(intent.contract) } : {}),
+      ...(reason ? { reason } : {})
     });
   }
   return plans;
@@ -471,13 +522,15 @@ export function synthesizeInterruptedToolResult(
   return {
     id: plan.invocationId,
     role: 'toolResult',
-    toolCallId: plan.operationId.startsWith('op_tool_') ? plan.operationId.slice('op_tool_'.length) : plan.operationId,
+    toolCallId:
+      plan.toolCallId ??
+      (plan.operationId.startsWith('op_tool_') ? plan.operationId.slice('op_tool_'.length) : plan.operationId),
     toolName: plan.toolName,
     isError: true,
     content: [
       {
         type: 'text',
-        text: `Tool '${plan.toolName}' was interrupted by a crash and its replay policy is 'never'. The external effect was NOT re-executed; the result is unknown and requires manual verification.`
+        text: `Tool '${plan.toolName}' was interrupted by a crash and ${plan.replay === 'never' ? "its replay policy is 'never'" : `replay was refused (${plan.reason ?? 'incompatible contract'})`}. The external effect was NOT re-executed; the result is unknown and requires manual verification.`
       }
     ],
     timestamp: clock()
