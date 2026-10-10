@@ -20,7 +20,15 @@ function createEntryFactory(sessionId = 'sess_inv') {
   let seq = 0;
   return (id: string, type: SessionEntry['type'], payload: unknown, timestamp = 1000): SessionEntry => {
     seq += 1;
-    return { id, sessionId, seq, parentId: null, type, timestamp, payload } as SessionEntry;
+    return {
+      id,
+      sessionId,
+      seq,
+      parentId: null,
+      type,
+      timestamp,
+      payload
+    } as SessionEntry;
   };
 }
 
@@ -114,13 +122,25 @@ describe('P1：助手流式帧持久化', () => {
       thinking: 'think'
     });
 
-    expect(encoder.encode({ type: 'tool_call_start', toolCallId: 'c1', toolName: 'search' })).toEqual({
+    expect(
+      encoder.encode({
+        type: 'tool_call_start',
+        toolCallId: 'c1',
+        toolName: 'search'
+      })
+    ).toEqual({
       type: 'tool_call_start',
       index: 2,
       toolCallId: 'c1',
       toolName: 'search'
     });
-    expect(encoder.encode({ type: 'tool_call_delta', toolCallId: 'c1', argsDelta: '{"q"' })).toEqual({
+    expect(
+      encoder.encode({
+        type: 'tool_call_delta',
+        toolCallId: 'c1',
+        argsDelta: '{"q"'
+      })
+    ).toEqual({
       type: 'tool_call_args',
       index: 2,
       toolCallId: 'c1',
@@ -129,13 +149,29 @@ describe('P1：助手流式帧持久化', () => {
     expect(
       encoder.encode({
         type: 'tool_call_end',
-        toolCall: { type: 'toolCall', id: 'c1', name: 'search', arguments: { q: 'x' } }
+        toolCall: {
+          type: 'toolCall',
+          id: 'c1',
+          name: 'search',
+          arguments: { q: 'x' }
+        }
       })
     ).toMatchObject({ type: 'tool_call_end', index: 2 });
     // 结算后迟到增量：fencing，丢弃
-    expect(encoder.encode({ type: 'tool_call_delta', toolCallId: 'c1', argsDelta: '!' })).toBeNull();
+    expect(
+      encoder.encode({
+        type: 'tool_call_delta',
+        toolCallId: 'c1',
+        argsDelta: '!'
+      })
+    ).toBeNull();
     // 终态事件：不产帧
-    expect(encoder.encode({ type: 'usage', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } })).toBeNull();
+    expect(
+      encoder.encode({
+        type: 'usage',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+    ).toBeNull();
     expect(encoder.encode({ type: 'error', error: 'boom' })).toBeNull();
   });
 
@@ -163,12 +199,58 @@ describe('P1：助手流式帧持久化', () => {
     expect(reduceAssistantFrames(retriedFrames)?.content).toEqual([{ type: 'text', text: '新答案' }]);
   });
 
+  it('encodes and recovers signed thinking blocks without retaining a failed attempt signature', () => {
+    const encoder = new AssistantFrameEncoder();
+    const frames = [
+      encoder.encode({
+        type: 'thinking_delta',
+        thinkingDelta: 'old',
+        blockIndex: 2
+      }),
+      encoder.encode({
+        type: 'thinking_signature',
+        blockIndex: 2,
+        providerSignature: 'old-signature'
+      }),
+      encoder.encode({ type: 'attempt_reset' }),
+      encoder.encode({
+        type: 'thinking_delta',
+        thinkingDelta: 'new',
+        blockIndex: 2
+      }),
+      encoder.encode({
+        type: 'thinking_signature',
+        blockIndex: 2,
+        providerSignature: 'new-signature'
+      })
+    ].filter((frame): frame is NonNullable<typeof frame> => frame !== null);
+
+    expect(reduceAssistantFrames(frames)?.content).toEqual([
+      {
+        type: 'thinking',
+        thinking: 'new',
+        providerBlockIndex: 2,
+        providerSignature: 'new-signature'
+      }
+    ]);
+  });
+
   it('归约器：按帧重建部分消息；未完结调用尽力解析参数', () => {
     const partial = reduceAssistantFrames([
       { type: 'text_start', index: 0, text: '' },
       { type: 'text_delta', index: 0, delta: 'once upon' },
-      { type: 'tool_call_start', index: 1, toolCallId: 'c1', toolName: 'draft' },
-      { type: 'tool_call_args', index: 1, toolCallId: 'c1', delta: '{"chapter":1}' }
+      {
+        type: 'tool_call_start',
+        index: 1,
+        toolCallId: 'c1',
+        toolName: 'draft'
+      },
+      {
+        type: 'tool_call_args',
+        index: 1,
+        toolCallId: 'c1',
+        delta: '{"chapter":1}'
+      }
     ]);
     expect(partial).not.toBeNull();
     expect(partial!.stopReason).toBe('aborted');
@@ -182,8 +264,14 @@ describe('P1：助手流式帧持久化', () => {
     const mk = createEntryFactory();
     const frameEntries: SessionEntry[] = [
       mk('u1', 'user_message', { content: 'go' }),
-      mk('f1', 'assistant_frame', { opId: 'op_1', frame: { type: 'text_start', index: 0, text: '' } }),
-      mk('f2', 'assistant_frame', { opId: 'op_1', frame: { type: 'text_delta', index: 0, delta: 'partial…' } })
+      mk('f1', 'assistant_frame', {
+        opId: 'op_1',
+        frame: { type: 'text_start', index: 0, text: '' }
+      }),
+      mk('f2', 'assistant_frame', {
+        opId: 'op_1',
+        frame: { type: 'text_delta', index: 0, delta: 'partial…' }
+      })
     ];
 
     // 无终态 → 合成部分消息
@@ -205,7 +293,10 @@ describe('P1：助手流式帧持久化', () => {
     expect(settled.pendingAssistantFrames).toHaveLength(0);
     const assistantMsgs = settled.messages.filter((m) => m.role === 'assistant') as AssistantMessage[];
     expect(assistantMsgs).toHaveLength(1);
-    expect(assistantMsgs[0].content[0]).toEqual({ type: 'text', text: 'final' });
+    expect(assistantMsgs[0].content[0]).toEqual({
+      type: 'text',
+      text: 'final'
+    });
   });
 });
 
@@ -236,7 +327,11 @@ describe('P1：replay 合约与恢复规划', () => {
     // 已结算：绝不进入恢复清单（"结算不重放"不变量）
     const settledEntries: SessionEntry[] = [
       ...neverEntries,
-      mk('s1', 'operation_settlement', { id: 'op_tool_call_x', type: 'tool_call', settlement: { ok: true } })
+      mk('s1', 'operation_settlement', {
+        id: 'op_tool_call_x',
+        type: 'tool_call',
+        settlement: { ok: true }
+      })
     ];
     const settledState = reduceSession(settledEntries);
     expect(planInterruptedRecovery(settledState)).toHaveLength(0);
@@ -258,7 +353,11 @@ describe('P1：replay 合约与恢复规划', () => {
         type: 'tool_call',
         invocationId: 'inv_2',
         replay: 'safe',
-        intent: { name: 'read_doc', arguments: {}, contract: current.getReplayContract('read_doc') }
+        intent: {
+          name: 'read_doc',
+          arguments: {},
+          contract: current.getReplayContract('read_doc')
+        }
       })
     ];
     const safeInterrupted = detectAndMarkInterruptedOperations(reduceSession(safeEntries), () => 2000);
@@ -295,7 +394,10 @@ describe('P1：replay 合约与恢复规划', () => {
     ];
 
     const registry = new SessionRegistry(() => 1000, getModelPreset('mock-test'));
-    const managed = registry.createSession({ sessionId: 'sess_restore', entries });
+    const managed = registry.createSession({
+      sessionId: 'sess_restore',
+      entries
+    });
     const toolResults = managed.agent.state.messages.filter((m) => m.role === 'toolResult');
     expect(toolResults).toHaveLength(1);
     expect((toolResults[0] as any).toolName).toBe('shell');

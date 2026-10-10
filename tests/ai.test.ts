@@ -36,14 +36,22 @@ describe('@inkpi/ai', () => {
     stream.push({ type: 'text_delta', textDelta: '吹过落叶。' });
     stream.push({
       type: 'usage',
-      usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30, reasoningTokens: 5 }
+      usage: {
+        inputTokens: 20,
+        outputTokens: 10,
+        totalTokens: 30,
+        reasoningTokens: 5
+      }
     });
     stream.end();
 
     const msg = await stream.collect();
     expect(msg.role).toBe('assistant');
     expect(msg.content.length).toBe(2);
-    expect(msg.content[0]).toEqual({ type: 'thinking', thinking: '正在构思剧情...' });
+    expect(msg.content[0]).toEqual({
+      type: 'thinking',
+      thinking: '正在构思剧情...'
+    });
     expect(msg.content[1]).toEqual({ type: 'text', text: '长风吹过落叶。' });
     expect(msg.stopReason).toBe('stop');
     expect(msg.usage?.totalTokens).toBe(30);
@@ -52,12 +60,29 @@ describe('@inkpi/ai', () => {
   it('should handle tool call stream events in AssistantEventStream', async () => {
     const stream = new AssistantEventStream();
 
-    stream.push({ type: 'tool_call_start', toolCallId: 't1', toolName: 'codex_lookup' });
-    stream.push({ type: 'tool_call_delta', toolCallId: 't1', argsDelta: '{"query":' });
-    stream.push({ type: 'tool_call_delta', toolCallId: 't1', argsDelta: '"青萍剑"}' });
+    stream.push({
+      type: 'tool_call_start',
+      toolCallId: 't1',
+      toolName: 'codex_lookup'
+    });
+    stream.push({
+      type: 'tool_call_delta',
+      toolCallId: 't1',
+      argsDelta: '{"query":'
+    });
+    stream.push({
+      type: 'tool_call_delta',
+      toolCallId: 't1',
+      argsDelta: '"青萍剑"}'
+    });
     stream.push({
       type: 'tool_call_end',
-      toolCall: { type: 'toolCall', id: 't1', name: 'codex_lookup', arguments: { query: '青萍剑' } }
+      toolCall: {
+        type: 'toolCall',
+        id: 't1',
+        name: 'codex_lookup',
+        arguments: { query: '青萍剑' }
+      }
     });
     stream.end();
 
@@ -73,8 +98,16 @@ describe('@inkpi/ai', () => {
 
   it('should reject malformed or structurally invalid tool call streams', async () => {
     const malformed = new AssistantEventStream();
-    malformed.push({ type: 'tool_call_start', toolCallId: 'bad', toolName: 'lookup' });
-    malformed.push({ type: 'tool_call_delta', toolCallId: 'bad', argsDelta: '{"query":' });
+    malformed.push({
+      type: 'tool_call_start',
+      toolCallId: 'bad',
+      toolName: 'lookup'
+    });
+    malformed.push({
+      type: 'tool_call_delta',
+      toolCallId: 'bad',
+      argsDelta: '{"query":'
+    });
     malformed.push({
       type: 'tool_call_end',
       toolCall: { type: 'toolCall', id: 'bad', name: 'lookup', arguments: {} }
@@ -86,29 +119,55 @@ describe('@inkpi/ai', () => {
     expect(malformedMessage.content.some((content) => content.type === 'toolCall')).toBe(false);
 
     const missingStart = new AssistantEventStream();
-    missingStart.push({ type: 'tool_call_delta', toolCallId: 'missing', argsDelta: '{}' });
+    missingStart.push({
+      type: 'tool_call_delta',
+      toolCallId: 'missing',
+      argsDelta: '{}'
+    });
     missingStart.end();
     const missingStartMessage = await missingStart.collect();
     expect(missingStartMessage.stopReason).toBe('error');
     expect(missingStartMessage.errorMessage).toContain('before start');
 
     const emptyName = new AssistantEventStream();
-    emptyName.push({ type: 'tool_call_start', toolCallId: 'empty-name', toolName: '' });
-    emptyName.push({ type: 'tool_call_delta', toolCallId: 'empty-name', argsDelta: '{}' });
+    emptyName.push({
+      type: 'tool_call_start',
+      toolCallId: 'empty-name',
+      toolName: ''
+    });
+    emptyName.push({
+      type: 'tool_call_delta',
+      toolCallId: 'empty-name',
+      argsDelta: '{}'
+    });
     emptyName.end();
     const emptyNameMessage = await emptyName.collect();
     expect(emptyNameMessage.stopReason).toBe('error');
     expect(emptyNameMessage.errorMessage).toContain('missing a tool name');
 
     const duplicateEnd = new AssistantEventStream();
-    duplicateEnd.push({ type: 'tool_call_start', toolCallId: 'duplicate-end', toolName: 'lookup' });
     duplicateEnd.push({
-      type: 'tool_call_end',
-      toolCall: { type: 'toolCall', id: 'duplicate-end', name: 'lookup', arguments: {} }
+      type: 'tool_call_start',
+      toolCallId: 'duplicate-end',
+      toolName: 'lookup'
     });
     duplicateEnd.push({
       type: 'tool_call_end',
-      toolCall: { type: 'toolCall', id: 'duplicate-end', name: 'lookup', arguments: {} }
+      toolCall: {
+        type: 'toolCall',
+        id: 'duplicate-end',
+        name: 'lookup',
+        arguments: {}
+      }
+    });
+    duplicateEnd.push({
+      type: 'tool_call_end',
+      toolCall: {
+        type: 'toolCall',
+        id: 'duplicate-end',
+        name: 'lookup',
+        arguments: {}
+      }
     });
     duplicateEnd.end();
     const duplicateEndMessage = await duplicateEnd.collect();
@@ -116,8 +175,16 @@ describe('@inkpi/ai', () => {
     expect(duplicateEndMessage.errorMessage).toContain('Duplicate tool call end');
 
     const missingEnd = new AssistantEventStream();
-    missingEnd.push({ type: 'tool_call_start', toolCallId: 'missing-end', toolName: 'lookup' });
-    missingEnd.push({ type: 'tool_call_delta', toolCallId: 'missing-end', argsDelta: '{"query":"x"}' });
+    missingEnd.push({
+      type: 'tool_call_start',
+      toolCallId: 'missing-end',
+      toolName: 'lookup'
+    });
+    missingEnd.push({
+      type: 'tool_call_delta',
+      toolCallId: 'missing-end',
+      argsDelta: '{"query":"x"}'
+    });
     missingEnd.end();
     const missingEndMessage = await missingEnd.collect();
     expect(missingEndMessage.stopReason).toBe('error');
@@ -153,10 +220,22 @@ describe('@inkpi/ai', () => {
     for (const event of events) stream.push(event);
     stream.end();
 
-    await expect(iterator.next()).resolves.toEqual({ value: events[0], done: false });
-    await expect(iterator.next()).resolves.toEqual({ value: events[1], done: false });
-    await expect(iterator.next()).resolves.toEqual({ value: events[2], done: false });
-    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+    await expect(iterator.next()).resolves.toEqual({
+      value: events[0],
+      done: false
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      value: events[1],
+      done: false
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      value: events[2],
+      done: false
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      value: undefined,
+      done: true
+    });
   });
 
   it('should preserve terminal error ordering and ignore events after termination', async () => {
@@ -167,11 +246,22 @@ describe('@inkpi/ai', () => {
     stream.push({ type: 'text_delta', textDelta: 'must be ignored' });
 
     await expect(iterator.next()).resolves.toEqual({
-      value: { type: 'error', error: 'provider failed', code: 'unknown', retryable: false },
+      value: {
+        type: 'error',
+        error: 'provider failed',
+        code: 'unknown',
+        retryable: false
+      },
       done: false
     });
-    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
-    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+    await expect(iterator.next()).resolves.toEqual({
+      value: undefined,
+      done: true
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      value: undefined,
+      done: true
+    });
   });
 
   it('should settle a pending iterator when aborted', async () => {
@@ -182,7 +272,10 @@ describe('@inkpi/ai', () => {
     stream.abort();
 
     await expect(pending).resolves.toEqual({ value: undefined, done: true });
-    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+    await expect(iterator.next()).resolves.toEqual({
+      value: undefined,
+      done: true
+    });
   });
 
   it('should wait for asynchronous listeners and expose an unsubscribe disposer', async () => {
@@ -209,16 +302,31 @@ describe('@inkpi/ai', () => {
   it('should convert AgentMessages to StandardLlmMessages', () => {
     const msgs: AgentMessage[] = [
       { role: 'user', content: '开篇怎么写？' },
-      { role: 'assistant', content: [{ type: 'text', text: '可以从雨夜切入。' }] },
-      { role: 'toolResult', toolCallId: 'c1', toolName: 'test', content: [{ type: 'text', text: 'ok' }] }
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: '可以从雨夜切入。' }]
+      },
+      {
+        role: 'toolResult',
+        toolCallId: 'c1',
+        toolName: 'test',
+        content: [{ type: 'text', text: 'ok' }]
+      }
     ];
 
     const standard = convertMessagesToStandard(msgs, '系统提示词');
     expect(standard.length).toBe(4);
     expect(standard[0]).toEqual({ role: 'system', content: '系统提示词' });
     expect(standard[1]).toEqual({ role: 'user', content: '开篇怎么写？' });
-    expect(standard[2]).toEqual({ role: 'assistant', content: '可以从雨夜切入。' });
-    expect(standard[3]).toEqual({ role: 'tool', toolCallId: 'c1', content: 'ok' });
+    expect(standard[2]).toEqual({
+      role: 'assistant',
+      content: '可以从雨夜切入。'
+    });
+    expect(standard[3]).toEqual({
+      role: 'tool',
+      toolCallId: 'c1',
+      content: 'ok'
+    });
   });
 
   it('should preserve assistant tool calls for the next provider request', () => {
@@ -227,7 +335,12 @@ describe('@inkpi/ai', () => {
         role: 'assistant',
         content: [
           { type: 'text', text: '先查一下。' },
-          { type: 'toolCall', id: 'call-1', name: 'lookup', arguments: { query: 'x' } }
+          {
+            type: 'toolCall',
+            id: 'call-1',
+            name: 'lookup',
+            arguments: { query: 'x' }
+          }
         ]
       },
       {
@@ -279,7 +392,12 @@ describe('@inkpi/ai', () => {
 
     try {
       const stream = deepSeekProvider(
-        { id: 'deepseek-reasoner', name: 'DeepSeek', provider: 'deepseek', apiKey: 'sk-test' },
+        {
+          id: 'deepseek-reasoner',
+          name: 'DeepSeek',
+          provider: 'deepseek',
+          apiKey: 'sk-test'
+        },
         [{ role: 'user', content: '推导剧情' }]
       );
 
@@ -330,7 +448,11 @@ describe('@inkpi/ai', () => {
       expect(msg.usage?.inputTokens).toBe(8);
       expect(msg.usage?.outputTokens).toBe(13);
       expect(msg.usage?.totalTokens).toBe(24);
-      expect(msg.usage).toMatchObject({ promptTokens: 11, serviceTier: 'priority', cacheReadTokens: 3 });
+      expect(msg.usage).toMatchObject({
+        promptTokens: 11,
+        serviceTier: 'priority',
+        cacheReadTokens: 3
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('https://provider.test/v1/chat/completions');
@@ -380,7 +502,12 @@ describe('@inkpi/ai', () => {
             role: 'assistant',
             content: [
               { type: 'text', text: 'I will look it up.' },
-              { type: 'toolCall', id: 'call-1', name: 'lookup', arguments: { query: 'x' } }
+              {
+                type: 'toolCall',
+                id: 'call-1',
+                name: 'lookup',
+                arguments: { query: 'x' }
+              }
             ]
           },
           {
@@ -391,7 +518,13 @@ describe('@inkpi/ai', () => {
           }
         ],
         {
-          tools: [{ name: 'lookup', description: 'Look up a value', parameters: { type: 'object' } }]
+          tools: [
+            {
+              name: 'lookup',
+              description: 'Look up a value',
+              parameters: { type: 'object' }
+            }
+          ]
         }
       ).collect();
 
@@ -481,8 +614,11 @@ describe('@inkpi/ai', () => {
       .mockResolvedValue(
         responseFrom([
           'data: {"type":"message_start","message":{"usage":{"input_tokens":17,"cache_read_input_tokens":3,"cache_creation_input_tokens":5,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3}}}}\n\n',
-          'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"plan"}}\n\n',
-          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"result"}}\n\n',
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}\n\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"plan"}}\n\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"opaque-signature"}}\n\n',
+          'data: {"type":"content_block_stop","index":0}\n\n',
+          'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"result"}}\n\n',
           'data: {"type":"message_delta","usage":{"output_tokens":19}}\n\n',
           'data: {"type":"message_stop"}'
         ])
@@ -503,7 +639,12 @@ describe('@inkpi/ai', () => {
         { systemPrompt: 'system', thinkingBudget: 2048 }
       ).collect();
       expect(msg.content).toEqual([
-        { type: 'thinking', thinking: 'plan' },
+        {
+          type: 'thinking',
+          thinking: 'plan',
+          providerSignature: 'opaque-signature',
+          providerBlockIndex: 0
+        },
         { type: 'text', text: 'result' }
       ]);
       expect(msg.usage?.inputTokens).toBe(17);
@@ -539,14 +680,25 @@ describe('@inkpi/ai', () => {
 
     try {
       await anthropicProvider(
-        { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1', apiKey: 'key' },
+        {
+          id: 'claude-test',
+          name: 'Claude',
+          provider: 'claude',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'key'
+        },
         [
           { role: 'system', content: 'history system' },
           {
             role: 'assistant',
             content: [
               { type: 'text', text: 'I will look it up.' },
-              { type: 'toolCall', id: 'call-1', name: 'lookup', arguments: { query: 'x' } }
+              {
+                type: 'toolCall',
+                id: 'call-1',
+                name: 'lookup',
+                arguments: { query: 'x' }
+              }
             ]
           },
           {
@@ -566,7 +718,12 @@ describe('@inkpi/ai', () => {
           role: 'assistant',
           content: [
             { type: 'text', text: 'I will look it up.' },
-            { type: 'tool_use', id: 'call-1', name: 'lookup', input: { query: 'x' } }
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'lookup',
+              input: { query: 'x' }
+            }
           ]
         },
         {
@@ -597,12 +754,137 @@ describe('@inkpi/ai', () => {
 
     try {
       const message = await anthropicProvider(
-        { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1', apiKey: 'key' },
+        {
+          id: 'claude-test',
+          name: 'Claude',
+          provider: 'claude',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'key'
+        },
         [{ role: 'user', content: 'look it up' }]
       ).collect();
       expect(message.stopReason).toBe('tool_use');
-      expect(message.content).toEqual([{ type: 'toolCall', id: 'call-2', name: 'lookup', arguments: { query: 'x' } }]);
-      expect(message.usage).toMatchObject({ inputTokens: 4, outputTokens: 2, totalTokens: 6 });
+      expect(message.content).toEqual([
+        {
+          type: 'toolCall',
+          id: 'call-2',
+          name: 'lookup',
+          arguments: { query: 'x' }
+        }
+      ]);
+      expect(message.usage).toMatchObject({
+        inputTokens: 4,
+        outputTokens: 2,
+        totalTokens: 6
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should replay Anthropic signed thinking blocks unchanged with tool-use history', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        responseFrom([
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}\n\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"plan before search"}}\n\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"opaque-provider-signature"}}\n\n',
+          'data: {"type":"content_block_stop","index":0}\n\n',
+          'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Searching now."}}\n\n',
+          'data: {"type":"content_block_start","index":2,"content_block":{"type":"thinking","thinking":""}}\n\n',
+          'data: {"type":"content_block_delta","index":2,"delta":{"type":"thinking_delta","thinking":"second thought"}}\n\n',
+          'data: {"type":"content_block_delta","index":2,"delta":{"type":"signature_delta","signature":"second-opaque-signature"}}\n\n',
+          'data: {"type":"content_block_stop","index":2}\n\n',
+          'data: {"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"call-signed","name":"lookup","input":{}}}\n\n',
+          'data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\\"query\\":\\"x\\"}"}}\n\n',
+          'data: {"type":"content_block_stop","index":3}\n\n',
+          'data: {"type":"message_stop"}\n\n'
+        ])
+      )
+      .mockResolvedValueOnce(responseFrom(['data: {"type":"message_stop"}\n\n']));
+    globalThis.fetch = fetchMock as any;
+
+    const model = {
+      id: 'claude-test',
+      name: 'Claude',
+      provider: 'claude' as const,
+      baseUrl: 'https://provider.test/v1',
+      apiKey: 'key',
+      supportsThinking: true
+    };
+    const tools = [
+      {
+        name: 'lookup',
+        description: 'Look up a value',
+        parameters: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query']
+        }
+      }
+    ];
+
+    try {
+      const userMessage: AgentMessage = { role: 'user', content: 'look up x' };
+      const assistantMessage = await anthropicProvider(model, [userMessage], {
+        tools,
+        thinkingBudget: 2048
+      }).collect();
+      expect(assistantMessage.content).toEqual([
+        {
+          type: 'thinking',
+          thinking: 'plan before search',
+          providerSignature: 'opaque-provider-signature',
+          providerBlockIndex: 0
+        },
+        { type: 'text', text: 'Searching now.' },
+        {
+          type: 'thinking',
+          thinking: 'second thought',
+          providerSignature: 'second-opaque-signature',
+          providerBlockIndex: 2
+        },
+        {
+          type: 'toolCall',
+          id: 'call-signed',
+          name: 'lookup',
+          arguments: { query: 'x' }
+        }
+      ]);
+
+      const toolResult: AgentMessage = {
+        role: 'toolResult',
+        toolCallId: 'call-signed',
+        toolName: 'lookup',
+        content: [{ type: 'text', text: 'found' }]
+      };
+      await anthropicProvider(model, [userMessage, assistantMessage, toolResult], {
+        tools,
+        thinkingBudget: 2048
+      }).collect();
+
+      const secondBody = JSON.parse((fetchMock.mock.calls[1]?.[1] as RequestInit).body as string);
+      expect(secondBody.messages[1].content).toEqual([
+        {
+          type: 'thinking',
+          thinking: 'plan before search',
+          signature: 'opaque-provider-signature'
+        },
+        { type: 'text', text: 'Searching now.' },
+        {
+          type: 'thinking',
+          thinking: 'second thought',
+          signature: 'second-opaque-signature'
+        },
+        {
+          type: 'tool_use',
+          id: 'call-signed',
+          name: 'lookup',
+          input: { query: 'x' }
+        }
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -691,11 +973,20 @@ describe('@inkpi/ai', () => {
       ) as any;
     try {
       const msg = await ollamaProvider(
-        { id: 'local', name: 'Local', provider: 'ollama', baseUrl: 'http://ollama.test' },
+        {
+          id: 'local',
+          name: 'Local',
+          provider: 'ollama',
+          baseUrl: 'http://ollama.test'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(msg.content).toEqual([{ type: 'text', text: 'final' }]);
-      expect(msg.usage).toMatchObject({ inputTokens: 2, outputTokens: 3, totalTokens: 5 });
+      expect(msg.usage).toMatchObject({
+        inputTokens: 2,
+        outputTokens: 3,
+        totalTokens: 5
+      });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -703,7 +994,12 @@ describe('@inkpi/ai', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(responseFrom(['not-json\n'])) as any;
     try {
       const msg = await ollamaProvider(
-        { id: 'local', name: 'Local', provider: 'ollama', baseUrl: 'http://ollama.test' },
+        {
+          id: 'local',
+          name: 'Local',
+          provider: 'ollama',
+          baseUrl: 'http://ollama.test'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(msg.stopReason).toBe('error');
@@ -738,7 +1034,13 @@ describe('@inkpi/ai', () => {
           responseFrom(['data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n'])
         ) as any;
       const anthropicMessage = await anthropicProvider(
-        { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1', apiKey: 'key' },
+        {
+          id: 'claude-test',
+          name: 'Claude',
+          provider: 'claude',
+          baseUrl: 'https://provider.test/v1',
+          apiKey: 'key'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(anthropicMessage.stopReason).toBe('error');
@@ -764,7 +1066,12 @@ describe('@inkpi/ai', () => {
         .fn()
         .mockResolvedValue(responseFrom(['{"message":{"content":"partial"},"done":false}\n'])) as any;
       const ollamaMessage = await ollamaProvider(
-        { id: 'local', name: 'Local', provider: 'ollama', baseUrl: 'http://ollama.test' },
+        {
+          id: 'local',
+          name: 'Local',
+          provider: 'ollama',
+          baseUrl: 'http://ollama.test'
+        },
         [{ role: 'user', content: 'prompt' }]
       ).collect();
       expect(ollamaMessage.stopReason).toBe('error');
@@ -801,7 +1108,11 @@ describe('@inkpi/ai', () => {
     expect(messageA.content).toEqual([{ type: 'text', text: 'A' }]);
     expect(messageA.usage).toBeUndefined();
     expect(messageB.content).toEqual([{ type: 'text', text: 'B' }]);
-    expect(messageB.usage).toEqual({ inputTokens: 2, outputTokens: 3, totalTokens: 5 });
+    expect(messageB.usage).toEqual({
+      inputTokens: 2,
+      outputTokens: 3,
+      totalTokens: 5
+    });
   });
 
   it('should reject faux calls without an explicit script', async () => {
@@ -822,7 +1133,7 @@ describe('@inkpi/ai', () => {
       .mockResolvedValue(
         responseFrom([
           'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\n\n',
-          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n',
           'data: {"type":"message_delta","usage":{"output_tokens":1}}\n\n',
           'data: {"type":"message_stop"}\n\n'
         ])
@@ -834,13 +1145,20 @@ describe('@inkpi/ai', () => {
 
     try {
       const message = await streamAi(
-        { id: 'claude-test', name: 'Claude', provider: 'claude', baseUrl: 'https://provider.test/v1' },
+        {
+          id: 'claude-test',
+          name: 'Claude',
+          provider: 'claude',
+          baseUrl: 'https://provider.test/v1'
+        },
         [{ role: 'user', content: 'hello' }]
       ).collect();
 
       expect(message.stopReason).toBe('stop');
       expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-        headers: expect.objectContaining({ 'x-api-key': 'canonical-anthropic-key' })
+        headers: expect.objectContaining({
+          'x-api-key': 'canonical-anthropic-key'
+        })
       });
     } finally {
       globalThis.fetch = originalFetch;

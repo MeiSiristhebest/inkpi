@@ -105,8 +105,10 @@ export function convertMessagesToOpenAi(messages: AgentMessage[], systemPrompt?:
 }
 
 export interface AnthropicWireContentBlock {
-  type: 'text' | 'image' | 'tool_use' | 'tool_result';
+  type: 'text' | 'thinking' | 'image' | 'tool_use' | 'tool_result';
   text?: string;
+  thinking?: string;
+  signature?: string;
   source?: { type: 'base64'; media_type: string; data: string } | { type: 'url'; url: string };
   id?: string;
   name?: string;
@@ -176,11 +178,19 @@ export function insertThinkingLevelMessages(
   for (let index = 0; index < converted.length; index += 1) {
     const historicalEffort = assistantLevels.get(index);
     if (historicalEffort && isAnthropicEffort(historicalEffort)) {
-      messages.push({ role: 'system', content: [], output_config: { effort: historicalEffort } });
+      messages.push({
+        role: 'system',
+        content: [],
+        output_config: { effort: historicalEffort }
+      });
     }
     messages.push(converted[index]);
   }
-  messages.push({ role: 'system', content: [], output_config: { effort: activeEffort } });
+  messages.push({
+    role: 'system',
+    content: [],
+    output_config: { effort: activeEffort }
+  });
   return messages;
 }
 
@@ -247,9 +257,16 @@ export function convertMessagesToAnthropic(messages: AgentMessage[]): AnthropicM
         if (item.type === 'text' && item.text.length > 0) {
           blocks.push({ type: 'text', text: item.text });
         } else if (item.type === 'thinking' && item.thinking.length > 0) {
-          // This protocol does not retain Anthropic thinking signatures, so
-          // replay unsigned thinking as text instead of sending invalid blocks.
-          blocks.push({ type: 'text', text: item.thinking });
+          if (item.providerSignature) {
+            blocks.push({
+              type: 'thinking',
+              thinking: item.thinking,
+              signature: item.providerSignature
+            });
+          } else {
+            // Unsigned reasoning cannot be replayed as an Anthropic thinking block.
+            blocks.push({ type: 'text', text: item.thinking });
+          }
         } else if (item.type === 'toolCall') {
           blocks.push({
             type: 'tool_use',
@@ -357,11 +374,24 @@ function fauxProviderWithScript(
 
     if (effectiveScript.toolCalls && effectiveScript.toolCalls.length > 0) {
       for (const tc of effectiveScript.toolCalls) {
-        stream.push({ type: 'tool_call_start', toolCallId: tc.id, toolName: tc.name });
-        stream.push({ type: 'tool_call_delta', toolCallId: tc.id, argsDelta: JSON.stringify(tc.arguments) });
+        stream.push({
+          type: 'tool_call_start',
+          toolCallId: tc.id,
+          toolName: tc.name
+        });
+        stream.push({
+          type: 'tool_call_delta',
+          toolCallId: tc.id,
+          argsDelta: JSON.stringify(tc.arguments)
+        });
         stream.push({
           type: 'tool_call_end',
-          toolCall: { type: 'toolCall', id: tc.id, name: tc.name, arguments: tc.arguments }
+          toolCall: {
+            type: 'toolCall',
+            id: tc.id,
+            name: tc.name,
+            arguments: tc.arguments
+          }
         });
       }
     } else {
@@ -703,8 +733,18 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
         const retryAfterMs = retryAfterHeader ? Math.max(0, Number(retryAfterHeader) * 1000) : undefined;
         stream.error(
           classifyProviderError(
-            { message: errorMessage, status: response.status, provider: model.provider, details: errorDetails },
-            { provider: model.provider, status: response.status, retryAfterMs, details: errorDetails }
+            {
+              message: errorMessage,
+              status: response.status,
+              provider: model.provider,
+              details: errorDetails
+            },
+            {
+              provider: model.provider,
+              status: response.status,
+              retryAfterMs,
+              details: errorDetails
+            }
           )
         );
         return;
@@ -764,7 +804,10 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
 
             if (delta.reasoning_content) {
               sawOutput = true;
-              stream.push({ type: 'thinking_delta', thinkingDelta: delta.reasoning_content });
+              stream.push({
+                type: 'thinking_delta',
+                thinkingDelta: delta.reasoning_content
+              });
             }
             if (delta.content) {
               sawOutput = true;
@@ -777,7 +820,11 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
                   if (index !== undefined) toolCallIdsByIndex.set(index, tc.id);
                   lastToolCallId = tc.id;
                   if (!toolCallsById.has(tc.id)) toolCallsById.set(tc.id, { name: '', args: '' });
-                  stream.push({ type: 'tool_call_start', toolCallId: tc.id, toolName: tc.function?.name || '' });
+                  stream.push({
+                    type: 'tool_call_start',
+                    toolCallId: tc.id,
+                    toolName: tc.function?.name || ''
+                  });
                 }
                 const toolCallId =
                   tc.id ||
@@ -797,7 +844,11 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
                     throw new Error(`${model.provider} stream contained tool arguments without a tool call id`);
                   }
                   sawOutput = true;
-                  stream.push({ type: 'tool_call_delta', toolCallId, argsDelta: tc.function.arguments });
+                  stream.push({
+                    type: 'tool_call_delta',
+                    toolCallId,
+                    argsDelta: tc.function.arguments
+                  });
                 }
               }
             }
@@ -835,7 +886,10 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
         if (!delta) return;
         if (delta.reasoning_content) {
           sawOutput = true;
-          stream.push({ type: 'thinking_delta', thinkingDelta: delta.reasoning_content });
+          stream.push({
+            type: 'thinking_delta',
+            thinkingDelta: delta.reasoning_content
+          });
         }
         if (delta.content) {
           sawOutput = true;
@@ -847,7 +901,11 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
               const index = typeof tc.index === 'number' ? tc.index : undefined;
               if (index !== undefined) toolCallIdsByIndex.set(index, tc.id);
               lastToolCallId = tc.id;
-              stream.push({ type: 'tool_call_start', toolCallId: tc.id, toolName: tc.function?.name || '' });
+              stream.push({
+                type: 'tool_call_start',
+                toolCallId: tc.id,
+                toolName: tc.function?.name || ''
+              });
             }
             if (tc.function?.arguments) {
               const toolCallId =
@@ -858,7 +916,11 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
                 throw new Error(`${model.provider} stream contained tool arguments without a tool call id`);
               }
               sawOutput = true;
-              stream.push({ type: 'tool_call_delta', toolCallId, argsDelta: tc.function.arguments });
+              stream.push({
+                type: 'tool_call_delta',
+                toolCallId,
+                argsDelta: tc.function.arguments
+              });
             }
           }
         }
@@ -1026,6 +1088,7 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
       let cacheWrite5mTokens: number | undefined;
       let cacheWrite1hTokens: number | undefined;
       let sawMessageStop = false;
+      const openThinkingBlocks = new Map<number, { signatureSeen: boolean }>();
       const openToolCalls = new Map<
         number,
         {
@@ -1072,9 +1135,50 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
           emitUsage();
         } else if (data.type === 'content_block_delta') {
           if (data.delta?.type === 'text_delta') {
-            stream.push({ type: 'text_delta', textDelta: data.delta.text });
+            if (!Number.isSafeInteger(data.index) || data.index < 0) {
+              throw new Error('Anthropic text delta is missing a valid content-block index.');
+            }
+            stream.push({
+              type: 'text_delta',
+              textDelta: data.delta.text,
+              blockIndex: data.index
+            });
           } else if (data.delta?.type === 'thinking_delta') {
-            stream.push({ type: 'thinking_delta', thinkingDelta: data.delta.thinking });
+            if (!Number.isSafeInteger(data.index) || data.index < 0) {
+              throw new Error('Anthropic thinking delta is missing a valid content-block index.');
+            }
+            const thinkingBlock = openThinkingBlocks.get(data.index);
+            if (!thinkingBlock) {
+              throw new Error('Anthropic thinking delta received before content_block_start.');
+            }
+            if (thinkingBlock.signatureSeen) {
+              throw new Error('Anthropic thinking delta received after signature_delta.');
+            }
+            stream.push({
+              type: 'thinking_delta',
+              thinkingDelta: data.delta.thinking,
+              blockIndex: data.index
+            });
+          } else if (data.delta?.type === 'signature_delta') {
+            if (!Number.isSafeInteger(data.index) || data.index < 0) {
+              throw new Error('Anthropic thinking signature is missing a valid content-block index.');
+            }
+            const thinkingBlock = openThinkingBlocks.get(data.index);
+            if (!thinkingBlock) {
+              throw new Error('Anthropic thinking signature received before content_block_start.');
+            }
+            if (thinkingBlock.signatureSeen) {
+              throw new Error('Anthropic thinking block received duplicate signature_delta events.');
+            }
+            if (typeof data.delta.signature !== 'string' || data.delta.signature.trim().length === 0) {
+              throw new Error('Anthropic thinking signature is empty or invalid.');
+            }
+            thinkingBlock.signatureSeen = true;
+            stream.push({
+              type: 'thinking_signature',
+              blockIndex: data.index,
+              providerSignature: data.delta.signature
+            });
           } else if (data.delta?.type === 'input_json_delta') {
             const toolCall = openToolCalls.get(data.index);
             if (!toolCall) {
@@ -1088,9 +1192,24 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
               argsDelta: partialJson
             });
           }
+        } else if (data.type === 'content_block_start' && data.content_block?.type === 'thinking') {
+          if (!Number.isSafeInteger(data.index) || data.index < 0) {
+            throw new Error('Anthropic thinking block is missing a valid content-block index.');
+          }
+          if (openThinkingBlocks.has(data.index)) {
+            throw new Error(`Duplicate Anthropic thinking block at index ${data.index}.`);
+          }
+          openThinkingBlocks.set(data.index, { signatureSeen: false });
+          if (typeof data.content_block.thinking === 'string' && data.content_block.thinking.length > 0) {
+            stream.push({
+              type: 'thinking_delta',
+              thinkingDelta: data.content_block.thinking,
+              blockIndex: data.index
+            });
+          }
         } else if (data.type === 'content_block_start' && data.content_block?.type === 'tool_use') {
           const block = data.content_block;
-          if (typeof data.index !== 'number' || !block.id || !block.name) {
+          if (!Number.isSafeInteger(data.index) || data.index < 0 || !block.id || !block.name) {
             throw new Error('Anthropic tool_use block is missing index, id, or name.');
           }
           if (openToolCalls.has(data.index)) {
@@ -1102,11 +1221,21 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
             name: block.name,
             args: initialInput === '{}' ? '' : initialInput
           });
-          stream.push({ type: 'tool_call_start', toolCallId: block.id, toolName: block.name });
+          stream.push({
+            type: 'tool_call_start',
+            toolCallId: block.id,
+            toolName: block.name,
+            blockIndex: data.index
+          });
           if (initialInput && initialInput !== '{}') {
-            stream.push({ type: 'tool_call_delta', toolCallId: block.id, argsDelta: initialInput });
+            stream.push({
+              type: 'tool_call_delta',
+              toolCallId: block.id,
+              argsDelta: initialInput
+            });
           }
         } else if (data.type === 'content_block_stop' && typeof data.index === 'number') {
+          openThinkingBlocks.delete(data.index);
           const toolCall = openToolCalls.get(data.index);
           if (toolCall) {
             let argumentsValue: Record<string, unknown>;
@@ -1196,7 +1325,11 @@ export const geminiProvider: ProviderHandler = (model, inputMessages, inputOptio
 
   const contents = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
+    parts: [
+      {
+        text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      }
+    ]
   }));
 
   (async () => {
@@ -1393,7 +1526,10 @@ export const ollamaProvider: ProviderHandler = (model, inputMessages, inputOptio
           {
             const data = parseJsonStreamEvent(trimmed, 'Ollama');
             if (data.message?.content) {
-              stream.push({ type: 'text_delta', textDelta: data.message.content });
+              stream.push({
+                type: 'text_delta',
+                textDelta: data.message.content
+              });
             }
             if (data.done === true) {
               sawDone = true;

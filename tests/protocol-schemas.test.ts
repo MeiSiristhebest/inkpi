@@ -7,6 +7,7 @@ import {
   StateLedgerSchema,
   TaskExecutionParamsSchema,
   TaskExecutionSnapshotSchema,
+  ThinkingContentSchema,
   ThinkingLevelSchema,
   UsageSchema,
   UserMessageSchema,
@@ -25,6 +26,31 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
     expect(Value.Check(ThinkingLevelSchema, 'low')).toBe(true);
     expect(Value.Check(ThinkingLevelSchema, 'high')).toBe(true);
     expect(Value.Check(ThinkingLevelSchema, 'invalid')).toBe(false);
+  });
+
+  it('should validate optional provider metadata on signed thinking content', () => {
+    expect(
+      Value.Check(ThinkingContentSchema, {
+        type: 'thinking',
+        thinking: 'reasoning',
+        providerSignature: 'opaque-signature',
+        providerBlockIndex: 0
+      })
+    ).toBe(true);
+    expect(
+      Value.Check(ThinkingContentSchema, {
+        type: 'thinking',
+        thinking: 'reasoning',
+        providerSignature: ''
+      })
+    ).toBe(false);
+    expect(
+      Value.Check(ThinkingContentSchema, {
+        type: 'thinking',
+        thinking: 'reasoning',
+        providerBlockIndex: -1
+      })
+    ).toBe(false);
   });
 
   it('should validate UsageSchema', () => {
@@ -61,7 +87,12 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
       content: [
         { type: 'thinking', thinking: '思考剧情发展...' },
         { type: 'text', text: '萧炎深吸了一口气。' },
-        { type: 'toolCall', id: 'call_1', name: 'updateStateLedger', arguments: {} }
+        {
+          type: 'toolCall',
+          id: 'call_1',
+          name: 'updateStateLedger',
+          arguments: {}
+        }
       ],
       providerThinkingLevel: 'medium'
     };
@@ -123,7 +154,11 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
         taskId: 'execution-task',
         kind: 'test.execution',
         status: 'failed',
-        error: { code: 'TASK_FAILED', message: 'attempt failed', retryable: true },
+        error: {
+          code: 'TASK_FAILED',
+          message: 'attempt failed',
+          retryable: true
+        },
         executionRunId: 'run:execution-task',
         attempts: 2,
         checkpoint: { step: 'draft', updatedAt: 10 }
@@ -279,9 +314,22 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
       locations: [{ name: 'Location A' }]
     });
 
-    expect(sanitized.entities[0]).toMatchObject({ id: 'Character A', status: 'active' });
-    expect(sanitized.assets[0]).toMatchObject({ id: 'Object A', state: 'normal' });
-    expect(sanitized.tracks[0]).toMatchObject({ id: 'track-0', clue: 'Unresolved thread', status: 'open' });
-    expect(sanitized.locations[0]).toMatchObject({ id: 'Location A', currentInhabitants: [] });
+    expect(sanitized.entities[0]).toMatchObject({
+      id: 'Character A',
+      status: 'active'
+    });
+    expect(sanitized.assets[0]).toMatchObject({
+      id: 'Object A',
+      state: 'normal'
+    });
+    expect(sanitized.tracks[0]).toMatchObject({
+      id: 'track-0',
+      clue: 'Unresolved thread',
+      status: 'open'
+    });
+    expect(sanitized.locations[0]).toMatchObject({
+      id: 'Location A',
+      currentInhabitants: []
+    });
   });
 });

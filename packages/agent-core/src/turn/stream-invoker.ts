@@ -97,7 +97,10 @@ export class StreamInvoker {
           payload: {
             id: streamOpId,
             type: 'provider_stream',
-            intent: { model: requestModel.id, messageCount: requestMessages.length }
+            intent: {
+              model: requestModel.id,
+              messageCount: requestMessages.length
+            }
           }
         }
       ]);
@@ -169,7 +172,10 @@ export class StreamInvoker {
           payload: {
             id: streamOpId,
             type: 'provider_stream',
-            settlement: { usage: assistantMessage.usage, stopReason: assistantMessage.stopReason },
+            settlement: {
+              usage: assistantMessage.usage,
+              stopReason: assistantMessage.stopReason
+            },
             error: assistantMessage.stopReason === 'error' ? assistantMessage.errorMessage : undefined
           }
         },
@@ -231,12 +237,23 @@ export class StreamInvoker {
             }
             textBlock.text += msgEvent.textDelta;
           } else if (msgEvent.type === 'thinking_delta') {
-            let thinkBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'thinking') as any;
+            let thinkBlock = ctx.state.streamingMessage.content.find(
+              (b: any) => b.type === 'thinking' && b.providerBlockIndex === msgEvent.blockIndex
+            ) as any;
             if (!thinkBlock) {
-              thinkBlock = { type: 'thinking', thinking: '' };
+              thinkBlock = {
+                type: 'thinking',
+                thinking: '',
+                ...(msgEvent.blockIndex !== undefined ? { providerBlockIndex: msgEvent.blockIndex } : {})
+              };
               ctx.state.streamingMessage.content.push(thinkBlock);
             }
             thinkBlock.thinking += msgEvent.thinkingDelta;
+          } else if (msgEvent.type === 'thinking_signature') {
+            const thinkBlock = ctx.state.streamingMessage.content.find(
+              (b: any) => b.type === 'thinking' && b.providerBlockIndex === msgEvent.blockIndex
+            ) as any;
+            if (thinkBlock) thinkBlock.providerSignature = msgEvent.providerSignature;
           }
 
           await ctx.emitEvent({

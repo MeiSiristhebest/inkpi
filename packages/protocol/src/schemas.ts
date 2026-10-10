@@ -48,7 +48,9 @@ export const TextContentSchema = Type.Object({
 
 export const ThinkingContentSchema = Type.Object({
   type: Type.Literal('thinking'),
-  thinking: Type.String()
+  thinking: Type.String(),
+  providerSignature: Type.Optional(Type.String({ minLength: 1 })),
+  providerBlockIndex: Type.Optional(Type.Integer({ minimum: 0 }))
 });
 
 export const ImageContentSchema = Type.Object({
@@ -135,7 +137,13 @@ export const SystemMessageSchema = Type.Object({
   content: Type.String(),
   sections: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]))),
   toolsAdded: Type.Optional(
-    Type.Array(Type.Object({ name: IdSchema, description: Type.String(), parameters: JsonValueSchema }))
+    Type.Array(
+      Type.Object({
+        name: IdSchema,
+        description: Type.String(),
+        parameters: JsonValueSchema
+      })
+    )
   ),
   toolsRemoved: Type.Optional(Type.Array(Type.Object({ name: IdSchema }))),
   timestamp: Type.Optional(TimestampSchema)
@@ -300,7 +308,12 @@ export const TaskExecutionRunSchema = Type.Object({
   updatedAt: TimestampSchema,
   resumeToken: Type.Optional(TaskExecutionResumeTokenSchema),
   admission: Type.Optional(
-    Type.Object({ version: Type.Literal(1), requestId: IdSchema, taskId: IdSchema, acceptedAt: TimestampSchema })
+    Type.Object({
+      version: Type.Literal(1),
+      requestId: IdSchema,
+      taskId: IdSchema,
+      acceptedAt: TimestampSchema
+    })
   ),
   parent: Type.Optional(Type.Object({ taskId: IdSchema, detached: Type.Boolean() })),
   completion: Type.Optional(Type.Object({ version: Type.Literal(1), result: Type.Any() }))
@@ -369,7 +382,9 @@ export const DiagnosticSnapshotSchema = Type.Object({
   modelRoutes: Type.Object({ configured: Type.Integer({ minimum: 0 }) })
 });
 
-export const RuntimeModelRouteHealthParamsSchema = Type.Object({ routeId: IdSchema });
+export const RuntimeModelRouteHealthParamsSchema = Type.Object({
+  routeId: IdSchema
+});
 
 export const RuntimeModelRouteCapabilitiesSchema = Type.Object({
   nativeCapabilities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),

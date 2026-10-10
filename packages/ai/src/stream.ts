@@ -154,7 +154,19 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
   public async collect(): Promise<AssistantMessage> {
     let fullText = '';
     let fullThinking = '';
-    const toolCallsMap = new Map<string, { id: string; name: string; argsStr: string; ended: boolean }>();
+    const toolCallsMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        argsStr: string;
+        ended: boolean;
+        blockIndex?: number;
+      }
+    >();
+    const indexedBlockKinds = new Map<number, 'text' | 'thinking' | 'toolCall'>();
+    const indexedContent = new Map<number, TextContent | ThinkingContent | ToolCallContent>();
+    const legacyToolCalls: ToolCallContent[] = [];
     let finalUsage: Usage | undefined;
     let hasError = Boolean(this.currentError);
     let errorMessage: string | undefined = this.currentError?.error;
@@ -167,23 +179,102 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
       errorMessage ||= message;
     };
 
+    const reserveIndexedBlock = (
+      blockIndex: number,
+      kind: 'text' | 'thinking' | 'toolCall',
+      allowSameKind: boolean
+    ): boolean => {
+      if (!Number.isSafeInteger(blockIndex) || blockIndex < 0) {
+        fail('Provider content block is missing a valid block index.');
+        return false;
+      }
+      const existingKind = indexedBlockKinds.get(blockIndex);
+      if (existingKind !== undefined) {
+        if (allowSameKind && existingKind === kind) return true;
+        fail(`Duplicate provider content block index '${blockIndex}'.`);
+        return false;
+      }
+      indexedBlockKinds.set(blockIndex, kind);
+      return true;
+    };
+
     for await (const event of this) {
       switch (event.type) {
         case 'attempt_reset':
           fullText = '';
           fullThinking = '';
           toolCallsMap.clear();
+          indexedBlockKinds.clear();
+          indexedContent.clear();
+          legacyToolCalls.length = 0;
           finalUsage = undefined;
           hasError = false;
           errorMessage = undefined;
           providerError = undefined;
           break;
         case 'text_delta':
-          fullText += event.textDelta;
+          if (event.blockIndex === undefined) {
+            fullText += event.textDelta;
+            break;
+          }
+          if (!reserveIndexedBlock(event.blockIndex, 'text', true)) break;
+          {
+            let block = indexedContent.get(event.blockIndex);
+            if (!block) {
+              block = { type: 'text', text: '' };
+              indexedContent.set(event.blockIndex, block);
+            }
+            if (block.type !== 'text') {
+              fail(`Provider text delta conflicts with block '${event.blockIndex}'.`);
+              break;
+            }
+            block.text += event.textDelta;
+          }
           break;
         case 'thinking_delta':
-          fullThinking += event.thinkingDelta;
+          if (event.blockIndex === undefined) {
+            fullThinking += event.thinkingDelta;
+            break;
+          }
+          if (!reserveIndexedBlock(event.blockIndex, 'thinking', true)) break;
+          {
+            let block = indexedContent.get(event.blockIndex);
+            if (!block) {
+              block = {
+                type: 'thinking',
+                thinking: '',
+                providerBlockIndex: event.blockIndex
+              };
+              indexedContent.set(event.blockIndex, block);
+            }
+            if (block.type !== 'thinking') {
+              fail(`Provider thinking delta conflicts with block '${event.blockIndex}'.`);
+              break;
+            }
+            block.thinking += event.thinkingDelta;
+          }
           break;
+        case 'thinking_signature': {
+          if (!Number.isSafeInteger(event.blockIndex) || event.blockIndex < 0) {
+            fail('Provider thinking signature is missing a valid block index.');
+            break;
+          }
+          const block = indexedContent.get(event.blockIndex);
+          if (!block || block.type !== 'thinking') {
+            fail(`Provider thinking signature received before thinking block '${event.blockIndex}'.`);
+            break;
+          }
+          if (typeof event.providerSignature !== 'string' || event.providerSignature.trim().length === 0) {
+            fail('Provider thinking signature is empty or invalid.');
+            break;
+          }
+          if (block.providerSignature !== undefined) {
+            fail(`Duplicate provider thinking signature for block '${event.blockIndex}'.`);
+            break;
+          }
+          block.providerSignature = event.providerSignature;
+          break;
+        }
         case 'tool_call_start':
           if (!event.toolCallId) {
             fail('Tool call start is missing toolCallId.');
@@ -193,11 +284,13 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
             fail(`Duplicate tool call start for '${event.toolCallId}'.`);
             break;
           }
+          if (event.blockIndex !== undefined && !reserveIndexedBlock(event.blockIndex, 'toolCall', false)) break;
           toolCallsMap.set(event.toolCallId, {
             id: event.toolCallId,
             name: event.toolName,
             argsStr: '',
-            ended: false
+            ended: false,
+            ...(event.blockIndex !== undefined ? { blockIndex: event.blockIndex } : {})
           });
           break;
         case 'tool_call_delta': {
@@ -254,13 +347,14 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     }
 
     const content: (TextContent | ThinkingContent | ToolCallContent)[] = [];
+    const legacyContent: (TextContent | ThinkingContent)[] = [];
 
     if (fullThinking.length > 0) {
-      content.push({ type: 'thinking', thinking: fullThinking });
+      legacyContent.push({ type: 'thinking', thinking: fullThinking });
     }
 
     if (fullText.length > 0) {
-      content.push({ type: 'text', text: fullText });
+      legacyContent.push({ type: 'text', text: fullText });
     }
 
     for (const [id, item] of toolCallsMap.entries()) {
@@ -280,13 +374,25 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
         continue;
       }
       if (hasError) continue;
-      content.push({
+      const toolCall: ToolCallContent = {
         type: 'toolCall',
         id,
         name: item.name,
         arguments: parsedArgs
-      });
+      };
+      if (item.blockIndex !== undefined) {
+        indexedContent.set(item.blockIndex, toolCall);
+      } else {
+        legacyToolCalls.push(toolCall);
+      }
     }
+
+    for (const blockIndex of [...indexedBlockKinds.keys()].sort((left, right) => left - right)) {
+      const block = indexedContent.get(blockIndex);
+      if (block) content.push(block);
+    }
+    content.push(...legacyContent);
+    content.push(...legacyToolCalls);
 
     const hasTools = toolCallsMap.size > 0;
     const stopReason = this.aborted ? 'aborted' : hasError ? 'error' : hasTools ? 'tool_use' : 'stop';

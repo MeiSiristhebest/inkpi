@@ -346,6 +346,49 @@ describe('@inkpi/agent-core', () => {
     expect(events).toEqual(['update-settled', 'message-end']);
   });
 
+  it('preserves signed thinking metadata in live message updates', async () => {
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test') },
+      streamFn: () => {
+        const stream = new AssistantEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: 'thinking_delta', thinkingDelta: 'plan', blockIndex: 0 });
+          stream.push({ type: 'thinking_signature', blockIndex: 0, providerSignature: 'opaque-signature' });
+          stream.end();
+        });
+        return stream;
+      }
+    });
+    const streamingContents: unknown[][] = [];
+    agent.subscribe((event) => {
+      if (event.type === 'message_update' && event.message.role === 'assistant') {
+        streamingContents.push(structuredClone(event.message.content));
+      }
+    });
+
+    await agent.prompt('continue');
+
+    expect(streamingContents.at(-1)).toEqual([
+      {
+        type: 'thinking',
+        thinking: 'plan',
+        providerBlockIndex: 0,
+        providerSignature: 'opaque-signature'
+      }
+    ]);
+    expect(agent.state.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: [
+        {
+          type: 'thinking',
+          thinking: 'plan',
+          providerBlockIndex: 0,
+          providerSignature: 'opaque-signature'
+        }
+      ]
+    });
+  });
+
   it('should preserve provider errors and clean transient state after stream failure', async () => {
     const streamFailure = new Error('collect failed');
     const failingAgent = new Agent({

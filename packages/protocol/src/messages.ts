@@ -8,6 +8,10 @@ export interface TextContent {
 export interface ThinkingContent {
   type: 'thinking';
   thinking: string;
+  /** Opaque provider data required to replay this block with tool-use history. */
+  providerSignature?: string;
+  /** Original provider content-block index, used to preserve interleaved output order. */
+  providerBlockIndex?: number;
 }
 
 export interface ImageContent {
@@ -242,8 +246,18 @@ export type TelemetryEvent =
       charCount: number;
       timestamp: number;
     }
-  | { type: 'branch_rollback'; branchId: string; depth: number; timestamp: number }
-  | { type: 'invariant_conflict'; rule: string; details?: string; timestamp: number }
+  | {
+      type: 'branch_rollback';
+      branchId: string;
+      depth: number;
+      timestamp: number;
+    }
+  | {
+      type: 'invariant_conflict';
+      rule: string;
+      details?: string;
+      timestamp: number;
+    }
   | { type: 'turn_telemetry'; stats: TelemetryStats; timestamp: number };
 
 /** 实时时延与缓存度量 */

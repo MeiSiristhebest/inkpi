@@ -16,23 +16,34 @@ export type AssistantStreamFrame =
   | { type: 'attempt_reset' }
   | { type: 'text_start'; index: number; text: string }
   | { type: 'text_delta'; index: number; delta: string }
-  | { type: 'thinking_start'; index: number; thinking: string }
+  | {
+      type: 'thinking_start';
+      index: number;
+      thinking: string;
+      providerBlockIndex?: number;
+    }
   | { type: 'thinking_delta'; index: number; delta: string }
-  | { type: 'tool_call_start'; index: number; toolCallId: string; toolName: string }
+  | { type: 'thinking_signature'; index: number; providerSignature: string }
+  | {
+      type: 'tool_call_start';
+      index: number;
+      toolCallId: string;
+      toolName: string;
+    }
   | { type: 'tool_call_args'; index: number; toolCallId: string; delta: string }
   | { type: 'tool_call_end'; index: number; toolCall: ToolCallContent };
 
 /**
  * 流式帧编码器：一个 provider 流对应一个实例，按序喂入每个事件。
  *
- * 与 `StreamInvoker` 的合并策略一致：全部 text 增量合并进同一个 text 块，
- * 全部 thinking 增量合并进同一个 thinking 块，toolCall 每次调用独占一个块。
+ * 与 `StreamInvoker` 的合并策略一致：text 增量合并进同一个 text 块；
+ * thinking 按 provider block index 合并，未索引的 thinking 共用一个块；toolCall 每次调用独占一个块。
  * 编码器维护自己的块下标与覆盖长度，与活跃流式消息解耦。
  */
 export class AssistantFrameEncoder {
   private nextIndex = 0;
   private textIndex: number | undefined;
-  private thinkingIndex: number | undefined;
+  private thinkingIndexes = new Map<string, number>();
   private toolCallState = new Map<string, { index: number; open: boolean; argsLength: number }>();
 
   /** 编码一个流事件；返回 0 或 1 帧（终态事件返回 null）。 */
@@ -41,35 +52,82 @@ export class AssistantFrameEncoder {
       case 'text_delta': {
         if (this.textIndex === undefined) {
           this.textIndex = this.nextIndex++;
-          return { type: 'text_start', index: this.textIndex, text: event.textDelta };
+          return {
+            type: 'text_start',
+            index: this.textIndex,
+            text: event.textDelta
+          };
         }
-        return { type: 'text_delta', index: this.textIndex, delta: event.textDelta };
+        return {
+          type: 'text_delta',
+          index: this.textIndex,
+          delta: event.textDelta
+        };
       }
       case 'thinking_delta': {
-        if (this.thinkingIndex === undefined) {
-          this.thinkingIndex = this.nextIndex++;
-          return { type: 'thinking_start', index: this.thinkingIndex, thinking: event.thinkingDelta };
+        const key = event.blockIndex === undefined ? 'default' : `provider:${event.blockIndex}`;
+        const existingIndex = this.thinkingIndexes.get(key);
+        if (existingIndex === undefined) {
+          const index = this.nextIndex++;
+          this.thinkingIndexes.set(key, index);
+          return {
+            type: 'thinking_start',
+            index,
+            thinking: event.thinkingDelta,
+            ...(event.blockIndex !== undefined ? { providerBlockIndex: event.blockIndex } : {})
+          };
         }
-        return { type: 'thinking_delta', index: this.thinkingIndex, delta: event.thinkingDelta };
+        return {
+          type: 'thinking_delta',
+          index: existingIndex,
+          delta: event.thinkingDelta
+        };
+      }
+      case 'thinking_signature': {
+        const index = this.thinkingIndexes.get(`provider:${event.blockIndex}`);
+        if (index === undefined) return null;
+        return {
+          type: 'thinking_signature',
+          index,
+          providerSignature: event.providerSignature
+        };
       }
       case 'tool_call_start': {
         if (this.toolCallState.has(event.toolCallId)) return null;
         const index = this.nextIndex++;
-        this.toolCallState.set(event.toolCallId, { index, open: true, argsLength: 0 });
-        return { type: 'tool_call_start', index, toolCallId: event.toolCallId, toolName: event.toolName };
+        this.toolCallState.set(event.toolCallId, {
+          index,
+          open: true,
+          argsLength: 0
+        });
+        return {
+          type: 'tool_call_start',
+          index,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName
+        };
       }
       case 'tool_call_delta': {
         const state = this.toolCallState.get(event.toolCallId);
         // 已结算的调用拒收迟到增量（fencing）；未 start 的增量无归属块，同样丢弃。
         if (!state || !state.open) return null;
         state.argsLength += event.argsDelta.length;
-        return { type: 'tool_call_args', index: state.index, toolCallId: event.toolCallId, delta: event.argsDelta };
+        return {
+          type: 'tool_call_args',
+          index: state.index,
+          toolCallId: event.toolCallId,
+          delta: event.argsDelta
+        };
       }
       case 'tool_call_end': {
         const state = this.toolCallState.get(event.toolCall.id);
         if (!state || !state.open) return null;
         state.open = false;
-        return { type: 'tool_call_end', index: state.index, toolCall: structuredClone(event.toolCall) };
+        return {
+          type: 'tool_call_end',
+          index: state.index,
+          toolCall: structuredClone(event.toolCall)
+        };
       }
       case 'usage':
       case 'error':
@@ -78,7 +136,7 @@ export class AssistantFrameEncoder {
       case 'attempt_reset':
         this.nextIndex = 0;
         this.textIndex = undefined;
-        this.thinkingIndex = undefined;
+        this.thinkingIndexes.clear();
         this.toolCallState.clear();
         return { type: 'attempt_reset' };
       default:
@@ -109,11 +167,20 @@ export function reduceAssistantFrames(frames: readonly AssistantStreamFrame[]): 
     }
     return block;
   };
-  const ensureThinkingBlock = (index: number): Extract<ContentBlock, { type: 'thinking' }> => {
+  const ensureThinkingBlock = (
+    index: number,
+    providerBlockIndex?: number
+  ): Extract<ContentBlock, { type: 'thinking' }> => {
     let block = content[index] as Extract<ContentBlock, { type: 'thinking' }> | undefined;
     if (!block || block.type !== 'thinking') {
-      block = { type: 'thinking', thinking: '' };
+      block = {
+        type: 'thinking',
+        thinking: '',
+        ...(providerBlockIndex !== undefined ? { providerBlockIndex } : {})
+      };
       content[index] = block;
+    } else if (providerBlockIndex !== undefined) {
+      block.providerBlockIndex = providerBlockIndex;
     }
     return block;
   };
@@ -124,7 +191,12 @@ export function reduceAssistantFrames(frames: readonly AssistantStreamFrame[]): 
   ): Extract<ContentBlock, { type: 'toolCall' }> => {
     let block = content[index] as Extract<ContentBlock, { type: 'toolCall' }> | undefined;
     if (!block || block.type !== 'toolCall') {
-      block = { type: 'toolCall', id: toolCallId, name: toolName, arguments: {} };
+      block = {
+        type: 'toolCall',
+        id: toolCallId,
+        name: toolName,
+        arguments: {}
+      };
       content[index] = block;
     }
     return block;
@@ -144,11 +216,16 @@ export function reduceAssistantFrames(frames: readonly AssistantStreamFrame[]): 
         ensureTextBlock(frame.index).text += frame.delta;
         break;
       case 'thinking_start':
-        ensureThinkingBlock(frame.index).thinking = frame.thinking;
+        ensureThinkingBlock(frame.index, frame.providerBlockIndex).thinking = frame.thinking;
         break;
       case 'thinking_delta':
         ensureThinkingBlock(frame.index).thinking += frame.delta;
         break;
+      case 'thinking_signature': {
+        const block = ensureThinkingBlock(frame.index);
+        block.providerSignature = frame.providerSignature;
+        break;
+      }
       case 'tool_call_start':
         ensureToolCallBlock(frame.index, frame.toolCallId, frame.toolName);
         break;
