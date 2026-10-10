@@ -56,14 +56,6 @@ export class StreamInvoker {
     const streamOpId = options.idGenerator
       ? options.idGenerator()
       : `op_stream_${clock()}_${(clock() % 10000).toString(36)}`;
-    if (options.journal) {
-      options.journal.append('operation_intent', {
-        id: streamOpId,
-        type: 'provider_stream',
-        intent: { model: state.model?.id, messageCount: llmMessages.length }
-      });
-    }
-
     let streamFn = options.streamFn;
     if (!streamFn) {
       try {
@@ -78,20 +70,39 @@ export class StreamInvoker {
       description: t.description,
       parameters: t.parameters
     }));
+    const prepared = await options.prepareRequest?.(
+      {
+        model: state.model,
+        messages: [...llmMessages],
+        systemPrompt: state.systemPrompt,
+        tools: toolsMetadata
+      },
+      signal
+    );
+    signal?.throwIfAborted();
+    const requestModel = prepared?.model ?? state.model;
+    const requestMessages = prepared?.messages ? [...prepared.messages] : llmMessages;
+    if (options.journal) {
+      await options.journal.append('operation_intent', {
+        id: streamOpId,
+        type: 'provider_stream',
+        intent: { model: requestModel.id, messageCount: requestMessages.length }
+      });
+    }
 
     // 逐轮思考档位（优先使用注入的 thinkingMapper，降级为内置默认映射）：
     const level = state.thinkingLevel;
-    const effortEnabled = state.model.supportsMidConvoEffort === true && level !== 'none' && level !== 'off';
+    const effortEnabled = requestModel.supportsMidConvoEffort === true && level !== 'none' && level !== 'off';
     const mapEffort = options.thinkingMapper?.mapThinkingLevelToEffort || defaultMapThinkingLevelToEffort;
     const getBudget = options.thinkingMapper?.getThinkingBudgetForLevel || defaultGetThinkingBudgetForLevel;
     const thinkingEffort = effortEnabled ? mapEffort(level) : undefined;
     const thinkingBudget = effortEnabled ? undefined : getBudget(level);
 
-    const stream = streamFn(state.model, llmMessages, {
+    const stream = streamFn(requestModel, requestMessages, {
       signal,
-      systemPrompt: state.systemPrompt,
+      systemPrompt: prepared?.systemPrompt ?? state.systemPrompt,
       ...(thinkingEffort !== undefined ? { thinkingEffort } : { thinkingBudget }),
-      tools: toolsMetadata
+      tools: prepared?.tools ?? toolsMetadata
     });
 
     const abortStream = (): void => stream.abort();

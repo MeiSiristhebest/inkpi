@@ -1,4 +1,4 @@
-import type { ModelConfig } from '@inkpi/ai';
+import type { ModelConfig, StreamOptions } from '@inkpi/ai';
 import type {
   AgentMessage,
   AgentTool,
@@ -83,6 +83,15 @@ export interface ShouldStopAfterTurnContext {
   toolResults: ToolResultMessage[];
 }
 
+export interface AgentRequestContext {
+  model: ModelConfig;
+  messages: readonly AgentMessage[];
+  systemPrompt: string;
+  tools: NonNullable<StreamOptions['tools']>;
+}
+
+export type FinishTurnDecision = { action: 'end' | 'continue' };
+
 export interface AgentOptions {
   initialState?: Partial<Omit<AgentState, 'pendingToolCalls' | 'isStreaming' | 'streamingMessage' | 'errorMessage'>>;
   convertToLlm?: (messages: AgentMessage[]) => AgentMessage[] | Promise<AgentMessage[]>;
@@ -110,6 +119,16 @@ export interface AgentOptions {
   journal?: any;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
   afterToolCall?: (ctx: AfterToolCallContext) => Promise<AfterToolCallResult | undefined>;
+  /** Runs before every provider request, including a context-overflow retry. */
+  prepareRequest?: (
+    request: AgentRequestContext,
+    signal?: AbortSignal
+  ) => Partial<AgentRequestContext> | undefined | Promise<Partial<AgentRequestContext> | undefined>;
+  /** Runs after settlement and before turn_end. Error and aborted turns always end. */
+  finishTurn?: (
+    turn: ShouldStopAfterTurnContext,
+    signal?: AbortSignal
+  ) => FinishTurnDecision | undefined | Promise<FinishTurnDecision | undefined>;
   shouldStopAfterTurn?: (ctx: ShouldStopAfterTurnContext, signal?: AbortSignal) => Promise<boolean>;
   /** Runtime compactor used before first call and during rolling tool history. */
   sessionCompactor?: SessionCompactor;

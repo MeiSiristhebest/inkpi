@@ -1,4 +1,5 @@
 import type { AssistantMessage, ToolResultMessage } from '@inkpi/protocol';
+import type { FinishTurnDecision } from '../types.js';
 import type { TurnContext } from './turn-context.js';
 
 export interface TurnFinalizeArgs {
@@ -22,13 +23,27 @@ export interface TurnFinalizeArgs {
 export class TurnFinalizer {
   /** 返回是否应继续循环。 */
   public async finalize(ctx: TurnContext, args: TurnFinalizeArgs): Promise<boolean> {
-    await ctx.emitEvent({
-      type: 'turn_end',
-      message: args.assistantMessage,
-      toolResults: args.toolResults
-    });
+    let decision: FinishTurnDecision | undefined;
+    try {
+      decision = await ctx.options.finishTurn?.(
+        { assistantMessage: args.assistantMessage, toolResults: args.toolResults },
+        ctx.signal
+      );
+    } finally {
+      await ctx.emitEvent({
+        type: 'turn_end',
+        message: args.assistantMessage,
+        toolResults: args.toolResults
+      });
+    }
 
-    if (args.shouldTerminateFromTools) {
+    if (
+      args.shouldTerminateFromTools ||
+      ctx.signal?.aborted ||
+      args.assistantMessage.stopReason === 'error' ||
+      args.assistantMessage.stopReason === 'aborted' ||
+      decision?.action === 'end'
+    ) {
       return false;
     }
 
@@ -46,7 +61,7 @@ export class TurnFinalizer {
     // steering 消息需要下一轮消化
     if (ctx.steeringQueue.size() > 0) return true;
 
-    return this.drainFollowUp(ctx);
+    return (await this.drainFollowUp(ctx)) || decision?.action === 'continue';
   }
 
   /** 排空一条 follow-up；有排到则返回真（表示应继续循环）。 */
