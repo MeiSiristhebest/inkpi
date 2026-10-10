@@ -366,6 +366,14 @@ describe('@inkpi/tui Independent Framework', () => {
     expect(renderTerminalImage(mockBase64, { protocol: 'auto' })).toBeDefined();
   });
 
+  it('falls back to text when an image payload is not valid Base64', () => {
+    for (const protocol of ['kitty', 'iterm2'] as const) {
+      const fallback = renderTerminalImage('\x1b]1337;File=malicious\x07', { protocol });
+      expect(fallback).toContain('立绘/图像');
+      expect(fallback).not.toContain('\x1b');
+    }
+  });
+
   it('should render Mermaid ASCII flowcharts', () => {
     const mermaid = `
     flowchart TD
