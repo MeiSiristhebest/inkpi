@@ -36,6 +36,23 @@ export interface OAuthRefreshOptions {
   onToken?: (tokens: OAuthTokenResult) => Promise<void> | void;
 }
 
+type OAuthTokenPersistence = NonNullable<OAuthRefreshOptions['onToken']>;
+
+interface OAuthTokenPersistenceWaiter {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+interface OAuthRefreshOperation {
+  promise: Promise<OAuthTokenResult>;
+  registerPersistence: (onToken?: OAuthTokenPersistence) => Promise<void>;
+  start: () => void;
+}
+
+const inFlightOAuthRefreshes = new Map<string, OAuthRefreshOperation>();
+const OAUTH_REFRESH_TIMEOUT_MS = 30_000;
+
 /** Generate an OAuth authorization URL. The flow helper supplies a PKCE challenge. */
 export function getOAuthAuthorizeUrl(
   options: OAuthFlowOptions,
@@ -199,26 +216,137 @@ export async function startOAuthLoginFlow(
 export async function refreshOAuthToken(options: OAuthRefreshOptions): Promise<OAuthTokenResult> {
   if (options.signal?.aborted) throw createAbortError();
   const tokenUrl = validateEndpoint(options.tokenUrl, 'tokenUrl');
-  const body = new URLSearchParams({
-    client_id: options.clientId,
-    grant_type: 'refresh_token',
-    refresh_token: options.refreshToken
-  });
-  if (options.clientSecret) body.set('client_secret', options.clientSecret);
+  const refreshKey = createHash('sha256')
+    .update(JSON.stringify([tokenUrl.href, options.clientId, options.clientSecret ?? null, options.refreshToken]))
+    .digest('hex');
+  let operation = inFlightOAuthRefreshes.get(refreshKey);
+  if (!operation) {
+    operation = createOAuthRefreshOperation(refreshKey, tokenUrl, options);
+    inFlightOAuthRefreshes.set(refreshKey, operation);
+  }
 
-  const response = await getHttpClient().fetch(tokenUrl.toString(), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json'
-    },
-    body: body.toString(),
-    signal: options.signal
+  const persistence = operation.registerPersistence(options.onToken);
+  operation.start();
+  const result = Promise.all([operation.promise, persistence]).then(([tokens]) => tokens);
+  return waitForAbort(result, options.signal);
+}
+
+function createOAuthRefreshOperation(key: string, tokenUrl: URL, options: OAuthRefreshOptions): OAuthRefreshOperation {
+  let resolveResult!: (tokens: OAuthTokenResult) => void;
+  let rejectResult!: (error: unknown) => void;
+  const promise = new Promise<OAuthTokenResult>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
   });
-  if (!response.ok) throw new Error(`OAuth token refresh failed (${response.status}).`);
-  const tokens = parseTokenResponse(await response.json(), options.refreshToken);
-  await options.onToken?.(tokens);
-  return tokens;
+  const persistWaiters = new Map<OAuthTokenPersistence, OAuthTokenPersistenceWaiter>();
+  const pendingPersistence = new Set<OAuthTokenPersistence>();
+  let tokens: OAuthTokenResult | undefined;
+  let settled = false;
+  let started = false;
+
+  const registerPersistence = (onToken?: OAuthTokenPersistence): Promise<void> => {
+    if (!onToken) return Promise.resolve();
+    const existing = persistWaiters.get(onToken);
+    if (existing) return existing.promise;
+    if (settled) {
+      return tokens
+        ? Promise.resolve().then(() => onToken(tokens!))
+        : Promise.reject(new Error('OAuth token refresh failed.'));
+    }
+
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const persistencePromise = new Promise<void>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    persistWaiters.set(onToken, { promise: persistencePromise, resolve, reject });
+    pendingPersistence.add(onToken);
+    return persistencePromise;
+  };
+
+  const start = (): void => {
+    if (started) return;
+    started = true;
+    void (async () => {
+      try {
+        const body = new URLSearchParams({
+          client_id: options.clientId,
+          grant_type: 'refresh_token',
+          refresh_token: options.refreshToken
+        });
+        if (options.clientSecret) body.set('client_secret', options.clientSecret);
+
+        const response = await getHttpClient().fetch(tokenUrl.toString(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json'
+          },
+          body: body.toString(),
+          // A request cancellation ends that caller's wait. It must not abort a
+          // refresh that may already have rotated the stored refresh token.
+          signal: AbortSignal.timeout(OAUTH_REFRESH_TIMEOUT_MS)
+        });
+        if (!response.ok) throw new Error(`OAuth token refresh failed (${response.status}).`);
+        tokens = parseTokenResponse(await response.json(), options.refreshToken);
+
+        while (pendingPersistence.size > 0) {
+          const callbacks = [...pendingPersistence];
+          pendingPersistence.clear();
+          await Promise.allSettled(
+            callbacks.map(async (callback) => {
+              const waiter = persistWaiters.get(callback)!;
+              try {
+                await callback(tokens!);
+                waiter.resolve();
+              } catch (error) {
+                waiter.reject(error);
+                throw error;
+              }
+            })
+          );
+        }
+
+        settled = true;
+        resolveResult(tokens!);
+      } catch (error) {
+        settled = true;
+        for (const callback of pendingPersistence) persistWaiters.get(callback)?.reject(error);
+        pendingPersistence.clear();
+        rejectResult(error);
+      } finally {
+        if (inFlightOAuthRefreshes.get(key) === operation) inFlightOAuthRefreshes.delete(key);
+      }
+    })();
+  };
+
+  const operation: OAuthRefreshOperation = { promise, registerPersistence, start };
+  return operation;
+}
+
+function waitForAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      }
+    );
+  });
 }
 
 async function exchangeCode(

@@ -489,6 +489,91 @@ describe('@inkpi/ai: Dynamic Cost, Images, AWS SigV4, Local OAuth', () => {
       }
     });
 
+    it('persists a rotated refresh token after the caller cancels its wait', async () => {
+      const originalFetch = globalThis.fetch;
+      const controller = new AbortController();
+      let resolveFetch!: (response: Response) => void;
+      let tokenFetchSignal: AbortSignal | null | undefined;
+      const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+        tokenFetchSignal = init?.signal;
+        return new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        });
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const persisted = vi.fn();
+
+      try {
+        const refresh = refreshOAuthToken({
+          clientId: 'client-123',
+          tokenUrl: 'https://identity.example/token',
+          refreshToken: 'existing-refresh-token',
+          signal: controller.signal,
+          onToken: persisted
+        });
+
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(tokenFetchSignal).not.toBe(controller.signal);
+        controller.abort();
+        await expect(refresh).rejects.toMatchObject({ name: 'AbortError' });
+        expect(tokenFetchSignal?.aborted).toBe(false);
+
+        resolveFetch(
+          new Response(JSON.stringify({ access_token: 'new-access-token', refresh_token: 'rotated-refresh-token' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        );
+        await vi.waitFor(() => expect(persisted).toHaveBeenCalledOnce());
+        expect(persisted).toHaveBeenCalledWith({
+          accessToken: 'new-access-token',
+          refreshToken: 'rotated-refresh-token'
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('coalesces concurrent refreshes and persists the result for every caller', async () => {
+      const originalFetch = globalThis.fetch;
+      let resolveFetch!: (response: Response) => void;
+      const fetchMock = vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          })
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const persistFirst = vi.fn();
+      const persistSecond = vi.fn();
+
+      try {
+        const options = {
+          clientId: 'client-123',
+          tokenUrl: 'https://identity.example/token',
+          refreshToken: 'existing-refresh-token'
+        };
+        const first = refreshOAuthToken({ ...options, onToken: persistFirst });
+        const second = refreshOAuthToken({ ...options, onToken: persistSecond });
+        expect(fetchMock).toHaveBeenCalledOnce();
+
+        resolveFetch(
+          new Response(JSON.stringify({ access_token: 'new-access-token', refresh_token: 'rotated-refresh-token' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        );
+        await expect(Promise.all([first, second])).resolves.toEqual([
+          { accessToken: 'new-access-token', refreshToken: 'rotated-refresh-token' },
+          { accessToken: 'new-access-token', refreshToken: 'rotated-refresh-token' }
+        ]);
+        expect(persistFirst).toHaveBeenCalledOnce();
+        expect(persistSecond).toHaveBeenCalledOnce();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     it('sends the token exchange abort signal and closes on cancellation', async () => {
       const originalFetch = globalThis.fetch;
       const controller = new AbortController();
