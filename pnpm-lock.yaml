@@ -23,9 +23,6 @@ importers:
       '@inkpi/editor-core':
         specifier: workspace:*
         version: link:packages/editor-core
-      '@inkpi/evals':
-        specifier: workspace:*
-        version: link:packages/evals
       '@inkpi/protocol':
         specifier: workspace:*
         version: link:packages/protocol
@@ -45,6 +42,9 @@ importers:
       '@biomejs/biome':
         specifier: 1.9.4
         version: 1.9.4
+      '@inkpi/evals':
+        specifier: workspace:*
+        version: link:packages/evals
       '@types/node':
         specifier: 22.13.0
         version: 22.13.0
