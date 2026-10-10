@@ -1,4 +1,6 @@
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
+import { chmodSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeVMSandbox, SandboxExecutor, SessionTree, StoryboardExporter } from '@inkpi/agent-core';
@@ -443,6 +445,32 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(output).toContain('Step 2: Preparing Standalone Release Entrypoint');
       expect(output).toContain('Build pipeline completed successfully');
       expect(after).toBe(before);
+    }, 30_000);
+
+    it('fails the binary build when the compiler invocation fails', () => {
+      const fakeBinDir = mkdtempSync(path.join(os.tmpdir(), 'inkpi-failing-compiler-'));
+
+      try {
+        const fakeBun = path.join(fakeBinDir, process.platform === 'win32' ? 'bun.exe' : 'bun');
+        copyFileSync(process.execPath, fakeBun);
+        if (process.platform !== 'win32') chmodSync(fakeBun, 0o755);
+
+        const result = spawnSync(process.execPath, ['scripts/build-binaries.mjs'], {
+          cwd: rootDir,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ''}`
+          }
+        });
+        const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+        expect(output).toContain(`Found Bun compiler runtime: vv${process.versions.node}`);
+        expect(output).toContain('Bun compilation error');
+        expect(result.status).toBe(1);
+      } finally {
+        rmSync(fakeBinDir, { recursive: true, force: true });
+      }
     }, 30_000);
 
     it('should execute inkpi-standalone.mjs CLI both in studio frame and print mode', () => {
