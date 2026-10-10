@@ -105,6 +105,7 @@ import {
   validateModelRouteRuntimeState
 } from './model-capability-router.js';
 import { probeModelProvider } from './model-provider-probe.js';
+import { PROJECT_INSTRUCTIONS_PROVIDER_ID, createTrustedProjectInstructionsProvider } from './project-instructions.js';
 import {
   type RuntimeCredentialResolver,
   createRuntimeCredentialResolverFromEnvironment
@@ -127,6 +128,10 @@ export interface DaemonOptions {
   credentialResolver?: RuntimeCredentialResolver;
   capabilityRouter?: CapabilityRouter;
   instructionRegistry?: InstructionRegistry;
+  /** Current project directory. Project instructions load only inside trustedProjectRoots. */
+  projectRoot?: string;
+  /** Absolute host-trusted roots that may provide AGENTS.md instructions. */
+  trustedProjectRoots?: readonly string[];
   skillRuntime?: ProgressiveSkillRuntime;
   skillSearchDirs?: readonly string[];
   skillActivators?: ProgressiveSkillRuntimeOptions['skillActivators'];
@@ -206,6 +211,22 @@ export class InkPiDaemon {
       ...createSerializedCreativeContextProviders(),
       createConversationHistoryProvider()
     ];
+    const projectInstructionsProvider =
+      options.projectRoot && options.trustedProjectRoots?.length
+        ? createTrustedProjectInstructionsProvider({
+            projectRoot: options.projectRoot,
+            trustedRoots: options.trustedProjectRoots
+          })
+        : undefined;
+    if (projectInstructionsProvider) {
+      if (
+        contextProviders.some((provider) => provider.id === PROJECT_INSTRUCTIONS_PROVIDER_ID) ||
+        contextPipeline.list().some((provider) => provider.id === PROJECT_INSTRUCTIONS_PROVIDER_ID)
+      ) {
+        throw new Error(`Context provider id '${PROJECT_INSTRUCTIONS_PROVIDER_ID}' is reserved.`);
+      }
+      contextPipeline.register(projectInstructionsProvider);
+    }
     for (const provider of contextProviders) {
       if (!contextPipeline.list().some((registered) => registered.id === provider.id)) {
         contextPipeline.register(provider);

@@ -33,6 +33,7 @@ OPTIONS:
   -m, --model <id>          Model identifier (e.g. deepseek-chat, gpt-4o, claude-3-5-sonnet)
   --port <number>           TCP port for daemon server (default: 8848)
   --ws-port <number>        WebSocket port for daemon server (default: TCP port + 1)
+  --trusted-project-root <path> Load AGENTS instructions only inside this trusted root (repeatable)
   --state-db <path>         SQLite state DB path (or use INKPI_STATE_DB)
   --role <role>             Agent role preset for pipeline
   --json                    Output structured JSON responses
@@ -123,6 +124,12 @@ async function main() {
     case 'server': {
       const portIdx = args.indexOf('--port');
       const wsPortIdx = args.indexOf('--ws-port');
+      const trustedProjectRoots = [];
+      for (let index = 0; index < args.length; index += 1) {
+        if (args[index] !== '--trusted-project-root') continue;
+        trustedProjectRoots.push(resolve(readRequiredArg(args, index, '--trusted-project-root')));
+        index += 1;
+      }
 
       const {
         InkPiDaemon,
@@ -160,6 +167,9 @@ async function main() {
           host: '127.0.0.1',
           defaultModel,
           ...(defaultModelCapabilities ? { defaultModelCapabilities } : {}),
+          ...(trustedProjectRoots.length
+            ? { projectRoot: process.cwd(), trustedProjectRoots }
+            : {}),
           skillSearchDirs: resolveSkillSearchDirs(),
           context: persistence.context,
           ...(persistence.cachePersistence ? { cachePersistence: persistence.cachePersistence } : {}),

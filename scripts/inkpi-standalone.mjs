@@ -15,7 +15,7 @@ import { runPrintMode } from '../packages/cli/dist/index.js';
 import { TerminalStudio } from '../packages/tui/dist/studio.js';
 import { runPackageManagerCli } from '../packages/cli/dist/index.js';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { InkRpcServer } from '../packages/server/dist/server.js';
 import { InkPiDaemon } from '../packages/server/dist/daemon.js';
@@ -92,6 +92,12 @@ async function main() {
     const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : DEFAULT_RPC_PORT;
     const wsPortIdx = args.indexOf('--ws-port');
     const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
+    const trustedProjectRoots = [];
+    for (let index = 0; index < args.length; index += 1) {
+      if (args[index] !== '--trusted-project-root') continue;
+      trustedProjectRoots.push(resolve(readRequiredArg(index, '--trusted-project-root')));
+      index += 1;
+    }
     const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
     const stateDbPath = stateDbFlag
       ? readRequiredArg(args.indexOf(stateDbFlag), stateDbFlag)
@@ -126,6 +132,9 @@ async function main() {
         port,
         host: '127.0.0.1',
         defaultModel,
+        ...(trustedProjectRoots.length
+          ? { projectRoot: process.cwd(), trustedProjectRoots }
+          : {}),
         ...(defaultModelCapabilities ? { defaultModelCapabilities } : {}),
         skillSearchDirs: resolveSkillSearchDirs(),
         context: persistence.context,
