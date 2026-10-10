@@ -41,6 +41,93 @@ function tempDbPath(): string {
 }
 
 describe('schema upgrade of pre-existing databases', () => {
+  function restoreVersionOneEntries(db: InkDb): void {
+    db.exec(`
+      ALTER TABLE session_entries RENAME TO session_entries_new;
+      CREATE TABLE session_entries (
+        id TEXT PRIMARY KEY, session_id TEXT NOT NULL, seq INTEGER NOT NULL,
+        parent_id TEXT, lane_id TEXT, operation_id TEXT, type TEXT NOT NULL,
+        payload_json TEXT NOT NULL, timestamp INTEGER NOT NULL, version INTEGER DEFAULT 1
+      );
+      INSERT INTO session_entries SELECT id, session_id, seq, parent_id, lane_id, operation_id, type, payload_json, timestamp, version FROM session_entries_new;
+      DROP TABLE session_entries_new;
+      PRAGMA user_version = 1;
+    `);
+  }
+
+  it('migrates version one entries losslessly to session-scoped IDs', () => {
+    const path = tempDbPath();
+    const created = new InkDb(path);
+    const entry = {
+      id: 'original',
+      sessionId: 'source',
+      seq: 7,
+      parentId: null,
+      type: 'compaction' as const,
+      payload: { firstKeptEntryId: 'external', details: { keep: [1, 2] } },
+      timestamp: 10,
+      version: 1
+    };
+    new InkRepository(created).saveSessionEntry(entry);
+    restoreVersionOneEntries(created);
+    created.exec('CREATE INDEX custom_entry_operation ON session_entries(operation_id)');
+    created.exec(
+      "CREATE TRIGGER custom_entry_guard BEFORE INSERT ON session_entries WHEN NEW.id = 'blocked' BEGIN SELECT RAISE(ABORT, 'custom guard'); END"
+    );
+    created.close();
+    const migrated = new InkDb(path);
+    const repo = new InkRepository(migrated);
+    expect(repo.getSessionEntries('source')).toStrictEqual([entry]);
+    repo.saveSessionEntry({ ...entry, sessionId: 'fork' });
+    expect(repo.getSessionEntries('source')).toStrictEqual([entry]);
+    expect(repo.getSessionEntries('fork')).toStrictEqual([{ ...entry, sessionId: 'fork' }]);
+    expect(indexOf(migrated, 'custom_entry_operation')).toEqual(['custom_entry_operation']);
+    expect(() => repo.saveSessionEntry({ ...entry, id: 'blocked', sessionId: 'fork' })).toThrow(/custom guard/);
+    expect(migrated.prepare('PRAGMA user_version').get()).toEqual({ user_version: STORAGE_SCHEMA_VERSION });
+    migrated.close();
+  });
+
+  it('rolls back schema and data migration when a later migration stage fails', () => {
+    const path = tempDbPath();
+    const db = new InkDb(path);
+    new InkRepository(db).saveSessionEntry({
+      id: 'retained',
+      sessionId: 'source',
+      seq: 1,
+      parentId: null,
+      type: 'user_message',
+      payload: {},
+      timestamp: 1
+    });
+    restoreVersionOneEntries(db);
+    db.exec(
+      "INSERT INTO domain_change_sets (id, workspace_id, source_device_id, base_revision, revision, changes_json, checksum, created_at) VALUES ('bad', 'ws', 'dev', 0, 1, 'invalid JSON', '', 1)"
+    );
+    const schema = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'session_entries'").get();
+    const row = db.prepare('SELECT * FROM session_entries').get();
+    expect(() => db.initSchema()).toThrow(/Invalid domain change set JSON/);
+    expect(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'session_entries'").get()).toEqual(schema);
+    expect(db.prepare('SELECT * FROM session_entries').get()).toEqual(row);
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'session_entries_v1'").get()).toBeUndefined();
+    db.exec("UPDATE domain_change_sets SET changes_json = '[]' WHERE id = 'bad'");
+    db.initSchema();
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: STORAGE_SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('refuses to remove unknown legacy columns and their data', () => {
+    const db = new InkDb();
+    restoreVersionOneEntries(db);
+    db.exec(
+      "ALTER TABLE session_entries ADD COLUMN custom_data TEXT; INSERT INTO session_entries (id, session_id, seq, type, payload_json, timestamp, custom_data) VALUES ('kept', 'source', 1, 'custom', '{}', 1, 'preserve me')"
+    );
+    expect(() => db.initSchema()).toThrow(/unknown columns/);
+    expect(db.prepare('SELECT custom_data FROM session_entries').get()).toEqual({ custom_data: 'preserve me' });
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+    db.close();
+  });
+
   it('rejects a database created by a newer Runtime storage schema', () => {
     const path = tempDbPath();
     const created = new InkDb(path);

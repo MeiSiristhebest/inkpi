@@ -88,7 +88,11 @@ for (const h of makeHarnesses()) {
 
       await expect(backend.initialize()).rejects.toBeInstanceOf(BackendClosedError);
       await expect(backend.appendEntry('sess_1', entry('e2', 200))).rejects.toBeInstanceOf(BackendClosedError);
+      await expect(backend.appendEntries('sess_1', [entry('e2', 200)])).rejects.toBeInstanceOf(BackendClosedError);
+      await expect(backend.loadEntries('sess_1', [entry('e2', 200)])).rejects.toBeInstanceOf(BackendClosedError);
       await expect(backend.getEntries('sess_1')).rejects.toBeInstanceOf(BackendClosedError);
+      await expect(backend.getEntryPage('sess_1')).rejects.toBeInstanceOf(BackendClosedError);
+      await expect(backend.forkSession('sess_1', 'fork')).rejects.toBeInstanceOf(BackendClosedError);
       await expect(backend.saveSnapshot(snapshot)).rejects.toBeInstanceOf(BackendClosedError);
       await expect(backend.getSnapshot('doc_1')).rejects.toBeInstanceOf(BackendClosedError);
       await expect(backend.appendDelta(delta)).rejects.toBeInstanceOf(BackendClosedError);

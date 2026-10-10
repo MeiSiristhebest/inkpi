@@ -315,9 +315,9 @@ export class InkRepository implements IRepository {
 
   public saveSessionEntry(entry: SessionEntry): void {
     const stmt = this.db.prepare(`
-      INSERT INTO session_entries (id, session_id, seq, parent_id, lane_id, operation_id, type, payload_json, timestamp, version)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
+      INSERT INTO session_entries (id, session_id, seq, parent_id, lane_id, operation_id, type, payload_json, timestamp, version, hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id, id) DO UPDATE SET
         seq = excluded.seq,
         parent_id = excluded.parent_id,
         lane_id = excluded.lane_id,
@@ -325,7 +325,8 @@ export class InkRepository implements IRepository {
         type = excluded.type,
         payload_json = excluded.payload_json,
         timestamp = excluded.timestamp,
-        version = excluded.version
+        version = excluded.version,
+        hash = excluded.hash
     `);
     stmt.run(
       entry.id,
@@ -337,7 +338,8 @@ export class InkRepository implements IRepository {
       entry.type,
       JSON.stringify(entry.payload),
       entry.timestamp,
-      entry.version || 1
+      entry.version ?? 1,
+      entry.hash ?? null
     );
   }
 
@@ -349,12 +351,13 @@ export class InkRepository implements IRepository {
       sessionId: row.session_id,
       seq: Number(row.seq),
       parentId: row.parent_id || null,
-      laneId: row.lane_id || undefined,
-      operationId: row.operation_id || undefined,
+      ...(row.lane_id ? { laneId: row.lane_id } : {}),
+      ...(row.operation_id ? { operationId: row.operation_id } : {}),
       type: row.type,
       payload: parseStoredJson(row.payload_json, 'session entry payload'),
       timestamp: Number(row.timestamp),
-      version: Number(row.version) || 1
+      version: Number(row.version) || 1,
+      ...(row.hash != null ? { hash: row.hash } : {})
     }));
   }
 

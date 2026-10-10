@@ -7,6 +7,27 @@ export interface SessionBackendCapabilities {
   readonly durableDisk: boolean;
 }
 
+export interface SessionEntryCursor {
+  version: 1;
+  sessionId: string;
+  direction: 'forward' | 'backward';
+  /** Fixed inclusive boundary for this traversal; later appends are excluded. */
+  upperSeq: number;
+  lastSeq: number;
+  lastId: string;
+}
+
+export interface SessionEntryPageOptions {
+  limit?: number;
+  direction?: 'forward' | 'backward';
+  cursor?: SessionEntryCursor;
+}
+
+export interface SessionEntryPage {
+  entries: SessionEntry[];
+  nextCursor: SessionEntryCursor | null;
+}
+
 /**
  * 统一会话持久化端口契约 (Ports & Adapters Architecture)
  * 会话后端抽象：后端实现负责会话的持久化与装载，领域核心仅依赖本接口。
@@ -31,7 +52,12 @@ export interface ISessionBackend {
 
   // Journal / Events (Event Sourcing)
   appendEntry(sessionId: string, entry: SessionEntry): Promise<void>;
+  /** Validate before any write and commit the whole batch. Unknown I/O outcomes require reconstruction. */
+  appendEntries(sessionId: string, entries: readonly SessionEntry[]): Promise<void>;
   getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]>;
+  getEntryPage(sessionId: string, options?: SessionEntryPageOptions): Promise<SessionEntryPage>;
+  /** Copy into an empty target, retaining all IDs and metadata. A head selects its ancestor path. */
+  forkSession(sourceSessionId: string, targetSessionId: string, headId?: string | null): Promise<void>;
   /**
    * 批量装载/还原会话条目（对齐上游 v0.85.0 PR #8980：无损摄入外部 SessionEntry）。
    * 保留外部持久化存储传入的原生 id、parentId、firstKeptEntryId 及时间戳，

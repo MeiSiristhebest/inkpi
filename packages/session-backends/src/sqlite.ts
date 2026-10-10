@@ -1,7 +1,8 @@
 import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
 import { AppendOnlySessionJournal, FtsSearchEngine, InkDb, InkRepository } from '@inkpi/storage';
+import { forkEntries, pageEntries, prepareEntryBatch, validateStorageId } from './entry-contract.js';
 import { BackendClosedError } from './errors.js';
-import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
+import type { ISessionBackend, SessionBackendCapabilities, SessionEntryPageOptions } from './types.js';
 
 export interface SqliteSessionBackendOptions {
   dbPath?: string; // ':memory:' or file path
@@ -25,7 +26,7 @@ export class SqliteSessionBackend implements ISessionBackend {
     fts: true,
     snapshots: true,
     concurrencyLeases: true,
-    durableDisk: true
+    durableDisk: false
   };
 
   private db: InkDb;
@@ -38,6 +39,7 @@ export class SqliteSessionBackend implements ISessionBackend {
   constructor(options: SqliteSessionBackendOptions = {}) {
     this.options = options;
     const dbPath = options.dbPath || ':memory:';
+    this.capabilities = { ...this.capabilities, durableDisk: dbPath !== ':memory:' };
     this.db = new InkDb(dbPath);
     this.repo = new InkRepository(this.db);
     this.fts = new FtsSearchEngine(this.db);
@@ -108,23 +110,50 @@ export class SqliteSessionBackend implements ISessionBackend {
     });
   }
 
-  public async appendEntry(_sessionId: string, entry: SessionEntry): Promise<void> {
+  public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
     this.assertOpen();
-    this.repo.saveSessionEntry(entry);
+    await this.appendEntries(sessionId, [entry]);
   }
 
-  public async loadEntries(_sessionId: string, entries: SessionEntry[]): Promise<void> {
+  public async appendEntries(sessionId: string, entries: readonly SessionEntry[]): Promise<void> {
     this.assertOpen();
-    for (const e of entries) {
-      this.repo.saveSessionEntry(e);
-    }
+    this.db.transaction(() => {
+      const batch = prepareEntryBatch(sessionId, this.repo.getSessionEntries(sessionId), entries);
+      for (const entry of batch) this.repo.saveSessionEntry(entry);
+    });
+  }
+
+  public async loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void> {
+    this.assertOpen();
+    await this.appendEntries(sessionId, entries);
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
     this.assertOpen();
+    validateStorageId(sessionId);
     const all = this.repo.getSessionEntries(sessionId);
     if (fromTimestamp === undefined) return all;
     return all.filter((e) => e.timestamp >= fromTimestamp);
+  }
+
+  public async getEntryPage(sessionId: string, options: SessionEntryPageOptions = {}) {
+    this.assertOpen();
+    return pageEntries(sessionId, this.repo.getSessionEntries(sessionId), options);
+  }
+
+  public async forkSession(sourceSessionId: string, targetSessionId: string, headId?: string | null): Promise<void> {
+    this.assertOpen();
+    this.db.transaction(() => {
+      const entries = forkEntries(
+        sourceSessionId,
+        targetSessionId,
+        this.repo.getSessionEntries(sourceSessionId),
+        this.repo.getSessionEntries(targetSessionId),
+        headId
+      );
+      const batch = prepareEntryBatch(targetSessionId, [], entries);
+      for (const entry of batch) this.repo.saveSessionEntry(entry);
+    });
   }
 
   public async saveSnapshot(snapshot: DocumentSnapshot): Promise<void> {

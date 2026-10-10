@@ -1,3 +1,19 @@
+export const SESSION_ENTRIES_DDL = `
+CREATE TABLE IF NOT EXISTS session_entries (
+  id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  parent_id TEXT,
+  lane_id TEXT,
+  operation_id TEXT,
+  type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  version INTEGER DEFAULT 1,
+  hash TEXT,
+  PRIMARY KEY (session_id, id)
+);`;
+
 export const STORAGE_SCHEMA_DDL = `
 -- 1. Workspaces (工作空间表)
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -161,18 +177,7 @@ CREATE TABLE IF NOT EXISTS operations (
 CREATE INDEX IF NOT EXISTS idx_operations_session_state ON operations(session_id, state);
 
 -- 13. Session Entries (持久化会话日志条目表)
-CREATE TABLE IF NOT EXISTS session_entries (
-  id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
-  seq INTEGER NOT NULL,
-  parent_id TEXT,
-  lane_id TEXT,
-  operation_id TEXT,
-  type TEXT NOT NULL,
-  payload_json TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
-  version INTEGER DEFAULT 1
-);
+${SESSION_ENTRIES_DDL}
 CREATE INDEX IF NOT EXISTS idx_session_entries_lookup ON session_entries(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_session_entries_parent ON session_entries(parent_id);
 

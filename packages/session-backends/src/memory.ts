@@ -1,6 +1,7 @@
 import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
+import { forkEntries, pageEntries, prepareEntryBatch, validateStorageId } from './entry-contract.js';
 import { BackendClosedError } from './errors.js';
-import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
+import type { ISessionBackend, SessionBackendCapabilities, SessionEntryPageOptions } from './types.js';
 
 /**
  * 纯内存无副作用持久化适配器 (MemorySessionBackend)
@@ -9,7 +10,7 @@ import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
 export class MemorySessionBackend implements ISessionBackend {
   public readonly name = 'memory';
   public readonly capabilities: SessionBackendCapabilities = {
-    fts: true,
+    fts: false,
     snapshots: true,
     concurrencyLeases: false,
     durableDisk: false
@@ -40,30 +41,46 @@ export class MemorySessionBackend implements ISessionBackend {
 
   public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
     this.assertOpen();
-    if (!this.journals.has(sessionId)) {
-      this.journals.set(sessionId, []);
-    }
-    this.journals.get(sessionId)!.push({ ...entry });
+    await this.appendEntries(sessionId, [entry]);
+  }
+
+  public async appendEntries(sessionId: string, entries: readonly SessionEntry[]): Promise<void> {
+    this.assertOpen();
+    const current = this.journals.get(sessionId) ?? [];
+    const batch = prepareEntryBatch(sessionId, current, entries);
+    this.journals.set(sessionId, [...current, ...batch]);
   }
 
   public async loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void> {
     this.assertOpen();
-    if (!this.journals.has(sessionId)) {
-      this.journals.set(sessionId, []);
-    }
-    const current = this.journals.get(sessionId)!;
-    for (const e of entries) {
-      current.push({ ...e });
-    }
+    await this.appendEntries(sessionId, entries);
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
     this.assertOpen();
+    validateStorageId(sessionId);
     const list = this.journals.get(sessionId) || [];
     if (fromTimestamp === undefined) {
-      return [...list];
+      return structuredClone(list);
     }
-    return list.filter((e) => e.timestamp >= fromTimestamp);
+    return structuredClone(list.filter((e) => e.timestamp >= fromTimestamp));
+  }
+
+  public async getEntryPage(sessionId: string, options: SessionEntryPageOptions = {}) {
+    this.assertOpen();
+    return pageEntries(sessionId, this.journals.get(sessionId) ?? [], options);
+  }
+
+  public async forkSession(sourceSessionId: string, targetSessionId: string, headId?: string | null): Promise<void> {
+    this.assertOpen();
+    const entries = forkEntries(
+      sourceSessionId,
+      targetSessionId,
+      this.journals.get(sourceSessionId) ?? [],
+      this.journals.get(targetSessionId) ?? [],
+      headId
+    );
+    await this.appendEntries(targetSessionId, entries);
   }
 
   public async saveSnapshot(snapshot: DocumentSnapshot): Promise<void> {
@@ -91,9 +108,9 @@ export class MemorySessionBackend implements ISessionBackend {
     this.assertOpen();
     const list = this.deltas.get(documentId) || [];
     if (fromId === undefined) {
-      return [...list];
+      return structuredClone(list);
     }
-    return list.filter((d) => (d.id || 0) >= fromId);
+    return structuredClone(list.filter((d) => (d.id || 0) >= fromId));
   }
 
   public async search(query: string, limit = 20): Promise<FtsSearchResult[]> {

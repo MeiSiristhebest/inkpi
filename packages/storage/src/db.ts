@@ -1,9 +1,9 @@
 import { type DomainChangeSet, calculateDomainChangeSetChecksum } from '@inkpi/protocol';
-import { STORAGE_SCHEMA_DDL } from './ddl.js';
+import { SESSION_ENTRIES_DDL, STORAGE_SCHEMA_DDL } from './ddl.js';
 import type { IDb, PreparedStatement } from './ports.js';
 
 /** Increment when the Runtime's persisted SQLite shape changes. */
-export const STORAGE_SCHEMA_VERSION = 1;
+export const STORAGE_SCHEMA_VERSION = 2;
 
 interface SqliteDatabase {
   exec(sql: string): void;
@@ -37,7 +37,12 @@ export class InkDb implements IDb {
   constructor(dbPath = ':memory:') {
     this.dbPath = dbPath;
     this.db = new SqliteDatabase(dbPath);
-    this.initSchema();
+    try {
+      this.initSchema();
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
 
   public initSchema(): void {
@@ -54,32 +59,70 @@ export class InkDb implements IDb {
     // build already created, but the index that references it still runs inside
     // the same exec — so columns that appear in an index must be migrated first
     // or upgrading an existing database throws `no such column` and aborts.
-    this.ensureColumn('artifacts', 'workspace_id', 'TEXT');
-    this.db.exec(STORAGE_SCHEMA_DDL);
-    // Keep databases created by older versions readable while adding the
-    // metadata required for guarded lane fast-forward merges.
-    this.ensureColumn('lanes', 'parent_lane_id', 'TEXT');
-    this.ensureColumn('domain_change_sets', 'checksum', "TEXT NOT NULL DEFAULT ''");
-    this.ensureColumn('task_executions', 'run_json', 'TEXT');
-    this.ensureColumn('task_executions', 'steps_json', 'TEXT');
-    this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
-    this.ensureColumn('task_executions', 'resume_token_json', 'TEXT');
-    this.ensureColumn('task_executions', 'execution_snapshot_json', 'TEXT');
-    this.ensureColumn('task_executions', 'steering_json', 'TEXT');
-    this.ensureColumn('writer_leases', 'fencing_token', 'INTEGER NOT NULL DEFAULT 0');
-    const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
-    const addedBaseDelta = this.ensureColumn('branch_tips', 'base_delta_id', 'INTEGER NOT NULL DEFAULT 0');
-    if (addedBaseSnapshot || addedBaseDelta) {
-      // Older databases had no fork baseline. Treat their current tips as the
-      // only recoverable baseline instead of inventing a zero-valued one.
-      this.db.exec(`
+    this.transaction(() => {
+      this.migrateSessionEntries();
+      this.ensureColumn('artifacts', 'workspace_id', 'TEXT');
+      this.db.exec(STORAGE_SCHEMA_DDL);
+      // Keep databases created by older versions readable while adding the
+      // metadata required for guarded lane fast-forward merges.
+      this.ensureColumn('lanes', 'parent_lane_id', 'TEXT');
+      this.ensureColumn('domain_change_sets', 'checksum', "TEXT NOT NULL DEFAULT ''");
+      this.ensureColumn('task_executions', 'run_json', 'TEXT');
+      this.ensureColumn('task_executions', 'steps_json', 'TEXT');
+      this.ensureColumn('task_executions', 'execution_attempts_json', 'TEXT');
+      this.ensureColumn('task_executions', 'resume_token_json', 'TEXT');
+      this.ensureColumn('task_executions', 'execution_snapshot_json', 'TEXT');
+      this.ensureColumn('task_executions', 'steering_json', 'TEXT');
+      this.ensureColumn('writer_leases', 'fencing_token', 'INTEGER NOT NULL DEFAULT 0');
+      const addedBaseSnapshot = this.ensureColumn('branch_tips', 'base_snapshot_version', 'INTEGER NOT NULL DEFAULT 0');
+      const addedBaseDelta = this.ensureColumn('branch_tips', 'base_delta_id', 'INTEGER NOT NULL DEFAULT 0');
+      if (addedBaseSnapshot || addedBaseDelta) {
+        // Older databases had no fork baseline. Treat their current tips as the
+        // only recoverable baseline instead of inventing a zero-valued one.
+        this.db.exec(`
         UPDATE branch_tips
         SET base_snapshot_version = head_snapshot_version,
             base_delta_id = last_delta_id
       `);
+      }
+      this.backfillDomainChangeSetChecksums();
+      this.db.exec(`PRAGMA user_version = ${STORAGE_SCHEMA_VERSION}`);
+    });
+  }
+
+  private migrateSessionEntries(): void {
+    const columns = this.db.prepare('PRAGMA table_info(session_entries)').all() as Array<{ name: string; pk: number }>;
+    if (!columns.length) return;
+    if (columns.some((column) => column.name === 'session_id' && column.pk > 0)) return;
+    const knownColumns = new Set([
+      'id',
+      'session_id',
+      'seq',
+      'parent_id',
+      'lane_id',
+      'operation_id',
+      'type',
+      'payload_json',
+      'timestamp',
+      'version',
+      'hash'
+    ]);
+    if (columns.some((column) => !knownColumns.has(column.name))) {
+      throw new Error('Cannot migrate session entries with unknown columns without discarding data.');
     }
-    this.backfillDomainChangeSetChecksums();
-    this.db.exec(`PRAGMA user_version = ${STORAGE_SCHEMA_VERSION}`);
+    const schemaObjects = this.db
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE tbl_name = 'session_entries' AND type IN ('index', 'trigger') AND sql IS NOT NULL"
+      )
+      .all() as Array<{ sql: string }>;
+    // Entries retain their IDs when copied into another session. The old global
+    // ID key would overwrite the source instead of preserving the fork.
+    this.db.exec('ALTER TABLE session_entries RENAME TO session_entries_v1');
+    this.db.exec(SESSION_ENTRIES_DDL);
+    this.db.exec(`INSERT INTO session_entries (id, session_id, seq, parent_id, lane_id, operation_id, type, payload_json, timestamp, version, hash)
+      SELECT id, session_id, seq, parent_id, lane_id, operation_id, type, payload_json, timestamp, version, ${columns.some((column) => column.name === 'hash') ? 'hash' : 'NULL'} FROM session_entries_v1`);
+    this.db.exec('DROP TABLE session_entries_v1');
+    for (const object of schemaObjects) this.db.exec(object.sql);
   }
 
   private ensureColumn(

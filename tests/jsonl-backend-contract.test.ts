@@ -24,7 +24,7 @@ describe('JsonlSessionBackend fault-tolerance contract', () => {
     return {
       id,
       sessionId,
-      seq: 1,
+      seq: timestamp,
       parentId: null,
       timestamp,
       type: 'user_message',
@@ -65,7 +65,9 @@ describe('JsonlSessionBackend fault-tolerance contract', () => {
     await backend.appendEntry('sess_1', entry('good', 100));
     const journal = path.join(dir, 'session_sess_1.jsonl');
     fs.appendFileSync(journal, '这不是合法的 JSON\n', 'utf8');
-    await backend.appendEntry('sess_1', entry('after_corruption', 200));
+    const corrupt = fs.readFileSync(journal, 'utf8');
+    await expect(backend.appendEntry('sess_1', entry('after_corruption', 200))).rejects.toThrow(/line 2/);
+    expect(fs.readFileSync(journal, 'utf8')).toBe(corrupt);
 
     await expect(backend.getEntries('sess_1')).rejects.toThrow(/line 2/);
   });

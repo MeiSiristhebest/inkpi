@@ -1,8 +1,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { DocumentDelta, DocumentSnapshot, FtsSearchResult, SessionEntry } from '@inkpi/protocol';
+import {
+  type DocumentDelta,
+  type DocumentSnapshot,
+  type FtsSearchResult,
+  SessionCommitError,
+  type SessionEntry
+} from '@inkpi/protocol';
+import { forkEntries, pageEntries, prepareEntryBatch, validateStorageId } from './entry-contract.js';
 import { BackendClosedError } from './errors.js';
-import type { ISessionBackend, SessionBackendCapabilities } from './types.js';
+import type { ISessionBackend, SessionBackendCapabilities, SessionEntryPageOptions } from './types.js';
 
 function parseJsonl<T>(content: string, filePath: string): T[] {
   if (!content) return [];
@@ -61,7 +68,11 @@ function appendJsonl(filePath: string, content: string): void {
           try {
             JSON.parse(tail.toString('utf8'));
           } catch (cause) {
-            throw new Error(`Cannot append to "${filePath}": its final JSONL record is incomplete.`, { cause });
+            throw new SessionCommitError(
+              `Cannot append to "${filePath}": its final JSONL record is incomplete.`,
+              'rejected',
+              { cause }
+            );
           }
           separator = '\n';
         }
@@ -71,7 +82,13 @@ function appendJsonl(filePath: string, content: string): void {
     }
   }
 
-  fs.appendFileSync(filePath, `${separator}${content}`, 'utf8');
+  const fd = fs.openSync(filePath, 'a');
+  try {
+    fs.writeFileSync(fd, `${separator}${content}`, 'utf8');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /**
@@ -81,7 +98,7 @@ function appendJsonl(filePath: string, content: string): void {
 export class JsonlSessionBackend implements ISessionBackend {
   public readonly name = 'jsonl';
   public readonly capabilities: SessionBackendCapabilities = {
-    fts: true,
+    fts: false,
     snapshots: true,
     concurrencyLeases: false,
     durableDisk: true
@@ -89,6 +106,7 @@ export class JsonlSessionBackend implements ISessionBackend {
 
   private baseDir: string;
   private closed = false;
+  private readonly faultedJournals = new Set<string>();
 
   constructor(baseDir: string) {
     this.baseDir = baseDir;
@@ -114,6 +132,7 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   private getSessionJournalPath(sessionId: string): string {
+    validateStorageId(sessionId);
     return path.join(this.baseDir, `session_${sessionId}.jsonl`);
   }
 
@@ -122,31 +141,82 @@ export class JsonlSessionBackend implements ISessionBackend {
   }
 
   private getDeltasPath(documentId: string): string {
+    validateStorageId(documentId);
     return path.join(this.baseDir, `deltas_${documentId}.jsonl`);
   }
 
   public async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
     this.assertOpen();
+    await this.appendEntries(sessionId, [entry]);
+  }
+
+  private readEntries(sessionId: string): SessionEntry[] {
     const filePath = this.getSessionJournalPath(sessionId);
-    const line = `${JSON.stringify(entry)}\n`;
-    appendJsonl(filePath, line);
+    if (!fs.existsSync(filePath)) return [];
+    const records = parseJsonl<SessionEntry | { journalBatch: number; entries: SessionEntry[] }>(
+      fs.readFileSync(filePath, 'utf8'),
+      filePath
+    );
+    const entries: SessionEntry[] = [];
+    for (const record of records) {
+      const batch =
+        record && 'journalBatch' in record
+          ? record.journalBatch === 1 && Array.isArray(record.entries)
+            ? record.entries
+            : null
+          : [record as SessionEntry];
+      if (!batch) throw new Error(`Unsupported JSONL batch in "${filePath}".`);
+      entries.push(...prepareEntryBatch(sessionId, entries, batch));
+    }
+    return entries;
+  }
+
+  public async appendEntries(sessionId: string, entries: readonly SessionEntry[]): Promise<void> {
+    this.assertOpen();
+    if (this.faultedJournals.has(sessionId))
+      throw new SessionCommitError('Journal write outcome is unknown; reopen the backend before writing.', 'unknown');
+    const batch = prepareEntryBatch(sessionId, this.readEntries(sessionId), entries);
+    if (!batch.length) return;
+    try {
+      appendJsonl(
+        this.getSessionJournalPath(sessionId),
+        `${JSON.stringify(batch.length === 1 ? batch[0] : { journalBatch: 1, entries: batch })}\n`
+      );
+    } catch (cause) {
+      if (cause instanceof SessionCommitError && cause.certainty === 'rejected') throw cause;
+      this.faultedJournals.add(sessionId);
+      throw new SessionCommitError(cause instanceof Error ? cause.message : String(cause), 'unknown', { cause });
+    }
   }
 
   public async loadEntries(sessionId: string, entries: SessionEntry[]): Promise<void> {
     this.assertOpen();
-    if (entries.length === 0) return;
-    const filePath = this.getSessionJournalPath(sessionId);
-    const lines = entries.map((e) => `${JSON.stringify(e)}\n`).join('');
-    appendJsonl(filePath, lines);
+    await this.appendEntries(sessionId, entries);
   }
 
   public async getEntries(sessionId: string, fromTimestamp?: number): Promise<SessionEntry[]> {
     this.assertOpen();
-    const filePath = this.getSessionJournalPath(sessionId);
-    if (!fs.existsSync(filePath)) return [];
-
-    const records = parseJsonl<SessionEntry>(fs.readFileSync(filePath, 'utf8'), filePath);
+    const records = this.readEntries(sessionId);
     return fromTimestamp === undefined ? records : records.filter((entry) => entry.timestamp >= fromTimestamp);
+  }
+
+  public async getEntryPage(sessionId: string, options: SessionEntryPageOptions = {}) {
+    this.assertOpen();
+    return pageEntries(sessionId, this.readEntries(sessionId), options);
+  }
+
+  public async forkSession(sourceSessionId: string, targetSessionId: string, headId?: string | null): Promise<void> {
+    this.assertOpen();
+    await this.appendEntries(
+      targetSessionId,
+      forkEntries(
+        sourceSessionId,
+        targetSessionId,
+        this.readEntries(sourceSessionId),
+        this.readEntries(targetSessionId),
+        headId
+      )
+    );
   }
 
   private readSnapshots(): Record<string, DocumentSnapshot> | null {
@@ -169,8 +239,25 @@ export class JsonlSessionBackend implements ISessionBackend {
     this.assertOpen();
     const filePath = this.getSnapshotsPath();
     const map = this.readSnapshots() ?? {};
-    map[snapshot.documentId] = snapshot;
-    fs.writeFileSync(filePath, JSON.stringify(map, null, 2), 'utf8');
+    Object.defineProperty(map, snapshot.documentId, {
+      value: snapshot,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+    const temporaryPath = `${filePath}.${crypto.randomUUID()}.tmp`;
+    try {
+      const fd = fs.openSync(temporaryPath, 'wx');
+      try {
+        fs.writeFileSync(fd, JSON.stringify(map, null, 2), 'utf8');
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      fs.renameSync(temporaryPath, filePath);
+    } finally {
+      if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    }
   }
 
   public async getSnapshot(documentId: string): Promise<DocumentSnapshot | null> {
