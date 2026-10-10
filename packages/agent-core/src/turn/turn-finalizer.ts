@@ -1,4 +1,5 @@
 import type { AssistantMessage, ToolResultMessage } from '@inkpi/protocol';
+import { adoptMessage, commitMessage } from '../journal-commit.js';
 import type { FinishTurnDecision } from '../types.js';
 import type { TurnContext } from './turn-context.js';
 
@@ -70,9 +71,10 @@ export class TurnFinalizer {
 
     const followUps = ctx.followUpQueue.drain(ctx.options.followUpMode || 'one-at-a-time');
     for (const fMsg of followUps) {
-      ctx.state.messages.push(fMsg);
-      await ctx.emitEvent({ type: 'message_start', message: fMsg });
-      await ctx.emitEvent({ type: 'message_end', message: fMsg });
+      const message = await commitMessage(ctx.options.journal, fMsg);
+      adoptMessage(ctx.state, ctx.options.journal, message);
+      await ctx.emitEvent({ type: 'message_start', message });
+      await ctx.emitEvent({ type: 'message_end', message });
     }
     return true;
   }

@@ -259,6 +259,25 @@ export interface SessionEntry<TPayload = any> {
 
 export type JournalEntry<TPayload = any> = SessionEntry<TPayload>;
 
+export interface JournalAppend {
+  type: JournalEntryType;
+  payload: unknown;
+  id?: string;
+  parentId?: string | null;
+}
+
+/** Unknown outcomes require reconstruction before further session writes. */
+export class SessionCommitError extends Error {
+  constructor(
+    message: string,
+    public readonly certainty: 'rejected' | 'unknown',
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = 'SessionCommitError';
+  }
+}
+
 /** JIT 分层记忆检索查询契约 (L1 工作记忆 + L2 摘要 + L3 全局 FTS5 实体) */
 export interface JitContextQuery {
   workspaceId?: string;

@@ -5,6 +5,7 @@ import { Agent, SessionRegistry } from '@inkpi/agent-core';
 import { AssistantEventStream, getModelPreset, getProvider, setHttpClient } from '@inkpi/ai';
 import type { ModelConfig } from '@inkpi/ai';
 import type { SessionCreateResult } from '@inkpi/protocol';
+import { SessionCommitError } from '@inkpi/protocol';
 import { InkPiDaemon } from '@inkpi/server';
 import { AppendOnlySessionJournal } from '@inkpi/storage';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -50,7 +51,7 @@ describe('independent provider conversation identity', () => {
         append: (type: string, payload: { id?: string }) => {
           if (type === 'provider_session') {
             identities.push(payload.id!);
-            if (fail) throw new Error('disk unavailable');
+            if (fail) throw new SessionCommitError('disk unavailable', 'rejected');
           }
         }
       },

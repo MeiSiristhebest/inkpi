@@ -1,4 +1,5 @@
 import type { AgentMessage } from '@inkpi/protocol';
+import { adoptMessage, commitMessage } from '../journal-commit.js';
 import type { AgentOptions, AgentState, IncrementalContextUpdate } from '../types.js';
 import type { TurnContext } from './turn-context.js';
 
@@ -202,9 +203,10 @@ export class ContextTransformer {
   private async drainSteering(ctx: TurnContext): Promise<void> {
     const steeringMsgs = ctx.steeringQueue.drain(ctx.options.steeringMode || 'all');
     for (const sMsg of steeringMsgs) {
-      ctx.state.messages.push(sMsg);
-      await ctx.emitEvent({ type: 'message_start', message: sMsg });
-      await ctx.emitEvent({ type: 'message_end', message: sMsg });
+      const message = await commitMessage(ctx.options.journal, sMsg);
+      adoptMessage(ctx.state, ctx.options.journal, message);
+      await ctx.emitEvent({ type: 'message_start', message });
+      await ctx.emitEvent({ type: 'message_end', message });
     }
   }
 }

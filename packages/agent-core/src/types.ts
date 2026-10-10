@@ -27,6 +27,8 @@ export interface AgentState {
   streamingMessage?: AssistantMessage;
   pendingToolCalls: Set<string>;
   errorMessage?: string;
+  /** An uncertain durable commit forbids further execution until reconstruction. */
+  isFaulted?: boolean;
   sessionId?: string;
   providerSessionId?: string;
   operations?: Map<string, any>;

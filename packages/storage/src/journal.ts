@@ -9,8 +9,8 @@ import {
   writeFileSync
 } from 'node:fs';
 import { dirname } from 'node:path';
-import { mergeOperationIntent } from '@inkpi/protocol';
-import type { JournalEntry, JournalEntryType, StateLedger } from '@inkpi/protocol';
+import { SessionCommitError, mergeOperationIntent } from '@inkpi/protocol';
+import type { JournalAppend, JournalEntry, JournalEntryType, StateLedger } from '@inkpi/protocol';
 import type { InkDb } from './db.js';
 import type { InkRepository } from './repository.js';
 
@@ -68,21 +68,48 @@ export class AppendOnlySessionJournal {
     customId?: string,
     parentId: string | null = this.entries[this.entries.length - 1]?.id ?? null
   ): JournalEntry<TPayload> {
-    const id = customId || this.idGenerator();
-    if (!id.trim()) throw new Error('Journal entry id must not be empty.');
-    if (this.entryIndex.has(id)) throw new Error(`Journal entry '${id}' already exists.`);
-    const entry: JournalEntry<TPayload> = {
-      id,
-      sessionId: this.sessionId,
-      seq: this.nextSeq,
-      parentId,
-      type,
-      timestamp: this.clock(),
-      payload: structuredClone(payload)
-    };
+    return this.appendBatch([{ type, payload, id: customId, parentId }])[0] as JournalEntry<TPayload>;
+  }
 
-    this.storeEntry(entry, true);
-    return entry;
+  /** One record per transaction: a torn tail cannot restore half a settlement. */
+  public appendBatch(appends: readonly JournalAppend[]): JournalEntry[] {
+    if (appends.length === 0) return [];
+    const staged: JournalEntry[] = [];
+    const stagedIndex = new Map<string, JournalEntry>();
+    const index = { get: (id: string) => stagedIndex.get(id) ?? this.entryIndex.get(id) };
+    let parentId = this.entries[this.entries.length - 1]?.id ?? null;
+    try {
+      for (const append of appends) {
+        const id = append.id ?? this.idGenerator();
+        if (!id.trim()) throw new Error('Journal entry id must not be empty.');
+        if (this.entryIndex.has(id) || stagedIndex.has(id)) throw new Error(`Journal entry '${id}' already exists.`);
+        const entry: JournalEntry = {
+          id,
+          sessionId: this.sessionId,
+          seq: this.nextSeq + staged.length,
+          parentId: append.parentId !== undefined ? append.parentId : parentId,
+          type: append.type,
+          timestamp: this.clock(),
+          payload: structuredClone(append.payload)
+        };
+        parseJournalEntry(entry, this.sessionId);
+        validateEntryPlacement(entry, staged.length ? staged : this.entries, index, this.nextSeq + staged.length);
+        staged.push(entry);
+        stagedIndex.set(id, entry);
+        parentId = id;
+      }
+    } catch (error) {
+      throw new SessionCommitError(error instanceof Error ? error.message : String(error), 'rejected', {
+        cause: error
+      });
+    }
+    this.persistRecord(staged.length === 1 ? staged[0] : { journalBatch: 1, entries: staged });
+    try {
+      for (const entry of staged) this.storeEntry(entry, false);
+    } catch (error) {
+      throw new SessionCommitError('Journal committed but state adoption failed.', 'unknown', { cause: error });
+    }
+    return structuredClone(staged);
   }
 
   public getEntries(): JournalEntry[] {
@@ -120,10 +147,11 @@ export class AppendOnlySessionJournal {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        const entry = parseJournalEntry(JSON.parse(trimmed), this.sessionId);
-        if (!this.entryIndex.has(entry.id)) {
-          this.storeEntry(entry, true);
-          imported++;
+        for (const entry of parseJournalRecord(JSON.parse(trimmed), this.sessionId)) {
+          if (!this.entryIndex.has(entry.id)) {
+            this.storeEntry(entry, true);
+            imported++;
+          }
         }
       } catch (error) {
         const normalized = error instanceof Error ? error : new Error(String(error));
@@ -139,20 +167,40 @@ export class AppendOnlySessionJournal {
   private storeEntry(entry: JournalEntry, persist: boolean): void {
     if (this.entryIndex.has(entry.id)) throw new Error(`Journal entry '${entry.id}' already exists.`);
     validateEntryPlacement(entry, this.entries, this.entryIndex, this.nextSeq);
-    if (persist && this.filePath) {
-      const fd = openSync(this.filePath, 'a');
-      try {
-        const line = `${JSON.stringify(entry)}\n`;
-        writeFileSync(fd, line, { encoding: 'utf8' });
-        if (this.autoFlush) fsyncSync(fd);
-      } finally {
-        closeSync(fd);
-      }
-    }
+    if (persist) this.persistRecord(entry);
     const stored = structuredClone(entry);
     this.entries.push(stored);
     this.entryIndex.set(stored.id, stored);
     this.nextSeq = stored.seq + 1;
+  }
+
+  private persistRecord(record: JournalEntry | { journalBatch: 1; entries: JournalEntry[] }): void {
+    if (this.filePath) {
+      let line: string;
+      try {
+        line = `${JSON.stringify(record)}\n`;
+      } catch (error) {
+        throw new SessionCommitError('Journal record could not be serialized.', 'rejected', { cause: error });
+      }
+      let fd: number;
+      try {
+        fd = openSync(this.filePath, 'a');
+      } catch (error) {
+        throw new SessionCommitError('Journal file could not be opened.', 'rejected', { cause: error });
+      }
+      try {
+        writeFileSync(fd, line, { encoding: 'utf8' });
+        if (this.autoFlush) fsyncSync(fd);
+      } catch (error) {
+        throw new SessionCommitError(
+          'Journal write outcome is unknown; reconstruct the session before writing again.',
+          'unknown',
+          { cause: error }
+        );
+      } finally {
+        closeSync(fd);
+      }
+    }
   }
 
   private loadFromFile(): void {
@@ -166,8 +214,7 @@ export class AppendOnlySessionJournal {
     for (const [index, line] of lines.entries()) {
       if (!line.trim()) continue;
       try {
-        const entry = parseJournalEntry(JSON.parse(line), this.sessionId);
-        this.storeEntry(entry, false);
+        for (const entry of parseJournalRecord(JSON.parse(line), this.sessionId)) this.storeEntry(entry, false);
       } catch (error) {
         const normalized = error instanceof Error ? error : new Error(String(error));
         const isUnterminatedSyntaxTail =
@@ -406,10 +453,21 @@ function parseJournalEntry(value: unknown, sessionId: string): JournalEntry {
   return entry as unknown as JournalEntry;
 }
 
+function parseJournalRecord(value: unknown, sessionId: string): JournalEntry[] {
+  if (value && typeof value === 'object' && 'journalBatch' in value) {
+    const record = value as { journalBatch: unknown; entries?: unknown };
+    if (record.journalBatch !== 1 || !Array.isArray(record.entries) || record.entries.length === 0) {
+      throw new Error('Invalid journal batch record.');
+    }
+    return record.entries.map((entry) => parseJournalEntry(entry, sessionId));
+  }
+  return [parseJournalEntry(value, sessionId)];
+}
+
 function validateEntryPlacement(
   entry: JournalEntry,
   entries: JournalEntry[],
-  entryIndex: Map<string, JournalEntry>,
+  entryIndex: Pick<Map<string, JournalEntry>, 'get'>,
   nextSeq: number
 ): void {
   const previous = entries[entries.length - 1];

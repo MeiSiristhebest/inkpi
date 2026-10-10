@@ -1,5 +1,6 @@
 import type { EventStream } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessage, AssistantMessageEvent } from '@inkpi/protocol';
+import { adoptMessage, commitJournal } from '../journal-commit.js';
 import { MONOTONIC_CLOCK } from '../ports/index.js';
 import { AssistantFrameEncoder } from './assistant-frames.js';
 import type { TurnContext } from './turn-context.js';
@@ -54,9 +55,7 @@ export class StreamInvoker {
   public async invoke(ctx: TurnContext, llmMessages: AgentMessage[]): Promise<AssistantMessage> {
     const { state, options, toolRegistry, emitEvent, signal, clock } = ctx;
 
-    const streamOpId = options.idGenerator
-      ? options.idGenerator()
-      : `op_stream_${clock()}_${(clock() % 10000).toString(36)}`;
+    const streamOpId = options.idGenerator ? options.idGenerator() : `op_stream_${crypto.randomUUID()}`;
     let streamFn = options.streamFn;
     if (!streamFn) {
       try {
@@ -84,11 +83,16 @@ export class StreamInvoker {
     const requestModel = prepared?.model ?? state.model;
     const requestMessages = prepared?.messages ? [...prepared.messages] : llmMessages;
     if (options.journal) {
-      await options.journal.append('operation_intent', {
-        id: streamOpId,
-        type: 'provider_stream',
-        intent: { model: requestModel.id, messageCount: requestMessages.length }
-      });
+      await commitJournal(options.journal, [
+        {
+          type: 'operation_intent',
+          payload: {
+            id: streamOpId,
+            type: 'provider_stream',
+            intent: { model: requestModel.id, messageCount: requestMessages.length }
+          }
+        }
+      ]);
     }
 
     // 逐轮思考档位（优先使用注入的 thinkingMapper，降级为内置默认映射）：
@@ -128,16 +132,17 @@ export class StreamInvoker {
 
     // 提供方可能在 streamFn 返回后立刻产出，因此先挂监听；
     // 再用一道闸门保证 message_start 先于首个 message_update 落定。
-    const releaseMessageStart = this.attachDeltaListener(ctx, stream, streamOpId);
+    const deltaListener = this.attachDeltaListener(ctx, stream, streamOpId);
 
     await emitEvent({ type: 'message_start', message: initialAssistantMsg });
-    releaseMessageStart();
+    deltaListener.release();
 
     let assistantMessage: AssistantMessage;
     try {
       assistantMessage = await stream.collect();
       assistantMessage.durationMs = Math.max(0, monotonicClock() - startedAt);
       await stream.waitForListeners?.();
+      await deltaListener.flush();
     } finally {
       signal?.removeEventListener('abort', abortStream);
     }
@@ -149,19 +154,25 @@ export class StreamInvoker {
     if (thinkingEffort !== undefined) {
       assistantMessage.providerThinkingLevel = thinkingEffort;
     }
-    state.messages.push(assistantMessage);
+    if (options.journal) {
+      const entries = await commitJournal(options.journal, [
+        {
+          type: 'operation_settlement',
+          payload: {
+            id: streamOpId,
+            type: 'provider_stream',
+            settlement: { usage: assistantMessage.usage, stopReason: assistantMessage.stopReason },
+            error: assistantMessage.stopReason === 'error' ? assistantMessage.errorMessage : undefined
+          }
+        },
+        { type: 'agent_turn', payload: assistantMessage }
+      ]);
+      const entry = entries[entries.length - 1];
+      if (entry) assistantMessage = { ...assistantMessage, id: entry.id };
+    }
+    adoptMessage(state, options.journal, assistantMessage);
     if (assistantMessage.stopReason === 'error') {
       state.errorMessage = assistantMessage.errorMessage || 'Model stream ended with an error.';
-    }
-
-    if (options.journal) {
-      options.journal.append('operation_settlement', {
-        id: streamOpId,
-        type: 'provider_stream',
-        settlement: { usage: assistantMessage.usage, stopReason: assistantMessage.stopReason },
-        error: assistantMessage.stopReason === 'error' ? assistantMessage.errorMessage : undefined
-      });
-      options.journal.append('agent_turn', assistantMessage);
     }
 
     await emitEvent({ type: 'message_end', message: assistantMessage });
@@ -176,7 +187,11 @@ export class StreamInvoker {
    * 使崩溃后可从帧序列重建部分助手消息（对齐上游 pi assistant-durability；
    * 帧是辅助观察数据，`agent_turn` 结算落地后即被归约丢弃）。
    */
-  private attachDeltaListener(ctx: TurnContext, stream: AssistantEventStream, streamOpId: string): () => void {
+  private attachDeltaListener(
+    ctx: TurnContext,
+    stream: AssistantEventStream,
+    streamOpId: string
+  ): { release: () => void; flush: () => Promise<void> } {
     let releaseMessageStart!: () => void;
     const messageStartSettled = new Promise<void>((resolve) => {
       releaseMessageStart = resolve;
@@ -184,41 +199,57 @@ export class StreamInvoker {
 
     const frameEncoder = ctx.options.journal ? new AssistantFrameEncoder() : undefined;
 
-    stream.on(async (msgEvent) => {
-      await messageStartSettled;
-      if (frameEncoder) {
-        const frame = frameEncoder.encode(msgEvent);
-        if (frame) {
-          ctx.options.journal.append('assistant_frame', { opId: streamOpId, frame });
-        }
-      }
-      if (ctx.state.streamingMessage) {
-        if (msgEvent.type === 'attempt_reset') {
-          ctx.state.streamingMessage.content = [];
-        } else if (msgEvent.type === 'text_delta') {
-          let textBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'text') as any;
-          if (!textBlock) {
-            textBlock = { type: 'text', text: '' };
-            ctx.state.streamingMessage.content.push(textBlock);
+    let pending = Promise.resolve();
+    let failure: unknown;
+    stream.on((msgEvent) => {
+      const update = pending.then(async () => {
+        await messageStartSettled;
+        if (frameEncoder) {
+          const frame = frameEncoder.encode(msgEvent);
+          if (frame) {
+            await commitJournal(ctx.options.journal, [
+              { type: 'assistant_frame', payload: { opId: streamOpId, frame } }
+            ]);
           }
-          textBlock.text += msgEvent.textDelta;
-        } else if (msgEvent.type === 'thinking_delta') {
-          let thinkBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'thinking') as any;
-          if (!thinkBlock) {
-            thinkBlock = { type: 'thinking', thinking: '' };
-            ctx.state.streamingMessage.content.push(thinkBlock);
-          }
-          thinkBlock.thinking += msgEvent.thinkingDelta;
         }
+        if (ctx.state.streamingMessage) {
+          if (msgEvent.type === 'attempt_reset') {
+            ctx.state.streamingMessage.content = [];
+          } else if (msgEvent.type === 'text_delta') {
+            let textBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'text') as any;
+            if (!textBlock) {
+              textBlock = { type: 'text', text: '' };
+              ctx.state.streamingMessage.content.push(textBlock);
+            }
+            textBlock.text += msgEvent.textDelta;
+          } else if (msgEvent.type === 'thinking_delta') {
+            let thinkBlock = ctx.state.streamingMessage.content.find((b: any) => b.type === 'thinking') as any;
+            if (!thinkBlock) {
+              thinkBlock = { type: 'thinking', thinking: '' };
+              ctx.state.streamingMessage.content.push(thinkBlock);
+            }
+            thinkBlock.thinking += msgEvent.thinkingDelta;
+          }
 
-        await ctx.emitEvent({
-          type: 'message_update',
-          message: ctx.state.streamingMessage,
-          assistantMessageEvent: msgEvent
-        });
-      }
+          await ctx.emitEvent({
+            type: 'message_update',
+            message: ctx.state.streamingMessage,
+            assistantMessageEvent: msgEvent
+          });
+        }
+      });
+      pending = update.catch((error) => {
+        failure ??= error;
+      });
+      return pending;
     });
 
-    return releaseMessageStart;
+    return {
+      release: releaseMessageStart,
+      flush: async () => {
+        await pending;
+        if (failure) throw failure;
+      }
+    };
   }
 }

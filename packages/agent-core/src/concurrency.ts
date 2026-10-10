@@ -25,5 +25,8 @@ export async function runWithConcurrency<TItem, TResult>(
     return results;
   }
 
-  return Promise.all(items.map((item) => execute(item)));
+  const outcomes = await Promise.allSettled(items.map((item) => execute(item)));
+  const failure = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+  return outcomes.map((outcome) => (outcome as PromiseFulfilledResult<TResult>).value);
 }

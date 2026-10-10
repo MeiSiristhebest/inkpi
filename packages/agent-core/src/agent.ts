@@ -1,5 +1,7 @@
 import type { AgentEvent, AgentEventListener, AgentMessage, ImageContent, UserMessage } from '@inkpi/protocol';
+import { SessionCommitError } from '@inkpi/protocol';
 import { ExtensionHost, ExtensionRunner } from './extension-host.js';
+import { adoptMessage, commitJournal, commitMessage } from './journal-commit.js';
 import { consoleLogger } from './ports/index.js';
 import { REAL_CLOCK } from './ports/index.js';
 import { restoreProviderSessionId } from './provider-session.js';
@@ -137,15 +139,14 @@ export class Agent {
       }
 
       await this.persistProviderSession();
-      this.state.messages.push(msg);
-      if (this.options.journal) {
-        this.options.journal.append('user_message', msg);
-      }
+      msg = await commitMessage(this.options.journal, msg);
+      adoptMessage(this.state, this.options.journal, msg);
       await this.emitEvent({ type: 'message_start', message: msg });
       await this.emitEvent({ type: 'message_end', message: msg });
 
       return this.run();
     } catch (error) {
+      this.latchJournalFault(error);
       if (!this.currentRunPromise) this.runActive = false;
       throw error;
     }
@@ -157,6 +158,7 @@ export class Agent {
       await this.persistProviderSession();
       return this.run();
     } catch (error) {
+      this.latchJournalFault(error);
       if (!this.currentRunPromise) this.runActive = false;
       throw error;
     }
@@ -164,7 +166,9 @@ export class Agent {
 
   private async persistProviderSession(): Promise<void> {
     if (this.providerSessionPersisted || !this.options.journal) return;
-    await this.options.journal.append('provider_session', { version: 1, id: this.state.providerSessionId });
+    await commitJournal(this.options.journal, [
+      { type: 'provider_session', payload: { version: 1, id: this.state.providerSessionId } }
+    ]);
     this.providerSessionPersisted = true;
   }
 
@@ -397,6 +401,9 @@ export class Agent {
     this.currentRunPromise = settledRunPromise;
     try {
       await runPromise;
+    } catch (error) {
+      this.latchJournalFault(error);
+      throw error;
     } finally {
       if (this.currentRunPromise === settledRunPromise) {
         this.currentRunPromise = null;
@@ -425,6 +432,8 @@ export class Agent {
   }
 
   private claimRun(): void {
+    if (this.state.isFaulted)
+      throw new Error('Session persistence outcome is unknown. Reconstruct the session before continuing.');
     if (this.runActive) {
       throw new Error(
         'Agent already has a run in progress. Wait for it to finish or abort it before starting another run.'
@@ -433,5 +442,9 @@ export class Agent {
     this.clearContextViewIdleTimer();
     this.runActive = true;
     this.abortController = new AbortController();
+  }
+
+  private latchJournalFault(error: unknown): void {
+    if (error instanceof SessionCommitError && error.certainty === 'unknown') this.state.isFaulted = true;
   }
 }
