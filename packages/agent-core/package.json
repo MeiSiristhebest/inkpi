@@ -15,9 +15,10 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "workspace:*",
+    "@earendil-works/pi-codemode": "1.1.0",
     "@inkpi/ai": "workspace:*",
-    "@inkpi/editor-core": "workspace:*"
+    "@inkpi/editor-core": "workspace:*",
+    "@inkpi/protocol": "workspace:*"
   },
   "description": "Core Agent runtime with dual-loop state machine, steering queues, session tree, and tool execution engine",
   "author": "InkPi Contributors",

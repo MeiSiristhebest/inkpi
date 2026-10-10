@@ -7,6 +7,12 @@ import {
   assertJsonObject,
   assertJsonValue
 } from '@inkpi/protocol';
+import {
+  CODEMODE_DEFAULTS,
+  CODEMODE_TOOL_NAME,
+  type CodemodeExecutionContext,
+  getCodemodeToolOptions
+} from '../codemode.js';
 import { runWithConcurrency } from '../concurrency.js';
 import { adoptMessage, commitJournal } from '../journal-commit.js';
 import { type InterruptedToolRecoveryPlan, synthesizeInterruptedToolResult } from '../reducer/session-reducer.js';
@@ -35,6 +41,11 @@ interface PreparedCall {
   error?: string;
   terminate?: boolean;
   recovery?: InterruptedToolRecoveryPlan;
+}
+
+interface InternalToolCall {
+  parentToolCallId: string;
+  maxResultBytes: number;
 }
 
 /**
@@ -336,7 +347,8 @@ export class ToolDispatcher {
     preparation: PreparedCall,
     assistantMessage: AssistantMessage,
     termination: TerminationFlag,
-    sourceIndex?: number
+    sourceIndex?: number,
+    internal?: InternalToolCall
   ): Promise<ToolResultMessage & { terminate?: boolean }> {
     const { options, toolRegistry, emitEvent, signal, clock } = ctx;
     const { call } = preparation;
@@ -347,9 +359,11 @@ export class ToolDispatcher {
     }
 
     const invocationId = preparation.recovery?.invocationId ?? this.reserveInvocationId(ctx);
-    const toolOpId = preparation.recovery?.operationId ?? `op_tool_${invocationId}`;
+    const operationType = internal ? 'codemode_read' : 'tool_call';
+    const toolOpId =
+      preparation.recovery?.operationId ?? `${internal ? 'op_codemode_read' : 'op_tool'}_${invocationId}`;
     const replay =
-      preparation.blockReason || preparation.error || signal?.aborted
+      internal || preparation.blockReason || preparation.error || signal?.aborted
         ? 'never'
         : (toolRegistry.get(call.name)?.replay ?? 'never');
     const contract = toolRegistry.getReplayContract(call.name);
@@ -359,13 +373,14 @@ export class ToolDispatcher {
           type: 'operation_intent',
           payload: {
             id: toolOpId,
-            type: 'tool_call',
+            type: operationType,
             invocationId,
             replay,
             intent: {
               name: call.name,
               toolCallId: call.id,
               arguments: call.arguments,
+              ...(internal ? { visibility: 'internal', parentToolCallId: internal.parentToolCallId } : {}),
               ...(sourceIndex !== undefined ? { sourceIndex } : {}),
               ...(contract ? { contract } : {})
             }
@@ -384,15 +399,25 @@ export class ToolDispatcher {
         timestamp: clock()
       };
       if (options.journal) {
-        abortedRes = await this.settleTool(
-          ctx,
-          call,
-          abortedRes,
-          invocationId,
-          sourceIndex,
-          'Tool execution aborted by signal',
-          toolOpId
-        );
+        abortedRes = internal
+          ? await this.settleInternalTool(
+              ctx,
+              call,
+              abortedRes,
+              invocationId,
+              'Tool execution aborted by signal',
+              toolOpId,
+              internal.parentToolCallId
+            )
+          : await this.settleTool(
+              ctx,
+              call,
+              abortedRes,
+              invocationId,
+              sourceIndex,
+              'Tool execution aborted by signal',
+              toolOpId
+            );
       }
       return abortedRes;
     }
@@ -473,9 +498,12 @@ export class ToolDispatcher {
           timestamp: clock()
         };
       } else {
-        toolRes = await toolRegistry.executeTool(call, signal, fencedUpdate, {
-          messages: ctx.state.messages
-        });
+        toolRes = await toolRegistry.executeTool(
+          call,
+          signal,
+          fencedUpdate,
+          this.executionContext(ctx, assistantMessage, preparation.tool ?? toolRegistry.get(call.name))
+        );
         executedDuration = toolRes.durationMs;
       }
 
@@ -497,6 +525,8 @@ export class ToolDispatcher {
           if (afterRes.terminate) termination.value = true;
         }
       }
+
+      if (internal) toolRes = this.boundInternalResult(toolRes, internal.maxResultBytes);
 
       if (options.journal) {
         assertJsonValue(toolRes.content, `Tool '${call.name}' result content`);
@@ -525,15 +555,12 @@ export class ToolDispatcher {
     if (updateError) throw updateError;
 
     if (options.journal) {
-      toolRes = await this.settleTool(
-        ctx,
-        call,
-        toolRes,
-        invocationId,
-        sourceIndex,
-        toolRes.isError ? (toolRes.content?.[0] as { text?: string })?.text || 'Tool execution error' : undefined,
-        toolOpId
-      );
+      const error = toolRes.isError
+        ? (toolRes.content?.[0] as { text?: string })?.text || 'Tool execution error'
+        : undefined;
+      toolRes = internal
+        ? await this.settleInternalTool(ctx, call, toolRes, invocationId, error, toolOpId, internal.parentToolCallId)
+        : await this.settleTool(ctx, call, toolRes, invocationId, sourceIndex, error, toolOpId);
     }
 
     if (toolRes.terminate) termination.value = true;
@@ -544,6 +571,143 @@ export class ToolDispatcher {
       result: toolRes.content
     });
     return toolRes;
+  }
+
+  private executionContext(ctx: TurnContext, assistantMessage: AssistantMessage, tool: AgentTool | undefined): unknown {
+    const context: { messages: typeof ctx.state.messages; codemode?: CodemodeExecutionContext } = {
+      messages: ctx.state.messages
+    };
+    const codeModeOptions = tool ? getCodemodeToolOptions(tool) : undefined;
+    if (!codeModeOptions) return context;
+
+    const registry = ctx.currentTools?.() ?? ctx.toolRegistry;
+    const allowed = new Set(codeModeOptions.allowedReadTools);
+    const tools = codeModeOptions.allowedReadTools.flatMap((name) => {
+      const candidate = registry.get(name);
+      const registration = registry.getRegistration(name);
+      if (
+        !candidate ||
+        !registration ||
+        registration.capabilities.length !== 1 ||
+        registration.capabilities[0] !== 'read'
+      )
+        return [];
+      return [{ name, description: candidate.description }];
+    });
+    const parentToolCallId =
+      assistantMessage.content.find(
+        (item): item is ToolCallContent => item.type === 'toolCall' && item.name === CODEMODE_TOOL_NAME
+      )?.id ?? 'codemode';
+    context.codemode = {
+      tools,
+      executeReadTool: async (name, args, signal) => {
+        if (!allowed.has(name)) throw new Error(`Tool '${name}' is not allowlisted for codemode.`);
+        if (name === CODEMODE_TOOL_NAME) throw new Error('Codemode cannot call itself.');
+        const currentRegistry = ctx.currentTools?.() ?? ctx.toolRegistry;
+        const candidate = currentRegistry.get(name);
+        const registration = currentRegistry.getRegistration(name);
+        if (
+          !candidate ||
+          !registration ||
+          registration.capabilities.length !== 1 ||
+          registration.capabilities[0] !== 'read'
+        ) {
+          throw new Error(`Tool '${name}' is not registered with the read-only capability.`);
+        }
+        try {
+          assertJsonObject(args, `Codemode tool '${name}' arguments`);
+        } catch (error) {
+          throw new Error(error instanceof Error ? error.message : String(error));
+        }
+
+        const nestedContext: TurnContext = { ...ctx, toolRegistry: currentRegistry, signal };
+        const nestedCall: ToolCallContent = {
+          type: 'toolCall',
+          id: `codemode_${this.reserveInvocationId(nestedContext)}`,
+          name,
+          arguments: structuredClone(args)
+        };
+        const preparation = await this.prepareCall(nestedContext, nestedCall, assistantMessage);
+        const result = await this.executeOne(
+          nestedContext,
+          preparation,
+          assistantMessage,
+          { value: false },
+          undefined,
+          {
+            parentToolCallId,
+            maxResultBytes: CODEMODE_DEFAULTS.maxNestedResultBytes
+          }
+        );
+        if (result.isError || result.terminate) {
+          const errorText = result.content
+            .map((item) => (item.type === 'text' ? item.text : ''))
+            .filter(Boolean)
+            .join('\n');
+          throw new Error(errorText || `Tool '${name}' failed.`);
+        }
+        return {
+          content: result.content,
+          ...(result.details !== undefined ? { details: result.details } : {})
+        };
+      }
+    };
+    return context;
+  }
+
+  private boundInternalResult<T extends ToolResultMessage>(result: T, maxBytes: number): T {
+    let encoded: string;
+    try {
+      encoded = JSON.stringify({
+        content: result.content,
+        ...(result.details !== undefined ? { details: result.details } : {})
+      });
+    } catch {
+      return {
+        ...result,
+        isError: true,
+        details: undefined,
+        content: [{ type: 'text', text: 'Nested tool result is not JSON serializable.' }]
+      };
+    }
+    if (new TextEncoder().encode(encoded).byteLength <= maxBytes) return result;
+    return {
+      ...result,
+      isError: true,
+      details: undefined,
+      content: [{ type: 'text', text: `Nested tool result exceeds ${maxBytes} bytes.` }]
+    };
+  }
+
+  private async settleInternalTool<T extends ToolResultMessage>(
+    ctx: TurnContext,
+    call: ToolCallContent,
+    result: T,
+    invocationId: string,
+    error: string | undefined,
+    operationId: string,
+    parentToolCallId: string
+  ): Promise<T> {
+    await commitJournal(ctx.options.journal, [
+      {
+        type: 'operation_settlement',
+        payload: {
+          id: operationId,
+          type: 'codemode_read',
+          invocationId,
+          error,
+          settlement: {
+            visibility: 'internal',
+            parentToolCallId,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: result.content,
+            ...(result.details !== undefined ? { details: result.details } : {})
+          }
+        }
+      }
+    ]);
+    return result;
   }
 
   private async settleTool<T extends ToolResultMessage>(

@@ -1,4 +1,6 @@
 export * from './types.js';
+export { createCodemodeTool } from './codemode.js';
+export type { CodemodeToolOptions } from './codemode.js';
 export * from './conversation-context.js';
 export * from './errors.js';
 export type { Clock, IdGenerator, Logger, FileSystem, ModelStreamer, SessionStore } from './ports/index.js';
