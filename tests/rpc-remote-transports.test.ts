@@ -103,21 +103,29 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
 
     await client.prompt(prompt, [image]);
 
+    const messageId = agent.state.messages[0]?.id;
+    expect(messageId).toEqual(expect.any(String));
     const expectedUserMessage = {
+      id: messageId,
       role: 'user',
       content: [{ type: 'text', text: prompt }, image],
       timestamp: 1234
     };
-    expect(agent.state.messages[0]).toEqual(expectedUserMessage);
-    expect(modelInputs[0]?.[0]).toEqual(expectedUserMessage);
+    expect(agent.state.messages.find((message) => message.role === 'user')).toEqual(expectedUserMessage);
+    expect(modelInputs[0]?.find((message) => message.role === 'user')).toEqual(expectedUserMessage);
 
     const persisted = journal.getEntriesByType('user_message');
     expect(persisted).toHaveLength(1);
-    expect(persisted[0]?.payload).toEqual(expectedUserMessage);
+    expect(persisted[0]?.id).toBe(messageId);
+    const { id: _messageId, ...journalPayload } = expectedUserMessage;
+    expect(persisted[0]?.payload).toEqual(journalPayload);
 
     const restoredJournal = new AppendOnlySessionJournal({ sessionId: 'image-session' });
     restoredJournal.importFromJsonl(journal.exportToJsonl());
-    expect(restoredJournal.getEntriesByType('user_message')[0]?.payload).toEqual(expectedUserMessage);
+    expect(restoredJournal.getEntriesByType('user_message')[0]).toMatchObject({
+      id: messageId,
+      payload: journalPayload
+    });
   });
 
   it('removes a pending RPC call when sending fails', async () => {
@@ -135,7 +143,7 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     await expect(clientTransport.sendRequest({ jsonrpc: '2.0', id: 1, method: 'test' })).rejects.toThrow('send failed');
   });
 
-  it('should support WebSocketRpcTransport interface', () => {
+  it('should support WebSocketRpcTransport interface', async () => {
     const nodeListeners: Record<string, any> = {};
     let sentData = '';
     const mockWs = {
@@ -164,7 +172,7 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     expect(wsTransport.isOpen()).toBe(false);
 
     // Send when closed
-    wsTransport.send('{"ignore":true}');
+    await expect(wsTransport.send('{"ignore":true}')).rejects.toThrow(/closed|err/);
 
     // Browser addEventListener variant
     const domListeners: Record<string, any> = {};

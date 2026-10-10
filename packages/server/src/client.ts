@@ -35,7 +35,18 @@ import type {
   TaskSteerResult,
   TaskSubmitResult
 } from '@inkpi/protocol';
-import { calculateProposalProjectionStateHash, observeTaskResult, watchDomainChanges } from '@inkpi/protocol';
+import {
+  type RpcLimits,
+  type RpcRequestOptions,
+  RpcSessionAttachment,
+  RpcStreamRequests,
+  type SessionAttachment,
+  awaitWithAbort,
+  calculateProposalProjectionStateHash,
+  observeTaskResult,
+  sameSessionAttachment,
+  watchDomainChanges
+} from '@inkpi/protocol';
 import type { AgentMessage, ImageContent } from '@inkpi/protocol';
 import type { InkRpcServer } from './server.js';
 import { TcpSocketTransport } from './tcp-transport.js';
@@ -43,8 +54,9 @@ import type { RpcTransport } from './transport.js';
 import { DEFAULT_RPC_HOST } from './transport.js';
 
 export interface Transport {
-  sendRequest(req: RpcRequest): Promise<RpcResponse>;
+  sendRequest(req: RpcRequest, options?: RpcRequestOptions): Promise<RpcResponse>;
   onNotification(handler: (notif: RpcNotification) => void): () => void;
+  onClose?(handler: (error: Error) => void): () => void;
 }
 
 /**
@@ -52,11 +64,14 @@ export interface Transport {
  */
 export class InMemoryTransport implements Transport {
   private server: InkRpcServer;
+  private readonly connectionId = crypto.randomUUID();
   private notifHandlers: Array<(notif: RpcNotification) => void> = [];
+  private readonly unregister: () => void;
+  private closed = false;
 
   constructor(server: InkRpcServer) {
     this.server = server;
-    this.server.setNotificationSender((notif) => {
+    this.unregister = this.server.registerDirectConnection(this.connectionId, (notif) => {
       for (const h of this.notifHandlers) {
         h(notif);
       }
@@ -64,74 +79,8 @@ export class InMemoryTransport implements Transport {
   }
 
   public async sendRequest(req: RpcRequest): Promise<RpcResponse> {
-    return await this.server.handleRequest(req);
-  }
-
-  public onNotification(handler: (notif: RpcNotification) => void): () => void {
-    this.notifHandlers.push(handler);
-    return () => {
-      const idx = this.notifHandlers.indexOf(handler);
-      if (idx !== -1) this.notifHandlers.splice(idx, 1);
-    };
-  }
-}
-
-/**
- * 远程 Transport 实现 (基于 RpcTransport 流通道)
- */
-export class RemoteStreamTransport implements Transport {
-  private transport: RpcTransport;
-  private closed = false;
-  private pendingRequests = new Map<
-    string | number,
-    { resolve: (res: RpcResponse) => void; reject: (err: any) => void }
-  >();
-  private notifHandlers: Array<(notif: RpcNotification) => void> = [];
-
-  constructor(transport: RpcTransport) {
-    this.transport = transport;
-    this.transport.onClose?.((error) => this.failPending(error ?? new Error('RPC transport closed')));
-    this.transport.onMessage((msgStr) => {
-      try {
-        const parsed = JSON.parse(msgStr);
-        if ('id' in parsed && parsed.id !== null) {
-          const pending = this.pendingRequests.get(parsed.id);
-          if (pending) {
-            this.pendingRequests.delete(parsed.id);
-            pending.resolve(parsed as RpcResponse);
-          }
-        } else if ('method' in parsed) {
-          for (const h of this.notifHandlers) {
-            h(parsed as RpcNotification);
-          }
-        }
-      } catch (err) {
-        console.error('[RemoteStreamTransport] Failed to parse incoming message:', err);
-      }
-    });
-  }
-
-  public async sendRequest(req: RpcRequest): Promise<RpcResponse> {
-    if (this.closed || !this.transport.isOpen()) {
-      return Promise.reject(new Error('RPC transport is closed'));
-    }
-
-    return new Promise((resolve, reject) => {
-      if (this.pendingRequests.has(req.id)) {
-        reject(new Error(`RPC request id is already pending: ${req.id}`));
-        return;
-      }
-
-      const pending = { resolve, reject };
-      this.pendingRequests.set(req.id, pending);
-      try {
-        void Promise.resolve(this.transport.send(JSON.stringify(req))).catch((error) => {
-          this.failRequest(req.id, pending, error);
-        });
-      } catch (error) {
-        this.failRequest(req.id, pending, error);
-      }
-    });
+    if (this.closed) throw new Error('RPC in-memory connection is closed');
+    return await this.server.handleRequest(req, this.connectionId);
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {
@@ -144,51 +93,51 @@ export class RemoteStreamTransport implements Transport {
 
   public close(): void {
     if (this.closed) return;
-    this.failPending(new Error('RPC transport closed while awaiting a response'));
-    this.transport.close();
-  }
-
-  private failRequest(
-    id: string | number,
-    pending: { resolve: (res: RpcResponse) => void; reject: (err: any) => void },
-    error: unknown
-  ): void {
-    if (this.pendingRequests.get(id) !== pending) return;
-    this.pendingRequests.delete(id);
-    pending.reject(error);
-  }
-
-  private failPending(error: Error): void {
-    if (this.closed) return;
     this.closed = true;
-    for (const pending of this.pendingRequests.values()) pending.reject(error);
-    this.pendingRequests.clear();
+    this.unregister();
+    this.notifHandlers = [];
   }
 }
 
 /**
- * InkPi 类型安全 RPC 客户端
+ * 远程 Transport 实现 (基于 RpcTransport 流通道)
  */
+export class RemoteStreamTransport extends RpcStreamRequests implements Transport {}
+
 export class InkRpcClient {
+  private readonly connectionClosed = new AbortController();
+  private readonly sessions = new RpcSessionAttachment();
+  private readonly unsubscribeNotifications: () => void;
+  private readonly unsubscribeClose?: () => void;
   private transport: Transport;
   private reqIdCounter = 1;
   private notificationListeners = new Map<string, Array<(params: any) => void>>();
 
   constructor(transport: Transport) {
     this.transport = transport;
-    this.transport.onNotification((notif) => {
+    this.unsubscribeClose = this.transport.onClose?.((error) => this.connectionClosed.abort(error));
+    this.unsubscribeNotifications = this.transport.onNotification((notif) => {
+      if (this.connectionClosed.signal.aborted || !this.sessions.acceptsNotification(notif.method, notif.route)) return;
       const listeners = this.notificationListeners.get(notif.method);
       if (listeners) {
         for (const l of listeners) {
-          l(notif.params);
+          try {
+            l(notif.params);
+          } catch {
+            /* One consumer does not own the RPC connection. */
+          }
         }
       }
     });
   }
 
-  public static async connectTcp(port: number, host = DEFAULT_RPC_HOST): Promise<InkRpcClient> {
-    const rawTransport = await TcpSocketTransport.connect(port, host);
-    const streamTransport = new RemoteStreamTransport(rawTransport);
+  public static async connectTcp(
+    port: number,
+    host = DEFAULT_RPC_HOST,
+    limits?: Partial<RpcLimits>
+  ): Promise<InkRpcClient> {
+    const rawTransport = await TcpSocketTransport.connect(port, host, limits);
+    const streamTransport = new RemoteStreamTransport(rawTransport, limits);
     return new InkRpcClient(streamTransport);
   }
 
@@ -209,19 +158,40 @@ export class InkRpcClient {
     return this.request<T>(method, params);
   }
 
-  public async request<T = any>(method: string, params?: any): Promise<T> {
+  public async request<T = any>(method: string, params?: any, options: RpcRequestOptions = {}): Promise<T> {
+    const attachment = this.sessions.forRequest(method, params);
     const req: RpcRequest = {
       jsonrpc: '2.0',
       id: this.reqIdCounter++,
       method,
-      params
+      params:
+        attachment.route && method !== 'session.fork' ? { ...params, sessionId: attachment.route.sessionId } : params,
+      ...(attachment.route ? { route: attachment.route } : {})
     };
 
-    const res = await this.transport.sendRequest(req);
+    const signal = AbortSignal.any([
+      this.connectionClosed.signal,
+      ...[options.signal, attachment.signal].filter((value): value is AbortSignal => value !== undefined)
+    ]);
+    signal.throwIfAborted();
+    const res = await awaitWithAbort(this.transport.sendRequest(req, { ...options, signal }), signal);
+    if (attachment.route && !sameSessionAttachment(attachment.route, res.route))
+      throw new Error('RPC response belongs to another session attachment');
     if (res.error) {
       throw new Error(`[RPC ${res.error.code}] ${res.error.message}`);
     }
     return res.result as T;
+  }
+
+  public async attachSession(sessionId: string, options: RpcRequestOptions = {}): Promise<SessionAttachment> {
+    const attempt = this.sessions.beginAttach();
+    const signal = options.signal ? AbortSignal.any([options.signal, attempt.signal]) : attempt.signal;
+    const route = await this.request<SessionAttachment>(
+      'session.attach',
+      { sessionId, generation: attempt.generation },
+      { ...options, signal }
+    );
+    return this.sessions.accept(attempt.generation, sessionId, route);
   }
 
   // 1. Agent API
@@ -436,7 +406,7 @@ export class InkRpcClient {
         this.on('task.event', (event: { taskId: string; snapshot: TaskStatusSnapshot }) => {
           if (event.taskId === taskId) listener(event.snapshot);
         }),
-      signal
+      signal ? AbortSignal.any([signal, this.connectionClosed.signal]) : this.connectionClosed.signal
     );
   }
 
@@ -516,12 +486,20 @@ export class InkRpcClient {
   }
 
   public onNotification(handler: (notif: RpcNotification) => void): () => void {
-    return this.transport.onNotification(handler);
+    return this.transport.onNotification((notif) => {
+      if (!this.connectionClosed.signal.aborted && this.sessions.acceptsNotification(notif.method, notif.route))
+        handler(notif);
+    });
   }
 
   public async close(): Promise<void> {
+    this.connectionClosed.abort(new Error('RPC client connection closed'));
+    this.sessions.close();
+    this.unsubscribeNotifications();
+    this.unsubscribeClose?.();
+    this.notificationListeners.clear();
     if ((this.transport as any).close) {
-      (this.transport as any).close();
+      await (this.transport as any).close();
     }
   }
 }

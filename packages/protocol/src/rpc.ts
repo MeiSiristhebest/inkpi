@@ -52,6 +52,7 @@ import type {
   RuntimeModelRoutesConfigureParams,
   RuntimeModelRoutesConfigureResult
 } from './runtime-model.js';
+import type { SessionAttachParams, SessionAttachment } from './session-attachment.js';
 import type {
   SkillActivateParams,
   SkillActivationResult,
@@ -86,6 +87,7 @@ export interface RpcRequest<T = unknown> {
   id: string | number;
   method: string;
   params?: T;
+  route?: SessionAttachment;
 }
 
 export interface RpcResponseSuccess<T = unknown> {
@@ -93,6 +95,7 @@ export interface RpcResponseSuccess<T = unknown> {
   id: string | number;
   result: T;
   error?: never;
+  route?: SessionAttachment;
 }
 
 export interface RpcErrorObject {
@@ -103,9 +106,10 @@ export interface RpcErrorObject {
 
 export interface RpcResponseError {
   jsonrpc: '2.0';
-  id: string | number;
+  id: string | number | null;
   error: RpcErrorObject;
   result?: never;
+  route?: SessionAttachment;
 }
 
 export type RpcResponse<T = unknown> = RpcResponseSuccess<T> | RpcResponseError;
@@ -114,6 +118,7 @@ export interface RpcNotification<T = unknown> {
   jsonrpc: '2.0';
   method: string;
   params: T;
+  route?: SessionAttachment;
 }
 
 export type RpcMessage = RpcRequest | RpcResponse | RpcNotification;
@@ -126,7 +131,8 @@ export const RPC_ERROR_CODES = {
   INTERNAL_ERROR: -32603,
   AGENT_ABORTED: -32001,
   LEASE_LOCKED: -32002,
-  STORAGE_ERROR: -32003
+  STORAGE_ERROR: -32003,
+  STALE_ATTACHMENT: -32004
 } as const;
 
 /** Daemon liveness snapshot returned by `daemon.status`. */
@@ -264,6 +270,7 @@ export interface RpcMethodContract<TParams, TResult> {
  * result drift is a compile error at the registration instead of a wire surprise.
  */
 export interface DaemonRpcMethodMap {
+  'session.attach': RpcMethodContract<SessionAttachParams, SessionAttachment>;
   'artifact.get': RpcMethodContract<ArtifactGetParams, Artifact | null>;
   'artifact.list': RpcMethodContract<ArtifactListParams, Artifact[]>;
   'artifact.save': RpcMethodContract<ArtifactSaveParams, ArtifactSaveResult>;
@@ -333,6 +340,7 @@ export type DaemonRpcMethodName = keyof DaemonRpcMethodMap;
  * keeps the two in sync: a name listed here must exist in the map.
  */
 export const DAEMON_RPC_METHOD_NAMES = [
+  'session.attach',
   'artifact.get',
   'artifact.list',
   'artifact.save',
@@ -398,10 +406,13 @@ export type DaemonRpcParams<K> = K extends DaemonRpcMethodName ? DaemonRpcMethod
 
 export type DaemonRpcResult<K> = K extends DaemonRpcMethodName ? DaemonRpcMethodMap[K]['result'] : unknown;
 
-export type DaemonRpcHandlerFor<K> = (params: DaemonRpcParams<K>) => DaemonRpcResult<K> | Promise<DaemonRpcResult<K>>;
+export type DaemonRpcHandlerFor<K> = (
+  params: DaemonRpcParams<K>,
+  connectionId?: string
+) => DaemonRpcResult<K> | Promise<DaemonRpcResult<K>>;
 
 /** Registration names outside {@link DaemonRpcMethodMap} keep the historical untyped handler. */
-export type LooseRpcMethodHandler = (params: any) => Promise<any> | any;
+export type LooseRpcMethodHandler = (params: any, connectionId?: string) => Promise<any> | any;
 
 /**
  * Handler type a server should accept for a method name: contracted names get their declared

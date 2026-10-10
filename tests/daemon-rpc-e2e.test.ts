@@ -41,6 +41,7 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
       model: 'mock-test'
     });
     expect(createRes.sessionId).toBe('sess_novel_1');
+    await client.attachSession('sess_novel_1');
 
     // 3. List sessions
     const listRes = await client.request<any[]>('session.list');
@@ -121,6 +122,7 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     // 8. Test session.abort and ghost.accept with mode 'all'
     const createRes2 = await client.request<any>('session.create', { sessionId: 'sess_novel_2', model: 'mock-test' });
     expect(createRes2.sessionId).toBe('sess_novel_2');
+    await client.attachSession('sess_novel_2');
 
     await client.request('session.ghost.suggest', { sessionId: 'sess_novel_2', text: '全部采纳内容' });
     const acceptAllRes = await client.request<any>('session.ghost.accept', { sessionId: 'sess_novel_2' });
@@ -130,18 +132,17 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     expect(abortRes.success).toBe(true);
 
     // 9. Close session
-    const closeRes = await client.request<any>('session.close', {
-      sessionId: 'sess_novel_1'
-    });
-    expect(closeRes.success).toBe(true);
-
     const closeRes2 = await client.request<any>('session.close', {
       sessionId: 'sess_novel_2'
     });
     expect(closeRes2.success).toBe(true);
+    await client.attachSession('sess_novel_1');
+    const closeRes = await client.request<any>('session.close', { sessionId: 'sess_novel_1' });
+    expect(closeRes.success).toBe(true);
 
-    // Close non-existent
-    const closeMissing = await client.request<any>('session.close', {
+    // Missing sessions use a fresh, unattached connection.
+    const missingClient = await InkRpcClient.connectTcp(assignedPort!, '127.0.0.1');
+    const closeMissing = await missingClient.request<any>('session.close', {
       sessionId: 'non_existent_close'
     });
     expect(closeMissing.success).toBe(false);
@@ -150,29 +151,40 @@ describe('InkPi Daemon & Multi-Session RPC 2.0 (1:1 Ported from pi-server)', () 
     expect(listAfterClose.length).toBe(0);
 
     // 10. Error handling for missing session
-    await expect(client.request('session.get_state', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
-
-    await expect(client.request('session.prompt', { sessionId: 'non_existent', prompt: 'hi' })).rejects.toThrow(
+    await expect(missingClient.request('session.get_state', { sessionId: 'non_existent' })).rejects.toThrow(
       /not found/
     );
 
-    await expect(client.request('session.abort', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
+    await expect(missingClient.request('session.prompt', { sessionId: 'non_existent', prompt: 'hi' })).rejects.toThrow(
+      /not found/
+    );
+
+    await expect(missingClient.request('session.abort', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
 
     await expect(
-      client.request('session.editor.insert', { sessionId: 'non_existent', pos: 0, text: 'a' })
+      missingClient.request('session.editor.insert', { sessionId: 'non_existent', pos: 0, text: 'a' })
     ).rejects.toThrow(/not found/);
 
-    await expect(client.request('session.editor.undo', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
-
-    await expect(client.request('session.editor.redo', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
-
-    await expect(client.request('session.ghost.suggest', { sessionId: 'non_existent', text: 'a' })).rejects.toThrow(
+    await expect(missingClient.request('session.editor.undo', { sessionId: 'non_existent' })).rejects.toThrow(
       /not found/
     );
 
-    await expect(client.request('session.ghost.accept', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
+    await expect(missingClient.request('session.editor.redo', { sessionId: 'non_existent' })).rejects.toThrow(
+      /not found/
+    );
 
-    await expect(client.request('session.ghost.dismiss', { sessionId: 'non_existent' })).rejects.toThrow(/not found/);
+    await expect(
+      missingClient.request('session.ghost.suggest', { sessionId: 'non_existent', text: 'a' })
+    ).rejects.toThrow(/not found/);
+
+    await expect(missingClient.request('session.ghost.accept', { sessionId: 'non_existent' })).rejects.toThrow(
+      /not found/
+    );
+
+    await expect(missingClient.request('session.ghost.dismiss', { sessionId: 'non_existent' })).rejects.toThrow(
+      /not found/
+    );
+    await missingClient.close();
 
     // Direct SessionRegistry helper coverage
     const sm = daemon.getSessionManager();

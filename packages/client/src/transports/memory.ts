@@ -54,7 +54,13 @@ export class MemoryTransport implements RpcTransport {
   private markClosed(error: Error): void {
     if (!this.open) return;
     this.open = false;
-    for (const handler of this.closeHandlers) handler(error);
+    for (const handler of this.closeHandlers) {
+      try {
+        handler(error);
+      } catch {
+        /* Drain every connection waiter. */
+      }
+    }
     this.closeHandlers = [];
   }
 }

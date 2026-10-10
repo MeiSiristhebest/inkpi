@@ -299,6 +299,7 @@ export class InkPiDaemon {
       extensionHost: this.skillRuntime.extensionHost,
       skillRuntime: this.skillRuntime
     } as ServerContext);
+    this.rpcServer.configureSessionRouting((sessionId) => this.sessionManager.getSession(sessionId));
     this.taskRouter.subscribe((event) => {
       this.rpcServer.notify('task.event', event);
     });
@@ -624,16 +625,18 @@ export class InkPiDaemon {
 
     // 1. Session Management RPCs
     this.rpcServer.registerMethod('daemon.status', () => this.getStatus());
+    this.rpcServer.registerMethod(
+      'session.attach',
+      (params: import('@inkpi/protocol').SessionAttachParams, connectionId) =>
+        this.rpcServer.attachSession(connectionId ?? 'direct', params)
+    );
     this.rpcServer.registerMethod('runtime.diagnostics', () => this.getDiagnosticSnapshot());
 
     this.rpcServer.registerMethod('session.create', (params: SessionCreateOptions) => {
       const session = this.sessionManager.createSession(params);
       // Hook session agent events to broadcast
       session.agent.subscribe((event) => {
-        this.rpcServer.notify('session.event', {
-          sessionId: session.sessionId,
-          event
-        });
+        this.rpcServer.notifySessionEvent(session.sessionId, session, event);
       });
       return {
         sessionId: session.sessionId,
@@ -649,7 +652,7 @@ export class InkPiDaemon {
     this.rpcServer.registerMethod('session.fork', (params: import('@inkpi/protocol').SessionForkParams) => {
       const session = this.sessionManager.forkSession(params.sourceSessionId, params.options);
       session.agent.subscribe((event) => {
-        this.rpcServer.notify('session.event', { sessionId: session.sessionId, event });
+        this.rpcServer.notifySessionEvent(session.sessionId, session, event);
       });
       return {
         sessionId: session.sessionId,

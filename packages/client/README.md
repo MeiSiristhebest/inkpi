@@ -17,10 +17,17 @@ import { InkRpcClient } from '@inkpi/client';
 // Connect via TCP
 const client = await InkRpcClient.connectTcp(9876);
 
-// Create session and insert text
-await client.request('session.create', { sessionId: 'my_story' });
-await client.editorInsert(0, '# Chapter 1: The Awakening\n');
+// Create and attach this connection to a session
+const { sessionId } = await client.request<{ sessionId: string }>('session.create', { sessionId: 'my_story' });
+await client.attachSession(sessionId);
+await client.request('session.editor.insert', { pos: 0, text: '# Chapter 1: The Awakening\n' });
 ```
+
+`attachSession` is also available on `@inkpi/server`'s `InkRpcClient`. Attachments identify the
+server process, session instance, and connection. Switching the attachment cancels local request
+waits for the previous session. Session RPC responses and `session.event` notifications carry the
+attachment route; SDK clients discard stale replies and events. General task RPCs remain independent
+of session attachment and are not cancelled when a client disconnects.
 
 ## Image prompts
 
