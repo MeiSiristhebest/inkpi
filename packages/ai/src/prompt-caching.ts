@@ -39,9 +39,9 @@ export interface MultiSlotCachedPromptResult {
 }
 
 /**
- * 通用 Prompt Caching 优化器
- * 将高频、不可变的系统提示词、核心规则、全量状态上下文锁定为固定 Cache Prefix 断点，
- * 实现后续多轮交互、复杂推演与状态更新时 90%+ 的 Token 缓存命中率与首字极速响应。
+ * Builds cache-marked prompt prefixes and estimates their token counts.
+ * Cache support, hit rates, latency, and savings depend on the provider and request pattern;
+ * use returned provider usage to measure those outcomes.
  */
 export const PromptCacheOptimizer = {
   /**

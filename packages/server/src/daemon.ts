@@ -65,6 +65,7 @@ import type {
   RuntimeModelRouteSummary,
   RuntimeModelRoutesConfigureParams,
   RuntimeModelRoutesConfigureResult,
+  RuntimePromptCacheTtl,
   SkillActivateParams,
   SkillActivationResult,
   SkillDiscoverResult,
@@ -1198,6 +1199,12 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
   const modelId = routeString(entry.model.id, `model id for route '${id}'`);
   const name = routeString(entry.model.name ?? modelId, `model name for route '${id}'`);
   const provider = routeString(entry.model.provider, `model provider for route '${id}'`);
+  const cacheControl = parseModelRouteCacheControl(
+    entry.model.cacheControl,
+    provider,
+    entry.model.supportsPromptCache === true,
+    `model route '${id}' cacheControl`
+  );
   const credentialRef =
     entry.model.credentialRef === undefined
       ? undefined
@@ -1220,10 +1227,7 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
       : {}),
     ...(finiteNumber(entry.model.presencePenalty) ? { presencePenalty: entry.model.presencePenalty } : {}),
     ...(finiteNumber(entry.model.frequencyPenalty) ? { frequencyPenalty: entry.model.frequencyPenalty } : {}),
-    ...(isRecord(entry.model.cacheControl) &&
-    (entry.model.cacheControl.type === 'ephemeral' || entry.model.cacheControl.type === 'disabled')
-      ? { cacheControl: { type: entry.model.cacheControl.type } }
-      : {}),
+    ...(cacheControl ? { cacheControl } : {}),
     ...(isRecord(entry.model.compat) ? { compat: entry.model.compat } : {}),
     ...(isRecord(entry.model.fauxScript) ? { fauxScript: entry.model.fauxScript } : {})
   } as AiModelConfig;
@@ -1257,7 +1261,7 @@ function summarizeRuntimeModelRoute(route: ModelRoute): RuntimeModelRouteSummary
     ...(typeof model.supportsPromptCache === 'boolean' ? { supportsPromptCache: model.supportsPromptCache } : {}),
     ...(finiteNumber(model.presencePenalty) ? { presencePenalty: model.presencePenalty } : {}),
     ...(finiteNumber(model.frequencyPenalty) ? { frequencyPenalty: model.frequencyPenalty } : {}),
-    ...(model.cacheControl ? { cacheControl: model.cacheControl } : {})
+    ...(model.cacheControl ? { cacheControl: { ...model.cacheControl } } : {})
   };
   return {
     id: route.id,
@@ -1274,6 +1278,37 @@ function routeString(value: unknown, field: string): string {
     throw new Error(`Model route ${field} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function parseModelRouteCacheControl(
+  value: unknown,
+  provider: string,
+  supportsPromptCache: boolean,
+  context: string
+): AiModelConfig['cacheControl'] | undefined {
+  if (value === undefined) return undefined;
+  assertAllowedKeys(value, ['type', 'ttl'], context);
+  const input = value as Record<string, unknown>;
+  if (input.type === 'disabled') {
+    if (input.ttl !== undefined) throw new Error(`${context}.ttl is not allowed when cache control is disabled`);
+    return { type: 'disabled' };
+  }
+  if (input.type !== 'ephemeral') throw new Error(`${context}.type must be 'ephemeral' or 'disabled'`);
+  const ttl = input.ttl;
+  if (ttl === undefined) return { type: 'ephemeral' };
+  if (!isRuntimePromptCacheTtl(ttl)) throw new Error(`${context}.ttl is unsupported`);
+  if (!supportsPromptCache) throw new Error(`${context}.ttl requires supportsPromptCache: true`);
+  const normalizedProvider = provider.toLowerCase();
+  const supported =
+    normalizedProvider === 'anthropic' || normalizedProvider === 'claude'
+      ? ttl === '5m' || ttl === '1h'
+      : normalizedProvider === 'openai' && ttl === '30m';
+  if (!supported) throw new Error(`${context}.ttl '${ttl}' is not supported by provider '${provider}'`);
+  return { type: 'ephemeral', ttl };
+}
+
+function isRuntimePromptCacheTtl(value: unknown): value is RuntimePromptCacheTtl {
+  return value === '5m' || value === '30m' || value === '1h';
 }
 
 function routeCredentialRef(value: unknown, field: string): string {

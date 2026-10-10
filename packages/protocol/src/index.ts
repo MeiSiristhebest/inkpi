@@ -30,7 +30,9 @@ export * from './framing.js';
 export * from './codec.js';
 export * from './runtime-contract.js';
 export type {
+  RuntimeModelCacheControl,
   RuntimeModelNetworkCapability,
+  RuntimePromptCacheTtl,
   RuntimeModelRegistrationConfig,
   RuntimeModelRouteCapabilities,
   RuntimeModelRouteHealthParams,

@@ -1,6 +1,11 @@
 import type { JsonObject } from './json.js';
 import type { OutputFormat } from './task.js';
 
+/** TTL values exposed by current provider adapters; each provider accepts a subset. */
+export type RuntimePromptCacheTtl = '5m' | '30m' | '1h';
+
+export type RuntimeModelCacheControl = { type: 'disabled' } | { type: 'ephemeral'; ttl?: RuntimePromptCacheTtl };
+
 /** Model configuration accepted by the Runtime route-management boundary. */
 export interface RuntimeModelRegistrationConfig {
   id: string;
@@ -18,7 +23,7 @@ export interface RuntimeModelRegistrationConfig {
   supportsPromptCache?: boolean;
   presencePenalty?: number;
   frequencyPenalty?: number;
-  cacheControl?: { type: 'ephemeral' | 'disabled' };
+  cacheControl?: RuntimeModelCacheControl;
   compat?: JsonObject;
   fauxScript?: JsonObject;
 }
@@ -38,7 +43,7 @@ export interface RuntimeModelSummary {
   supportsPromptCache?: boolean;
   presencePenalty?: number;
   frequencyPenalty?: number;
-  cacheControl?: { type: 'ephemeral' | 'disabled' };
+  cacheControl?: RuntimeModelCacheControl;
 }
 
 export type RuntimeModelNetworkCapability = 'offline' | 'optional' | 'required';

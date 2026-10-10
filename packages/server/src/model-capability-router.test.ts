@@ -524,6 +524,26 @@ describe('capability-aware model routing', () => {
     });
     expect(rejectedDirectCredential.error?.message).toContain('unsupported fields');
 
+    const rejectedCacheTtl = await daemon.getRpcServer().handleRequest({
+      jsonrpc: '2.0',
+      id: 92,
+      method: 'model.routes.configure',
+      params: {
+        routes: [
+          {
+            id: 'openai-wrong-cache-ttl',
+            model: {
+              id: 'gpt-5.6',
+              provider: 'openai',
+              supportsPromptCache: true,
+              cacheControl: { type: 'ephemeral', ttl: '1h' }
+            }
+          }
+        ]
+      }
+    });
+    expect(rejectedCacheTtl.error?.message).toContain("ttl '1h' is not supported by provider 'openai'");
+
     const configured = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 10,
@@ -537,7 +557,9 @@ describe('capability-aware model routing', () => {
               name: 'Writer',
               provider: 'openai',
               baseUrl: 'https://api.openai.com/v1',
-              credentialRef: 'inkpi.model.openai.writer'
+              credentialRef: 'inkpi.model.openai.writer',
+              supportsPromptCache: true,
+              cacheControl: { type: 'ephemeral', ttl: '30m' }
             },
             capabilities: { outputFormats: ['text'], streaming: true },
             priority: 20
@@ -554,7 +576,12 @@ describe('capability-aware model routing', () => {
     const configuredRoute = configuredRoutes.find((route) => route.id === 'desktop:openai:writer');
     expect(configuredRoute).toMatchObject({
       id: 'desktop:openai:writer',
-      model: { id: 'writer', provider: 'openai' }
+      model: {
+        id: 'writer',
+        provider: 'openai',
+        supportsPromptCache: true,
+        cacheControl: { type: 'ephemeral', ttl: '30m' }
+      }
     });
     expect(JSON.stringify(configured)).not.toContain('secret-route-key');
     expect(JSON.stringify(configured)).not.toContain('credentialRef');

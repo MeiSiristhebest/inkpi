@@ -1,4 +1,11 @@
-import type { AgentMessage, AssistantMessage, AssistantMessageEvent, ProviderType, Usage } from '@inkpi/protocol';
+import type {
+  AgentMessage,
+  AssistantMessage,
+  AssistantMessageEvent,
+  ProviderType,
+  RuntimeModelCacheControl,
+  Usage
+} from '@inkpi/protocol';
 
 export type { ProviderType };
 
@@ -8,14 +15,7 @@ export type { ProviderType };
  */
 export type AnthropicEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-export interface CacheControl {
-  type: 'ephemeral' | 'disabled';
-  /**
-   * 显式缓存生命周期选项（对齐上游 v0.85.1 GPT-6 Astra / Responses API）。
-   * 例如针对长会话指定 ttl: '30m'，确保多轮推演高频问答下的热缓存保持。
-   */
-  ttl?: '30m' | '1h' | '24h';
-}
+export type CacheControl = RuntimeModelCacheControl;
 
 export interface PromptCacheStats {
   cacheCreationInputTokens?: number;
@@ -44,7 +44,7 @@ export interface ModelConfig {
   supportsMidConvoEffort?: boolean;
   supportsThinking?: boolean;
   supportsPromptCache?: boolean;
-  cacheControl?: { type: 'ephemeral' | 'disabled' };
+  cacheControl?: CacheControl;
   /** Explicit faux-provider fixture. Never inferred by production providers. */
   fauxScript?: FauxScriptedResponse;
   /**

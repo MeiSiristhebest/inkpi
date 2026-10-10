@@ -1,3 +1,5 @@
+import type { RuntimeModelCacheControl } from './runtime-model.js';
+
 export type MessageRole = 'user' | 'assistant' | 'toolResult' | 'system' | 'custom';
 
 export interface TextContent {
@@ -165,7 +167,7 @@ export interface ModelConfig {
   supportsTools?: boolean;
   presencePenalty?: number;
   frequencyPenalty?: number;
-  cacheControl?: { type: 'ephemeral' | 'disabled' };
+  cacheControl?: RuntimeModelCacheControl;
 }
 
 export type ThinkingLevel = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';

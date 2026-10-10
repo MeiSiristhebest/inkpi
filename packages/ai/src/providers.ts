@@ -6,12 +6,55 @@ import { AssistantEventStream } from './stream.js';
 import { resolveModelTranscript } from './transcript.js';
 import type {
   AnthropicEffort,
+  CacheControl,
   EventStream,
   FauxScriptedResponse,
   ModelConfig,
   ProviderType,
   StreamOptions
 } from './types.js';
+
+type PromptCacheSetting = boolean | CacheControl | undefined;
+type PromptCacheTtl = Extract<CacheControl, { type: 'ephemeral' }>['ttl'];
+
+function configuredPromptCache(model: ModelConfig, options?: StreamOptions): PromptCacheSetting {
+  return options?.cacheControl === undefined ? model.cacheControl : options.cacheControl;
+}
+
+function promptCacheTtl(setting: PromptCacheSetting): PromptCacheTtl | undefined {
+  return typeof setting === 'object' && setting !== null && setting.type === 'ephemeral' ? setting.ttl : undefined;
+}
+
+function promptCacheDisabled(setting: PromptCacheSetting): boolean {
+  return setting === false || (typeof setting === 'object' && setting !== null && setting.type === 'disabled');
+}
+
+function promptCacheEnabled(setting: PromptCacheSetting): boolean {
+  return setting === true || (typeof setting === 'object' && setting !== null && setting.type === 'ephemeral');
+}
+
+function promptCacheTtlError(model: ModelConfig, ttl: PromptCacheTtl | undefined): ProviderError | undefined {
+  if (ttl === undefined) return undefined;
+  if (model.supportsPromptCache !== true) {
+    return new ProviderError({
+      code: 'unsupported_capability',
+      provider: model.provider,
+      message: `Prompt cache TTL '${ttl}' requires supportsPromptCache: true.`
+    });
+  }
+
+  const provider = String(model.provider).toLowerCase();
+  const supported =
+    ((provider === 'anthropic' || provider === 'claude') && (ttl === '5m' || ttl === '1h')) ||
+    (provider === 'openai' && ttl === '30m');
+  if (supported) return undefined;
+
+  return new ProviderError({
+    code: 'unsupported_capability',
+    provider: model.provider,
+    message: `Prompt cache TTL '${ttl}' is not supported by provider '${model.provider}'.`
+  });
+}
 
 export function convertMessagesToStandard(messages: AgentMessage[], systemPrompt?: string): StandardLlmMessage[] {
   const result: StandardLlmMessage[] = [];
@@ -597,6 +640,14 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
   const baseUrl = resolveProviderBaseUrl(model.provider, model.baseUrl);
   const apiKeyEnv = resolveProviderApiKeyEnv(model.provider);
   const apiKey = model.apiKey || (apiKeyEnv ? process.env[apiKeyEnv] : undefined) || '';
+  const cacheControl = configuredPromptCache(model, options);
+  const cacheTtl = promptCacheTtl(cacheControl);
+  const cacheTtlError = promptCacheTtlError(model, cacheTtl);
+
+  if (cacheTtlError) {
+    queueMicrotask(() => stream.error(cacheTtlError));
+    return stream;
+  }
 
   if (!apiKey) {
     queueMicrotask(() => {
@@ -635,10 +686,12 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
         model.provider === 'openai' &&
         options?.providerSessionId &&
         model.supportsPromptCache !== false &&
-        options.cacheControl !== false &&
-        !(typeof options.cacheControl === 'object' && options.cacheControl.type === 'disabled')
+        !promptCacheDisabled(cacheControl)
       ) {
         payload.prompt_cache_key = options.providerSessionId;
+      }
+      if (model.provider === 'openai' && cacheTtl === '30m') {
+        payload.prompt_cache_options = { ttl: '30m' };
       }
 
       if (options?.tools && options.tools.length > 0) {
@@ -982,6 +1035,14 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
   const stream = new AssistantEventStream();
   const baseUrl = model.baseUrl || 'https://api.anthropic.com/v1';
   const apiKey = model.apiKey || process.env.ANTHROPIC_API_KEY || '';
+  const cacheControl = configuredPromptCache(model, options);
+  const cacheTtl = promptCacheTtl(cacheControl);
+  const cacheTtlError = promptCacheTtlError(model, cacheTtl);
+
+  if (cacheTtlError) {
+    queueMicrotask(() => stream.error(cacheTtlError));
+    return stream;
+  }
 
   if (!apiKey) {
     queueMicrotask(() => {
@@ -1022,7 +1083,9 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
       {
         type: 'text',
         text: systemMessages.join('\n\n'),
-        ...(options?.cacheControl ? { cache_control: { type: 'ephemeral' } } : {})
+        ...(promptCacheEnabled(cacheControl)
+          ? { cache_control: { type: 'ephemeral', ...(cacheTtl ? { ttl: cacheTtl } : {}) } }
+          : {})
       }
     ];
   }
@@ -1057,7 +1120,7 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       };
-      if (options?.cacheControl || model.supportsPromptCache) {
+      if (promptCacheEnabled(cacheControl) || model.supportsPromptCache) {
         headers['anthropic-beta'] = 'prompt-caching-2024-07-25';
       }
 
