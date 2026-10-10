@@ -125,11 +125,13 @@ export class DifferentialRenderer {
   public render(newScreenText: string): {
     changedLines: number;
     output: string;
+    patch: string;
     isDiff: boolean;
   } {
     const currentLines = newScreenText.split('\n');
     let changed = 0;
     const maxLines = Math.max(this.lastBuffer.length, currentLines.length);
+    const patch: string[] = [];
 
     for (let i = 0; i < maxLines; i++) {
       const oldLine = i < this.lastBuffer.length ? this.lastBuffer[i] : undefined;
@@ -137,13 +139,19 @@ export class DifferentialRenderer {
 
       if (oldLine !== newLine) {
         changed++;
+        if (this.lastBuffer.length > 0) {
+          patch.push(`\x1b[${i + 1};1H\x1b[2K${newLine ?? ''}${ANSI.RESET}`);
+        }
       }
     }
 
+    const patchOutput =
+      this.lastBuffer.length === 0 ? `${ANSI.CLEAR_SCREEN}${newScreenText}${ANSI.RESET}` : patch.join('');
     this.lastBuffer = [...currentLines];
     return {
       changedLines: changed,
       output: newScreenText,
+      patch: patchOutput,
       isDiff: changed > 0
     };
   }

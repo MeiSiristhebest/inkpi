@@ -30,6 +30,8 @@ describe('TerminalStudio (Terminal Workstation)', () => {
     const thirdDiff = studio.renderDifferential();
     expect(thirdDiff.isDiff).toBe(true);
     expect(thirdDiff.content).toContain('Updated text');
+    expect(thirdDiff.content).toContain('\x1b[2K');
+    expect(thirdDiff.content.length).toBeLessThan(studio.renderScreen().length);
   });
 
   it('should support document navigation and focus switching', () => {

@@ -145,11 +145,11 @@ export class TUI {
     this.lastCursorPosition = cursor;
 
     const screenText = cleanedLines.join('\n');
-    const { changedLines, output } = this.differentialRenderer.render(screenText);
+    const { changedLines, output, patch } = this.differentialRenderer.render(screenText);
 
     if (changedLines > 0) {
       if (this.screenManager.getMode() === 'alt') {
-        this.terminal.write(ANSI.CURSOR_HOME + output);
+        this.terminal.write(ANSI.CURSOR_HOME + patch);
       } else {
         this.terminal.write(`${output}\n`);
       }

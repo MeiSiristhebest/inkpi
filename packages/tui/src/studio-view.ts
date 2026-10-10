@@ -76,7 +76,7 @@ export class StudioView {
     const result = this.differentialRenderer.render(current);
     return {
       isDiff: result.changedLines > 0,
-      content: result.changedLines === 0 ? '' : current
+      content: result.changedLines === 0 ? '' : result.patch
     };
   }
 

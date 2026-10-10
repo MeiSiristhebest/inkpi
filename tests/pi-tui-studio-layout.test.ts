@@ -8,15 +8,24 @@ describe('Pi TUI Engine Integration & Studio Layout', () => {
     const res1 = renderer.render(frame1);
     expect(res1.changedLines).toBe(3);
     expect(res1.output).toBe(frame1);
+    expect(res1.patch).toBe(`\x1b[2J${frame1}\x1b[0m`);
 
     // Frame 2 identical
     const res2 = renderer.render(frame1);
     expect(res2.changedLines).toBe(0);
+    expect(res2.patch).toBe('');
 
     // Frame 3 single line changed
     const frame3 = 'Line 1\nLine 2 modified\nLine 3';
     const res3 = renderer.render(frame3);
     expect(res3.changedLines).toBe(1);
+    expect(res3.output).toBe(frame3);
+    expect(res3.patch).toBe('\x1b[2;1H\x1b[2KLine 2 modified\x1b[0m');
+
+    // Shrinking a frame clears rows left behind by the prior frame.
+    const res4 = renderer.render('Line 1');
+    expect(res4.changedLines).toBe(2);
+    expect(res4.patch).toBe('\x1b[2;1H\x1b[2K\x1b[0m\x1b[3;1H\x1b[2K\x1b[0m');
   });
 
   it('should support layout primitives (HStack, VStack, ScrollView)', () => {

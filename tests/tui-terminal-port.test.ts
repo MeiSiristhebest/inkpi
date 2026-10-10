@@ -22,6 +22,34 @@ describe('TUI Terminal port injection (C5)', () => {
     expect(term.writes.join('')).toContain('hello');
   });
 
+  it('uses row patches in alt-screen mode and keeps full-frame writes in inline mode', () => {
+    const altRoot = new BoxComponent({ content: ['unchanged top', 'before', 'unchanged bottom'] });
+
+    const altTerminal = new MemoryTerminal();
+    const altTui = new TUI({ altScreen: true, terminal: altTerminal, rootComponent: altRoot });
+    altTui.refresh();
+    altRoot.content[1] = 'after';
+    altTui.refresh();
+
+    const patch = altTerminal.writes.at(-1) ?? '';
+    expect(patch).toContain('\x1b[3;1H\x1b[2K\x1b[36m│\x1b[0mafter');
+    expect(patch).not.toContain('unchanged top');
+    expect(patch).not.toContain('unchanged bottom');
+
+    const inlineRoot = new BoxComponent({ content: ['unchanged top', 'before', 'unchanged bottom'] });
+    const inlineTerminal = new MemoryTerminal();
+    const inlineTui = new TUI({ terminal: inlineTerminal, rootComponent: inlineRoot });
+    inlineTui.refresh();
+    inlineRoot.content[1] = 'after';
+    inlineTui.refresh();
+
+    const fullFrame = inlineTerminal.writes.at(-1) ?? '';
+    expect(fullFrame).toContain('after');
+    expect(fullFrame).toContain('unchanged top');
+    expect(fullFrame).toContain('unchanged bottom');
+    expect(fullFrame).not.toContain('\x1b[2;1H');
+  });
+
   it('subscribes/unsubscribes resize through the injected terminal', () => {
     const term = new MemoryTerminal();
     const tui = new TUI({ terminal: term, rootComponent: new BoxComponent({ content: ['x'] }) });
