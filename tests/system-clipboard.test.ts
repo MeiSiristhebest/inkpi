@@ -1,6 +1,10 @@
 import { KillRing, MockClipboardDriver, NativeSystemClipboardDriver, SyncedClipboard } from '@inkpi/agent-core';
 import { describe, expect, it } from 'vitest';
 
+function missingExecutable(name: string): Error {
+  return Object.assign(new Error(`${name} was not found`), { code: 'ENOENT' });
+}
+
 describe('InkPi System Clipboard Integration & KillRing Sync', () => {
   it('should sync copied text from KillRing to Clipboard driver', () => {
     const ring = new KillRing(10);
@@ -50,5 +54,49 @@ describe('InkPi System Clipboard Integration & KillRing Sync', () => {
 
     expect(() => native.readText()).toThrow(/Unable to read the native system clipboard/);
     expect(() => native.writeText('text')).toThrow(/Unable to write to the native system clipboard/);
+  });
+
+  it('should prefer Wayland clipboard commands when available', () => {
+    const calls: Array<{ executable: string; args: readonly string[]; options: Record<string, unknown> }> = [];
+    const native = new NativeSystemClipboardDriver((executable, args, options) => {
+      calls.push({ executable, args, options });
+      return executable === 'wl-paste' ? 'wayland text' : '';
+    }, 'linux');
+
+    expect(native.readText()).toBe('wayland text');
+    expect(native.writeText('copy to Wayland')).toBe(true);
+    expect(calls.map((call) => call.executable)).toEqual(['wl-paste', 'wl-copy']);
+    expect(calls.every((call) => call.options.timeout === 1000)).toBe(true);
+  });
+
+  it('should use X11 clipboard commands only when the Wayland executable is missing', () => {
+    const calls: Array<{ executable: string; args: readonly string[]; options: Record<string, unknown> }> = [];
+    let clipboard = '';
+    const native = new NativeSystemClipboardDriver((executable, args, options) => {
+      calls.push({ executable, args, options });
+      if (executable === 'wl-paste' || executable === 'wl-copy') throw missingExecutable(executable);
+      if (args.at(-1) === '-o') return clipboard;
+      clipboard = String(options.input ?? '');
+      return '';
+    }, 'linux');
+
+    expect(native.writeText('copy to X11')).toBe(true);
+    expect(native.readText()).toBe('copy to X11');
+    expect(calls.map((call) => call.executable)).toEqual(['wl-copy', 'xclip', 'wl-paste', 'xclip']);
+    expect(calls[1]?.args).toEqual(['-selection', 'clipboard']);
+    expect(calls[3]?.args).toEqual(['-selection', 'clipboard', '-o']);
+  });
+
+  it('should surface a Wayland operation failure without writing to a different X11 clipboard', () => {
+    const calls: string[] = [];
+    const denied = Object.assign(new Error('clipboard permission denied'), { code: 'EACCES' });
+    const native = new NativeSystemClipboardDriver((executable) => {
+      calls.push(executable);
+      if (executable === 'wl-copy') throw denied;
+      return '';
+    }, 'linux');
+
+    expect(() => native.writeText('text')).toThrow(/clipboard permission denied/);
+    expect(calls).toEqual(['wl-copy']);
   });
 });

@@ -29,6 +29,31 @@ export class MockClipboardDriver implements ClipboardDriver {
 
 const DEFAULT_CLIPBOARD_TIMEOUT_MS = 1000;
 
+function isMissingExecutable(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+function runLinuxClipboardCommand(
+  commandRunner: ClipboardCommandRunner,
+  primary: { executable: string; args: readonly string[] },
+  fallback: { executable: string; args: readonly string[] },
+  options: Record<string, unknown>
+): string | Buffer {
+  try {
+    return commandRunner(primary.executable, primary.args, options);
+  } catch (primaryError) {
+    if (!isMissingExecutable(primaryError)) throw primaryError;
+    try {
+      return commandRunner(fallback.executable, fallback.args, options);
+    } catch (fallbackError) {
+      if (isMissingExecutable(fallbackError)) {
+        throw new Error('No supported Linux clipboard command is available.', { cause: fallbackError });
+      }
+      throw fallbackError;
+    }
+  }
+}
+
 export class NativeSystemClipboardDriver implements ClipboardDriver {
   constructor(
     private readonly commandRunner: ClipboardCommandRunner = execFileSync as ClipboardCommandRunner,
@@ -56,27 +81,18 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
         );
       }
       if (this.platform === 'linux') {
-        try {
-          return String(
-            this.commandRunner('wl-paste', [], {
+        return String(
+          runLinuxClipboardCommand(
+            this.commandRunner,
+            { executable: 'wl-paste', args: [] },
+            { executable: 'xclip', args: ['-selection', 'clipboard', '-o'] },
+            {
               encoding: 'utf8',
               stdio: ['pipe', 'pipe', 'pipe'],
               timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
-            })
-          );
-        } catch (waylandError) {
-          try {
-            return String(
-              this.commandRunner('xclip', ['-selection', 'clipboard', '-o'], {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe'],
-                timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
-              })
-            );
-          } catch (xclipError) {
-            throw new Error('No supported Linux clipboard command is available.', { cause: xclipError });
-          }
-        }
+            }
+          )
+        );
       }
       throw new Error(`Native clipboard is unsupported on platform '${this.platform}'.`);
     } catch (error) {
@@ -103,23 +119,12 @@ export class NativeSystemClipboardDriver implements ClipboardDriver {
         return true;
       }
       if (this.platform === 'linux') {
-        try {
-          this.commandRunner('wl-copy', [], {
-            input: text,
-            stdio: ['pipe', 'pipe', 'pipe'],
-            timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
-          });
-        } catch (waylandError) {
-          try {
-            this.commandRunner('xclip', ['-selection', 'clipboard'], {
-              input: text,
-              stdio: ['pipe', 'pipe', 'pipe'],
-              timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS
-            });
-          } catch (xclipError) {
-            throw new Error('No supported Linux clipboard command is available.', { cause: xclipError });
-          }
-        }
+        runLinuxClipboardCommand(
+          this.commandRunner,
+          { executable: 'wl-copy', args: [] },
+          { executable: 'xclip', args: ['-selection', 'clipboard'] },
+          { input: text, stdio: ['pipe', 'pipe', 'pipe'], timeout: DEFAULT_CLIPBOARD_TIMEOUT_MS }
+        );
         return true;
       }
       throw new Error(`Native clipboard is unsupported on platform '${this.platform}'.`);
