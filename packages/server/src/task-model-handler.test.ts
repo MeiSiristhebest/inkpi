@@ -224,6 +224,71 @@ describe('TaskModelHandler structured output failures', () => {
     expect(prompt).not.toContain('must appear through providers only');
   });
 
+  it('uses provider-backed conversation history once instead of repeating it in task details', async () => {
+    let prompt = '';
+    const handler = new TaskModelHandler({
+      model,
+      stream: (_model, messages) => {
+        prompt = String(messages[0]?.content ?? '');
+        const result = new AssistantEventStream();
+        queueMicrotask(() => {
+          result.push({ type: 'text_delta', textDelta: 'answer' });
+          result.end();
+        });
+        return result;
+      },
+      defaultModelCapabilities: { outputFormats: ['text'] }
+    });
+    const task: AiTask = {
+      id: 'history-prompt-task',
+      kind: 'creative.assistant',
+      input: {
+        payload: {
+          conversationHistory: [
+            { role: 'user', text: 'earlier-user-history-marker' },
+            { role: 'assistant', text: 'earlier-assistant-history-marker' }
+          ],
+          question: 'current question'
+        }
+      },
+      outputContract: { format: 'text' }
+    };
+
+    await handler.execute({
+      task,
+      context: {
+        fragments: [
+          {
+            id: 'conversation-history',
+            source: 'creative.conversation-history',
+            kind: 'conversation-history',
+            data: {
+              turns: [
+                { role: 'user', text: 'earlier-user-history-marker' },
+                { role: 'assistant', text: 'earlier-assistant-history-marker' }
+              ]
+            }
+          }
+        ],
+        text: '',
+        tokenEstimate: 0,
+        fingerprint: 'history-prompt-context',
+        truncated: false
+      },
+      signal: new AbortController().signal,
+      executionRunId: 'run:history-prompt-task',
+      attempt: 1,
+      consumeSteering: () => [],
+      saveCheckpoint: async () => undefined,
+      reportProgress: () => undefined
+    });
+
+    expect(prompt.match(/earlier-user-history-marker/g)).toHaveLength(1);
+    expect(prompt.match(/earlier-assistant-history-marker/g)).toHaveLength(1);
+    expect(prompt).not.toContain('conversationHistory');
+    expect(prompt).toContain('current question');
+  });
+
   it('returns a secret-free execution snapshot for the selected route', async () => {
     const toolRegistry = new ToolRegistry();
     toolRegistry.register({

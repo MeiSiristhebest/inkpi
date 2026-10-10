@@ -20,6 +20,7 @@ import {
   type ToolCallContent,
   assertJsonValue
 } from '@inkpi/protocol';
+import { CONVERSATION_HISTORY_PROVIDER_ID } from './conversation-history-provider.js';
 import {
   CapabilityRouter,
   type ModelCapabilities,
@@ -461,7 +462,10 @@ function publicSteeringMessage(inputs: unknown[]): AgentMessage {
 }
 
 function buildPrompt(context: TaskHandlerContext): string {
-  const payload = withoutCompiledContext(context.task.input.payload);
+  const hasConversationHistoryContext = context.context.fragments.some(
+    (fragment) => fragment.source === CONVERSATION_HISTORY_PROVIDER_ID
+  );
+  const payload = withoutCompiledContext(context.task.input.payload, hasConversationHistoryContext);
   const stableInstruction = context.instructions?.entryIds.length ? context.instructions.text.trim() : '';
   // Backward compatibility only: metadata instruction is accepted for tasks
   // that have no matching InstructionRegistry entry. Registered tasks never
@@ -509,12 +513,20 @@ function executionPolicySnapshot(policy: TaskHandlerContext['task']['executionPo
   } as JsonObject;
 }
 
-function withoutCompiledContext(payload: unknown): JsonValue | undefined {
+function withoutCompiledContext(payload: unknown, omitConversationHistory: boolean): JsonValue | undefined {
   if (payload === undefined) return undefined;
   assertJsonValue(payload, 'Task input payload');
   const record = asRecord(payload);
-  if (!record || !Object.prototype.hasOwnProperty.call(record, 'context')) return payload;
-  const { context: _context, ...copy } = record;
+  if (!record) return payload;
+  const hasContext = Object.prototype.hasOwnProperty.call(record, 'context');
+  const hasConversationHistory =
+    omitConversationHistory && Object.prototype.hasOwnProperty.call(record, 'conversationHistory');
+  if (!hasContext && !hasConversationHistory) return payload;
+  const omittedProperties = new Set([
+    ...(hasContext ? ['context'] : []),
+    ...(hasConversationHistory ? ['conversationHistory'] : [])
+  ]);
+  const copy = Object.fromEntries(Object.entries(record).filter(([key]) => !omittedProperties.has(key)));
   if (Object.keys(copy).length === 0) return undefined;
   assertJsonValue(copy, 'Task input payload without compiled context');
   return copy;
