@@ -1,5 +1,6 @@
 import type { EventStream } from '@inkpi/ai';
 import type { AgentMessage, AssistantMessage, AssistantMessageEvent } from '@inkpi/protocol';
+import { MONOTONIC_CLOCK } from '../ports/index.js';
 import { AssistantFrameEncoder } from './assistant-frames.js';
 import type { TurnContext } from './turn-context.js';
 
@@ -98,6 +99,8 @@ export class StreamInvoker {
     const thinkingEffort = effortEnabled ? mapEffort(level) : undefined;
     const thinkingBudget = effortEnabled ? undefined : getBudget(level);
 
+    const monotonicClock = options.monotonicClock ?? MONOTONIC_CLOCK;
+    const startedAt = monotonicClock();
     const stream = streamFn(requestModel, requestMessages, {
       signal,
       systemPrompt: prepared?.systemPrompt ?? state.systemPrompt,
@@ -132,6 +135,7 @@ export class StreamInvoker {
     let assistantMessage: AssistantMessage;
     try {
       assistantMessage = await stream.collect();
+      assistantMessage.durationMs = Math.max(0, monotonicClock() - startedAt);
       await stream.waitForListeners?.();
     } finally {
       signal?.removeEventListener('abort', abortStream);

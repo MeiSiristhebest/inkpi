@@ -71,6 +71,8 @@ export interface AssistantMessage extends BaseMessage {
   /** Structured provider failure metadata preserved across the stream boundary. */
   providerError?: ProviderErrorMetadata;
   usage?: Usage;
+  /** Provider request duration measured with a monotonic clock. */
+  durationMs?: number;
   /**
    * 本条消息生成时使用的 provider 思考档位（如 Anthropic 自适应思考 effort）。
    * 回放历史时按轮次还原逐轮 effort，避免中途调档后串档（对齐上游 pi v0.85.0）。
@@ -85,6 +87,8 @@ export interface ToolResultMessage extends BaseMessage {
   content: (TextContent | ImageContent)[];
   details?: unknown;
   isError?: boolean;
+  /** execute() duration, excluding gates and hooks; absent when the tool did not run. */
+  durationMs?: number;
 }
 
 export interface SystemMessage extends BaseMessage {

@@ -319,6 +319,7 @@ export class ToolDispatcher {
     };
 
     let toolRes: ToolResultMessage & { terminate?: boolean };
+    let executedDuration: number | undefined;
     try {
       let blocked = false;
       let blockReason = 'Tool execution blocked by gate';
@@ -349,6 +350,7 @@ export class ToolDispatcher {
         toolRes = await toolRegistry.executeTool(call, signal, fencedUpdate, {
           messages: ctx.state.messages
         });
+        executedDuration = toolRes.durationMs;
       }
 
       if (options.afterToolCall) {
@@ -382,6 +384,7 @@ export class ToolDispatcher {
         toolName: call.name,
         isError: true,
         terminate: true,
+        ...(executedDuration !== undefined ? { durationMs: executedDuration } : {}),
         content: [{ type: 'text', text: `Tool lifecycle error: ${message}` }],
         timestamp: clock()
       };
@@ -421,6 +424,7 @@ export class ToolDispatcher {
     await emitEvent({
       type: 'tool_execution_end',
       toolCallId: call.id,
+      ...(toolRes.durationMs !== undefined ? { durationMs: toolRes.durationMs } : {}),
       result: toolRes.content
     });
     return toolRes;

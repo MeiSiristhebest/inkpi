@@ -115,6 +115,7 @@ export interface AgentOptions {
   thinkingMapper?: ThinkingMapper;
   idGenerator?: IdGenerator;
   clock?: Clock;
+  monotonicClock?: Clock;
   sessionId?: string;
   journal?: any;
   beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;

@@ -1,7 +1,7 @@
 export * from './types.js';
 export * from './errors.js';
 export type { Clock, IdGenerator, Logger, FileSystem, ModelStreamer, SessionStore } from './ports/index.js';
-export { REAL_CLOCK } from './ports/index.js';
+export { REAL_CLOCK, MONOTONIC_CLOCK } from './ports/index.js';
 export { nodeFileSystem } from './adapters/node-filesystem.js';
 export * from './queues.js';
 export * from './tools.js';

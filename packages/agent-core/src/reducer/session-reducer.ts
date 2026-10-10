@@ -172,6 +172,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
         stopReason: payload?.stopReason || 'stop',
         errorMessage: payload?.errorMessage,
         usage: payload?.usage,
+        ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
         timestamp: entry.timestamp
       };
       next.messages.push(assistantMsg);
@@ -192,6 +193,7 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
     case 'tool_execution': {
       const payload = entry.payload;
       const toolMsg: ToolResultMessage = {
+        ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
         id: entry.id,
         role: 'toolResult',
         toolCallId: payload?.toolCallId || payload?.id || entry.id,

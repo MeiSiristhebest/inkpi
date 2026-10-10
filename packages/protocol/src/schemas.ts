@@ -112,6 +112,7 @@ export const AssistantMessageSchema = Type.Object({
   errorMessage: Type.Optional(Type.String()),
   providerError: Type.Optional(ProviderErrorMetadataSchema),
   usage: Type.Optional(UsageSchema),
+  durationMs: Type.Optional(Type.Number({ minimum: 0 })),
   timestamp: Type.Optional(TimestampSchema),
   providerThinkingLevel: Type.Optional(Type.String())
 });
@@ -124,6 +125,7 @@ export const ToolResultMessageSchema = Type.Object({
   content: Type.Array(Type.Union([TextContentSchema, ImageContentSchema])),
   details: Type.Optional(JsonValueSchema),
   isError: Type.Optional(Type.Boolean()),
+  durationMs: Type.Optional(Type.Number({ minimum: 0 })),
   timestamp: Type.Optional(TimestampSchema)
 });
 

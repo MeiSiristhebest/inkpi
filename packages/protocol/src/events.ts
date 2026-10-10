@@ -39,7 +39,7 @@ export type AgentEvent =
   | { type: 'message_end'; message: AgentMessage }
   | { type: 'tool_execution_start'; toolCallId: string; toolName: string; args: unknown }
   | { type: 'tool_execution_update'; toolCallId: string; partialResult: unknown }
-  | { type: 'tool_execution_end'; toolCallId: string; result: unknown }
+  | { type: 'tool_execution_end'; toolCallId: string; result: unknown; durationMs?: number }
   | { type: 'journal_entry_appended'; entry: unknown }
   | { type: 'projection_updated'; table: string; id: string }
   | { type: 'pipeline_stage_span'; stage: string; role: string; durationMs: number; usage?: Usage }

@@ -11,6 +11,7 @@ import type {
 } from '@inkpi/protocol';
 import { runWithConcurrency } from './concurrency.js';
 import type { Clock } from './ports/index.js';
+import { MONOTONIC_CLOCK } from './ports/index.js';
 import type { ToolExecutionMode } from './types.js';
 
 export {
@@ -34,9 +35,11 @@ export class ToolRegistry {
   private tools = new Map<string, AgentTool>();
   private registrations = new Map<string, ToolRegistrationDescriptor>();
   private readonly clock: Clock;
+  private readonly monotonicClock: Clock;
 
-  constructor(clock: Clock = Date.now) {
+  constructor(clock: Clock = Date.now, monotonicClock: Clock = MONOTONIC_CLOCK) {
     this.clock = clock;
+    this.monotonicClock = monotonicClock;
   }
 
   public register(tool: AgentTool, options: ToolRegistrationOptions = {}): void {
@@ -123,6 +126,7 @@ export class ToolRegistry {
       };
     }
 
+    let startedAt: number | undefined;
     try {
       if (signal?.aborted) {
         return {
@@ -135,7 +139,9 @@ export class ToolRegistry {
         };
       }
 
+      startedAt = this.monotonicClock();
       const result: ToolResult = await tool.execute(toolCall.id, toolCall.arguments, signal, onUpdate, context);
+      const durationMs = Math.max(0, this.monotonicClock() - startedAt);
       const detailsError = result.details === undefined ? undefined : findJsonValueError(result.details, '/details');
       if (detailsError) {
         return {
@@ -149,7 +155,8 @@ export class ToolRegistry {
               text: `Tool result rejected: ${detailsError.path} ${detailsError.message}`
             }
           ],
-          timestamp: this.clock()
+          timestamp: this.clock(),
+          durationMs
         };
       }
 
@@ -161,6 +168,7 @@ export class ToolRegistry {
         details: result.details,
         isError: result.isError ?? false,
         terminate: result.terminate,
+        durationMs,
         timestamp: this.clock()
       };
     } catch (err: any) {
@@ -170,6 +178,7 @@ export class ToolRegistry {
         toolName: toolCall.name,
         isError: true,
         content: [{ type: 'text', text: `Tool Exception: ${err?.message || String(err)}` }],
+        ...(startedAt !== undefined ? { durationMs: Math.max(0, this.monotonicClock() - startedAt) } : {}),
         timestamp: this.clock()
       };
     }

@@ -23,6 +23,8 @@ export type Clock = () => number;
  * fall back to `Date.now` themselves, or the injection becomes a no-op.
  */
 export const REAL_CLOCK: Clock = Date.now;
+/** Elapsed time only. Never use this clock for persisted timestamps or identifiers. */
+export const MONOTONIC_CLOCK: Clock = () => performance.now();
 
 /** Stable identifier generator. Inject a deterministic generator in tests. */
 export type IdGenerator = () => string;

@@ -11,6 +11,11 @@ import { ProviderError, classifyProviderError } from './errors.js';
 import type { EventStream } from './types.js';
 
 export class AssistantEventStream implements EventStream<AssistantMessageEvent> {
+  private readonly startedAt: number;
+  private endedAt?: number;
+  constructor(private readonly monotonicClock: () => number = () => performance.now()) {
+    this.startedAt = monotonicClock();
+  }
   private queue: AssistantMessageEvent[] = [];
   private queueHead = 0;
   private listeners: Array<(event: AssistantMessageEvent) => void | Promise<void>> = [];
@@ -91,6 +96,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
   }
 
   public end(): void {
+    this.endedAt ??= this.monotonicClock();
     if (this.isEnded) return;
     this.isEnded = true;
     while (this.resolvers.length > 0) {
@@ -288,6 +294,7 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
     return {
       role: 'assistant',
       content,
+      durationMs: Math.max(0, (this.endedAt ?? this.monotonicClock()) - this.startedAt),
       stopReason,
       errorMessage,
       ...(providerError ? { providerError } : {}),

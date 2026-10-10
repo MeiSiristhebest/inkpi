@@ -43,7 +43,7 @@ export class Agent {
   constructor(options: AgentOptions = {}) {
     this.options = options;
     this.clock = options.clock || REAL_CLOCK;
-    this.toolRegistry = new ToolRegistry(this.clock);
+    this.toolRegistry = new ToolRegistry(this.clock, options.monotonicClock);
     this.steeringMode = options.steeringMode || 'all';
     this.followUpMode = options.followUpMode || 'one-at-a-time';
     this.toolExecution = options.toolExecution || 'parallel';
@@ -286,7 +286,7 @@ export class Agent {
       throw new Error('Agent run was not claimed before starting.');
     }
 
-    const mergedTools = new ToolRegistry(this.clock);
+    const mergedTools = new ToolRegistry(this.clock, this.options.monotonicClock);
     for (const t of this.toolRegistry.getAll()) {
       mergedTools.register(t, this.toolRegistry.getRegistration(t.name));
     }
