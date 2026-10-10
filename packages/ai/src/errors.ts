@@ -110,6 +110,19 @@ export function classifyProviderError(error: unknown, context: ProviderErrorCont
     });
   }
 
+  if (isServerBusyFailure(message, candidate?.code, details)) {
+    return new ProviderError({
+      code: 'provider_unavailable',
+      message,
+      provider,
+      status,
+      retryable: true,
+      retryAfterMs,
+      maxDelayMs,
+      details
+    });
+  }
+
   if (status !== undefined) {
     return new ProviderError({
       code: providerErrorCodeForStatus(status),
@@ -196,6 +209,23 @@ function isContextOverflow(message: string, code: unknown): boolean {
     code === 'context_length_exceeded' ||
     /context(?:\s+window|\s+length)?\s+(?:is\s+)?(?:too\s+long|overflow|exceed|limit)/i.test(message) ||
     /maximum context length|prompt is too long|token limit/i.test(message)
+  );
+}
+
+function isServerBusyFailure(message: string, code: unknown, details: unknown): boolean {
+  const record = asErrorRecord(details);
+  const nested = asErrorRecord(record?.error) ?? record;
+  const providerCode =
+    readString(code) ??
+    readString(nested?.code) ??
+    readString(nested?.type) ??
+    readString(record?.code) ??
+    readString(record?.type);
+
+  return (
+    providerCode?.toLowerCase().replace(/[\s-]/g, '_') === 'server_busy' ||
+    /\bserver[\s_-]*busy\b/i.test(message) ||
+    /\bservers?\s+(?:are\s+)?currently\s+busy\b/i.test(message)
   );
 }
 

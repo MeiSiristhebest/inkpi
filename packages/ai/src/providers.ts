@@ -542,6 +542,19 @@ function parseJsonStreamEvent(payload: string, provider: string): any {
   }
 }
 
+function throwForRetryableFinishReason(data: any, provider: string): void {
+  const finishReason = data.choices?.[0]?.finish_reason;
+  if (provider !== 'mistral' || finishReason !== 'error') return;
+
+  throw new ProviderError({
+    code: 'provider_unavailable',
+    message: 'Mistral stream ended with finish_reason "error".',
+    provider,
+    retryable: true,
+    details: { finishReason }
+  });
+}
+
 function consumeCompleteLines(buffer: string, chunk: string, onLine: (line: string) => void): string {
   const lines = (buffer + chunk).split('\n');
   const remainder = lines.pop() || '';
@@ -833,6 +846,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
 
           {
             const data = parseJsonStreamEvent(dataStr, model.provider);
+            throwForRetryableFinishReason(data, model.provider);
             if (data.usage) {
               sawUsage = true;
               const promptTokens = data.usage.prompt_tokens ?? 0;
@@ -917,6 +931,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
           return;
         }
         const data = parseJsonStreamEvent(dataStr, model.provider);
+        throwForRetryableFinishReason(data, model.provider);
         if (data.usage) {
           sawUsage = true;
           const promptTokens = data.usage.prompt_tokens ?? 0;

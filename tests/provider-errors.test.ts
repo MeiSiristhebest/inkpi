@@ -3,6 +3,7 @@ import {
   ProviderNotImplementedError,
   classifyProviderError,
   deepSeekProvider,
+  getProvider,
   providerHttpError,
   retryAssistantStream
 } from '@inkpi/ai';
@@ -53,6 +54,50 @@ describe('provider error taxonomy', () => {
     });
   });
 
+  it('classifies provider-declared busy failures as retryable despite a 4xx status', () => {
+    expect(
+      classifyProviderError({
+        message: 'servers are currently busy',
+        status: 400,
+        details: { error: { code: 'server_busy', type: 'server_busy' } }
+      })
+    ).toMatchObject({ code: 'provider_unavailable', retryable: true, status: 400 });
+
+    expect(classifyProviderError({ message: 'servers are currently busy', status: 400 })).toMatchObject({
+      code: 'provider_unavailable',
+      retryable: true,
+      status: 400
+    });
+  });
+
+  it('preserves busy error codes from provider HTTP bodies', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'server_busy', message: 'servers are currently busy' } }), {
+        status: 400,
+        statusText: 'Bad Request'
+      })
+    ) as typeof fetch;
+
+    try {
+      const stream = deepSeekProvider(
+        { id: 'deepseek-chat', name: 'DeepSeek', provider: 'deepseek', apiKey: 'test-key' },
+        [{ role: 'user', content: 'hello' }]
+      );
+      const events: Array<{ type: string; code?: string; retryable?: boolean; status?: number }> = [];
+      stream.on((event) => {
+        if (event.type === 'error') events.push(event);
+      });
+
+      await expect(stream.collect()).resolves.toMatchObject({ stopReason: 'error' });
+      expect(events).toEqual([
+        expect.objectContaining({ type: 'error', code: 'provider_unavailable', retryable: true, status: 400 })
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('carries HTTP taxonomy metadata through a provider stream', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -73,6 +118,40 @@ describe('provider error taxonomy', () => {
 
       await expect(stream.collect()).resolves.toMatchObject({ stopReason: 'error' });
       expect(events).toEqual([expect.objectContaining({ type: 'error', code: 'authentication', retryable: false })]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('marks a Mistral finish_reason=error event as retryable', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response('data: {"choices":[{"index":0,"delta":{},"finish_reason":"error"}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' }
+      })
+    ) as typeof fetch;
+
+    try {
+      const stream = getProvider('mistral')(
+        { id: 'mistral-small-latest', name: 'Mistral', provider: 'mistral', apiKey: 'test-key' },
+        [{ role: 'user', content: 'hello' }]
+      );
+      const events: Array<{ type: string; code?: string; provider?: string; retryable?: boolean }> = [];
+      stream.on((event) => {
+        if (event.type === 'error') events.push(event);
+      });
+
+      await expect(stream.collect()).resolves.toMatchObject({ stopReason: 'error' });
+
+      expect(events).toEqual([
+        expect.objectContaining({
+          type: 'error',
+          code: 'provider_unavailable',
+          provider: 'mistral',
+          retryable: true
+        })
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
