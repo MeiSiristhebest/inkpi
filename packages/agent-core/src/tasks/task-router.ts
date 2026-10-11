@@ -908,7 +908,10 @@ export class TaskRouter {
     for (const record of this.records.values()) {
       const parent = record.executionRun.parent;
       if (!parent) continue;
-      if (!parent.detached) this.getRecord(parent.taskId).ownedChildren.add(record.task.id);
+      if (parent.detached) continue;
+      const owner = this.getRecord(parent.taskId);
+      if (owner.snapshot.status === 'completed' && isSettledTaskStatus(record.snapshot.status)) continue;
+      owner.ownedChildren.add(record.task.id);
     }
     // Hydration normalizes in-flight records to `interrupted` and queues a
     // durable write. Do not release the recovery gate before that write lands.
@@ -1129,24 +1132,62 @@ export class TaskRouter {
   }
 
   private cancelOwnedTree(record: TaskRecord): void {
-    if (
-      record.cancelling ||
-      record.snapshot.status === 'interrupted' ||
-      ['completed', 'failed', 'cancelled'].includes(record.snapshot.status)
-    )
-      return;
-    for (const childId of record.ownedChildren) this.cancelOwnedTree(this.getRecord(childId));
-    record.controller.abort();
-    this.unschedule(record);
-    const paused = record.snapshot.status === 'waiting-user';
-    if (paused) this.resetCompletion(record);
-    this.finishCancelled(record, undefined, paused);
+    const stack: Array<{ record: TaskRecord; exiting: boolean }> = [{ record, exiting: false }];
+    const visited = new Set<string>();
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (current.exiting) {
+        if (
+          current.record.cancelling ||
+          current.record.snapshot.status === 'interrupted' ||
+          ['completed', 'failed', 'cancelled'].includes(current.record.snapshot.status)
+        )
+          continue;
+        current.record.controller.abort();
+        this.unschedule(current.record);
+        const paused = current.record.snapshot.status === 'waiting-user';
+        if (paused) this.resetCompletion(current.record);
+        this.finishCancelled(current.record, undefined, paused);
+        continue;
+      }
+
+      if (visited.has(current.record.task.id)) continue;
+      visited.add(current.record.task.id);
+      if (
+        current.record.cancelling ||
+        current.record.snapshot.status === 'interrupted' ||
+        ['completed', 'failed', 'cancelled'].includes(current.record.snapshot.status)
+      )
+        continue;
+
+      stack.push({ record: current.record, exiting: true });
+      const children = [...current.record.ownedChildren];
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        stack.push({ record: this.getRecord(children[index]!), exiting: false });
+      }
+    }
   }
 
   private interruptOwnedTree(record: TaskRecord): void {
-    if (record.snapshot.status === 'interrupted' || isTerminal(record.snapshot.status)) return;
-    for (const childId of record.ownedChildren) this.interruptOwnedTree(this.getRecord(childId));
-    this.finishInterrupted(record);
+    const stack: Array<{ record: TaskRecord; exiting: boolean }> = [{ record, exiting: false }];
+    const visited = new Set<string>();
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (current.exiting) {
+        if (current.record.snapshot.status === 'interrupted' || isTerminal(current.record.snapshot.status)) continue;
+        this.finishInterrupted(current.record);
+        continue;
+      }
+
+      if (visited.has(current.record.task.id)) continue;
+      visited.add(current.record.task.id);
+      if (current.record.snapshot.status === 'interrupted' || isTerminal(current.record.snapshot.status)) continue;
+      stack.push({ record: current.record, exiting: true });
+      const children = [...current.record.ownedChildren];
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        stack.push({ record: this.getRecord(children[index]!), exiting: false });
+      }
+    }
   }
 
   private resetCompletion(record: TaskRecord): void {
@@ -1204,7 +1245,14 @@ export class TaskRouter {
   }
 
   private async completeResult(record: TaskRecord, result: TaskResult, cacheStats?: RuntimeCacheStats): Promise<void> {
-    if (isInterrupted(record) || record.persistenceFailed || isTerminal(record.snapshot.status)) return;
+    const cancellingPausedOwner =
+      record.cancelling && record.snapshot.status === 'waiting-user' && result.status === 'cancelled';
+    if (
+      isInterrupted(record) ||
+      record.persistenceFailed ||
+      (isTerminal(record.snapshot.status) && !cancellingPausedOwner)
+    )
+      return;
     if (result.status === 'completed') {
       await this.checkpointStore.clear(record.task.id);
       if (record.controller.signal.aborted || isInterrupted(record)) return;
@@ -1223,6 +1271,7 @@ export class TaskRouter {
     await record.notifications;
     record.resolveCompletion(result);
     this.reconcileOwner(record);
+    if (result.status === 'completed') record.ownedChildren.clear();
   }
 
   private getRecord(taskId: string): TaskRecord {
@@ -1276,13 +1325,25 @@ function validateTaskOwnership(records: TaskExecutionRecord[]): void {
     ) {
       throw new Error(`Owned child '${record.task.id}' has no durable result`);
     }
-    const visited = new Set([record.task.id]);
-    let ancestor: TaskExecutionRecord | undefined = byId.get(parent.taskId);
+  }
+
+  const visiting = new Set<string>();
+  const verified = new Set<string>();
+  for (const record of records) {
+    const path: string[] = [];
+    let ancestor: TaskExecutionRecord | undefined = record;
     while (ancestor) {
-      if (visited.has(ancestor.task.id)) throw new Error('Task ownership contains a cycle');
-      visited.add(ancestor.task.id);
-      const next: TaskParent | undefined = ancestor.run?.parent;
-      ancestor = next ? byId.get(next.taskId) : undefined;
+      const taskId = ancestor.task.id;
+      if (verified.has(taskId)) break;
+      if (visiting.has(taskId)) throw new Error('Task ownership contains a cycle');
+      visiting.add(taskId);
+      path.push(taskId);
+      const parent: TaskParent | undefined = ancestor.run?.parent;
+      ancestor = parent ? byId.get(parent.taskId) : undefined;
+    }
+    for (const taskId of path) {
+      visiting.delete(taskId);
+      verified.add(taskId);
     }
   }
 }
@@ -1351,6 +1412,10 @@ function isAbortError(error: unknown): boolean {
 
 function isTerminal(status: TaskStatus): boolean {
   return status === 'waiting-user' || status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+function isSettledTaskStatus(status: TaskStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
 
 function isInterrupted(record: TaskRecord): boolean {

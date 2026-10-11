@@ -18,7 +18,279 @@ function task(overrides: Partial<AiTask> = {}): AiTask {
   };
 }
 
+function seedOwnershipChain(
+  executionStore: InMemoryTaskExecutionStore,
+  taskCount: number,
+  status: 'waiting-user' | 'running'
+): void {
+  for (let index = 0; index < taskCount; index += 1) {
+    const taskId = `deep-owner-${index}`;
+    executionStore.save({
+      task: task({ id: taskId }),
+      snapshot: { taskId, kind: 'test.echo', status },
+      attempts: 0,
+      updatedAt: index,
+      run: {
+        id: `run:${taskId}`,
+        taskId,
+        status,
+        attempts: 0,
+        updatedAt: index,
+        ...(index === 0 ? {} : { parent: { taskId: `deep-owner-${index - 1}`, detached: false } })
+      }
+    });
+  }
+}
+
 describe('TaskRegistry and TaskRouter', () => {
+  it('cancels a recovered ownership chain and waits for its children', async () => {
+    const executionStore = new InMemoryTaskExecutionStore();
+    const taskCount = 3;
+    seedOwnershipChain(executionStore, taskCount, 'waiting-user');
+
+    const router = new TaskRouter({ executionStore });
+    try {
+      await router.ready;
+      expect(router.cancel('deep-owner-0')).toMatchObject({ taskId: 'deep-owner-0', cancelled: true });
+      await expect(router.wait('deep-owner-0')).resolves.toMatchObject({
+        taskId: 'deep-owner-0',
+        kind: 'test.echo',
+        status: 'cancelled'
+      });
+      expect(router.status(`deep-owner-${taskCount - 1}`).status).toBe('cancelled');
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it('walks a deep cancellation ownership chain iteratively', async () => {
+    const executionStore = new InMemoryTaskExecutionStore();
+    const taskCount = 10_000;
+    seedOwnershipChain(executionStore, taskCount, 'waiting-user');
+    const router = new TaskRouter({ executionStore });
+    try {
+      await router.ready;
+      type OwnedTestRecord = {
+        cancelling: boolean;
+        ownedChildren: Set<string>;
+        snapshot: { status: string };
+        task: { id: string };
+      };
+      const internals = router as unknown as {
+        records: Map<string, OwnedTestRecord>;
+        finishCancelled: (record: OwnedTestRecord) => void;
+      };
+      const cancelledIds: string[] = [];
+      internals.finishCancelled = (record) => {
+        cancelledIds.push(record.task.id);
+        record.cancelling = true;
+        record.snapshot.status = 'cancelled';
+      };
+
+      expect(router.cancel('deep-owner-0')).toMatchObject({ taskId: 'deep-owner-0', cancelled: true });
+      expect(cancelledIds).toHaveLength(taskCount);
+      expect(cancelledIds[0]).toBe(`deep-owner-${taskCount - 1}`);
+      expect(cancelledIds.at(-1)).toBe('deep-owner-0');
+    } finally {
+      await router.stop();
+    }
+  }, 60_000);
+
+  it('interrupts a deep ownership chain without recursive stack growth', async () => {
+    const executionStore = new InMemoryTaskExecutionStore();
+    const taskCount = 10_000;
+    seedOwnershipChain(executionStore, taskCount, 'running');
+    const router = new TaskRouter({ executionStore });
+    try {
+      await router.ready;
+      const records = (
+        router as unknown as {
+          records: Map<string, { snapshot: { status: string }; executionRun: { status: string } }>;
+        }
+      ).records;
+      for (const record of records.values()) {
+        record.snapshot.status = 'running';
+        record.executionRun.status = 'running';
+      }
+
+      await router.stop();
+      expect(router.status('deep-owner-0').status).toBe('interrupted');
+      expect(router.status(`deep-owner-${taskCount - 1}`).status).toBe('interrupted');
+    } finally {
+      await router.stop();
+    }
+  }, 60_000);
+
+  it('does not rebuild settled ownership edges for completed owners', async () => {
+    const executionStore = new InMemoryTaskExecutionStore();
+    const ownerId = 'completed-owner';
+    const childId = 'completed-child';
+    const childResult = { taskId: childId, kind: 'test.echo', status: 'completed' as const };
+    const ownerResult = {
+      taskId: ownerId,
+      kind: 'test.echo',
+      status: 'completed' as const,
+      childResults: [childResult]
+    };
+
+    executionStore.save({
+      task: task({ id: ownerId }),
+      snapshot: { taskId: ownerId, kind: 'test.echo', status: 'completed', result: ownerResult },
+      attempts: 1,
+      updatedAt: 2,
+      run: { id: `run:${ownerId}`, taskId: ownerId, status: 'completed', attempts: 1, updatedAt: 2 }
+    });
+    executionStore.save({
+      task: task({ id: childId }),
+      snapshot: { taskId: childId, kind: 'test.echo', status: 'completed', result: childResult },
+      attempts: 1,
+      updatedAt: 1,
+      run: {
+        id: `run:${childId}`,
+        taskId: childId,
+        status: 'completed',
+        attempts: 1,
+        updatedAt: 1,
+        parent: { taskId: ownerId, detached: false }
+      }
+    });
+
+    const router = new TaskRouter({ executionStore });
+    try {
+      await router.ready;
+      const records = (
+        router as unknown as {
+          records: Map<string, { ownedChildren: Set<string> }>;
+        }
+      ).records;
+      expect(records.get(ownerId)?.ownedChildren.size).toBe(0);
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it('retains ownership edges for a resumable failed owner', async () => {
+    const executionStore = new InMemoryTaskExecutionStore();
+    const ownerId = 'failed-owner';
+    const childId = 'settled-child';
+    const childResult = { taskId: childId, kind: 'test.echo', status: 'completed' as const };
+    const pendingResult = {
+      taskId: ownerId,
+      kind: 'test.echo',
+      status: 'completed' as const,
+      childResults: [childResult]
+    };
+
+    executionStore.save({
+      task: task({ id: ownerId }),
+      snapshot: {
+        taskId: ownerId,
+        kind: 'test.echo',
+        status: 'failed',
+        result: {
+          taskId: ownerId,
+          kind: 'test.echo',
+          status: 'failed',
+          error: { code: 'TASK_FAILED', message: 'retryable settlement failure' }
+        }
+      },
+      attempts: 1,
+      updatedAt: 2,
+      run: {
+        id: `run:${ownerId}`,
+        taskId: ownerId,
+        status: 'failed',
+        attempts: 1,
+        updatedAt: 2,
+        completion: { version: 1, result: pendingResult }
+      }
+    });
+    executionStore.save({
+      task: task({ id: childId }),
+      snapshot: { taskId: childId, kind: 'test.echo', status: 'completed', result: childResult },
+      attempts: 1,
+      updatedAt: 1,
+      run: {
+        id: `run:${childId}`,
+        taskId: childId,
+        status: 'completed',
+        attempts: 1,
+        updatedAt: 1,
+        parent: { taskId: ownerId, detached: false }
+      }
+    });
+
+    const router = new TaskRouter({ executionStore });
+    try {
+      await router.ready;
+      const records = (
+        router as unknown as {
+          records: Map<string, { ownedChildren: Set<string> }>;
+        }
+      ).records;
+      expect(records.get(ownerId)?.ownedChildren).toEqual(new Set([childId]));
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it('retains ownership edges for a resumable cancelled owner with pending completion', async () => {
+    const executionStore = new InMemoryTaskExecutionStore();
+    const ownerId = 'cancelled-owner';
+    const childId = 'cancelled-child';
+    const childResult = { taskId: childId, kind: 'test.echo', status: 'cancelled' as const };
+
+    executionStore.save({
+      task: task({ id: ownerId }),
+      snapshot: {
+        taskId: ownerId,
+        kind: 'test.echo',
+        status: 'cancelled',
+        result: { taskId: ownerId, kind: 'test.echo', status: 'cancelled' }
+      },
+      attempts: 1,
+      updatedAt: 2,
+      run: {
+        id: `run:${ownerId}`,
+        taskId: ownerId,
+        status: 'cancelled',
+        attempts: 1,
+        updatedAt: 2,
+        completion: {
+          version: 1,
+          result: { taskId: ownerId, kind: 'test.echo', status: 'completed' }
+        }
+      }
+    });
+    executionStore.save({
+      task: task({ id: childId }),
+      snapshot: { taskId: childId, kind: 'test.echo', status: 'cancelled', result: childResult },
+      attempts: 1,
+      updatedAt: 1,
+      run: {
+        id: `run:${childId}`,
+        taskId: childId,
+        status: 'cancelled',
+        attempts: 1,
+        updatedAt: 1,
+        parent: { taskId: ownerId, detached: false }
+      }
+    });
+
+    const router = new TaskRouter({ executionStore });
+    try {
+      await router.ready;
+      const records = (
+        router as unknown as {
+          records: Map<string, { ownedChildren: Set<string> }>;
+        }
+      ).records;
+      expect(records.get(ownerId)?.ownedChildren).toEqual(new Set([childId]));
+    } finally {
+      await router.stop();
+    }
+  });
+
   it('prefers an exact kind handler over an earlier generic fallback', async () => {
     const registry = new TaskRegistry();
     let selected = '';
