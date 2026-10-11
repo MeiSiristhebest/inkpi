@@ -3,7 +3,9 @@ import {
   ModelCatalogManager,
   findModelInCatalog,
   getDeclaredProviderCapabilityMatrix,
-  modelCatalogEntryToCapabilityDeclaration
+  modelCatalogEntryToCapabilityDeclaration,
+  registerModelAlias,
+  resolveModelConfig
 } from '@inkpi/ai';
 import { describe, expect, it } from 'vitest';
 
@@ -31,6 +33,26 @@ describe('@inkpi/ai catalog routing (C2)', () => {
 
   it('prefers exact model IDs over an earlier qualified suffix match', () => {
     expect(findModelInCatalog('deepseek-chat')?.id).toBe('deepseek-chat');
+  });
+
+  it('resolves preset names and catalog model IDs for CLI configuration', () => {
+    expect(resolveModelConfig('creative-pro').id).toBe('deepseek-chat');
+    expect(resolveModelConfig('deepseek-chat')).toMatchObject({ id: 'deepseek-chat', provider: 'deepseek' });
+    expect(resolveModelConfig('deepseek-reasoner').id).toBe('deepseek/deepseek-r1');
+    expect(() => resolveModelConfig('missing-model')).toThrow(/Unknown model preset or catalog model/);
+    expect(() => resolveModelConfig('gpt')).toThrow(/Unknown model preset or catalog model/);
+  });
+
+  it('rejects cyclic aliases instead of recursing indefinitely', () => {
+    registerModelAlias('test-cycle-a', 'test-cycle-b');
+    registerModelAlias('test-cycle-b', 'test-cycle-a');
+
+    try {
+      expect(() => resolveModelConfig('test-cycle-a')).toThrow(/Model alias cycle/);
+    } finally {
+      registerModelAlias('test-cycle-a', 'deepseek-chat');
+      registerModelAlias('test-cycle-b', 'deepseek-chat');
+    }
   });
 
   it('planning route yields a thinking model; drafting yields a non-thinking model', () => {

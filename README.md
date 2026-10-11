@@ -214,6 +214,12 @@ pnpm run test:coverage
 | `inkpi doctor` | Diagnose Node environment, SQLite engine, API keys | `inkpi doctor` |
 | `inkpi print -p <text>` | Single-shot headless non-interactive creative generation | `inkpi -p "Write an intro scene"` |
 
+### Project configuration
+
+`inkpi init` writes `inkpi.config.json` in the new project directory. The CLI reads it from the current working directory. `doctor` validates the file; Studio reads `typography`; `print` and `daemon` use `defaultModel` when no `--model` flag or `INKPI_MODEL_PRESET` is set. `defaultModel` accepts a built-in preset or an unambiguous catalog model ID. Provider credentials remain provider-specific environment variables.
+
+`typography` accepts `false` or an object with `mode` set to `chinese`, `western`, or `none`, and an optional `indentString`.
+
 ### 2. Run Complete Test Suite & Coverage Gate
 
 ```bash

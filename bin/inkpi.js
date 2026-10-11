@@ -8,6 +8,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as readline from 'node:readline';
+import { loadProjectConfig } from './project-config.js';
 
 const VERSION = '1.0.0';
 
@@ -104,6 +105,18 @@ async function main() {
       console.log(`  • Platform:        ${process.platform} (${process.arch})`);
 
       try {
+        const projectConfig = loadProjectConfig();
+        if (projectConfig?.defaultModel) {
+          const { resolveModelConfig } = await import('@inkpi/ai');
+          resolveModelConfig(projectConfig.defaultModel);
+        }
+        console.log(`  • Project config:  ${projectConfig ? 'valid' : 'not found'}`);
+      } catch (error) {
+        console.error(`  • Project config:  ${error instanceof Error ? error.message : String(error)}`);
+        process.exitCode = 1;
+      }
+
+      try {
         const sqlite = await import('node:sqlite');
         console.log(`  • SQLite Engine:   node:sqlite native built-in detected ✅`);
       } catch {
@@ -122,6 +135,7 @@ async function main() {
 
     case 'daemon':
     case 'server': {
+      const projectConfig = loadProjectConfig();
       const portIdx = args.indexOf('--port');
       const wsPortIdx = args.indexOf('--ws-port');
       const trustedProjectRoots = [];
@@ -140,17 +154,14 @@ async function main() {
       } = await import('@inkpi/server');
       const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : DEFAULT_RPC_PORT;
       const wsPort = wsPortIdx !== -1 ? parseInt(args[wsPortIdx + 1], 10) : port + 1;
-      const { findModelInCatalog, getModelPreset, modelCatalogEntryToCapabilityDeclaration } = await import('@inkpi/ai');
+      const { findModelInCatalog, resolveModelConfig, modelCatalogEntryToCapabilityDeclaration } = await import('@inkpi/ai');
       const stateDbFlag = ['--state-db', '--db-path'].find((flag) => args.includes(flag));
       const stateDbPath = stateDbFlag ? readRequiredArg(args, args.indexOf(stateDbFlag), stateDbFlag) : undefined;
       const modelFlag = args.indexOf('--model');
-      const modelPreset = modelFlag !== -1 ? args[modelFlag + 1] : process.env.INKPI_MODEL_PRESET || 'creative-pro';
-      let defaultModel;
-      try {
-        defaultModel = getModelPreset(modelPreset);
-      } catch {
-        defaultModel = undefined;
-      }
+      const modelPreset = modelFlag !== -1
+        ? readRequiredArg(args, modelFlag, '--model')
+        : process.env.INKPI_MODEL_PRESET || projectConfig?.defaultModel || 'creative-pro';
+      const defaultModel = resolveModelConfig(modelPreset);
       const defaultModelCapabilities = defaultModel
         ? (() => {
             const catalogEntry = findModelInCatalog(defaultModel.id);
@@ -217,6 +228,7 @@ async function main() {
 
     case 'print':
     case '-p': {
+      const projectConfig = loadProjectConfig();
       const promptIdx = args.indexOf('-p') !== -1 ? args.indexOf('-p') : args.indexOf('--prompt');
       const prompt = promptIdx !== -1 ? args[promptIdx + 1] : args[1];
       if (!prompt) {
@@ -224,7 +236,9 @@ async function main() {
         process.exit(1);
       }
       const modelIdx = args.indexOf('--model');
-      const model = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
+      const model = modelIdx !== -1
+        ? readRequiredArg(args, modelIdx, '--model')
+        : process.env.INKPI_MODEL_PRESET || projectConfig?.defaultModel;
 
       const { runPrintMode } = await import('@inkpi/cli');
       const result = await runPrintMode({
@@ -264,11 +278,12 @@ function resolveSkillSearchDirs() {
 }
 
 async function startInteractiveStudio(args) {
+  const projectConfig = loadProjectConfig();
   const { TerminalStudio } = await import('@inkpi/tui');
   const { ANSI } = await import('@inkpi/tui');
 
   const studio = new TerminalStudio({
-    typography: { mode: 'chinese', indentString: '\u3000\u3000' }
+    typography: projectConfig?.typography ?? { mode: 'chinese', indentString: '\u3000\u3000' }
   });
 
   const chapterArg = args[0] === 'write' ? args[1] : undefined;

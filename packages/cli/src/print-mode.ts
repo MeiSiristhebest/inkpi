@@ -11,7 +11,7 @@ import {
   TelemetryCollector,
   WorkflowCoordinator
 } from '@inkpi/agent-core';
-import { getModelPreset } from '@inkpi/ai';
+import { resolveModelConfig } from '@inkpi/ai';
 
 import type { ModelConfig } from '@inkpi/ai';
 import type {
@@ -142,7 +142,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
         execute: async ({ signal }) => {
           const coordinator = new WorkflowCoordinator({
             telemetry,
-            model: options.modelConfig || (options.model ? getModelPreset(options.model) : undefined),
+            model: options.modelConfig || (options.model ? resolveModelConfig(options.model) : undefined),
             ...workflow,
             signal
           });
@@ -229,7 +229,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<PrintMode
     if (options.modelConfig) {
       modelObj = options.modelConfig;
     } else if (options.model) {
-      modelObj = getModelPreset(options.model);
+      modelObj = resolveModelConfig(options.model);
     } else {
       modelObj = resolveEnvironmentModel(options.provider);
     }

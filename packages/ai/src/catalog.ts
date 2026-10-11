@@ -1,5 +1,6 @@
 import type { OutputFormat, ThinkingLevel } from '@inkpi/protocol';
 import { GENERATED_MODELS } from './models.generated.js';
+import { getModelPreset, hasModelPreset } from './presets.js';
 import type { ModelConfig, ProviderType } from './types.js';
 
 export type ModelRole = 'planning' | 'drafting' | 'auditing' | 'polishing';
@@ -392,6 +393,30 @@ export function findModelInCatalog(idOrName: string): ModelCatalogEntry | undefi
   });
 
   return found;
+}
+
+/** Resolve a built-in preset name or a catalog model ID to its runtime configuration. */
+export function resolveModelConfig(nameOrId: string): ModelConfig {
+  if (hasModelPreset(nameOrId)) return getModelPreset(nameOrId);
+
+  let query = nameOrId.toLowerCase().trim();
+  const visitedAliases = new Set<string>();
+  while (dynamicAliases.has(query)) {
+    if (visitedAliases.has(query)) throw new Error(`Model alias cycle while resolving '${nameOrId}'.`);
+    visitedAliases.add(query);
+    query = dynamicAliases.get(query)!.toLowerCase().trim();
+  }
+
+  const exactIdMatches = KNOWN_MODELS.filter((entry) => entry.id.toLowerCase() === query);
+  if (exactIdMatches.length === 1) return modelCatalogEntryToConfig(exactIdMatches[0]!);
+
+  const exactNameMatches = KNOWN_MODELS.filter((entry) => entry.name.toLowerCase() === query);
+  if (exactNameMatches.length === 1) return modelCatalogEntryToConfig(exactNameMatches[0]!);
+
+  const shortIdMatches = KNOWN_MODELS.filter((entry) => entry.id.split('/').at(-1)?.toLowerCase() === query);
+  if (shortIdMatches.length === 1) return modelCatalogEntryToConfig(shortIdMatches[0]!);
+
+  throw new Error(`Unknown model preset or catalog model '${nameOrId}'.`);
 }
 
 export function modelCatalogEntryToConfig(entry: ModelCatalogEntry): ModelConfig {
