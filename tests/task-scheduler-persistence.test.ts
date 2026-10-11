@@ -36,6 +36,63 @@ function clone<T>(value: T): T {
 }
 
 describe('TaskScheduler persistence boundary', () => {
+  it('releases settled runtime references while retaining handles and status', async () => {
+    const scheduler = new TaskScheduler();
+    const expectRuntimeReleased = (id: string): void => {
+      const record = (
+        scheduler as unknown as {
+          records: Map<
+            string,
+            { work?: unknown; controller?: unknown; promise?: unknown; resolve?: unknown; reject?: unknown }
+          >;
+        }
+      ).records.get(id);
+      expect(record).toBeDefined();
+      expect(record).toMatchObject({
+        work: undefined,
+        controller: undefined,
+        promise: undefined,
+        resolve: undefined,
+        reject: undefined
+      });
+    };
+
+    const completed = scheduler.schedule({
+      id: 'compacted-completed',
+      mode: 'background',
+      run: async () => 'done'
+    });
+    await expect(completed.promise).resolves.toBe('done');
+    expect(scheduler.status('compacted-completed')).toMatchObject({ status: 'completed' });
+    expect(completed.cancel()).toBe(false);
+    expectRuntimeReleased('compacted-completed');
+
+    const failed = scheduler.schedule({
+      id: 'compacted-failed',
+      mode: 'background',
+      run: async () => {
+        throw new Error('failed');
+      }
+    });
+    await expect(failed.promise).rejects.toThrow('failed');
+    expect(scheduler.status('compacted-failed')).toMatchObject({ status: 'failed' });
+    expect(failed.cancel()).toBe(false);
+    expectRuntimeReleased('compacted-failed');
+
+    const cancelled = scheduler.schedule({
+      id: 'compacted-cancelled',
+      mode: 'background',
+      debounceMs: 1_000,
+      run: async () => 'not-run'
+    });
+    expect(cancelled.cancel()).toBe(true);
+    await expect(cancelled.promise).resolves.toBeUndefined();
+    expect(scheduler.status('compacted-cancelled')).toMatchObject({ status: 'cancelled' });
+    expectRuntimeReleased('compacted-cancelled');
+
+    await scheduler.stop();
+  });
+
   it('rehydrates an enqueued task and preserves its debounce deadline', async () => {
     vi.useFakeTimers();
     try {
