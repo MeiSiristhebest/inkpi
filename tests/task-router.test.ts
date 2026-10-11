@@ -43,15 +43,18 @@ function seedOwnershipChain(
 }
 
 describe('TaskRegistry and TaskRouter', () => {
-  it('cancels a recovered ownership chain and waits for its children', async () => {
+  it('cancels a 10,000-task recovered ownership chain and waits for its children', async () => {
     const executionStore = new InMemoryTaskExecutionStore();
-    const taskCount = 3;
+    const taskCount = 10_000;
     seedOwnershipChain(executionStore, taskCount, 'waiting-user');
 
     const router = new TaskRouter({ executionStore });
     try {
       await router.ready;
-      expect(router.cancel('deep-owner-0')).toMatchObject({ taskId: 'deep-owner-0', cancelled: true });
+      expect(router.cancel('deep-owner-0')).toMatchObject({
+        taskId: 'deep-owner-0',
+        cancelled: true
+      });
       await expect(router.wait('deep-owner-0')).resolves.toMatchObject({
         taskId: 'deep-owner-0',
         kind: 'test.echo',
@@ -61,7 +64,7 @@ describe('TaskRegistry and TaskRouter', () => {
     } finally {
       await router.stop();
     }
-  });
+  }, 120_000);
 
   it('walks a deep cancellation ownership chain iteratively', async () => {
     const executionStore = new InMemoryTaskExecutionStore();
@@ -87,7 +90,10 @@ describe('TaskRegistry and TaskRouter', () => {
         record.snapshot.status = 'cancelled';
       };
 
-      expect(router.cancel('deep-owner-0')).toMatchObject({ taskId: 'deep-owner-0', cancelled: true });
+      expect(router.cancel('deep-owner-0')).toMatchObject({
+        taskId: 'deep-owner-0',
+        cancelled: true
+      });
       expect(cancelledIds).toHaveLength(taskCount);
       expect(cancelledIds[0]).toBe(`deep-owner-${taskCount - 1}`);
       expect(cancelledIds.at(-1)).toBe('deep-owner-0');
@@ -125,7 +131,11 @@ describe('TaskRegistry and TaskRouter', () => {
     const executionStore = new InMemoryTaskExecutionStore();
     const ownerId = 'completed-owner';
     const childId = 'completed-child';
-    const childResult = { taskId: childId, kind: 'test.echo', status: 'completed' as const };
+    const childResult = {
+      taskId: childId,
+      kind: 'test.echo',
+      status: 'completed' as const
+    };
     const ownerResult = {
       taskId: ownerId,
       kind: 'test.echo',
@@ -135,14 +145,30 @@ describe('TaskRegistry and TaskRouter', () => {
 
     executionStore.save({
       task: task({ id: ownerId }),
-      snapshot: { taskId: ownerId, kind: 'test.echo', status: 'completed', result: ownerResult },
+      snapshot: {
+        taskId: ownerId,
+        kind: 'test.echo',
+        status: 'completed',
+        result: ownerResult
+      },
       attempts: 1,
       updatedAt: 2,
-      run: { id: `run:${ownerId}`, taskId: ownerId, status: 'completed', attempts: 1, updatedAt: 2 }
+      run: {
+        id: `run:${ownerId}`,
+        taskId: ownerId,
+        status: 'completed',
+        attempts: 1,
+        updatedAt: 2
+      }
     });
     executionStore.save({
       task: task({ id: childId }),
-      snapshot: { taskId: childId, kind: 'test.echo', status: 'completed', result: childResult },
+      snapshot: {
+        taskId: childId,
+        kind: 'test.echo',
+        status: 'completed',
+        result: childResult
+      },
       attempts: 1,
       updatedAt: 1,
       run: {
@@ -173,7 +199,11 @@ describe('TaskRegistry and TaskRouter', () => {
     const executionStore = new InMemoryTaskExecutionStore();
     const ownerId = 'failed-owner';
     const childId = 'settled-child';
-    const childResult = { taskId: childId, kind: 'test.echo', status: 'completed' as const };
+    const childResult = {
+      taskId: childId,
+      kind: 'test.echo',
+      status: 'completed' as const
+    };
     const pendingResult = {
       taskId: ownerId,
       kind: 'test.echo',
@@ -191,7 +221,10 @@ describe('TaskRegistry and TaskRouter', () => {
           taskId: ownerId,
           kind: 'test.echo',
           status: 'failed',
-          error: { code: 'TASK_FAILED', message: 'retryable settlement failure' }
+          error: {
+            code: 'TASK_FAILED',
+            message: 'retryable settlement failure'
+          }
         }
       },
       attempts: 1,
@@ -207,7 +240,12 @@ describe('TaskRegistry and TaskRouter', () => {
     });
     executionStore.save({
       task: task({ id: childId }),
-      snapshot: { taskId: childId, kind: 'test.echo', status: 'completed', result: childResult },
+      snapshot: {
+        taskId: childId,
+        kind: 'test.echo',
+        status: 'completed',
+        result: childResult
+      },
       attempts: 1,
       updatedAt: 1,
       run: {
@@ -238,7 +276,11 @@ describe('TaskRegistry and TaskRouter', () => {
     const executionStore = new InMemoryTaskExecutionStore();
     const ownerId = 'cancelled-owner';
     const childId = 'cancelled-child';
-    const childResult = { taskId: childId, kind: 'test.echo', status: 'cancelled' as const };
+    const childResult = {
+      taskId: childId,
+      kind: 'test.echo',
+      status: 'cancelled' as const
+    };
 
     executionStore.save({
       task: task({ id: ownerId }),
@@ -264,7 +306,12 @@ describe('TaskRegistry and TaskRouter', () => {
     });
     executionStore.save({
       task: task({ id: childId }),
-      snapshot: { taskId: childId, kind: 'test.echo', status: 'cancelled', result: childResult },
+      snapshot: {
+        taskId: childId,
+        kind: 'test.echo',
+        status: 'cancelled',
+        result: childResult
+      },
       attempts: 1,
       updatedAt: 1,
       run: {
@@ -314,7 +361,9 @@ describe('TaskRegistry and TaskRouter', () => {
     const router = new TaskRouter({ registry });
     router.submit(task({ id: 'exact-task', kind: 'test.exact' }));
 
-    await expect(router.wait('exact-task')).resolves.toMatchObject({ output: { text: 'exact' } });
+    await expect(router.wait('exact-task')).resolves.toMatchObject({
+      output: { text: 'exact' }
+    });
     expect(selected).toBe('exact');
   });
 
@@ -323,7 +372,14 @@ describe('TaskRegistry and TaskRouter', () => {
     const pipeline = new ContextPipeline();
     pipeline.register({
       id: 'project-context',
-      provide: () => [{ id: 'project', source: 'project', text: 'project facts', priority: 10 }]
+      provide: () => [
+        {
+          id: 'project',
+          source: 'project',
+          text: 'project facts',
+          priority: 10
+        }
+      ]
     });
     let receivedContext = '';
     registry.register({
@@ -341,11 +397,17 @@ describe('TaskRegistry and TaskRouter', () => {
       events.push(event.type);
     });
 
-    expect(router.submit(task())).toEqual({ taskId: 'task-router-test', status: 'queued' });
+    expect(router.submit(task())).toEqual({
+      taskId: 'task-router-test',
+      status: 'queued'
+    });
     const result = await router.wait('task-router-test');
 
     expect(result.status).toBe('completed');
-    expect(result.output).toEqual({ format: 'text', text: 'HELLO\n\nPROJECT FACTS' });
+    expect(result.output).toEqual({
+      format: 'text',
+      text: 'HELLO\n\nPROJECT FACTS'
+    });
     expect(receivedContext).toBe('hello\n\nproject facts');
     expect(router.status('task-router-test')).toMatchObject({
       status: 'completed',
@@ -370,7 +432,10 @@ describe('TaskRegistry and TaskRouter', () => {
     const submitted = task({ id: 'retryable-task', kind: 'test.idempotent' });
 
     const first = router.submitDurably(submitted);
-    const retry = router.submitDurably({ ...submitted, input: { text: 'hello' } });
+    const retry = router.submitDurably({
+      ...submitted,
+      input: { text: 'hello' }
+    });
     await expect(first).resolves.toMatchObject({ taskId: 'retryable-task' });
     await expect(retry).resolves.toMatchObject({ taskId: 'retryable-task' });
     await router.wait('retryable-task');
@@ -384,7 +449,9 @@ describe('TaskRegistry and TaskRouter', () => {
     await expect(router.submitDurably({ ...submitted, input: { text: 'different' } })).rejects.toThrow(
       'different payload'
     );
-    expect(await router.wait('retryable-task')).toMatchObject({ output: { text: 'accepted once' } });
+    expect(await router.wait('retryable-task')).toMatchObject({
+      output: { text: 'accepted once' }
+    });
     expect(executions).toBe(1);
 
     const recoveredRouter = new TaskRouter({ registry, executionStore });
@@ -400,7 +467,10 @@ describe('TaskRegistry and TaskRouter', () => {
     const router = new TaskRouter();
     router.submit(task({ id: 'missing-handler' }));
     const missing = await router.wait('missing-handler');
-    expect(missing).toMatchObject({ status: 'failed', error: { code: 'TASK_FAILED' } });
+    expect(missing).toMatchObject({
+      status: 'failed',
+      error: { code: 'TASK_FAILED' }
+    });
     expect(missing.error?.message).toContain('No task handler');
 
     const registry = new TaskRegistry();
@@ -412,9 +482,18 @@ describe('TaskRegistry and TaskRouter', () => {
       }
     });
     const contractRouter = new TaskRouter({ registry });
-    contractRouter.submit(task({ id: 'empty-output', kind: 'test.empty', outputContract: { format: 'structured' } }));
+    contractRouter.submit(
+      task({
+        id: 'empty-output',
+        kind: 'test.empty',
+        outputContract: { format: 'structured' }
+      })
+    );
     const empty = await contractRouter.wait('empty-output');
-    expect(empty).toMatchObject({ status: 'failed', error: { code: 'MISSING_OUTPUT' } });
+    expect(empty).toMatchObject({
+      status: 'failed',
+      error: { code: 'MISSING_OUTPUT' }
+    });
   });
 
   it('cancels an in-flight handler and reports timeout separately', async () => {
@@ -435,7 +514,9 @@ describe('TaskRegistry and TaskRouter', () => {
     router.submit(task({ id: 'cancelled', kind: 'test.blocking' }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(router.cancel('cancelled').cancelled).toBe(true);
-    expect(await router.wait('cancelled')).toMatchObject({ status: 'cancelled' });
+    expect(await router.wait('cancelled')).toMatchObject({
+      status: 'cancelled'
+    });
 
     const timeoutRegistry = new TaskRegistry();
     timeoutRegistry.register({
@@ -483,7 +564,9 @@ describe('TaskRegistry and TaskRouter', () => {
     expect(router.cancel('late-context-task').cancelled).toBe(true);
     releaseContext();
 
-    await expect(router.wait('late-context-task')).resolves.toMatchObject({ status: 'cancelled' });
+    await expect(router.wait('late-context-task')).resolves.toMatchObject({
+      status: 'cancelled'
+    });
     expect(executed).toBe(false);
   });
 
@@ -493,7 +576,9 @@ describe('TaskRegistry and TaskRouter', () => {
       id: 'steering-handler',
       kinds: ['test.steering'],
       async execute({ consumeSteering }) {
-        return { output: { format: 'text', text: JSON.stringify(consumeSteering()) } };
+        return {
+          output: { format: 'text', text: JSON.stringify(consumeSteering()) }
+        };
       }
     });
     const router = new TaskRouter({ registry });
