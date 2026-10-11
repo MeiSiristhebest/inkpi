@@ -6,7 +6,7 @@
 
 import type { KeyEvent } from '../../keys.js';
 import { Component, type RenderContext } from '../../layout.js';
-import { ANSI, visibleWidth } from '../../render.js';
+import { ANSI, truncateToWidth, visibleWidth } from '../../render.js';
 
 export interface ThinkingAccordionOptions {
   thinkingText?: string;
@@ -84,7 +84,7 @@ export class ThinkingAccordion extends Component {
       const textLines = this.thinkingText.split('\n');
       for (const rawLine of textLines) {
         const maxContentW = Math.max(10, width - 6);
-        const displayLine = visibleWidth(rawLine) > maxContentW ? `${rawLine.slice(0, maxContentW - 3)}...` : rawLine;
+        const displayLine = truncateToWidth(rawLine, maxContentW);
         const lineW = visibleWidth(displayLine);
         const linePad = Math.max(0, width - lineW - 4);
         lines.push(`${ANSI.FG_GRAY}  │ ${ANSI.FG_CYAN}${displayLine}${' '.repeat(linePad)}${ANSI.RESET}`);

@@ -55,32 +55,21 @@ export const ANSI = {
   ALT_SCREEN_LEAVE: '\x1b[?1049l'
 };
 
-import { stripAnsi, visibleWidth } from './width.js';
+import { sliceWithWidth, stripAnsi, visibleWidth } from './width.js';
 export { stripAnsi, visibleWidth };
 
 /**
  * 按终端可视列宽截断字符串
  */
 export function truncateToWidth(str: string, maxWidth: number, ellipsis = '...'): string {
-  if (maxWidth <= 0) return '';
-  const currentWidth = visibleWidth(str);
-  if (currentWidth <= maxWidth) return str;
+  const widthLimit = Math.floor(maxWidth);
+  if (widthLimit <= 0) return '';
+  if (visibleWidth(str) <= widthLimit) return str;
 
-  const ellipsisW = visibleWidth(ellipsis);
-  const targetW = Math.max(1, maxWidth - ellipsisW);
+  const ellipsisWidth = visibleWidth(ellipsis);
+  if (ellipsisWidth >= widthLimit) return sliceWithWidth(ellipsis, 0, widthLimit);
 
-  let accumulated = '';
-  let curW = 0;
-
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    const charW = visibleWidth(char);
-    if (curW + charW > targetW) break;
-    accumulated += char;
-    curW += charW;
-  }
-
-  return accumulated + ellipsis;
+  return `${sliceWithWidth(str, 0, widthLimit - ellipsisWidth)}${ellipsis}`;
 }
 
 /**

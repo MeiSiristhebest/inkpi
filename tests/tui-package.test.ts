@@ -11,6 +11,7 @@ import {
   Spacer,
   TUI,
   TerminalMermaid,
+  ThinkingAccordion,
   VStack,
   detectTerminalProtocol,
   drawBox,
@@ -43,6 +44,22 @@ describe('@inkpi/tui Independent Framework', () => {
 
     expect(truncateToWidth('short', 10)).toBe('short');
     expect(truncateToWidth('short', 0)).toBe('');
+  });
+
+  it('does not split grapheme clusters or exceed the requested width when truncating', () => {
+    const truncated = truncateToWidth('abcdefgh👩‍💻xyz', 12);
+    expect(truncated).toBe('abcdefgh...');
+    expect(visibleWidth(truncated)).toBeLessThanOrEqual(12);
+    expect(truncateToWidth('👩‍💻tail', 2)).toBe('..');
+  });
+
+  it('keeps ThinkingAccordion content at grapheme boundaries', () => {
+    const accordion = new ThinkingAccordion({ isCollapsed: false, thinkingText: 'abc👩‍💻defghijkl' });
+    const contentLine = accordion.render({ width: 16, height: 10 })[1]!;
+    const content = stripAnsi(contentLine).slice(4).trimEnd();
+
+    expect(content).toBe('abc👩‍💻de...');
+    expect(visibleWidth(contentLine)).toBe(16);
   });
 
   it('should draw balanced ANSI boxes with CJK title and content', () => {
