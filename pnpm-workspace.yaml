@@ -1,5 +1,7 @@
 packages:
   - 'packages/*'
+patchedDependencies:
+  '@earendil-works/pi-codemode@1.1.0': patches/pi-codemode-node-watch.patch
 allowBuilds:
   '@biomejs/biome': false
   esbuild: false
