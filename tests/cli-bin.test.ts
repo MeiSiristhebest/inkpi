@@ -8,7 +8,9 @@ describe('InkPi CLI Executable Binary (bin/inkpi.js)', () => {
   const binPath = resolve(__dirname, '../bin/inkpi.js');
 
   it('should print version upon --version flag', () => {
-    const output = execSync(`node "${binPath}" --version`, { encoding: 'utf8' });
+    const output = execSync(`node "${binPath}" --version`, {
+      encoding: 'utf8'
+    });
     expect(output).toContain('InkPi v1.0.0');
   });
 
@@ -19,6 +21,7 @@ describe('InkPi CLI Executable Binary (bin/inkpi.js)', () => {
     expect(output).toContain('studio');
     expect(output).toContain('daemon');
     expect(output).toContain('doctor');
+    expect(output).toContain('Trust a root for AGENTS files and symlink targets (repeatable)');
   });
 
   it('should execute doctor diagnostics', () => {
@@ -33,7 +36,10 @@ describe('InkPi CLI Executable Binary (bin/inkpi.js)', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'inkpi doctor config-'));
     try {
       writeFileSync(join(projectRoot, 'inkpi.config.json'), JSON.stringify({ typography: { mode: 'ansi' } }));
-      const result = spawnSync(process.execPath, [binPath, 'doctor'], { cwd: projectRoot, encoding: 'utf8' });
+      const result = spawnSync(process.execPath, [binPath, 'doctor'], {
+        cwd: projectRoot,
+        encoding: 'utf8'
+      });
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('typography.mode must be one of');
@@ -54,7 +60,10 @@ describe('InkPi CLI Executable Binary (bin/inkpi.js)', () => {
       });
       expect(initialized.status).toBe(0);
 
-      const doctor = spawnSync(process.execPath, [binPath, 'doctor'], { cwd: projectRoot, encoding: 'utf8' });
+      const doctor = spawnSync(process.execPath, [binPath, 'doctor'], {
+        cwd: projectRoot,
+        encoding: 'utf8'
+      });
       expect(doctor.status).toBe(0);
       expect(doctor.stdout).toContain('Project config:  valid');
     } finally {

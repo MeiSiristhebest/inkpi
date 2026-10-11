@@ -30,7 +30,8 @@ export function loadTrustedProjectInstructionFiles(
     if (root) trustedRoots.set(pathKey(root), root);
   }
 
-  const trustedRoot = [...trustedRoots.values()]
+  const trustedRootPaths = [...trustedRoots.values()];
+  const trustedRoot = trustedRootPaths
     .filter((root) => isPathWithin(root, projectRoot))
     .sort((left, right) => path.relative(left, projectRoot).length - path.relative(right, projectRoot).length)[0];
   if (!trustedRoot) return [];
@@ -51,7 +52,7 @@ export function loadTrustedProjectInstructionFiles(
   for (const directory of directories) {
     for (const name of ['AGENTS.override.md', 'AGENTS.md']) {
       const candidate = path.join(directory, name);
-      const loaded = readTrustedInstructionFile(candidate, trustedRoot);
+      const loaded = readTrustedInstructionFile(candidate, trustedRoot, trustedRootPaths);
       if (!loaded) continue;
       if (!seenRealPaths.has(pathKey(loaded.realPath))) {
         seenRealPaths.add(pathKey(loaded.realPath));
@@ -84,7 +85,11 @@ export function createTrustedProjectInstructionsProvider(
   return {
     id: PROJECT_INSTRUCTIONS_PROVIDER_ID,
     bucket: 'project',
-    provide: () => fragments.map((fragment) => ({ ...fragment, metadata: { ...fragment.metadata } }))
+    provide: () =>
+      fragments.map((fragment) => ({
+        ...fragment,
+        metadata: { ...fragment.metadata }
+      }))
   };
 }
 
@@ -100,11 +105,12 @@ function resolveExistingDirectory(value: string): string | undefined {
 
 function readTrustedInstructionFile(
   candidate: string,
-  trustedRoot: string
+  trustedRoot: string,
+  trustedRoots: readonly string[]
 ): { file: ProjectInstructionFile; realPath: string } | undefined {
   try {
     const realPath = fs.realpathSync(candidate);
-    if (!isPathWithin(trustedRoot, realPath) || !fs.statSync(realPath).isFile()) return undefined;
+    if (!trustedRoots.some((root) => isPathWithin(root, realPath)) || !fs.statSync(realPath).isFile()) return undefined;
     const content = fs.readFileSync(realPath, 'utf8').replace(/^\uFEFF/, '');
     return {
       realPath,

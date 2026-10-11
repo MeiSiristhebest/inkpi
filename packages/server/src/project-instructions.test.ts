@@ -34,7 +34,10 @@ describe('trusted project instructions', () => {
     writeInstruction(child, 'AGENTS.override.md', 'Child override rules');
     writeInstruction(project, 'AGENTS.md', 'Draft rules');
 
-    const files = loadTrustedProjectInstructionFiles({ projectRoot: project, trustedRoots: [root] });
+    const files = loadTrustedProjectInstructionFiles({
+      projectRoot: project,
+      trustedRoots: [root]
+    });
 
     expect(files.map((file) => file.path)).toEqual([
       'AGENTS.md',
@@ -58,9 +61,24 @@ describe('trusted project instructions', () => {
         trustedRoots: [unrelatedTrustedRoot]
       })
     ).toEqual([]);
-    expect(loadTrustedProjectInstructionFiles({ projectRoot: project, trustedRoots: [] })).toEqual([]);
-    expect(loadTrustedProjectInstructionFiles({ projectRoot: '.', trustedRoots: [root] })).toEqual([]);
-    expect(loadTrustedProjectInstructionFiles({ projectRoot: project, trustedRoots: ['.'] })).toEqual([]);
+    expect(
+      loadTrustedProjectInstructionFiles({
+        projectRoot: project,
+        trustedRoots: []
+      })
+    ).toEqual([]);
+    expect(
+      loadTrustedProjectInstructionFiles({
+        projectRoot: '.',
+        trustedRoots: [root]
+      })
+    ).toEqual([]);
+    expect(
+      loadTrustedProjectInstructionFiles({
+        projectRoot: project,
+        trustedRoots: ['.']
+      })
+    ).toEqual([]);
   });
 
   it('stops ancestor loading at the most specific trusted root', () => {
@@ -86,7 +104,10 @@ describe('trusted project instructions', () => {
     writeInstruction(project, 'AGENTS.md', 'Project rules');
     writeInstruction(project, 'AGENTS.override.md', '');
 
-    const files = loadTrustedProjectInstructionFiles({ projectRoot: project, trustedRoots: [root] });
+    const files = loadTrustedProjectInstructionFiles({
+      projectRoot: project,
+      trustedRoots: [root]
+    });
 
     expect(files.map((file) => file.content)).toEqual(['Root rules', '']);
     expect(files.map((file) => file.path)).toEqual(['AGENTS.md', 'project/AGENTS.override.md']);
@@ -121,12 +142,60 @@ describe('trusted project instructions', () => {
     }
 
     try {
-      const files = loadTrustedProjectInstructionFiles({ projectRoot: project, trustedRoots: [root] });
+      const files = loadTrustedProjectInstructionFiles({
+        projectRoot: project,
+        trustedRoots: [root]
+      });
       expect(files.map((file) => file.content)).toEqual(['Root rules']);
       expect(files.filter((file) => file.content === 'Outside rules')).toHaveLength(0);
     } finally {
       fs.rmSync(outside, { force: true });
     }
+  });
+
+  it('loads nested worktree instructions linked to another explicitly trusted root', (context) => {
+    const base = createFixture();
+    const mainRoot = path.join(base, 'main');
+    const worktreeRoot = path.join(base, 'worktree');
+    const project = path.join(worktreeRoot, 'chapter');
+    const mainInstructions = path.join(mainRoot, 'AGENTS.md');
+    const worktreeInstructions = path.join(project, 'AGENTS.md');
+    writeInstruction(mainRoot, 'AGENTS.md', 'Main repository rules');
+    fs.mkdirSync(project, { recursive: true });
+
+    try {
+      fs.symlinkSync(mainInstructions, worktreeInstructions, 'file');
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        ['EPERM', 'EACCES', 'ENOTSUP'].includes(String(error.code))
+      ) {
+        context.skip();
+        return;
+      }
+      throw error;
+    }
+
+    expect(
+      loadTrustedProjectInstructionFiles({
+        projectRoot: project,
+        trustedRoots: [worktreeRoot]
+      })
+    ).toEqual([]);
+    expect(
+      loadTrustedProjectInstructionFiles({
+        projectRoot: project,
+        trustedRoots: [mainRoot]
+      })
+    ).toEqual([]);
+    expect(
+      loadTrustedProjectInstructionFiles({
+        projectRoot: project,
+        trustedRoots: [worktreeRoot, mainRoot]
+      })
+    ).toEqual([{ path: 'chapter/AGENTS.md', content: 'Main repository rules' }]);
   });
 
   it('adds trusted instructions to daemon project context', async () => {
@@ -135,7 +204,10 @@ describe('trusted project instructions', () => {
     writeInstruction(root, 'AGENTS.md', 'Use the trusted root guidance.');
     fs.mkdirSync(project, { recursive: true });
 
-    const daemon = new InkPiDaemon({ projectRoot: project, trustedProjectRoots: [root] });
+    const daemon = new InkPiDaemon({
+      projectRoot: project,
+      trustedProjectRoots: [root]
+    });
     daemons.push(daemon);
     const packet = await daemon.getTaskRouter().contextPipeline.build({
       id: 'trusted-instructions-task',

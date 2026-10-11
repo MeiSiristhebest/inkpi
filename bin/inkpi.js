@@ -34,7 +34,7 @@ OPTIONS:
   -m, --model <id>          Model identifier (e.g. deepseek-chat, gpt-4o, claude-3-5-sonnet)
   --port <number>           TCP port for daemon server (default: 8848)
   --ws-port <number>        WebSocket port for daemon server (default: TCP port + 1)
-  --trusted-project-root <path> Load AGENTS instructions only inside this trusted root (repeatable)
+  --trusted-project-root <path> Trust a root for AGENTS files and symlink targets (repeatable)
   --state-db <path>         SQLite state DB path (or use INKPI_STATE_DB)
   --role <role>             Agent role preset for pipeline
   --json                    Output structured JSON responses
