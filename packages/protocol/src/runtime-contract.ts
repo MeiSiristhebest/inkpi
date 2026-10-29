@@ -66,7 +66,12 @@ export const RUNTIME_CAPABILITIES = [
   'model.routes.configure',
   'model.routes.remove',
   'model.routes.health',
-  'model.provider.probe'
+  'model.provider.probe',
+  'model.chatgpt-plan.status',
+  'model.chatgpt-plan.sign-in',
+  'model.chatgpt-plan.sign-in-status',
+  'model.chatgpt-plan.models',
+  'model.chatgpt-plan.disconnect'
 ] as const;
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number];
@@ -89,7 +94,12 @@ export const DESKTOP_REQUIRED_RUNTIME_CAPABILITIES = [
   'model.routes.configure',
   'model.routes.remove',
   'model.routes.health',
-  'model.provider.probe'
+  'model.provider.probe',
+  'model.chatgpt-plan.status',
+  'model.chatgpt-plan.sign-in',
+  'model.chatgpt-plan.sign-in-status',
+  'model.chatgpt-plan.models',
+  'model.chatgpt-plan.disconnect'
 ] as const satisfies readonly RuntimeCapability[];
 
 export interface RuntimeHandshakeRequest {

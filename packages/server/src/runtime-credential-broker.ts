@@ -2,13 +2,21 @@ import { createConnection } from 'node:net';
 
 export type RuntimeCredentialResolver = (credentialRef: string) => Promise<string | undefined>;
 
-const MAX_RESPONSE_BYTES = 8_192;
+export interface RuntimeCredentialStore {
+  get: RuntimeCredentialResolver;
+  set(credentialRef: string, value: string): Promise<void>;
+  remove(credentialRef: string): Promise<void>;
+}
+
+const MAX_CREDENTIAL_BYTES = 32 * 1024;
+const MAX_REQUEST_BYTES = 33_792;
+const MAX_RESPONSE_BYTES = 33_792;
 const REQUEST_TIMEOUT_MS = 2_000;
 
-/** Build a resolver for the loopback broker started by the Desktop host. */
-export function createRuntimeCredentialResolverFromEnvironment(
+/** Build CRUD access for the loopback broker started by the Desktop host. */
+export function createRuntimeCredentialStoreFromEnvironment(
   environment: NodeJS.ProcessEnv = process.env
-): RuntimeCredentialResolver | undefined {
+): RuntimeCredentialStore | undefined {
   const address = environment.INKPI_CREDENTIAL_BROKER_ADDRESS;
   const token = environment.INKPI_CREDENTIAL_BROKER_TOKEN;
   if (!address && !token) return undefined;
@@ -21,20 +29,50 @@ export function createRuntimeCredentialResolverFromEnvironment(
   }
   if (!/^[a-f0-9]{32}$/i.test(token)) throw new Error('Credential broker token is invalid');
 
-  return (credentialRef) => resolveCredential({ port, token, credentialRef });
+  return {
+    get: (credentialRef) => requestCredentialBroker({ port, token, operation: 'get', credentialRef }),
+    set: async (credentialRef, value) => {
+      if (Buffer.byteLength(value, 'utf8') > MAX_CREDENTIAL_BYTES) {
+        throw new Error('Credential value exceeds the size limit');
+      }
+      await requestCredentialBroker({ port, token, operation: 'set', credentialRef, value });
+    },
+    remove: async (credentialRef) => {
+      await requestCredentialBroker({ port, token, operation: 'remove', credentialRef });
+    }
+  };
 }
 
-function resolveCredential(input: {
+/** Backward-compatible read-only adapter for existing model routes. */
+export function createRuntimeCredentialResolverFromEnvironment(
+  environment: NodeJS.ProcessEnv = process.env
+): RuntimeCredentialResolver | undefined {
+  return createRuntimeCredentialStoreFromEnvironment(environment)?.get;
+}
+
+async function requestCredentialBroker(input: {
   port: number;
   token: string;
+  operation: 'get' | 'set' | 'remove';
   credentialRef: string;
+  value?: string;
 }): Promise<string | undefined> {
-  if (
-    !input.credentialRef.startsWith('inkpi.model.') ||
-    input.credentialRef.length > 256 ||
-    /[\u0000-\u001f\u007f]/.test(input.credentialRef)
-  ) {
-    return Promise.reject(new Error('Invalid model credential reference'));
+  validateCredentialRef(input.credentialRef);
+  if (input.operation !== 'get' && !isChatGPTPlanCredentialRef(input.credentialRef)) {
+    throw new Error('Credential writes are limited to ChatGPT plan references');
+  }
+  if (input.value !== undefined && Buffer.byteLength(input.value, 'utf8') > MAX_CREDENTIAL_BYTES) {
+    throw new Error('Credential value exceeds the size limit');
+  }
+
+  const request = JSON.stringify({
+    token: input.token,
+    operation: input.operation,
+    credential_ref: input.credentialRef,
+    ...(input.value !== undefined ? { value: input.value } : {})
+  });
+  if (Buffer.byteLength(request, 'utf8') > MAX_REQUEST_BYTES) {
+    throw new Error('Credential broker request exceeded the size limit');
   }
 
   return new Promise((resolve, reject) => {
@@ -51,7 +89,7 @@ function resolveCredential(input: {
 
     socket.setTimeout(REQUEST_TIMEOUT_MS, () => finish(new Error('Credential broker request timed out')));
     socket.once('connect', () => {
-      socket.write(`${JSON.stringify({ token: input.token, credential_ref: input.credentialRef })}\n`, (error) => {
+      socket.write(`${request}\n`, (error) => {
         if (error) finish(new Error('Credential broker request failed'));
       });
     });
@@ -65,14 +103,18 @@ function resolveCredential(input: {
       if (newline < 0) return;
       try {
         const payload: unknown = JSON.parse(response.subarray(0, newline).toString('utf8'));
-        if (!isRecord(payload)) throw new Error('invalid response');
-        if (typeof payload.error === 'string') throw new Error(payload.error);
-        if (payload.credential === null) {
-          finish();
+        if (!isRecord(payload) || payload.success !== true) throw new Error('invalid response');
+        if (input.operation === 'get') {
+          if (payload.credential === null) {
+            finish();
+            return;
+          }
+          if (typeof payload.credential !== 'string') throw new Error('invalid response');
+          finish(undefined, payload.credential || undefined);
           return;
         }
-        if (typeof payload.credential !== 'string') throw new Error('invalid response');
-        finish(undefined, payload.credential || undefined);
+        if (payload.credential !== null) throw new Error('invalid response');
+        finish();
       } catch {
         finish(new Error('Credential broker rejected the request'));
       }
@@ -82,6 +124,25 @@ function resolveCredential(input: {
       if (!settled) finish(new Error('Credential broker closed the request without a response'));
     });
   });
+}
+
+function validateCredentialRef(credentialRef: string): void {
+  if (
+    !credentialRef.startsWith('inkpi.model.') ||
+    credentialRef.length > 256 ||
+    /[\u0000-\u001f\u007f]/.test(credentialRef)
+  ) {
+    throw new Error('Invalid model credential reference');
+  }
+}
+
+function isChatGPTPlanCredentialRef(credentialRef: string): boolean {
+  return (
+    credentialRef === 'inkpi.model.openai-chatgpt-plan.accounts' ||
+    credentialRef === 'inkpi.model.openai-chatgpt-plan.host' ||
+    credentialRef === 'inkpi.model.openai-chatgpt-plan.account' ||
+    /^inkpi\.model\.openai-chatgpt-plan\.account\.[a-f0-9]{32}$/i.test(credentialRef)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

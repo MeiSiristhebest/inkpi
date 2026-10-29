@@ -1,4 +1,5 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage, ThinkingLevel } from '@inkpi/protocol';
+import { chatGPTPlanResponsesProvider } from './chatgpt-plan-provider.js';
 import { ProviderError, ProviderNotImplementedError, classifyProviderError, providerHttpError } from './errors.js';
 import { getHttpClient } from './http-client.js';
 import { sanitizeMessagesForProvider } from './sanitize.js';
@@ -1692,6 +1693,7 @@ function isAbortError(error: unknown): boolean {
 // ----------------------------------------------------------------------
 providerRegistry.set('deepseek', openAiCompatibleProvider);
 providerRegistry.set('openai', openAiCompatibleProvider);
+providerRegistry.set('openai-chatgpt-plan', chatGPTPlanResponsesProvider);
 providerRegistry.set('claude', anthropicProvider);
 providerRegistry.set('gemini', geminiProvider);
 providerRegistry.set('ollama', ollamaProvider);

@@ -1,4 +1,8 @@
-import type { RuntimeModelProviderProbeParams, RuntimeModelProviderProbeResult } from '@inkpi/protocol';
+import type {
+  RuntimeModelCatalogEntry,
+  RuntimeModelProviderProbeParams,
+  RuntimeModelProviderProbeResult
+} from '@inkpi/protocol';
 
 export interface ModelProviderProbeOptions {
   fetchImpl?: typeof fetch;
@@ -15,6 +19,9 @@ export async function probeModelProvider(
   params: RuntimeModelProviderProbeParams,
   options: ModelProviderProbeOptions = {}
 ): Promise<RuntimeModelProviderProbeResult> {
+  if (params.provider.trim().toLowerCase() === 'openai-chatgpt-plan') {
+    throw new Error('ChatGPT plan accounts must be probed through the account Runtime API');
+  }
   const endpoint = providerModelsEndpoint(params.provider, params.baseUrl);
   const headers: Record<string, string> = { Accept: 'application/json' };
   const apiKey = params.credentialRef ? (await options.resolveCredential?.(params.credentialRef))?.trim() : undefined;
@@ -42,10 +49,12 @@ export async function probeModelProvider(
   });
 
   const latency = Math.max(0, (options.now ?? Date.now)() - start);
+  const catalogModels = response.ok ? await readModelCatalog(response) : [];
   return {
     status: response.status,
     latency,
-    modelIds: response.ok ? await readModelIds(response) : []
+    modelIds: catalogModels.map((model) => model.id),
+    catalogModels
   };
 }
 
@@ -76,7 +85,7 @@ function providerModelsEndpoint(provider: string, baseUrl: string): string {
   return url.toString();
 }
 
-async function readModelIds(response: Response): Promise<string[]> {
+async function readModelCatalog(response: Response): Promise<RuntimeModelCatalogEntry[]> {
   let value: unknown;
   try {
     value = await response.json();
@@ -86,14 +95,82 @@ async function readModelIds(response: Response): Promise<string[]> {
   if (!isRecord(value)) return [];
 
   const entries = Array.isArray(value.data) ? value.data : Array.isArray(value.models) ? value.models : [];
-  const ids = new Set<string>();
+  const byId = new Map<string, RuntimeModelCatalogEntry>();
   for (const entry of entries) {
     if (!isRecord(entry)) continue;
-    const rawId = entry.id ?? entry.name ?? entry.model;
+    const rawId = entry.id ?? entry.slug ?? entry.name ?? entry.model;
     if (typeof rawId !== 'string' || !rawId.trim()) continue;
-    ids.add(rawId.replace(/^models\//, '').trim());
+    const id = rawId.replace(/^models\//, '').trim();
+    const model: RuntimeModelCatalogEntry = { id };
+    const name = firstString(entry.display_name, entry.displayName, entry.name);
+    if (name && name !== id) model.name = name;
+    const contextTokens = firstNumber(
+      entry.contextTokens,
+      entry.context_tokens,
+      entry.contextWindow,
+      entry.context_window,
+      entry.inputTokenLimit
+    );
+    if (contextTokens !== undefined) model.contextTokens = contextTokens;
+    const maxOutputTokens = firstNumber(
+      entry.maxOutputTokens,
+      entry.max_output_tokens,
+      entry.maxTokens,
+      entry.max_tokens,
+      entry.outputTokenLimit
+    );
+    if (maxOutputTokens !== undefined) model.maxOutputTokens = maxOutputTokens;
+    const inputModalities = firstStringArray(entry.inputModalities, entry.input_modalities);
+    if (inputModalities) model.inputModalities = inputModalities;
+    const promptPrice = firstStringOrNumber(
+      entry.promptPricePerToken,
+      entry.prompt_price_per_token,
+      entry.inputPricePerToken,
+      entry.input_cost_per_token
+    );
+    if (promptPrice !== undefined) model.promptPricePerToken = promptPrice;
+    const completionPrice = firstStringOrNumber(
+      entry.completionPricePerToken,
+      entry.completion_price_per_token,
+      entry.outputPricePerToken,
+      entry.output_cost_per_token
+    );
+    if (completionPrice !== undefined) model.completionPricePerToken = completionPrice;
+    byId.set(id, { ...byId.get(id), ...model });
   }
-  return [...ids];
+  return [...byId.values()];
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value !== 'number' && typeof value !== 'string') continue;
+    const number = Number(value);
+    if (Number.isFinite(number) && number >= 0) return number;
+  }
+  return undefined;
+}
+
+function firstStringOrNumber(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return String(value);
+  }
+  return undefined;
+}
+
+function firstStringArray(...values: unknown[]): string[] | undefined {
+  for (const value of values) {
+    if (!Array.isArray(value)) continue;
+    const items = value
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+    if (items.length > 0) return [...new Set(items)];
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -45,7 +45,18 @@ export type {
   RuntimeModelRouteSummary,
   RuntimeModelRoutesConfigureParams,
   RuntimeModelRoutesConfigureResult,
+  RuntimeModelCatalogEntry,
   RuntimeModelProviderProbeParams,
   RuntimeModelProviderProbeResult,
-  RuntimeModelSummary
+  RuntimeModelSummary,
+  OpenAIChatGPTPlanAccountSummary,
+  OpenAIChatGPTPlanConnection,
+  OpenAIChatGPTPlanSignInParams,
+  OpenAIChatGPTPlanSignInStart,
+  OpenAIChatGPTPlanSignInStatus,
+  OpenAIChatGPTPlanSignInStatusParams,
+  OpenAIChatGPTPlanModelsParams,
+  OpenAIChatGPTPlanModel,
+  OpenAIChatGPTPlanDisconnectParams,
+  OpenAIChatGPTPlanDisconnectResult
 } from './runtime-model.js';

@@ -53,6 +53,15 @@ import type {
   InstructionRegistrationStatus,
   InstructionRegistryStatus,
   ModelConfig,
+  OpenAIChatGPTPlanConnection,
+  OpenAIChatGPTPlanDisconnectParams,
+  OpenAIChatGPTPlanDisconnectResult,
+  OpenAIChatGPTPlanModel,
+  OpenAIChatGPTPlanModelsParams,
+  OpenAIChatGPTPlanSignInParams,
+  OpenAIChatGPTPlanSignInStart,
+  OpenAIChatGPTPlanSignInStatus,
+  OpenAIChatGPTPlanSignInStatusParams,
   ProposalSyncPushParams,
   ProposalSyncSnapshotParams,
   RuntimeModelProviderProbeParams,
@@ -89,6 +98,7 @@ import type {
 import type { DaemonStatus, RuntimeCapability } from '@inkpi/protocol';
 import { AppendOnlySessionJournal, STORAGE_SCHEMA_VERSION } from '@inkpi/storage';
 import type { ProposalProjectionStore } from '@inkpi/storage';
+import { ChatGPTPlanRuntime } from './chatgpt-plan-runtime.js';
 import { createConversationHistoryProvider } from './conversation-history-provider.js';
 import { resolveDaemonCachePersistenceTargets } from './daemon-cache-persistence.js';
 import type { RuntimeCachePersistence } from './daemon-cache-persistence.js';
@@ -108,7 +118,8 @@ import { probeModelProvider } from './model-provider-probe.js';
 import { PROJECT_INSTRUCTIONS_PROVIDER_ID, createTrustedProjectInstructionsProvider } from './project-instructions.js';
 import {
   type RuntimeCredentialResolver,
-  createRuntimeCredentialResolverFromEnvironment
+  type RuntimeCredentialStore,
+  createRuntimeCredentialStoreFromEnvironment
 } from './runtime-credential-broker.js';
 import { createSerializedCreativeContextProviders } from './serialized-creative-context-provider.js';
 import { InkRpcServer, type ServerContext } from './server.js';
@@ -126,6 +137,8 @@ export interface DaemonOptions {
   defaultModelCapabilities?: ModelCapabilities;
   modelRoutes?: readonly ModelRoute[];
   credentialResolver?: RuntimeCredentialResolver;
+  credentialStore?: RuntimeCredentialStore;
+  chatGPTPlanRuntime?: ChatGPTPlanRuntime;
   capabilityRouter?: CapabilityRouter;
   instructionRegistry?: InstructionRegistry;
   /** Current project directory. Project instructions load only inside trustedProjectRoots. */
@@ -177,6 +190,8 @@ export class InkPiDaemon {
   private readonly modelRouteStates = new Map<string, import('./model-capability-router.js').ModelRouteRuntimeState>();
   private readonly taskObservability: TaskObservability;
   private readonly credentialResolver?: RuntimeCredentialResolver;
+  private readonly credentialStore?: RuntimeCredentialStore;
+  private readonly chatGPTPlanRuntime: ChatGPTPlanRuntime;
   private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
   private readonly firstPartyPluginRuntime: FirstPartyPluginRuntimeRegistration;
   private cachePersistenceRestored = false;
@@ -188,7 +203,10 @@ export class InkPiDaemon {
       ...options
     };
     this.cacheCoordinator = options.cacheCoordinator ?? new RuntimeCacheCoordinator();
-    this.credentialResolver = options.credentialResolver ?? createRuntimeCredentialResolverFromEnvironment();
+    this.credentialStore = options.credentialStore ?? createRuntimeCredentialStoreFromEnvironment();
+    this.credentialResolver = options.credentialResolver ?? this.credentialStore?.get;
+    this.chatGPTPlanRuntime =
+      options.chatGPTPlanRuntime ?? new ChatGPTPlanRuntime({ credentialStore: this.credentialStore });
     this.taskObservability = new TaskObservability(options.observability);
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel, undefined, {
       journalFactory:
@@ -275,7 +293,7 @@ export class InkPiDaemon {
         defaultModelCapabilities: options.defaultModelCapabilities,
         routes: options.modelRoutes,
         capabilityRouter: options.capabilityRouter,
-        credentialResolver: this.credentialResolver,
+        credentialResolver: (credentialRef) => this.resolveModelCredential(credentialRef),
         cacheCoordinator: this.cacheCoordinator
       });
       this.modelHandler = modelHandler;
@@ -550,9 +568,35 @@ export class InkPiDaemon {
     this.rpcServer.registerMethod(
       'model.provider.probe',
       (params: RuntimeModelProviderProbeParams): Promise<RuntimeModelProviderProbeResult> =>
-        probeModelProvider(params, {
-          resolveCredential: this.credentialResolver
-        })
+        params.provider.trim().toLowerCase() === 'openai-chatgpt-plan'
+          ? this.chatGPTPlanRuntime.probeModelProvider(params)
+          : probeModelProvider(params, {
+              resolveCredential: this.credentialResolver
+            })
+    );
+    this.rpcServer.registerMethod(
+      'model.chatgpt-plan.status',
+      (): Promise<OpenAIChatGPTPlanConnection> => this.chatGPTPlanRuntime.getStatus()
+    );
+    this.rpcServer.registerMethod(
+      'model.chatgpt-plan.sign-in',
+      (params: OpenAIChatGPTPlanSignInParams): Promise<OpenAIChatGPTPlanSignInStart> =>
+        this.chatGPTPlanRuntime.startSignIn(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.chatgpt-plan.sign-in-status',
+      (params: OpenAIChatGPTPlanSignInStatusParams): OpenAIChatGPTPlanSignInStatus =>
+        this.chatGPTPlanRuntime.signInStatus(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.chatgpt-plan.models',
+      (params: OpenAIChatGPTPlanModelsParams): Promise<OpenAIChatGPTPlanModel[]> =>
+        this.chatGPTPlanRuntime.listModels(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.chatgpt-plan.disconnect',
+      (params: OpenAIChatGPTPlanDisconnectParams): Promise<OpenAIChatGPTPlanDisconnectResult> =>
+        this.chatGPTPlanRuntime.disconnect(params)
     );
     this.rpcServer.registerMethod(
       'model.routes.configure',
@@ -796,6 +840,13 @@ export class InkPiDaemon {
     });
   }
 
+  private resolveModelCredential(credentialRef: string): Promise<string | undefined> {
+    if (credentialRef.startsWith('inkpi.model.openai-chatgpt-plan.account.')) {
+      return this.chatGPTPlanRuntime.resolveModelAccessToken(credentialRef);
+    }
+    return this.credentialResolver ? this.credentialResolver(credentialRef) : Promise.resolve(undefined);
+  }
+
   private listRuntimeModelRoutes(): RuntimeModelRouteSummary[] {
     return this.currentModelRoutes().map(summarizeRuntimeModelRoute);
   }
@@ -905,7 +956,7 @@ export class InkPiDaemon {
     if (this.capabilityRouter) return this.capabilityRouter;
     const modelHandler = new TaskModelHandler({
       routes,
-      credentialResolver: this.credentialResolver,
+      credentialResolver: (credentialRef) => this.resolveModelCredential(credentialRef),
       cacheCoordinator: this.cacheCoordinator
     });
     this.modelHandler = modelHandler;
@@ -1046,6 +1097,7 @@ export class InkPiDaemon {
   }
 
   public async stop(): Promise<void> {
+    this.chatGPTPlanRuntime.dispose();
     if (!this.running) {
       await this.taskRouter.stop();
       return;

@@ -5,9 +5,23 @@ describe('Runtime model provider probe', () => {
   it('lists OpenAI-compatible models without exposing credentials in the response', async () => {
     const fetchImpl = vi.fn<typeof fetch>(
       async () =>
-        new Response(JSON.stringify({ data: [{ id: 'model-a' }, { id: 'model-b' }] }), {
-          status: 200
-        })
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'model-a',
+                name: 'Model A',
+                context_window: 64_000,
+                max_output_tokens: 4_096,
+                input_modalities: ['text', 'image'],
+                input_cost_per_token: '0.000001',
+                output_cost_per_token: '0.000002'
+              },
+              { id: 'model-b' }
+            ]
+          }),
+          { status: 200 }
+        )
     );
     const times = [100, 137];
 
@@ -37,7 +51,19 @@ describe('Runtime model provider probe', () => {
     expect(result).toEqual({
       status: 200,
       latency: 37,
-      modelIds: ['model-a', 'model-b']
+      modelIds: ['model-a', 'model-b'],
+      catalogModels: [
+        {
+          id: 'model-a',
+          name: 'Model A',
+          contextTokens: 64_000,
+          maxOutputTokens: 4_096,
+          inputModalities: ['text', 'image'],
+          promptPricePerToken: '0.000001',
+          completionPricePerToken: '0.000002'
+        },
+        { id: 'model-b' }
+      ]
     });
     expect(JSON.stringify(result)).not.toContain('secret');
   });
@@ -94,6 +120,14 @@ describe('Runtime model provider probe', () => {
     await expect(
       probeModelProvider({ provider: 'custom', baseUrl: 'https://example.test?key=secret' }, { fetchImpl })
     ).rejects.toThrow('must not contain credentials');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('routes ChatGPT plan probes through the account API instead of API-key authentication', async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      probeModelProvider({ provider: 'openai-chatgpt-plan', baseUrl: 'https://api.openai.com/v1' }, { fetchImpl })
+    ).rejects.toThrow('through the account Runtime API');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

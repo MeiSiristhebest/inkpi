@@ -628,6 +628,51 @@ describe('capability-aware model routing', () => {
     });
   });
 
+  it('honors exact route preferences when provider/model pairs are shared across accounts', () => {
+    const accountA: ModelRoute = {
+      id: 'chatgpt-account-a',
+      model: { ...baseModel, id: 'gpt-model', provider: 'openai-chatgpt-plan' },
+      credentialRef: 'inkpi.model.openai-chatgpt-plan.account.account-a',
+      capabilities: { outputFormats: ['structured'], structuredOutput: true }
+    };
+    const accountB: ModelRoute = {
+      id: 'chatgpt-account-b',
+      model: { ...baseModel, id: 'gpt-model', provider: 'openai-chatgpt-plan' },
+      credentialRef: 'inkpi.model.openai-chatgpt-plan.account.account-b',
+      capabilities: { outputFormats: ['structured'], structuredOutput: true }
+    };
+    const router = new CapabilityRouter([accountA, accountB]);
+
+    expect(
+      router.resolve(
+        task({
+          metadata: {
+            modelRoute: {
+              providerId: 'openai-chatgpt-plan',
+              modelId: 'gpt-model',
+              routeId: 'chatgpt-account-b',
+              required: true
+            }
+          }
+        })
+      ).id
+    ).toBe('chatgpt-account-b');
+    expect(() =>
+      router.resolve(
+        task({
+          metadata: {
+            modelRoute: {
+              providerId: 'openai-chatgpt-plan',
+              modelId: 'gpt-model',
+              routeId: 'missing-account',
+              required: true
+            }
+          }
+        })
+      )
+    ).toThrow(CapabilityMismatchError);
+  });
+
   it('honors a task-carried model preference from metadata.modelRoute', () => {
     const base: Omit<ModelRoute, 'id' | 'model'> = {
       capabilities: {

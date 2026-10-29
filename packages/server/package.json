@@ -15,12 +15,13 @@
     "clean": "node -e \"import('node:fs/promises').then(fs=>fs.rm('dist',{recursive:true,force:true}))\""
   },
   "dependencies": {
-    "@inkpi/protocol": "workspace:*",
+    "@inkpi/agent-core": "workspace:*",
     "@inkpi/ai": "workspace:*",
     "@inkpi/editor-core": "workspace:*",
+    "@inkpi/protocol": "workspace:*",
     "@inkpi/session-backends": "workspace:*",
-    "@inkpi/agent-core": "workspace:*",
     "@inkpi/storage": "workspace:*",
+    "jose": "6.1.0",
     "ws": "8.21.3"
   },
   "description": "Headless JSON-RPC 2.0 daemon and SessionRegistry",

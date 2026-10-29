@@ -762,7 +762,9 @@ export interface ModelRoutePreference {
   modelId?: string;
   /** Target provider exactly matching a route `model.provider`. */
   providerId?: string;
-  /** When true, fail closed if no route matches the preferred provider/model. */
+  /** Exact route identity, used when multiple accounts expose the same provider/model pair. */
+  routeId?: string;
+  /** When true, fail closed if no route matches the preference. */
   required?: boolean;
 }
 
@@ -777,11 +779,13 @@ export function readTaskModelPreference(task: AiTask): ModelRoutePreference | un
   const record = raw as Record<string, unknown>;
   const modelId = typeof record.modelId === 'string' && record.modelId ? record.modelId : undefined;
   const providerId = typeof record.providerId === 'string' && record.providerId ? record.providerId : undefined;
-  if (!modelId && !providerId) return undefined;
-  return { modelId, providerId, required: record.required === true };
+  const routeId = typeof record.routeId === 'string' && record.routeId ? record.routeId : undefined;
+  if (!modelId && !providerId && !routeId) return undefined;
+  return { modelId, providerId, routeId, required: record.required === true };
 }
 
 function routeMatchesPreference(route: ResolvedModelRoute, preference: ModelRoutePreference): boolean {
+  if (preference.routeId && route.id !== preference.routeId) return false;
   if (preference.modelId && route.model.id !== preference.modelId) return false;
   if (preference.providerId && route.model.provider !== preference.providerId) return false;
   return true;

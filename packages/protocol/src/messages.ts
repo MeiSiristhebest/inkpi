@@ -150,6 +150,7 @@ export interface StandardLlmMessage {
 export type ProviderType =
   | 'deepseek'
   | 'openai'
+  | 'openai-chatgpt-plan'
   | 'claude'
   | 'gemini'
   | 'ollama'

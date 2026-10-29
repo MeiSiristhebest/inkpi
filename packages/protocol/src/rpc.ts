@@ -42,6 +42,15 @@ import type {
 } from './proposal-sync.js';
 import type { RuntimeHandshakeRequest, RuntimeHandshakeResponse } from './runtime-contract.js';
 import type {
+  OpenAIChatGPTPlanConnection,
+  OpenAIChatGPTPlanDisconnectParams,
+  OpenAIChatGPTPlanDisconnectResult,
+  OpenAIChatGPTPlanModel,
+  OpenAIChatGPTPlanModelsParams,
+  OpenAIChatGPTPlanSignInParams,
+  OpenAIChatGPTPlanSignInStart,
+  OpenAIChatGPTPlanSignInStatus,
+  OpenAIChatGPTPlanSignInStatusParams,
   RuntimeModelProviderProbeParams,
   RuntimeModelProviderProbeResult,
   RuntimeModelRouteHealthParams,
@@ -290,6 +299,17 @@ export interface DaemonRpcMethodMap {
   'model.routes.list': RpcMethodContract<void, RuntimeModelRouteSummary[]>;
   'model.routes.remove': RpcMethodContract<RuntimeModelRouteRemoveParams, RuntimeModelRouteRemoveResult>;
   'model.provider.probe': RpcMethodContract<RuntimeModelProviderProbeParams, RuntimeModelProviderProbeResult>;
+  'model.chatgpt-plan.status': RpcMethodContract<void, OpenAIChatGPTPlanConnection>;
+  'model.chatgpt-plan.sign-in': RpcMethodContract<OpenAIChatGPTPlanSignInParams, OpenAIChatGPTPlanSignInStart>;
+  'model.chatgpt-plan.sign-in-status': RpcMethodContract<
+    OpenAIChatGPTPlanSignInStatusParams,
+    OpenAIChatGPTPlanSignInStatus
+  >;
+  'model.chatgpt-plan.models': RpcMethodContract<OpenAIChatGPTPlanModelsParams, OpenAIChatGPTPlanModel[]>;
+  'model.chatgpt-plan.disconnect': RpcMethodContract<
+    OpenAIChatGPTPlanDisconnectParams,
+    OpenAIChatGPTPlanDisconnectResult
+  >;
   'proposal.sync.push': RpcMethodContract<ProposalSyncPushParams, ProposalSyncPushResult>;
   'proposal.sync.snapshot': RpcMethodContract<ProposalSyncSnapshotParams, ProposalProjectionSnapshot>;
   'runtime.diagnostics': RpcMethodContract<void, DiagnosticSnapshot>;
@@ -360,6 +380,11 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'model.routes.list',
   'model.routes.remove',
   'model.provider.probe',
+  'model.chatgpt-plan.status',
+  'model.chatgpt-plan.sign-in',
+  'model.chatgpt-plan.sign-in-status',
+  'model.chatgpt-plan.models',
+  'model.chatgpt-plan.disconnect',
   'proposal.sync.push',
   'proposal.sync.snapshot',
   'runtime.diagnostics',

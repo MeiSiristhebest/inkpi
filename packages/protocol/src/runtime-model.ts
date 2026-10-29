@@ -154,8 +154,73 @@ export interface RuntimeModelProviderProbeParams {
   credentialRef?: string;
 }
 
+/** Secret-free provider metadata returned alongside model IDs. */
+export interface RuntimeModelCatalogEntry {
+  id: string;
+  name?: string;
+  contextTokens?: number;
+  maxOutputTokens?: number;
+  inputModalities?: string[];
+  promptPricePerToken?: string;
+  completionPricePerToken?: string;
+}
+
 export interface RuntimeModelProviderProbeResult {
   status: number;
   latency: number;
   modelIds: string[];
+  catalogModels?: RuntimeModelCatalogEntry[];
+}
+
+export interface OpenAIChatGPTPlanAccountSummary {
+  accountId: string;
+  email?: string;
+  name?: string;
+  connected: boolean;
+  sharing: boolean;
+  reauthRequired: boolean;
+}
+
+export interface OpenAIChatGPTPlanConnection {
+  available: boolean;
+  accounts: OpenAIChatGPTPlanAccountSummary[];
+}
+
+export interface OpenAIChatGPTPlanSignInParams {
+  /** Existing registration to reauthorize; omitted to register another account. */
+  accountId?: string;
+  enablePlanUsage: boolean;
+}
+
+export interface OpenAIChatGPTPlanSignInStart {
+  attemptId: string;
+  authorizationUrl: string;
+}
+
+export interface OpenAIChatGPTPlanSignInStatusParams {
+  attemptId: string;
+}
+
+export type OpenAIChatGPTPlanSignInStatus =
+  | { status: 'pending' }
+  | { status: 'connected'; account: OpenAIChatGPTPlanAccountSummary }
+  | { status: 'cancelled' | 'error'; message: string };
+
+export interface OpenAIChatGPTPlanModelsParams {
+  accountId: string;
+}
+
+export interface OpenAIChatGPTPlanModel {
+  accountId: string;
+  id: string;
+  name: string;
+}
+
+export interface OpenAIChatGPTPlanDisconnectParams {
+  accountId: string;
+}
+
+export interface OpenAIChatGPTPlanDisconnectResult {
+  accountId: string;
+  remoteRevocationConfirmed: boolean;
 }

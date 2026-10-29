@@ -396,6 +396,82 @@ export const RuntimeModelRouteHealthParamsSchema = Type.Object({
   routeId: IdSchema
 });
 
+export const RuntimeModelCatalogEntrySchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  name: Type.Optional(Type.String()),
+  contextTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  maxOutputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  inputModalities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  promptPricePerToken: Type.Optional(Type.String()),
+  completionPricePerToken: Type.Optional(Type.String())
+});
+
+export const RuntimeModelProviderProbeParamsSchema = Type.Object({
+  provider: Type.String({ minLength: 1 }),
+  baseUrl: Type.String({ minLength: 1 }),
+  credentialRef: Type.Optional(Type.String({ minLength: 1 }))
+});
+
+export const RuntimeModelProviderProbeResultSchema = Type.Object({
+  status: Type.Integer({ minimum: 100, maximum: 599 }),
+  latency: Type.Number({ minimum: 0 }),
+  modelIds: Type.Array(Type.String({ minLength: 1 })),
+  catalogModels: Type.Optional(Type.Array(RuntimeModelCatalogEntrySchema))
+});
+
+export const OpenAIChatGPTPlanAccountSummarySchema = Type.Object({
+  accountId: IdSchema,
+  email: Type.Optional(Type.String()),
+  name: Type.Optional(Type.String()),
+  connected: Type.Boolean(),
+  sharing: Type.Boolean(),
+  reauthRequired: Type.Boolean()
+});
+
+export const OpenAIChatGPTPlanConnectionSchema = Type.Object({
+  available: Type.Boolean(),
+  accounts: Type.Array(OpenAIChatGPTPlanAccountSummarySchema)
+});
+
+export const OpenAIChatGPTPlanSignInParamsSchema = Type.Object({
+  accountId: Type.Optional(IdSchema),
+  enablePlanUsage: Type.Boolean()
+});
+
+export const OpenAIChatGPTPlanSignInStartSchema = Type.Object({
+  attemptId: IdSchema,
+  authorizationUrl: Type.String({ minLength: 1 })
+});
+
+export const OpenAIChatGPTPlanSignInStatusParamsSchema = Type.Object({
+  attemptId: IdSchema
+});
+
+export const OpenAIChatGPTPlanSignInStatusSchema = Type.Union([
+  Type.Object({ status: Type.Literal('pending') }),
+  Type.Object({ status: Type.Literal('connected'), account: OpenAIChatGPTPlanAccountSummarySchema }),
+  Type.Object({ status: Type.Union([Type.Literal('cancelled'), Type.Literal('error')]), message: Type.String() })
+]);
+
+export const OpenAIChatGPTPlanModelsParamsSchema = Type.Object({
+  accountId: IdSchema
+});
+
+export const OpenAIChatGPTPlanModelSchema = Type.Object({
+  accountId: IdSchema,
+  id: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1 })
+});
+
+export const OpenAIChatGPTPlanDisconnectParamsSchema = Type.Object({
+  accountId: IdSchema
+});
+
+export const OpenAIChatGPTPlanDisconnectResultSchema = Type.Object({
+  accountId: IdSchema,
+  remoteRevocationConfirmed: Type.Boolean()
+});
+
 export const RuntimeModelRouteCapabilitiesSchema = Type.Object({
   nativeCapabilities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
   runtimeTransforms: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
@@ -555,6 +631,19 @@ export const PROTOCOL_SCHEMA_DEFINITIONS = {
   DiagnosticSnapshotSchema,
   RuntimeModelRouteHealthParamsSchema,
   RuntimeModelRouteCapabilitiesSchema,
+  RuntimeModelCatalogEntrySchema,
+  RuntimeModelProviderProbeParamsSchema,
+  RuntimeModelProviderProbeResultSchema,
+  OpenAIChatGPTPlanAccountSummarySchema,
+  OpenAIChatGPTPlanConnectionSchema,
+  OpenAIChatGPTPlanSignInParamsSchema,
+  OpenAIChatGPTPlanSignInStartSchema,
+  OpenAIChatGPTPlanSignInStatusParamsSchema,
+  OpenAIChatGPTPlanSignInStatusSchema,
+  OpenAIChatGPTPlanModelsParamsSchema,
+  OpenAIChatGPTPlanModelSchema,
+  OpenAIChatGPTPlanDisconnectParamsSchema,
+  OpenAIChatGPTPlanDisconnectResultSchema,
   ExecutionSnapshotSchema,
   TaskExecutionSnapshotSchema,
   RpcRequestSchema,
