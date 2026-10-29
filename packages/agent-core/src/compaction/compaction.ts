@@ -2,7 +2,16 @@ import { CHARS_PER_TOKEN_HEURISTIC } from '@inkpi/ai';
 import type { AgentMessage, AiTask, AssistantMessage, CompactionEntry } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
 import { type RuntimeState, type RuntimeStateExtractor, extractRuntimeState } from './runtime-state.js';
-import { GENERIC_SUMMARIZATION_SYSTEM_PROMPT, serializeConversationForSummary } from './summarize.js';
+import {
+  GENERIC_SUMMARIZATION_SYSTEM_PROMPT,
+  SUMMARY_SERIALIZATION_DEFAULTS,
+  estimateSummaryTokens,
+  reportedSummaryInputTokens,
+  reportedSummaryOutputTokens,
+  serializeConversationForSummary,
+  truncateSummaryText
+} from './summarize.js';
+import type { SummaryGenerationOutput, SummaryGenerationRequest } from './summarize.js';
 
 export interface CompactionTaskBudget {
   /** Override the normal token trigger for one task kind. */
@@ -15,8 +24,14 @@ export interface CompactionTaskBudget {
   preserveRecentCount?: number;
   /** Minimum estimated tokens to retain from the recent tail. */
   preserveRecentTokens?: number;
-  /** Maximum generated summary size, when the provider supports bounded output. */
+  /** Legacy maximum visible summary size; excess text is clipped after generation. */
   summaryTokens?: number;
+  /** Explicit maximum generation output requested from the summarizer model. */
+  summaryOutputTokens?: number;
+  /** Explicit context window of the summarizer model, not the task's target model. */
+  summaryContextWindowTokens?: number;
+  /** Explicit serialized input ceiling for the summarizer model. */
+  summaryInputTokens?: number;
 }
 
 /** The task fields used to select a task-aware compaction budget. */
@@ -28,7 +43,11 @@ export interface CompactionBudget {
   outputReserveTokens: number;
   preserveRecentCount: number;
   preserveRecentTokens?: number;
+  /** Legacy maximum visible summary size; excess text is clipped after generation. */
   summaryTokens?: number;
+  summaryInputTokens?: number;
+  summaryOutputTokens?: number;
+  summaryContextWindowTokens?: number;
 }
 
 export interface CompactionConfig {
@@ -42,12 +61,22 @@ export interface CompactionConfig {
   preserveRecentCount?: number;
   /** Minimum estimated token count to preserve from the recent message tail. */
   preserveRecentTokens?: number;
-  /** Maximum generated summary size in estimated tokens. */
+  /** Legacy visible-summary ceiling in estimated tokens; output is clipped after generation. */
   summaryTokens?: number;
+  /** Maximum output tokens requested from the summary-generation capability, when known. */
+  summaryOutputTokens?: number;
+  /** Context window of the summary model, when known; never inferred from the target model. */
+  summaryContextWindowTokens?: number;
+  /** Serialized summary-input ceiling; defaults to the bounded serialization safety limit. */
+  summaryInputTokens?: number;
   /** Optional overrides selected by the task's stable kind. */
   taskBudgets?: Record<string, CompactionTaskBudget>;
   /** Custom summarizer function */
-  summarizer?: (serializedConversation: string, systemPrompt: string) => Promise<string>;
+  summarizer?: (
+    serializedConversation: string,
+    systemPrompt: string,
+    request: SummaryGenerationRequest
+  ) => Promise<SummaryGenerationOutput>;
   /** Optional caller-owned adapter for extracting opaque state from compacted messages. */
   stateExtractors?: RuntimeStateExtractor[];
   /** Optional caller-owned formatter for the extracted opaque state. */
@@ -69,16 +98,29 @@ interface ResolvedCompactionConfig {
   preserveRecentCount: number;
   preserveRecentTokens?: number;
   summaryTokens?: number;
+  summaryInputTokens?: number;
+  summaryOutputTokens?: number;
+  summaryContextWindowTokens?: number;
   taskBudgets: Record<string, CompactionTaskBudget>;
   summarizer?: CompactionConfig['summarizer'];
   stateExtractors?: RuntimeStateExtractor[];
   stateFormatter?: CompactionConfig['stateFormatter'];
 }
 
+export interface SummaryBudgetFacts {
+  maxInputTokens: number;
+  estimatedInputTokens: number;
+  contextWindowTokens?: number;
+  remainingContextTokens?: number;
+  maxOutputTokens?: number;
+  visibleSummaryTokens?: number;
+}
+
 export interface CompactionResult {
   compactedMessages: AgentMessage[];
   entry: CompactionEntry;
   budget: CompactionBudget;
+  summaryBudget: SummaryBudgetFacts;
 }
 
 export class SessionCompactor {
@@ -94,7 +136,12 @@ export class SessionCompactor {
       preserveRecentCount: positiveIntegerOr(config.preserveRecentCount, 4),
       preserveRecentTokens: positiveIntegerOrUndefined(config.preserveRecentTokens),
       summaryTokens: positiveIntegerOrUndefined(config.summaryTokens),
-      taskBudgets: config.taskBudgets ?? {},
+      summaryInputTokens: positiveIntegerOrUndefined(config.summaryInputTokens),
+      summaryOutputTokens: positiveIntegerOrUndefined(config.summaryOutputTokens),
+      summaryContextWindowTokens: positiveIntegerOrUndefined(config.summaryContextWindowTokens),
+      taskBudgets: Object.fromEntries(
+        Object.entries(config.taskBudgets ?? {}).map(([taskKind, budget]) => [taskKind, { ...budget }])
+      ),
       summarizer: config.summarizer,
       stateExtractors: config.stateExtractors,
       stateFormatter: config.stateFormatter,
@@ -125,7 +172,12 @@ export class SessionCompactor {
         positiveIntegerOrUndefined(taskBudget?.preserveRecentCount) ?? this.config.preserveRecentCount,
       preserveRecentTokens:
         positiveIntegerOrUndefined(taskBudget?.preserveRecentTokens) ?? this.config.preserveRecentTokens,
-      summaryTokens: positiveIntegerOrUndefined(taskBudget?.summaryTokens) ?? this.config.summaryTokens
+      summaryTokens: positiveIntegerOrUndefined(taskBudget?.summaryTokens) ?? this.config.summaryTokens,
+      summaryInputTokens: positiveIntegerOrUndefined(taskBudget?.summaryInputTokens) ?? this.config.summaryInputTokens,
+      summaryOutputTokens:
+        positiveIntegerOrUndefined(taskBudget?.summaryOutputTokens) ?? this.config.summaryOutputTokens,
+      summaryContextWindowTokens:
+        positiveIntegerOrUndefined(taskBudget?.summaryContextWindowTokens) ?? this.config.summaryContextWindowTokens
     };
   }
 
@@ -214,17 +266,71 @@ export class SessionCompactor {
       : undefined;
     const formattedState = runtimeState && this.config.stateFormatter ? this.config.stateFormatter(runtimeState) : '';
 
-    // Generate conversation summary
-    const serialized = serializeConversationForSummary(oldMessages);
+    // Generate conversation summary. The input ceiling is a Runtime safety limit;
+    // summary-model capabilities are supplied only when the caller knows them.
+    const maxInputTokens = budget.summaryInputTokens ?? SUMMARY_SERIALIZATION_DEFAULTS.maxInputTokens;
+    const serialized = serializeConversationForSummary(oldMessages, {
+      maxInputTokens,
+      charsPerToken: this.config.charsPerToken
+    });
+    const estimatedInputTokens = estimateSummaryTokens(
+      `${serialized}\n\n${GENERIC_SUMMARIZATION_SYSTEM_PROMPT}`,
+      this.config.charsPerToken
+    );
+    const remainingContextTokens =
+      budget.summaryContextWindowTokens === undefined
+        ? undefined
+        : Math.max(0, budget.summaryContextWindowTokens - estimatedInputTokens);
+    const requestedOutputTokens = budget.summaryOutputTokens;
+    let maxOutputTokens = requestedOutputTokens;
+    if (remainingContextTokens !== undefined) {
+      maxOutputTokens =
+        requestedOutputTokens === undefined
+          ? remainingContextTokens
+          : Math.min(requestedOutputTokens, remainingContextTokens);
+    }
+    if (remainingContextTokens === 0) {
+      throw new Error('Summary input leaves no context window for generated output.');
+    }
     if (signal?.aborted) {
       throw new Error('Session compaction aborted by signal');
     }
-    const generatedSummary = await this.config.summarizer(serialized, GENERIC_SUMMARIZATION_SYSTEM_PROMPT);
+    const request: SummaryGenerationRequest = { signal, maxInputTokens, estimatedInputTokens };
+    if (budget.summaryContextWindowTokens !== undefined) {
+      request.contextWindowTokens = budget.summaryContextWindowTokens;
+      request.remainingContextTokens = remainingContextTokens;
+    }
+    if (maxOutputTokens !== undefined) request.maxOutputTokens = maxOutputTokens;
+    if (task?.kind) request.taskKind = task.kind;
+    const generated = await this.config.summarizer(serialized, GENERIC_SUMMARIZATION_SYSTEM_PROMPT, request);
     if (signal?.aborted) {
       throw new Error('Session compaction aborted by signal');
+    }
+    const generatedSummary = typeof generated === 'string' ? generated : generated.text;
+    const summaryUsage = typeof generated === 'string' ? undefined : generated.usage;
+    const estimatedOutputTokens = estimateSummaryTokens(generatedSummary, this.config.charsPerToken);
+    const reportedOutputTokens = summaryUsage ? reportedSummaryOutputTokens(summaryUsage) : estimatedOutputTokens;
+    let actualRemainingContextTokens: number | undefined;
+    if (budget.summaryContextWindowTokens !== undefined) {
+      actualRemainingContextTokens = summaryUsage
+        ? budget.summaryContextWindowTokens - reportedSummaryInputTokens(summaryUsage)
+        : remainingContextTokens;
+    }
+    if (
+      budget.summaryOutputTokens !== undefined &&
+      maxOutputTokens !== undefined &&
+      reportedOutputTokens > maxOutputTokens
+    ) {
+      throw new Error('Summary exceeded the configured generation output budget.');
+    }
+    if (
+      actualRemainingContextTokens !== undefined &&
+      (actualRemainingContextTokens < 0 || reportedOutputTokens > actualRemainingContextTokens)
+    ) {
+      throw new Error('Summary exceeded the remaining summarizer context window.');
     }
     const summaryText = budget.summaryTokens
-      ? truncateToTokenBudget(generatedSummary, budget.summaryTokens, this.config.charsPerToken)
+      ? truncateSummaryText(generatedSummary, budget.summaryTokens, this.config.charsPerToken)
       : generatedSummary;
 
     const fullSummaryContent = formattedState
@@ -249,16 +355,20 @@ export class SessionCompactor {
       role: 'assistant',
       content: [{ type: 'text', text: fullSummaryContent }],
       stopReason: 'stop',
+      ...(summaryUsage ? { usage: summaryUsage } : {}),
       timestamp: this.clock()
     };
 
     const compactedMessages: AgentMessage[] = [summaryAssistantMessage, ...keptMessages];
+    const summaryBudget: SummaryBudgetFacts = { maxInputTokens, estimatedInputTokens };
+    if (budget.summaryContextWindowTokens !== undefined) {
+      summaryBudget.contextWindowTokens = budget.summaryContextWindowTokens;
+    }
+    if (remainingContextTokens !== undefined) summaryBudget.remainingContextTokens = remainingContextTokens;
+    if (maxOutputTokens !== undefined) summaryBudget.maxOutputTokens = maxOutputTokens;
+    if (budget.summaryTokens !== undefined) summaryBudget.visibleSummaryTokens = budget.summaryTokens;
 
-    return {
-      compactedMessages,
-      entry,
-      budget
-    };
+    return { compactedMessages, entry, budget, summaryBudget };
   }
 
   public canCompact(messages: AgentMessage[], task?: CompactionTask): boolean {
@@ -340,13 +450,4 @@ function estimateJsonValue(value: unknown): number {
   } catch {
     return '[unserializable]'.length;
   }
-}
-
-function truncateToTokenBudget(text: string, tokenBudget: number, charsPerToken: number): string {
-  const maxCharacters = Math.max(1, Math.floor(tokenBudget / charsPerToken));
-  if (text.length <= maxCharacters) return text;
-
-  const suffix = '… (truncated)';
-  if (maxCharacters <= suffix.length) return text.slice(0, maxCharacters);
-  return `${text.slice(0, maxCharacters - suffix.length)}${suffix}`;
 }

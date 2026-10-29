@@ -1,12 +1,13 @@
 import {
   ContextPipeline,
   type TaskHandlerContext,
+  ToolRegistry,
   createContextCacheKey,
   resolveTaskWorkspaceId
 } from '@inkpi/agent-core';
 import { AssistantEventStream, type ModelConfig } from '@inkpi/ai';
 import type { AgentMessage, AiTask } from '@inkpi/protocol';
-import { JitContextProvider, TaskModelHandler, createRetrievalCacheKey } from '@inkpi/server';
+import { JitContextProvider, ProviderResponseCache, TaskModelHandler, createRetrievalCacheKey } from '@inkpi/server';
 import type { JitMemoryRetriever } from '@inkpi/storage';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -165,5 +166,101 @@ describe('Runtime cache workspace isolation', () => {
 
     await handler.execute(handlerContext(scopedTask(undefined, 'scope'), 'unscoped'));
     expect(stream).toHaveBeenCalledTimes(3);
+  });
+
+  it('separates provider response cache entries by request configuration and full tool definitions', async () => {
+    const stream = vi.fn((_model: ModelConfig, _messages: AgentMessage[]) => {
+      const result = new AssistantEventStream();
+      queueMicrotask(() => {
+        result.push({ type: 'text_delta', textDelta: 'a continuation' });
+        result.end();
+      });
+      return result;
+    });
+    const providerResponseCache = new ProviderResponseCache();
+    const run = (
+      temperature: number,
+      description: string,
+      task: AiTask = scopedTask('ws-a', 'scope'),
+      routeOptions: {
+        routeId?: string;
+        modelId?: string;
+        requestConfig?: Partial<ModelConfig>;
+      } = {}
+    ) => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register({
+        name: 'lookup',
+        description,
+        parameters: { type: 'object', properties: { query: { type: 'string' } } },
+        execute: async () => ({ content: [{ type: 'text', text: 'fixture' }] })
+      });
+      const handler = new TaskModelHandler({
+        routes: [
+          {
+            id: routeOptions.routeId ?? 'cache-test-route',
+            model: {
+              ...model,
+              ...routeOptions.requestConfig,
+              id: routeOptions.modelId ?? routeOptions.requestConfig?.id ?? model.id,
+              temperature
+            },
+            capabilities: { outputFormats: ['text'], structuredOutput: false, tools: true }
+          }
+        ],
+        stream,
+        toolRegistry,
+        providerResponseCache
+      });
+      return handler.execute(handlerContext(task, `${temperature}:${description}`));
+    };
+
+    await run(0.2, 'Original lookup schema');
+    const repeated = await run(0.2, 'Original lookup schema');
+    expect(repeated.provenance?.providerCacheHit).toBe(true);
+    expect(stream).toHaveBeenCalledTimes(1);
+
+    await run(0.8, 'Original lookup schema');
+    expect(stream).toHaveBeenCalledTimes(2);
+
+    await run(0.8, 'Redefined lookup schema');
+    expect(stream).toHaveBeenCalledTimes(3);
+    const redefinedRepeat = await run(0.8, 'Redefined lookup schema');
+    expect(redefinedRepeat.provenance?.providerCacheHit).toBe(true);
+    expect(stream).toHaveBeenCalledTimes(3);
+
+    const metadataRepeat = await run(0.8, 'Redefined lookup schema', scopedTask('ws-a', 'metadata'));
+    expect(metadataRepeat.provenance?.providerCacheHit).toBe(true);
+    expect(stream).toHaveBeenCalledTimes(3);
+
+    await run(0.8, 'Redefined lookup schema', scopedTask('ws-b', 'metadata'));
+    expect(stream).toHaveBeenCalledTimes(4);
+
+    await run(0.8, 'Redefined lookup schema', scopedTask('ws-a', 'scope'), {
+      routeId: 'cache-test-route-b'
+    });
+    expect(stream).toHaveBeenCalledTimes(5);
+
+    await run(0.8, 'Redefined lookup schema', scopedTask('ws-a', 'scope'), {
+      modelId: 'workspace-isolation-model-b'
+    });
+    expect(stream).toHaveBeenCalledTimes(6);
+
+    await run(0.8, 'Redefined lookup schema', scopedTask('ws-a', 'scope'), {
+      requestConfig: {
+        apiKey: 'fixture-secret-api-key',
+        compat: {
+          extraHeaders: { 'x-private-routing': 'fixture-private-header' },
+          extraBody: { tenantHint: 'fixture-private-body' }
+        }
+      }
+    });
+    expect(stream).toHaveBeenCalledTimes(7);
+    const persistedKey = providerResponseCache.snapshot().entries.at(-1)?.key ?? '';
+    expect(persistedKey).not.toContain('fixture-secret-api-key');
+    expect(persistedKey).not.toContain('fixture-private-header');
+    expect(persistedKey).not.toContain('fixture-private-body');
+    expect(persistedKey).not.toContain('the same opening line');
+    expect(persistedKey).not.toContain('Redefined lookup schema');
   });
 });

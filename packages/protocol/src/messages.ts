@@ -69,6 +69,15 @@ export interface ProviderErrorMetadata {
   details?: unknown;
 }
 
+/** Actual provider dispatch identity for a settled assistant message; never contains credentials or request content. */
+export interface ProviderModelSource {
+  /** Provider adapter/protocol used for dispatch. */
+  provider: string;
+  modelId: string;
+  /** null means a custom endpoint was used without a stable host route id. */
+  routeId?: string | null;
+}
+
 export interface AssistantMessage extends BaseMessage {
   role: 'assistant';
   content: ContentBlock[];
@@ -76,6 +85,8 @@ export interface AssistantMessage extends BaseMessage {
   errorMessage?: string;
   /** Structured provider failure metadata preserved across the stream boundary. */
   providerError?: ProviderErrorMetadata;
+  /** Provider/model selected after request preparation; absent on legacy or internal messages. */
+  providerSource?: ProviderModelSource;
   usage?: Usage;
   /** Provider request duration measured with a monotonic clock. */
   durationMs?: number;

@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InkPi model catalog data",
+  "description": "The offline JSON data shape used by packages/ai/src/models-data.json.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "name",
+      "provider",
+      "contextWindow",
+      "maxTokens",
+      "supportsThinking",
+      "supportsTools",
+      "cost"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "description": "Stable catalog identifier."
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "description": "Human-readable model name."
+      },
+      "provider": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "description": "Provider identifier."
+      },
+      "contextWindow": {
+        "type": "number",
+        "minimum": 5e-324,
+        "description": "Maximum input context tokens."
+      },
+      "maxTokens": {
+        "type": "number",
+        "minimum": 5e-324,
+        "description": "Maximum output tokens."
+      },
+      "supportsThinking": {
+        "type": "boolean",
+        "description": "Whether the model supports reasoning output."
+      },
+      "supportsTools": {
+        "type": "boolean",
+        "description": "Whether the model supports tool calls."
+      },
+      "supportsVision": {
+        "type": "boolean",
+        "description": "Optional image-input capability."
+      },
+      "supportsMidConvoEffort": {
+        "type": "boolean",
+        "description": "Optional support for per-turn reasoning-effort changes."
+      },
+      "cost": {
+        "type": "object",
+        "required": [
+          "inputPerMillionUsd",
+          "outputPerMillionUsd"
+        ],
+        "properties": {
+          "inputPerMillionUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "const": -1000000
+              }
+            ]
+          },
+          "outputPerMillionUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "const": -1000000
+              }
+            ]
+          },
+          "cacheReadPerMillionUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "const": -1000000
+              }
+            ]
+          },
+          "cacheWritePerMillionUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "const": -1000000
+              }
+            ]
+          },
+          "serviceTierRates": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "inputPerMillionUsd": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "const": -1000000
+                    }
+                  ]
+                },
+                "outputPerMillionUsd": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "const": -1000000
+                    }
+                  ]
+                },
+                "cacheReadPerMillionUsd": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "const": -1000000
+                    }
+                  ]
+                },
+                "cacheWritePerMillionUsd": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "const": -1000000
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "promptLengthTiers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "minimumPromptTokens",
+                "rates"
+              ],
+              "properties": {
+                "minimumPromptTokens": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "rates": {
+                  "type": "object",
+                  "properties": {
+                    "inputPerMillionUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "const": -1000000
+                        }
+                      ]
+                    },
+                    "outputPerMillionUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "const": -1000000
+                        }
+                      ]
+                    },
+                    "cacheReadPerMillionUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "const": -1000000
+                        }
+                      ]
+                    },
+                    "cacheWritePerMillionUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "const": -1000000
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "cacheWritePerMillionUsdByTtl": {
+            "type": "object",
+            "properties": {
+              "5m": {
+                "type": "number",
+                "minimum": 0
+              },
+              "1h": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      },
+      "capabilities": {
+        "type": "object",
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "optional",
+              "required"
+            ]
+          },
+          "modalities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true
+          },
+          "outputFormats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "structured",
+                "patch"
+              ]
+            },
+            "readOnly": true
+          },
+          "streaming": {
+            "type": "boolean"
+          },
+          "contextTokens": {
+            "type": "number",
+            "minimum": 5e-324
+          },
+          "maxOutputTokens": {
+            "type": "number",
+            "minimum": 5e-324
+          },
+          "tools": {
+            "type": "boolean"
+          },
+          "reasoning": {
+            "type": "boolean"
+          },
+          "structuredOutput": {
+            "type": "boolean"
+          },
+          "patchOutput": {
+            "type": "boolean"
+          },
+          "jsonSchema": {
+            "type": "boolean"
+          },
+          "promptCaching": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional catalog description."
+      },
+      "roles": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "planning",
+            "drafting",
+            "auditing",
+            "polishing"
+          ]
+        },
+        "description": "Optional recommended task roles."
+      },
+      "priority": {
+        "type": "number",
+        "description": "Optional preference within a role; higher values win."
+      }
+    },
+    "additionalProperties": true
+  }
+}

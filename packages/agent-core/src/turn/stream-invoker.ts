@@ -1,5 +1,11 @@
-import type { EventStream } from '@inkpi/ai';
-import type { AgentMessage, AssistantMessage, AssistantMessageEvent } from '@inkpi/protocol';
+import type { EventStream, ModelConfig, StreamOptions } from '@inkpi/ai';
+import type {
+  AgentMessage,
+  AgentTool,
+  AssistantMessage,
+  AssistantMessageEvent,
+  ProviderModelSource
+} from '@inkpi/protocol';
 import { adoptMessage, commitJournal } from '../journal-commit.js';
 import { MONOTONIC_CLOCK } from '../ports/index.js';
 import { AssistantFrameEncoder } from './assistant-frames.js';
@@ -40,6 +46,44 @@ function defaultGetThinkingBudgetForLevel(level: string | null | undefined): num
   }
 }
 
+function providerModelSource(model: ModelConfig): ProviderModelSource {
+  const source: ProviderModelSource = {
+    provider: model.provider,
+    modelId: model.id
+  };
+  const routeId = model.routeId?.trim();
+  if (routeId) {
+    source.routeId = routeId;
+  } else if (model.routeId !== undefined || model.baseUrl) {
+    source.routeId = null;
+  }
+  return source;
+}
+
+function getStableToolPrefixLength(
+  requestTools: NonNullable<StreamOptions['tools']>,
+  declaredTools: NonNullable<StreamOptions['tools']>,
+  visibleTools: AgentTool[],
+  toolRegistry: TurnContext['toolRegistry'],
+  discoveryEnabled: boolean
+): number {
+  const limit = Math.min(requestTools.length, declaredTools.length, visibleTools.length);
+  let prefixLength = 0;
+  while (prefixLength < limit) {
+    const registration = toolRegistry.getRegistration(visibleTools[prefixLength]!.name);
+    if (
+      !registration ||
+      registration.exposure === 'hidden' ||
+      (discoveryEnabled && registration.exposure === 'deferred') ||
+      JSON.stringify(requestTools[prefixLength]) !== JSON.stringify(declaredTools[prefixLength])
+    ) {
+      break;
+    }
+    prefixLength += 1;
+  }
+  return prefixLength;
+}
+
 /**
  * 管线第二段：调用模型流式输出，并把增量合并进流式消息。
  *
@@ -57,15 +101,17 @@ export class StreamInvoker {
 
     const streamOpId = options.idGenerator ? options.idGenerator() : `op_stream_${crypto.randomUUID()}`;
     let streamFn = options.streamFn;
-    if (!streamFn) {
-      try {
-        const aiMod = await import('@inkpi/ai');
-        streamFn = aiMod.streamAi;
-      } catch {
+    let aiMod: typeof import('@inkpi/ai') | undefined;
+    try {
+      aiMod = await import('@inkpi/ai');
+      streamFn ??= aiMod.streamAi;
+    } catch {
+      if (!streamFn) {
         throw new Error('ModelStreamer (streamFn) must be provided in AgentOptions when @inkpi/ai is not available.');
       }
     }
-    const toolsMetadata = toolRegistry.getAll().map((t) => ({
+    const visibleTools = ctx.modelTools?.() ?? toolRegistry.getAll();
+    const toolsMetadata = visibleTools.map((t) => ({
       name: t.name,
       description: t.description,
       parameters: t.parameters ?? { type: 'object' }
@@ -81,8 +127,17 @@ export class StreamInvoker {
     );
     signal?.throwIfAborted();
     const requestModel = prepared?.model ?? state.model;
-    const requestMessages = prepared?.messages ? [...prepared.messages] : llmMessages;
+    const requestMessages = [...(prepared?.messages ?? llmMessages)];
+    let messagesForProvider = requestMessages;
     const requestTools = prepared?.tools ?? toolsMetadata;
+    const stableToolPrefixLength = getStableToolPrefixLength(
+      requestTools,
+      toolsMetadata,
+      visibleTools,
+      toolRegistry,
+      options.toolDiscovery === true
+    );
+    const providerSource = providerModelSource(requestModel);
     if (options.conversation) {
       const update = await options.conversation.recordLoadout(
         prepared?.systemPrompt ?? state.systemPrompt,
@@ -90,6 +145,18 @@ export class StreamInvoker {
       );
       if (update) requestMessages.push(update);
     }
+    if (options.streamFn && aiMod && streamFn !== aiMod.streamAi) {
+      messagesForProvider = aiMod.sanitizeMessagesForProvider(requestMessages, requestModel);
+    } else if (
+      options.streamFn &&
+      !aiMod &&
+      requestMessages.some(
+        (message) => message.role === 'assistant' && message.content.some((item) => item.type === 'thinking')
+      )
+    ) {
+      throw new Error('Cannot safely dispatch provider thinking without @inkpi/ai message sanitization.');
+    }
+
     if (options.journal) {
       await commitJournal(options.journal, [
         {
@@ -116,12 +183,13 @@ export class StreamInvoker {
 
     const monotonicClock = options.monotonicClock ?? MONOTONIC_CLOCK;
     const startedAt = monotonicClock();
-    const stream = streamFn(requestModel, requestMessages, {
+    const stream = streamFn(requestModel, messagesForProvider, {
       signal,
       providerSessionId: state.providerSessionId,
       systemPrompt: options.conversation ? '' : (prepared?.systemPrompt ?? state.systemPrompt),
       ...(thinkingEffort !== undefined ? { thinkingEffort } : { thinkingBudget }),
-      tools: requestTools
+      tools: requestTools,
+      ...(stableToolPrefixLength > 0 ? { stableToolPrefixLength } : {})
     });
 
     const abortStream = (): void => stream.abort();
@@ -135,6 +203,7 @@ export class StreamInvoker {
     const initialAssistantMsg: AssistantMessage = {
       role: 'assistant',
       content: [],
+      providerSource: { ...providerSource },
       // 记录当轮思考档位：回放历史时按轮还原 effort，避免中途调档串档。
       ...(thinkingEffort !== undefined ? { providerThinkingLevel: thinkingEffort } : {}),
       timestamp: clock()
@@ -151,6 +220,7 @@ export class StreamInvoker {
     let assistantMessage: AssistantMessage;
     try {
       assistantMessage = await stream.collect();
+      assistantMessage.providerSource = { ...providerSource };
       assistantMessage.durationMs = Math.max(0, monotonicClock() - startedAt);
       await stream.waitForListeners?.();
       await deltaListener.flush();

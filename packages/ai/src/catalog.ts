@@ -1,58 +1,21 @@
-import type { OutputFormat, ThinkingLevel } from '@inkpi/protocol';
+import { type OutputFormat, type TSchema, type ThinkingLevel, Value } from '@inkpi/protocol';
+import { MODEL_CATALOG_ENTRY_SCHEMA, UNKNOWN_MODEL_PRICE_SENTINEL } from './catalog-schema.js';
+import type { ModelCapabilityDeclaration, ModelCatalogEntry, ModelNetworkMode, ModelRole } from './catalog-schema.js';
 import { GENERATED_MODELS } from './models.generated.js';
 import { getModelPreset, hasModelPreset } from './presets.js';
 import type { ModelConfig, ProviderType } from './types.js';
 
-export type ModelRole = 'planning' | 'drafting' | 'auditing' | 'polishing';
-
-export type ModelNetworkMode = 'offline' | 'optional' | 'required';
-
-export interface ModelPriceRates {
-  inputPerMillionUsd: number;
-  outputPerMillionUsd: number;
-  cacheReadPerMillionUsd?: number;
-  cacheWritePerMillionUsd?: number;
-}
-
-export type ModelPriceRateOverrides = Partial<ModelPriceRates>;
-
-export interface PromptLengthPricingTier {
-  /** This rate set applies at and above this prompt length. */
-  minimumPromptTokens: number;
-  rates: ModelPriceRateOverrides;
-}
-
-export interface ModelPriceDescriptor extends ModelPriceRates {
-  /** Exact provider service-tier rates. Missing usage tier data leaves cost unknown. */
-  serviceTierRates?: Record<string, ModelPriceRateOverrides>;
-  /** Long-prompt rate overrides selected by the highest matching minimum. */
-  promptLengthTiers?: PromptLengthPricingTier[];
-  /** Cache-write rates when the provider reports the write duration. */
-  cacheWritePerMillionUsdByTtl?: Partial<Record<'5m' | '1h', number>>;
-}
-
-/**
- * Complete, provider-neutral capability declaration used to build runtime
- * routes. Catalog entries may override these values, but callers should use
- * modelCatalogEntryToCapabilityDeclaration instead of rebuilding the mapping.
- */
-export interface ModelCapabilityDeclaration {
-  capabilities: readonly string[];
-  network: ModelNetworkMode;
-  modalities: readonly string[];
-  outputFormats: readonly OutputFormat[];
-  streaming: boolean;
-  contextTokens: number;
-  maxOutputTokens: number;
-  tools: boolean;
-  reasoning: boolean;
-  structuredOutput: boolean;
-  patchOutput: boolean;
-  jsonSchema: boolean;
-  promptCaching: boolean;
-}
-
-export type ModelCapabilityOverrides = Partial<ModelCapabilityDeclaration>;
+export type {
+  ModelCapabilityDeclaration,
+  ModelCapabilityOverrides,
+  ModelCatalogEntry,
+  ModelNetworkMode,
+  ModelPriceDescriptor,
+  ModelPriceRateOverrides,
+  ModelPriceRates,
+  ModelRole,
+  PromptLengthPricingTier
+} from './catalog-schema.js';
 
 /**
  * Declarative capability requirements used by catalog queries.
@@ -75,34 +38,6 @@ export interface DeclaredProviderCapabilityMatrixEntry {
   provider: string;
   modelId: string;
   declaration: ModelCapabilityDeclaration;
-}
-
-export interface ModelCatalogEntry {
-  id: string;
-  name: string;
-  provider: ProviderType | string;
-  contextWindow: number;
-  maxTokens: number;
-  supportsThinking: boolean;
-  supportsTools: boolean;
-  supportsVision?: boolean;
-  /**
-   * 是否支持逐轮思考档位（Anthropic 自适应思考 effort）。
-   * 生成的目录条目默认不带此标记；可通过 registerModel 显式注入。
-   */
-  supportsMidConvoEffort?: boolean;
-  cost: ModelPriceDescriptor;
-  /** Optional explicit overrides for the canonical runtime capability matrix. */
-  capabilities?: ModelCapabilityOverrides;
-  description?: string;
-  /**
-   * Explicit roles this model is recommended for. When present, the catalog
-   * manager prefers these over the capability heuristic. Kept optional so
-   * generated catalog entries (which carry no role data) still work.
-   */
-  roles?: ModelRole[];
-  /** Explicit preference within a role; higher wins. Defaults to 0. */
-  priority?: number;
 }
 
 /**
@@ -229,82 +164,58 @@ function normalizeStringList(value: unknown, label: string): string[] {
 }
 
 function validateModelCatalogEntry(entry: ModelCatalogEntry): void {
-  if (!isRecord(entry)) throw new Error('Model catalog entry must be an object');
-  for (const [name, value] of [
-    ['id', entry.id],
-    ['name', entry.name],
-    ['provider', entry.provider]
-  ] as const) {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new Error(`Model ${name} must be a non-empty string`);
-    }
-  }
-  for (const [name, value] of [
-    ['contextWindow', entry.contextWindow],
-    ['maxTokens', entry.maxTokens]
-  ] as const) {
-    if (!Number.isFinite(value) || value <= 0) throw new Error(`Model ${name} must be greater than zero`);
-  }
-  for (const [name, value] of [
-    ['supportsThinking', entry.supportsThinking],
-    ['supportsTools', entry.supportsTools]
-  ] as const) {
-    if (typeof value !== 'boolean') throw new Error(`Model ${name} must be boolean`);
-  }
-  for (const [name, value] of [
-    ['supportsVision', entry.supportsVision],
-    ['supportsMidConvoEffort', entry.supportsMidConvoEffort]
-  ] as const) {
-    if (value !== undefined && typeof value !== 'boolean') throw new Error(`Model ${name} must be boolean`);
-  }
-  if (entry.priority !== undefined && !Number.isFinite(entry.priority)) {
-    throw new Error('Model priority must be finite');
-  }
-  validateModelPriceDescriptor(entry.cost);
-  if (entry.capabilities !== undefined && !isRecord(entry.capabilities)) {
-    throw new Error('Model capabilities override must be an object');
+  if (isRecord(entry)) validateModelPriceDescriptor(entry.cost);
+  // SAFETY: Value.Errors accepts plain JSON Schema at runtime; TSchema only models schemas built by Type.
+  const errors = Value.Errors(MODEL_CATALOG_ENTRY_SCHEMA as unknown as TSchema, entry);
+  if (errors.length > 0) {
+    const details = errors.map(({ path, message }) => `${path || '/'} ${message}`);
+    throw new Error(`Invalid model catalog entry: ${details.join('; ')}`);
   }
 }
 
-function validateModelPriceDescriptor(pricing: ModelPriceDescriptor): void {
+function validateModelPriceDescriptor(pricing: unknown): void {
+  if (!isRecord(pricing)) return;
   validatePriceRateOverrides(pricing, 'Model price', true);
+  validateServiceTierRates(pricing.serviceTierRates);
+  validatePromptLengthTiers(pricing.promptLengthTiers);
+  validateCacheWriteRates(pricing.cacheWritePerMillionUsdByTtl);
+}
 
-  if (pricing.serviceTierRates !== undefined) {
-    if (!isRecord(pricing.serviceTierRates)) throw new Error('Model service-tier prices must be an object');
-    for (const [serviceTier, rates] of Object.entries(pricing.serviceTierRates)) {
-      if (!serviceTier.trim()) throw new Error('Model service-tier name must not be empty');
-      validatePriceRateOverrides(rates, `Model service-tier price '${serviceTier}'`, false);
-    }
-  }
-
-  if (pricing.promptLengthTiers !== undefined) {
-    if (!Array.isArray(pricing.promptLengthTiers)) throw new Error('Model prompt-length prices must be an array');
-    const minimums = new Set<number>();
-    for (const tier of pricing.promptLengthTiers) {
-      if (!Number.isInteger(tier.minimumPromptTokens) || tier.minimumPromptTokens <= 0) {
-        throw new Error('Model prompt-length threshold must be a positive integer');
-      }
-      if (minimums.has(tier.minimumPromptTokens)) throw new Error('Model prompt-length thresholds must be unique');
-      minimums.add(tier.minimumPromptTokens);
-      validatePriceRateOverrides(tier.rates, `Model prompt-length price at ${tier.minimumPromptTokens}`, false);
-    }
-  }
-
-  if (pricing.cacheWritePerMillionUsdByTtl !== undefined) {
-    if (!isRecord(pricing.cacheWritePerMillionUsdByTtl))
-      throw new Error('Model cache-write TTL prices must be an object');
-    for (const [ttl, rate] of Object.entries(pricing.cacheWritePerMillionUsdByTtl)) {
-      if (!['5m', '1h'].includes(ttl)) throw new Error(`Unsupported model cache-write TTL: ${ttl}`);
-      if (!Number.isFinite(rate) || rate < 0)
-        throw new Error(`Model cache-write price for ${ttl} must be non-negative`);
-    }
+function validateServiceTierRates(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) throw new Error('Model service-tier prices must be an object');
+  for (const [serviceTier, rates] of Object.entries(value)) {
+    if (!serviceTier.trim()) throw new Error('Model service-tier name must not be empty');
+    validatePriceRateOverrides(rates, `Model service-tier price '${serviceTier}'`, false);
   }
 }
 
-// The generated OpenRouter catalog uses this value when a model's price is unknown.
-// Cost calculation already treats negative rates as unavailable, so validation must
-// preserve this legacy marker instead of rejecting the entire generated catalog.
-const UNKNOWN_MODEL_PRICE_SENTINEL = -1_000_000;
+function validatePromptLengthTiers(value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) throw new Error('Model prompt-length prices must be an array');
+  const minimums = new Set<number>();
+  for (const tier of value) {
+    if (!isRecord(tier)) throw new Error('Model prompt-length prices must contain objects');
+    const minimumPromptTokens = tier.minimumPromptTokens;
+    if (typeof minimumPromptTokens !== 'number' || !Number.isInteger(minimumPromptTokens) || minimumPromptTokens <= 0) {
+      throw new Error('Model prompt-length threshold must be a positive integer');
+    }
+    if (minimums.has(minimumPromptTokens)) throw new Error('Model prompt-length thresholds must be unique');
+    minimums.add(minimumPromptTokens);
+    validatePriceRateOverrides(tier.rates, `Model prompt-length price at ${minimumPromptTokens}`, false);
+  }
+}
+
+function validateCacheWriteRates(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) throw new Error('Model cache-write TTL prices must be an object');
+  for (const [ttl, rate] of Object.entries(value)) {
+    if (!['5m', '1h'].includes(ttl)) throw new Error(`Unsupported model cache-write TTL: ${ttl}`);
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0) {
+      throw new Error(`Model cache-write price for ${ttl} must be non-negative`);
+    }
+  }
+}
 
 function validatePriceRateOverrides(rates: unknown, label: string, requireInputAndOutput: boolean): void {
   if (!isRecord(rates)) throw new Error(`${label} must be an object`);
@@ -314,7 +225,7 @@ function validatePriceRateOverrides(rates: unknown, label: string, requireInputA
     'cacheReadPerMillionUsd',
     'cacheWritePerMillionUsd'
   ] as const;
-  let hasRate = false;
+  let hasKnownRate = false;
   for (const name of rateNames) {
     const rate = rates[name];
     if (rate === undefined) {
@@ -327,9 +238,9 @@ function validatePriceRateOverrides(rates: unknown, label: string, requireInputA
     if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0) {
       throw new Error(`${label} ${name} must be a non-negative number`);
     }
-    hasRate = true;
+    hasKnownRate = true;
   }
-  if (!requireInputAndOutput && !hasRate) throw new Error(`${label} must define at least one price`);
+  if (!requireInputAndOutput && !hasKnownRate) throw new Error(`${label} must define at least one price`);
 }
 
 export function getThinkingBudgetForLevel(level: ThinkingLevel | 'minimal' | 'off' | null | undefined): number {

@@ -73,6 +73,142 @@ describe('persisted conversation compaction', () => {
     }
   });
 
+  it('excludes hidden reasoning from summary requests without rewriting raw history or usage', async () => {
+    const journal = new AppendOnlySessionJournal('reasoning-summary');
+    const initialMessages: AgentMessage[] = [
+      { id: 'old-user', role: 'user', content: 'Retain the visible constraint.' },
+      {
+        id: 'old-assistant',
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'PRIVATE_REASONING_MUST_REMAIN_LOCAL' },
+          { type: 'text', text: 'Visible fact: the artifact belongs to Lin.' }
+        ],
+        usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 }
+      },
+      { id: 'recent-user', role: 'user', content: 'Keep this recent request.' }
+    ];
+    const originalMessages = structuredClone(initialMessages);
+    let summaryInput = '';
+    const sessionCompactor = new SessionCompactor({
+      clock: () => 2,
+      triggerTokensThreshold: 1,
+      preserveRecentCount: 1,
+      summarizer: async (input) => {
+        summaryInput = input;
+        return 'The artifact belongs to Lin.';
+      }
+    });
+    const agent = new Agent({
+      initialState: { model: getModelPreset('mock-test'), messages: initialMessages },
+      journal,
+      sessionCompactor,
+      streamFn: () => answer()
+    });
+
+    await agent.prompt('Describe the artifact.');
+
+    expect(summaryInput).toContain('Retain the visible constraint.');
+    expect(summaryInput).toContain('Visible fact: the artifact belongs to Lin.');
+    expect(summaryInput).not.toContain('PRIVATE_REASONING_MUST_REMAIN_LOCAL');
+    const sourceAssistant = initialMessages[1];
+    if (sourceAssistant.role !== 'assistant')
+      throw new Error('Expected the source message to be an assistant message.');
+    const retainedRawMessage = agent
+      .getModelContext()
+      .rawMessages.find(
+        (message): message is Extract<AgentMessage, { role: 'assistant' }> =>
+          message.role === 'assistant' && message.content.some((block) => block.type === 'thinking')
+      );
+    expect(retainedRawMessage).toMatchObject({ content: sourceAssistant.content, usage: sourceAssistant.usage });
+    expect(initialMessages).toEqual(originalMessages);
+    expect(agent.getModelContext().usageTotals.totalTokens).toBe(10);
+    expect(journal.getEntriesByType('compaction')).toHaveLength(1);
+    expect(journal.getEntriesByType('context_edit')).toHaveLength(0);
+  });
+
+  it('accounts returned summary usage once in the compacted model context and after replay', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'inkpi-summary-usage-'));
+    try {
+      const filePath = join(directory, 'session.jsonl');
+      const journal = new AppendOnlySessionJournal({ sessionId: 'summary-usage', filePath });
+      const sessionCompactor = new SessionCompactor({
+        clock: () => 2,
+        triggerTokensThreshold: 1,
+        preserveRecentCount: 1,
+        summarizer: async () => ({
+          text: 'The old constraint remains.',
+          usage: { inputTokens: 7, outputTokens: 4, totalTokens: 11 }
+        })
+      });
+      const agent = new Agent({
+        initialState: {
+          model: getModelPreset('mock-test'),
+          messages: [
+            { id: 'old-user', role: 'user', content: 'Lin owns the key.' },
+            {
+              id: 'old-assistant',
+              role: 'assistant',
+              content: [{ type: 'text', text: 'I will preserve this fact.' }],
+              usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 }
+            },
+            { id: 'recent-user', role: 'user', content: 'Keep recent context.' }
+          ]
+        },
+        journal,
+        sessionCompactor,
+        streamFn: () => answer()
+      });
+
+      await agent.prompt('Describe the key.');
+      await agent.prompt('What else remains?');
+
+      expect(agent.getModelContext().usageTotals.totalTokens).toBe(37);
+      const compactions = journal.getEntriesByType('compaction');
+      expect(compactions).toHaveLength(2);
+      expect(compactions.map((entry) => entry.payload?.modelView?.summaryMessage?.usage?.totalTokens)).toEqual([
+        11, 11
+      ]);
+      const restored = new Agent({
+        initialState: { model: getModelPreset('mock-test') },
+        journal: new AppendOnlySessionJournal({ sessionId: 'summary-usage', filePath })
+      });
+      expect(restored.getModelContext().usageTotals.totalTokens).toBe(37);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('passes cancellation to summary generation and returns no partial compaction result', async () => {
+    const controller = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+    let finishSummary!: (summary: string) => void;
+    const pending = new Promise<string>((resolve) => {
+      finishSummary = resolve;
+    });
+    const sessionCompactor = new SessionCompactor({
+      clock: () => 1,
+      preserveRecentCount: 1,
+      summarizer: (_input, _systemPrompt, request) => {
+        capturedSignal = request.signal;
+        return pending;
+      }
+    });
+    const compactPromise = sessionCompactor.compact(
+      [
+        { id: 'old', role: 'user', content: 'old context' },
+        { id: 'recent', role: 'user', content: 'recent context' }
+      ],
+      controller.signal
+    );
+
+    controller.abort();
+    finishSummary('must not commit');
+
+    await expect(compactPromise).rejects.toThrow('Session compaction aborted by signal');
+    expect(capturedSignal).toBe(controller.signal);
+  });
+
   it('rejects stale and cancelled summaries while preserving newly appended input', async () => {
     const journal = new AppendOnlySessionJournal('stale');
     journal.append('user_message', { content: 'old' });

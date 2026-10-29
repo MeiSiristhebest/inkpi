@@ -28,7 +28,18 @@ describe('task observability health boundary', () => {
       emitted: 0,
       sinkErrors: 1,
       consecutiveSinkErrors: 1,
-      lastErrorAt: 10
+      lastErrorAt: 10,
+      codemodeAdmission: {
+        activeSlots: expect.any(Number),
+        queuedRequests: expect.any(Number),
+        capacity: 2,
+        maxQueued: 8,
+        queueWaitCount: expect.any(Number),
+        queueWaitTotalMs: expect.any(Number),
+        queueWaitMaxMs: expect.any(Number),
+        cancelledRequests: expect.any(Number),
+        timedOutRequests: expect.any(Number)
+      }
     });
     expect(signals).toEqual([
       {

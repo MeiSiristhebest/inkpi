@@ -10,6 +10,9 @@ export type ToolExecutionMode = 'parallel' | 'sequential';
  */
 export type ToolReplayPolicy = 'safe' | 'never';
 
+/** Controls whether a registered tool is declared directly, discovered on demand, or never exposed to the model. */
+export type ToolExposure = 'direct' | 'deferred' | 'hidden';
+
 /** 工具进度更新选项（对齐上游 pi tool-durability 的 checkpoint 请求）。 */
 export interface ToolUpdateOptions {
   /**
@@ -60,6 +63,7 @@ export interface ToolRegistrationOptions {
   readonly skillId?: string;
   readonly skillVersion?: string;
   readonly capabilities?: readonly string[];
+  readonly exposure?: ToolExposure;
 }
 
 /** Cross-process description of a registered tool; it intentionally has no execute function. */
@@ -69,6 +73,7 @@ export interface ToolRegistrationDescriptor {
   readonly skillId?: string;
   readonly skillVersion?: string;
   readonly capabilities: readonly string[];
+  readonly exposure?: ToolExposure;
 }
 
 /** Secret-free, versioned contract recorded before a replayable tool effect. */

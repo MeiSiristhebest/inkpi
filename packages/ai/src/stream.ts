@@ -500,9 +500,9 @@ export interface ResilientStreamOptions extends RetryOptions {
 }
 
 /**
- * 弹性流式包装器 (Resilient Stream Wrapper)
- * 遇网络抖动或提供商暂时中断时，自动重试并透明衔接事件流
- * 重试前若上一尝试已输出事件，会发送 `attempt_reset`，清除该次尝试的部分结果。
+ * Wrap provider streams with retry attempts.
+ * Each retry invokes the factory as a new attempt; when a prior attempt emitted partial output,
+ * `attempt_reset` tells consumers to discard it. This is not offset or range continuation.
  */
 export function createResilientStream(
   factory: (attempt: number) => AssistantEventStream | Promise<AssistantEventStream>,

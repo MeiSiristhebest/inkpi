@@ -1,5 +1,5 @@
-import { SessionTree } from '@inkpi/agent-core';
-import { BranchSummarizer } from '@inkpi/agent-core';
+import { BranchSummarizer, SessionTree } from '@inkpi/agent-core';
+import type { SummaryGenerationRequest } from '@inkpi/agent-core';
 import type { AgentMessage, AssistantMessage, UserMessage } from '@inkpi/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -7,7 +7,7 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
   it('should compute Lowest Common Ancestor (LCA) between arbitrary tree nodes correctly', () => {
     const tree = new SessionTree();
 
-    const rootId = tree.addMessage({ role: 'user', content: '根设定：仙侠世界观' } as UserMessage);
+    tree.addMessage({ role: 'user', content: '根设定：仙侠世界观' } as UserMessage);
     const nodeA1 = tree.addMessage({
       role: 'assistant',
       content: [{ type: 'text', text: '设定已确认' }]
@@ -120,5 +120,127 @@ describe('@inkpi/agent-core -> BranchSummarization & Session Tree LCA', () => {
     await expect(switchPromise).rejects.toThrow('Session tree changed while the branch summary was generated');
     expect(tree.getCurrentLeafId()).toBe(abandoned);
     expect(tree.getNode('stale_summary')).toBeUndefined();
+  });
+
+  it('keeps long summaries intact without a configured output cap and persists returned usage', async () => {
+    const tree = new SessionTree();
+    const common = tree.addMessage({ role: 'user', content: 'shared premise' } as UserMessage);
+    const abandoned = tree.addMessage({ role: 'user', content: 'old route' } as UserMessage);
+    tree.addMessage({ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] } as AssistantMessage);
+    tree.selectLeaf(common);
+    const target = tree.addMessage({ role: 'user', content: 'new route' } as UserMessage);
+    const longSummary = 'Summary content. '.repeat(2_100);
+    let capturedInput = '';
+    let capturedRequest: SummaryGenerationRequest | undefined;
+    const summarizer = new BranchSummarizer(
+      async (serialized, request) => {
+        capturedInput = serialized;
+        capturedRequest = request;
+        return {
+          text: longSummary,
+          usage: { inputTokens: 40, outputTokens: 7, totalTokens: 47 }
+        };
+      },
+      { summaryInputTokens: 400, idGenerator: () => 'long_summary' }
+    );
+
+    const result = await summarizer.switchBranchWithSummary(tree, target, abandoned);
+
+    expect(result?.summaryDetails.summary).toBe(longSummary);
+    expect(result?.summaryDetails.summary.length).toBeGreaterThan(32_000);
+    expect(capturedInput.length).toBeLessThan(2_000);
+    expect(capturedRequest).toMatchObject({ maxInputTokens: 400 });
+    expect(capturedRequest?.contextWindowTokens).toBeUndefined();
+    expect(capturedRequest?.maxOutputTokens).toBeUndefined();
+    const summaryMessage = tree.getHistory(tree.getCurrentLeafId()!).at(-1);
+    expect(summaryMessage).toMatchObject({
+      role: 'assistant',
+      usage: { inputTokens: 40, outputTokens: 7, totalTokens: 47 }
+    });
+  });
+
+  it('passes known branch summarizer limits and rejects output beyond an explicit cap', async () => {
+    const tree = new SessionTree();
+    const common = tree.addMessage({ role: 'user', content: 'shared premise' } as UserMessage);
+    const abandoned = tree.addMessage({ role: 'user', content: 'old route' } as UserMessage);
+    tree.addMessage({ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] } as AssistantMessage);
+    tree.selectLeaf(common);
+    const target = tree.addMessage({ role: 'user', content: 'new route' } as UserMessage);
+    let capturedRequest: SummaryGenerationRequest | undefined;
+    const summarizer = new BranchSummarizer(
+      async (_serialized, request) => {
+        capturedRequest = request;
+        return 'brief';
+      },
+      {
+        summaryInputTokens: 200,
+        summaryOutputTokens: 20,
+        summaryContextWindowTokens: 2_000,
+        summaryPromptTokens: 100
+      }
+    );
+
+    await expect(summarizer.summarizeBranch(tree, abandoned, target)).resolves.toMatchObject({ summary: 'brief' });
+    expect(capturedRequest).toMatchObject({
+      maxInputTokens: 200,
+      maxOutputTokens: 20,
+      contextWindowTokens: 2_000
+    });
+    expect(capturedRequest?.remainingContextTokens).toBeGreaterThan(0);
+
+    let contextOnlyRequest: SummaryGenerationRequest | undefined;
+    const contextOnly = new BranchSummarizer(
+      async (_serialized, request) => {
+        contextOnlyRequest = request;
+        return 'brief';
+      },
+      { summaryContextWindowTokens: 2_000, summaryPromptTokens: 100 }
+    );
+    await expect(contextOnly.summarizeBranch(tree, abandoned, target)).resolves.toMatchObject({ summary: 'brief' });
+    expect(contextOnlyRequest?.maxOutputTokens).toBe(contextOnlyRequest?.remainingContextTokens);
+
+    const tooLong = new BranchSummarizer(async () => 'this exceeds two tokens', { summaryOutputTokens: 2 });
+    await expect(tooLong.summarizeBranch(tree, abandoned, target)).rejects.toThrow(
+      'Branch summary exceeded the configured generation budget'
+    );
+  });
+
+  it('passes AbortSignal to branch summarizer and does not switch or append a summary after cancellation', async () => {
+    const tree = new SessionTree();
+    const common = tree.addMessage({ role: 'user', content: 'shared premise' } as UserMessage);
+    const abandoned = tree.addMessage({ role: 'user', content: 'old route' } as UserMessage);
+    tree.addMessage({ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] } as AssistantMessage);
+    tree.selectLeaf(common);
+    const target = tree.addMessage({ role: 'user', content: 'new route' } as UserMessage);
+    const originalLeaf = tree.getCurrentLeafId();
+    const originalRevision = tree.getRevision();
+    const controller = new AbortController();
+    let capturedRequest: SummaryGenerationRequest | undefined;
+    let finishSummary!: (summary: string) => void;
+    const pending = new Promise<string>((resolve) => {
+      finishSummary = resolve;
+    });
+    const summarizer = new BranchSummarizer((_serialized, request) => {
+      capturedRequest = request;
+      return pending;
+    });
+    const switchPromise = summarizer.switchBranchWithSummary(tree, target, abandoned, controller.signal);
+
+    controller.abort();
+    finishSummary('cancelled summary');
+
+    await expect(switchPromise).rejects.toThrow('Branch summarization aborted by signal');
+    expect(capturedRequest?.signal).toBe(controller.signal);
+    expect(tree.getCurrentLeafId()).toBe(originalLeaf);
+    expect(tree.getRevision()).toBe(originalRevision);
+    expect(
+      tree
+        .getHistory(originalLeaf!)
+        .some(
+          (message) =>
+            message.role === 'assistant' &&
+            message.content.some((block) => block.type === 'text' && block.text.includes('Branch Summary'))
+        )
+    ).toBe(false);
   });
 });

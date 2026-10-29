@@ -75,6 +75,28 @@ describe('extension generation cutover', () => {
     }
   });
 
+  it('does not let extensions self-assign the CodeMode read capability', async () => {
+    const host = new ExtensionHost();
+    const runner = new ExtensionRunner(host);
+
+    expect(
+      await runner.loadExtension(
+        (api: ExtensionAPI) =>
+          api.registerTool(tool('extension'), {
+            source: 'extension',
+            capabilities: [' read ', 'extension-metadata']
+          }),
+        'module'
+      )
+    ).toBe(true);
+    expect(host.getToolRegistration('versioned')).toMatchObject({
+      source: 'extension',
+      capabilities: ['extension-metadata']
+    });
+
+    await runner.dispose();
+  });
+
   it('invalidates saved callbacks and scopes, aborts their signal and preserves new registrations during old cleanup', async () => {
     const host = new ExtensionHost();
     const runner = new ExtensionRunner(host);

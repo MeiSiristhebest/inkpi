@@ -1,5 +1,5 @@
 import type * as net from 'node:net';
-import { Agent } from '@inkpi/agent-core';
+import { Agent, BranchSummarizer, SessionTree } from '@inkpi/agent-core';
 import { AssistantEventStream, getModelPreset } from '@inkpi/ai';
 import {
   InkRpcClient as ClientInkRpcClient,
@@ -7,7 +7,7 @@ import {
   RemoteStreamTransport as ClientRemoteStreamTransport
 } from '@inkpi/client';
 import { HeadlessEditorState } from '@inkpi/editor-core';
-import type { AgentMessage, ImageContent } from '@inkpi/protocol';
+import type { AgentMessage, AssistantMessage, ImageContent, UserMessage } from '@inkpi/protocol';
 import {
   InkRpcClient,
   InkRpcServer,
@@ -29,6 +29,19 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     }
   });
 
+  function createBranchSummaryTree() {
+    const tree = new SessionTree();
+    const common = tree.addMessage({ role: 'user', content: 'shared premise' } as UserMessage);
+    tree.addMessage({ role: 'user', content: 'abandoned route' } as UserMessage);
+    const fromLeafId = tree.addMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'old route conclusion' }]
+    } as AssistantMessage);
+    tree.selectLeaf(common);
+    const toLeafId = tree.addMessage({ role: 'user', content: 'target route' } as UserMessage);
+    return { tree, fromLeafId, toLeafId };
+  }
+
   it('should communicate bidirectionally via MemoryTransport', async () => {
     const editor = new HeadlessEditorState();
     editor.insert('最初的灵感片段');
@@ -48,6 +61,56 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     const updated = await client.getEditorText();
     const updatedText = typeof updated === 'string' ? updated : updated.text;
     expect(updatedText).toBe('最初的灵感片段\n第二段设定');
+  });
+
+  it('returns provider-reported branch summary usage through the existing RPC response', async () => {
+    const { tree, fromLeafId, toLeafId } = createBranchSummaryTree();
+    const branchSummarizer = new BranchSummarizer(async () => ({
+      text: 'Old route summary.',
+      usage: { inputTokens: 14, outputTokens: 5, totalTokens: 19 }
+    }));
+    server = new InkRpcServer({ tree, branchSummarizer });
+    const [tServer, tClient] = MemoryTransport.createPair();
+    server.bindTransport(tServer);
+    const client = new InkRpcClient(new RemoteStreamTransport(tClient));
+
+    const result = await client.getBranchSummary(fromLeafId, toLeafId);
+
+    expect(result).toMatchObject({
+      summary: { fromLeafId, toLeafId, summary: 'Old route summary.' },
+      summaryUsage: { inputTokens: 14, outputTokens: 5, totalTokens: 19 }
+    });
+  });
+
+  it('aborts branch summarization when its RPC transport closes', async () => {
+    const { tree, fromLeafId, toLeafId } = createBranchSummaryTree();
+    let capturedSignal: AbortSignal | undefined;
+    let notifyStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    let finishSummary!: (summary: string) => void;
+    const pendingSummary = new Promise<string>((resolve) => {
+      finishSummary = resolve;
+    });
+    const branchSummarizer = new BranchSummarizer((_serialized, request) => {
+      capturedSignal = request.signal;
+      notifyStarted();
+      return pendingSummary;
+    });
+    server = new InkRpcServer({ tree, branchSummarizer });
+    const [tServer, tClient] = MemoryTransport.createPair();
+    server.bindTransport(tServer);
+    const client = new InkRpcClient(new RemoteStreamTransport(tClient));
+    const summaryRequest = client.getBranchSummary(fromLeafId, toLeafId);
+
+    await started;
+    tClient.close();
+
+    await expect(summaryRequest).rejects.toThrow('RPC memory connection closed');
+    expect(capturedSignal?.aborted).toBe(true);
+    finishSummary('late summary');
+    await Promise.resolve();
   });
 
   it('rejects pending RPC calls when the remote transport closes', async () => {

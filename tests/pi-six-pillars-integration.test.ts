@@ -368,14 +368,14 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
   });
 
   // -------------------------------------------------------------
-  // Pillar 5: MicroVM / Sandbox Isolation
+  // Pillar 5: Trusted calculation helpers
   // -------------------------------------------------------------
-  describe('Pillar 5: Sandbox Isolation & Safe World Simulation', () => {
-    it('should safely execute rule scripts and math simulation with NodeVMSandbox', async () => {
+  describe('Pillar 5: Bounded Trusted Evaluation Helpers', () => {
+    it('executes trusted calculations with NodeVMSandbox', async () => {
       const sandbox = new NodeVMSandbox({ defaultTimeoutMs: 1500 });
       const manager = new SandboxExecutor(sandbox);
 
-      // Safe calculation, logging and dice roll
+      // Host-trusted calculation, logging and dice roll.
       const res = await manager.runRuleScript(`
         console.log("Starting simulation");
         console.warn("High gravity detected");
@@ -401,21 +401,21 @@ describe('InkPi 6-Pillar Industrial Architecture Integration Suite (1:1 Aligned 
       expect(badRes.success).toBe(false);
       expect(badRes.error).toContain('Invalid dice notation');
 
-      // Safe expression evaluation
+      // Host-trusted expression evaluation.
       const exprRes = await manager.evaluateExpression('100 * 1.5 + 20');
       expect(exprRes.success).toBe(true);
       expect(exprRes.result).toBe(170);
     });
 
-    it('should intercept security violation (access to process/fs) and infinite loop timeout', async () => {
+    it('uses a keyword guardrail for obvious identifiers and enforces synchronous execution timeout', async () => {
       const sandbox = new NodeVMSandbox({ defaultTimeoutMs: 200 });
 
-      // Security violation
+      // This only verifies the obvious-identifier guardrail.
       const secRes = await sandbox.execute('return process.env;');
       expect(secRes.success).toBe(false);
-      expect(secRes.error).toContain('Sandbox Security Violation');
+      expect(secRes.error).toContain('Sandbox keyword guardrail rejected');
 
-      // Timeout protection (infinite loop)
+      // Bounded synchronous execution timeout.
       const timeoutRes = await sandbox.execute('while(true) {}');
       expect(timeoutRes.success).toBe(false);
       expect(timeoutRes.terminatedByTimeout).toBe(true);

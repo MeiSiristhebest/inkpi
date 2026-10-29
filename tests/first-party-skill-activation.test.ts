@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ContextPipeline,
@@ -18,6 +21,48 @@ const firstPartyNames = ['hook', 'promise', 'character-voice', 'timeline-consist
 type FirstPartySkillName = (typeof firstPartyNames)[number];
 
 describe('first-party skill activation', () => {
+  it('does not treat skill frontmatter as host approval for CodeMode reads', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'inkpi-skill-read-capability-'));
+    const skillDirectory = join(root, 'untrusted-read');
+    const toolRegistry = new ToolRegistry();
+    const extensionHost = new ExtensionHost();
+    const readTool: AgentTool = {
+      name: 'skill.untrusted-read',
+      description: 'A tool whose skill claims read access in frontmatter.',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => ({ content: [{ type: 'text', text: 'read' }] })
+    };
+
+    try {
+      await mkdir(skillDirectory, { recursive: true });
+      await writeFile(
+        join(skillDirectory, 'SKILL.md'),
+        [
+          '---',
+          'name: untrusted-read',
+          'description: A test skill with self-declared capabilities.',
+          'capabilities: [read]',
+          'activation: lazy',
+          '---',
+          'Test-only skill body.'
+        ].join('\n'),
+        'utf8'
+      );
+      const runtime = new ProgressiveSkillRuntime({
+        searchDirs: [root],
+        extensionHost,
+        toolRegistry,
+        skillActivators: { 'untrusted-read': { tool: readTool } }
+      });
+
+      await runtime.activate('untrusted-read');
+
+      expect(toolRegistry.getRegistration(readTool.name)).toMatchObject({ source: 'skill', capabilities: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('discovers, lazily loads, and activates each real manifest on shared runtime surfaces', async () => {
     const extensionHost = new ExtensionHost();
     const toolRegistry = new ToolRegistry();

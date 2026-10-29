@@ -1,19 +1,50 @@
-import type { AgentMessage, AssistantMessage, BranchSummaryDetails } from '@inkpi/protocol';
-import { serializeConversationForSummary } from './compaction/summarize.js';
+import type { AgentMessage, AssistantMessage, BranchSummaryDetails, Usage } from '@inkpi/protocol';
+import {
+  SUMMARY_SERIALIZATION_DEFAULTS,
+  estimateSummaryTokens,
+  reportedSummaryInputTokens,
+  reportedSummaryOutputTokens,
+  serializeConversationForSummary
+} from './compaction/summarize.js';
+import type { SummaryGenerationOutput, SummaryGenerationRequest } from './compaction/summarize.js';
 import type { SessionTree, SessionTreeNode } from './tree.js';
 
+export interface BranchSummarizerOptions {
+  idGenerator?: () => string;
+  clock?: () => number;
+  /** Estimated-token ceiling for serialized branch input. */
+  summaryInputTokens?: number;
+  /** Explicit generation limit supported by the configured summarizer. */
+  summaryOutputTokens?: number;
+  /** Context window of the summarizer model, when known. */
+  summaryContextWindowTokens?: number;
+  /** Estimated fixed prompt overhead, if known by the callback owner. */
+  summaryPromptTokens?: number;
+}
+
 export class BranchSummarizer {
-  private customSummarizer?: (serializedBranchText: string) => Promise<string>;
+  private customSummarizer?: (
+    serializedBranchText: string,
+    request: SummaryGenerationRequest
+  ) => Promise<SummaryGenerationOutput>;
   private idGenerator: () => string;
   private clock: () => number;
+  private summaryInputTokens?: number;
+  private summaryOutputTokens?: number;
+  private summaryContextWindowTokens?: number;
+  private summaryPromptTokens?: number;
 
   constructor(
-    summarizer?: (serializedBranchText: string) => Promise<string>,
-    options: { idGenerator?: () => string; clock?: () => number } = {}
+    summarizer?: (serializedBranchText: string, request: SummaryGenerationRequest) => Promise<SummaryGenerationOutput>,
+    options: BranchSummarizerOptions = {}
   ) {
     this.customSummarizer = summarizer;
     this.clock = options.clock || Date.now;
     this.idGenerator = options.idGenerator || (() => `branch_summary_${this.clock()}`);
+    this.summaryInputTokens = positiveIntegerOrUndefined(options.summaryInputTokens);
+    this.summaryOutputTokens = positiveIntegerOrUndefined(options.summaryOutputTokens);
+    this.summaryContextWindowTokens = positiveIntegerOrUndefined(options.summaryContextWindowTokens);
+    this.summaryPromptTokens = nonNegativeIntegerOrUndefined(options.summaryPromptTokens);
   }
 
   /**
@@ -55,51 +86,94 @@ export class BranchSummarizer {
   public async summarizeBranch(
     tree: SessionTree,
     fromLeafId: string,
-    toLeafId: string
+    toLeafId: string,
+    signal?: AbortSignal
   ): Promise<BranchSummaryDetails | null> {
+    return (await this.summarizeBranchWithUsage(tree, fromLeafId, toLeafId, signal))?.details ?? null;
+  }
+
+  public async summarizeBranchWithUsage(
+    tree: SessionTree,
+    fromLeafId: string,
+    toLeafId: string,
+    signal?: AbortSignal
+  ): Promise<{ details: BranchSummaryDetails; usage?: Usage } | null> {
+    if (signal?.aborted) throw new Error('Branch summarization aborted by signal');
     const { divergedNodes, commonAncestorId } = this.collectDivergingNodes(tree, fromLeafId, toLeafId);
+    if (divergedNodes.length === 0) return null;
 
-    if (divergedNodes.length === 0) {
-      return null;
-    }
-
-    const messages = divergedNodes.map((n) => n.message);
-    const serialized = serializeConversationForSummary(messages);
-
-    let summaryText = '';
     if (!this.customSummarizer) {
       throw new Error('Branch summarization requires an explicit summarizer capability.');
     }
-    summaryText = await this.customSummarizer(serialized);
-
-    // 对齐上游 v0.85.0 PR #8845：提升分支推演与深度思考时的摘要上限 (4096 tokens / ~16000 字符)，
-    // 避免深度推理模型输出截断导致总结丢失关键世界观。
-    if (summaryText.length > 32000) {
-      summaryText = `${summaryText.slice(0, 32000)}... (truncated)`;
+    const messages = divergedNodes.map((node) => node.message);
+    const maxInputTokens = this.summaryInputTokens ?? SUMMARY_SERIALIZATION_DEFAULTS.maxInputTokens;
+    const serialized = serializeConversationForSummary(messages, { maxInputTokens });
+    const estimatedInputTokens = estimateSummaryTokens(serialized) + (this.summaryPromptTokens ?? 0);
+    const remainingContextTokens =
+      this.summaryContextWindowTokens !== undefined && this.summaryPromptTokens !== undefined
+        ? Math.max(0, this.summaryContextWindowTokens - estimatedInputTokens)
+        : undefined;
+    let maxOutputTokens = this.summaryOutputTokens;
+    if (remainingContextTokens !== undefined) {
+      maxOutputTokens =
+        maxOutputTokens === undefined ? remainingContextTokens : Math.min(maxOutputTokens, remainingContextTokens);
+    }
+    if (remainingContextTokens === 0) {
+      throw new Error('Branch summary input leaves no context window for generated output.');
+    }
+    const request: SummaryGenerationRequest = {
+      signal,
+      maxInputTokens,
+      estimatedInputTokens,
+      ...(this.summaryContextWindowTokens !== undefined
+        ? { contextWindowTokens: this.summaryContextWindowTokens }
+        : {}),
+      ...(remainingContextTokens !== undefined ? { remainingContextTokens } : {}),
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {})
+    };
+    const generated = await this.customSummarizer(serialized, request);
+    if (signal?.aborted) throw new Error('Branch summarization aborted by signal');
+    const summaryText = typeof generated === 'string' ? generated : generated.text;
+    const usage = typeof generated === 'string' ? undefined : generated.usage;
+    const estimatedOutputTokens = estimateSummaryTokens(summaryText);
+    const reportedOutputTokens = usage ? reportedSummaryOutputTokens(usage) : estimatedOutputTokens;
+    let actualRemainingContextTokens = remainingContextTokens;
+    if (usage && this.summaryContextWindowTokens !== undefined) {
+      actualRemainingContextTokens = this.summaryContextWindowTokens - reportedSummaryInputTokens(usage);
+    }
+    if (
+      (maxOutputTokens !== undefined && reportedOutputTokens > maxOutputTokens) ||
+      (actualRemainingContextTokens !== undefined &&
+        (actualRemainingContextTokens < 0 || reportedOutputTokens > actualRemainingContextTokens))
+    ) {
+      throw new Error('Branch summary exceeded the configured generation budget.');
     }
 
     const discardedIdeas: string[] = [];
-    for (const msg of messages) {
-      if (msg.role === 'user') {
-        const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+    for (const message of messages) {
+      if (message.role === 'user') {
+        const text = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
         discardedIdeas.push(`Input: ${text.slice(0, 50)}`);
       }
     }
 
     return {
-      fromLeafId,
-      toLeafId,
-      commonAncestorId,
-      divergedNodeCount: divergedNodes.length,
-      summary: summaryText,
-      discardedIdeas
+      details: {
+        fromLeafId,
+        toLeafId,
+        commonAncestorId,
+        divergedNodeCount: divergedNodes.length,
+        summary: summaryText,
+        discardedIdeas
+      },
+      usage
     };
   }
 
   /**
    * 构造分支切换总结消息，供注入新分支上下文
    */
-  public createBranchSummaryMessage(details: BranchSummaryDetails): AssistantMessage {
+  public createBranchSummaryMessage(details: BranchSummaryDetails, usage?: Usage): AssistantMessage {
     return {
       id: this.idGenerator(),
       role: 'assistant',
@@ -110,6 +184,7 @@ export class BranchSummarizer {
         }
       ],
       stopReason: 'stop',
+      ...(usage ? { usage } : {}),
       timestamp: this.clock()
     };
   }
@@ -120,8 +195,10 @@ export class BranchSummarizer {
   public async switchBranchWithSummary(
     tree: SessionTree,
     toLeafId: string,
-    fromLeafId?: string
+    fromLeafId?: string,
+    signal?: AbortSignal
   ): Promise<{ summaryDetails: BranchSummaryDetails; summaryNodeId: string } | null> {
+    if (signal?.aborted) throw new Error('Branch summarization aborted by signal');
     const effectiveFromId = fromLeafId || tree.getCurrentLeafId();
     if (!tree.getNode(toLeafId)) {
       throw new Error(`Target branch node '${toLeafId}' not found`);
@@ -132,17 +209,19 @@ export class BranchSummarizer {
     }
 
     const revision = tree.getRevision();
-    const details = await this.summarizeBranch(tree, effectiveFromId, toLeafId);
+    const generated = await this.summarizeBranchWithUsage(tree, effectiveFromId, toLeafId, signal);
+    if (signal?.aborted) throw new Error('Branch summarization aborted by signal');
     if (tree.getRevision() !== revision) {
       throw new Error('Session tree changed while the branch summary was generated; retry the branch switch.');
     }
     tree.selectLeaf(toLeafId);
 
-    if (!details || details.divergedNodeCount === 0) {
+    if (!generated || generated.details.divergedNodeCount === 0) {
       return null;
     }
 
-    const summaryMsg = this.createBranchSummaryMessage(details);
+    const details = generated.details;
+    const summaryMsg = this.createBranchSummaryMessage(details, generated.usage);
 
     const summaryNodeId = tree.addMessage(summaryMsg, toLeafId, {
       type: 'branch_summary',
@@ -154,4 +233,12 @@ export class BranchSummarizer {
       summaryNodeId
     };
   }
+}
+
+function positiveIntegerOrUndefined(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function nonNegativeIntegerOrUndefined(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }

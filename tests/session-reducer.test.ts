@@ -47,6 +47,7 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
         timestamp: 1020,
         payload: {
           content: [{ type: 'text', text: 'Here is the summary' }],
+          providerSource: { provider: 'claude', modelId: 'claude-3-sonnet', routeId: 'route-main' },
           usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 }
         }
       },
@@ -72,6 +73,9 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     expect(state.messages).toHaveLength(3);
     expect(state.messages[0].role).toBe('user');
     expect(state.messages[1].role).toBe('assistant');
+    expect(state.messages[1]).toMatchObject({
+      providerSource: { provider: 'claude', modelId: 'claude-3-sonnet', routeId: 'route-main' }
+    });
     expect(state.messages[2].role).toBe('toolResult');
     expect(state.usageTotals.totalTokens).toBe(80);
   });
@@ -215,6 +219,35 @@ describe('@inkpi/agent-core -> SessionReducer (Pure Event Sourcing State Machine
     expect(state.factsLedger._lastCompactionSummary).toContain('Compressed 100 turns');
     expect(state.operations.get('op_failing_call')?.state).toBe('failed');
     expect(state.operations.get('op_failing_call')?.error).toBe('Network timeout');
+  });
+
+  it('includes provider-reported compaction summary usage when replaying journal entries', () => {
+    const entries: SessionEntry[] = [
+      {
+        id: 'summary_compaction',
+        sessionId: 'summary_usage',
+        seq: 1,
+        parentId: null,
+        type: 'compaction',
+        timestamp: 10,
+        payload: {
+          summary: 'compressed context',
+          modelView: {
+            summaryMessage: {
+              id: 'summary_message',
+              role: 'assistant',
+              content: [{ type: 'text', text: 'compressed context' }],
+              usage: { inputTokens: 9, outputTokens: 4, totalTokens: 13 }
+            },
+            keptIds: []
+          }
+        }
+      }
+    ];
+
+    const state = reduceSession(entries);
+
+    expect(state.usageTotals).toEqual({ inputTokens: 9, outputTokens: 4, totalTokens: 13 });
   });
 
   it('should handle edge-case payloads, empty defaults, and custom entries gracefully', () => {

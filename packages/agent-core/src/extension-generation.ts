@@ -1,4 +1,4 @@
-import type { AgentTool, ExtensionAPI } from '@inkpi/protocol';
+import type { AgentTool, ExtensionAPI, ToolRegistrationOptions } from '@inkpi/protocol';
 import type { ExtensionHost, ExtensionMount } from './extension-host.js';
 
 export interface ExtensionGenerationAPI extends ExtensionAPI {
@@ -131,7 +131,8 @@ export class ExtensionGeneration {
         this.cleanup.push(callback);
       };
     if (property === 'registerTool')
-      return (tool: AgentTool, options?: unknown) => this.register('registerTool', [this.tool(tool), options]);
+      return (tool: AgentTool, options?: ToolRegistrationOptions) =>
+        this.register('registerTool', [this.tool(tool), removeExtensionReadCapability(options)]);
     if (property === 'on')
       return (event: string, callback: (...args: any[]) => any) => this.register('on', [event, this.guard(callback)]);
     if (property === 'addContextTransformer')
@@ -228,4 +229,13 @@ export class ExtensionGeneration {
     })();
     return this.cleanupPromise;
   }
+}
+
+function removeExtensionReadCapability(options: ToolRegistrationOptions = {}): ToolRegistrationOptions {
+  return {
+    ...options,
+    capabilities: (options.capabilities ?? []).filter(
+      (capability) => typeof capability !== 'string' || capability.trim() !== 'read'
+    )
+  };
 }

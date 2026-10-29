@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InkPi project configuration",
+  "description": "Configuration loaded from inkpi.config.json by the InkPi CLI.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "Optional editor metadata. The CLI does not fetch or validate this value; use a relative schema path where possible."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "Optional project name. Must contain a non-whitespace character."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "Optional project version label. InkPi does not enforce semantic-version syntax."
+    },
+    "defaultModel": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "Optional default model identifier; runtime availability is resolved separately."
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional plugin identifiers."
+    },
+    "typography": {
+      "description": "Optional typography settings, or false to disable typography formatting.",
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "chinese",
+                "western",
+                "none"
+              ],
+              "description": "Optional typography mode."
+            },
+            "indentString": {
+              "type": "string",
+              "description": "Optional indentation string used by typography formatting."
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

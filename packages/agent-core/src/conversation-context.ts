@@ -379,6 +379,11 @@ function applyProjectionEntry(projection: ContextProjection, entry: JournalEntry
       view.summaryMessage,
       ...view.keptIds.map((id) => byId.get(id)!)
     ];
+    if (view.summaryMessage.role === 'assistant' && view.summaryMessage.usage) {
+      projection.usageTotals.inputTokens += view.summaryMessage.usage.inputTokens || 0;
+      projection.usageTotals.outputTokens += view.summaryMessage.usage.outputTokens || 0;
+      projection.usageTotals.totalTokens += view.summaryMessage.usage.totalTokens || 0;
+    }
     projection.editableMessages.set(view.summaryMessage.id!, view.summaryMessage);
   } else {
     const message = messageFromSessionEntry(entry);

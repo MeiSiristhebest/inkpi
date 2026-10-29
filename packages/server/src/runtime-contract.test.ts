@@ -38,18 +38,20 @@ describe('Runtime compatibility contract', () => {
     expect((response.result as { capabilities: string[] }).capabilities).not.toContain('artifact.list');
   });
 
-  it('rejects an incompatible schema without dispatching a product capability', async () => {
+  it('rejects the previously pinned Desktop schema without dispatching a product capability', async () => {
     const daemon = new InkPiDaemon();
     const request = createRuntimeHandshakeRequest({
       clientName: 'old-desktop',
       requiredCapabilities: DESKTOP_REQUIRED_RUNTIME_CAPABILITIES
     });
+    const previousDesktopSchemaHash = '874ed4ff';
+    expect(RUNTIME_SCHEMA_HASH).not.toBe(previousDesktopSchemaHash);
 
     const response = await daemon.getRpcServer().handleRequest({
       jsonrpc: '2.0',
       id: 'handshake-2',
       method: 'runtime.handshake',
-      params: { ...request, schemaHash: '00000000' }
+      params: { ...request, schemaHash: previousDesktopSchemaHash }
     });
 
     if (response.error) throw new Error(response.error.message);

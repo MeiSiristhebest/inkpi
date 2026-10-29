@@ -17,18 +17,22 @@ describe('project config', () => {
     writeFileSync(
       join(projectRoot, 'inkpi.config.json'),
       JSON.stringify({
+        $schema: './schemas/inkpi.config.schema.json',
         name: 'novel project',
         version: '1.0.0',
-        typography: { mode: 'chinese', indentString: '\u3000\u3000' },
+        typography: { mode: 'chinese', indentString: '\u3000\u3000', futureSetting: true },
         defaultModel: 'deepseek-chat',
-        plugins: []
+        plugins: [],
+        customSetting: { enabled: true }
       })
     );
 
     expect(loadProjectConfig(projectRoot)).toMatchObject({
+      $schema: './schemas/inkpi.config.schema.json',
       name: 'novel project',
       defaultModel: 'deepseek-chat',
-      typography: { mode: 'chinese' }
+      typography: { mode: 'chinese', futureSetting: true },
+      customSetting: { enabled: true }
     });
   });
 

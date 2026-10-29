@@ -597,7 +597,8 @@ function toolRegistrationOptions(skill: SkillInfo): ToolRegistrationOptions {
     source: 'skill',
     skillId: manifest.id,
     skillVersion: manifest.version,
-    capabilities: manifest.capabilities
+    // Skill frontmatter is descriptive and cannot grant CodeMode's host-approved read capability.
+    capabilities: manifest.capabilities?.filter((capability) => capability !== 'read')
   };
 }
 
@@ -609,7 +610,8 @@ function toToolRegistrationOptions(
     source: registration.source,
     skillId: registration.skillId,
     skillVersion: registration.skillVersion,
-    capabilities: registration.capabilities
+    capabilities: registration.capabilities,
+    exposure: registration.exposure
   };
 }
 

@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentMessage } from '@inkpi/protocol';
+import type { AgentEvent, AgentMessage, AgentTool } from '@inkpi/protocol';
 import { commitJournal } from '../journal-commit.js';
 import type { Clock } from '../ports/index.js';
 import type { MessageQueue } from '../queues.js';
@@ -15,6 +15,8 @@ export interface RunLoopParams {
   options: AgentOptions;
   toolRegistry: ToolRegistry;
   currentTools?: () => ToolRegistry;
+  modelTools?: () => AgentTool[];
+  modelToolAllowed?: (name: string) => boolean;
   steeringQueue: MessageQueue;
   followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;
@@ -54,6 +56,8 @@ export class AgentLoopRunner {
       options,
       toolRegistry,
       currentTools: params.currentTools,
+      modelTools: params.modelTools,
+      modelToolAllowed: params.modelToolAllowed,
       steeringQueue,
       followUpQueue,
       emitEvent,

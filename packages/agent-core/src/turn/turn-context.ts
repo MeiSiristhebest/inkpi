@@ -1,4 +1,4 @@
-import type { AgentEvent } from '@inkpi/protocol';
+import type { AgentEvent, AgentTool } from '@inkpi/protocol';
 import type { Clock } from '../ports/index.js';
 import type { MessageQueue } from '../queues.js';
 import type { ToolRegistry } from '../tools.js';
@@ -16,6 +16,10 @@ export interface TurnContext {
   toolRegistry: ToolRegistry;
   /** Live registrations, used to reject a tool changed after preflight. */
   currentTools?: () => ToolRegistry;
+  /** Model-visible declarations derived from the frozen executor registry. */
+  modelTools?: () => AgentTool[];
+  /** Re-checks whether a direct model tool call is currently declared. */
+  modelToolAllowed?: (name: string) => boolean;
   steeringQueue: MessageQueue;
   followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;
@@ -30,6 +34,8 @@ export interface TurnContextParams {
   options: AgentOptions;
   toolRegistry: ToolRegistry;
   currentTools?: () => ToolRegistry;
+  modelTools?: () => AgentTool[];
+  modelToolAllowed?: (name: string) => boolean;
   steeringQueue: MessageQueue;
   followUpQueue: MessageQueue;
   emitEvent: (event: AgentEvent) => Promise<void>;

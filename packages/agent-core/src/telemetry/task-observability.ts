@@ -1,4 +1,5 @@
 import type { AiTask, TaskStatus } from '@inkpi/protocol';
+import { type CodemodeAdmissionSnapshot, getCodemodeWorkerAdmissionSnapshot } from '../codemode-admission.js';
 import type { RuntimeCacheStats } from '../context/cache-contract.js';
 import type { ContextPacket } from '../context/types.js';
 import { sanitizeTelemetryData } from './private-data.js';
@@ -63,6 +64,7 @@ export interface TaskObservabilityHealth {
   sinkErrors: number;
   consecutiveSinkErrors: number;
   lastErrorAt?: number;
+  codemodeAdmission: CodemodeAdmissionSnapshot;
 }
 
 export interface TaskRunObserver {
@@ -206,7 +208,8 @@ export class TaskObservability implements TaskRunObserver {
       emitted: this.emitted,
       sinkErrors: this.sinkErrors,
       consecutiveSinkErrors: this.consecutiveSinkErrors,
-      lastErrorAt: this.lastErrorAt
+      lastErrorAt: this.lastErrorAt,
+      codemodeAdmission: getCodemodeWorkerAdmissionSnapshot()
     };
   }
 

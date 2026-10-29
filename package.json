@@ -8,6 +8,8 @@
   },
   "files": [
     "bin",
+    "schemas",
+    "docs/config-reference.md",
     "README.md",
     "package.json"
   ],
@@ -32,6 +34,8 @@
     "build:offline": "tsc -b",
     "generate:models": "pnpm --filter @inkpi/ai run generate:models",
     "hydrate:model-data": "pnpm --filter @inkpi/ai run hydrate:model-data",
+    "generate:config-reference": "node scripts/generate-config-reference.mjs",
+    "check:config-reference": "node scripts/generate-config-reference.mjs --check",
     "bundle": "node scripts/bundle.ts",
     "build:binaries": "node scripts/build-binaries.mjs",
     "check:pinned-deps": "node scripts/check-pinned-deps.mjs",
@@ -44,7 +48,7 @@
     "audit:final-freeze": "node ./scripts/final-freeze-audit.mjs",
     "audit:final-freeze:local": "node --experimental-strip-types ./scripts/final-freeze-audit.mjs --local --output docs/evidence/phase23-local-gate.json",
     "test:coverage": "vitest run --coverage",
-    "check": "pnpm run check:pinned-deps && tsc -b"
+    "check": "pnpm run check:pinned-deps && pnpm run check:config-reference && tsc -b"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
@@ -55,7 +59,7 @@
     "vitest": "3.0.5"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.19.0"
   },
   "publishConfig": {
     "access": "public",

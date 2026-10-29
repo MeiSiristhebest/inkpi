@@ -29,7 +29,18 @@ describe('production JSONL observation sink', () => {
       provenance: {
         taskId: task.id,
         reasoning: 'private reasoning must not be persisted',
-        decision: 'public result'
+        decision: 'public result',
+        compactionSummaryBudgets: [
+          {
+            maxInputTokens: 40,
+            estimatedInputTokens: 20,
+            contextWindowTokens: 1_000,
+            remainingContextTokens: 950,
+            maxOutputTokens: 30,
+            visibleSummaryTokens: 64
+          }
+        ],
+        compactionSummaryUsage: [{ inputTokens: 10, outputTokens: 5, totalTokens: 15 }]
       },
       usage: { reasoning: 'private reasoning must not be persisted' }
     });
@@ -42,7 +53,20 @@ describe('production JSONL observation sink', () => {
       schemaVersion: 1,
       eventType: 'task_observation',
       taskId: task.id,
-      provenance: { decision: 'public result' }
+      provenance: {
+        decision: 'public result',
+        compactionSummaryBudgets: [
+          {
+            maxInputTokens: 40,
+            estimatedInputTokens: 20,
+            contextWindowTokens: 1_000,
+            remainingContextTokens: 950,
+            maxOutputTokens: 30,
+            visibleSummaryTokens: 64
+          }
+        ],
+        compactionSummaryUsage: [{ inputTokens: 10, outputTokens: 5, totalTokens: 15 }]
+      }
     });
     expect(isTaskObservationRecord(record)).toBe(true);
     expect(lines[0]).not.toContain('private reasoning');

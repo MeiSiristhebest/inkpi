@@ -91,6 +91,15 @@ export const ProviderErrorMetadataSchema = Type.Object({
   details: Type.Optional(JsonValueSchema)
 });
 
+export const ProviderModelSourceSchema = Type.Object(
+  {
+    provider: Type.String({ minLength: 1 }),
+    modelId: Type.String({ minLength: 1 }),
+    routeId: Type.Optional(Type.Union([IdSchema, Type.Null()]))
+  },
+  { additionalProperties: false }
+);
+
 export const UserMessageSchema = Type.Object({
   id: Type.Optional(IdSchema),
   role: Type.Literal('user'),
@@ -113,6 +122,7 @@ export const AssistantMessageSchema = Type.Object({
   ),
   errorMessage: Type.Optional(Type.String()),
   providerError: Type.Optional(ProviderErrorMetadataSchema),
+  providerSource: Type.Optional(ProviderModelSourceSchema),
   usage: Type.Optional(UsageSchema),
   durationMs: Type.Optional(Type.Number({ minimum: 0 })),
   timestamp: Type.Optional(TimestampSchema),
@@ -516,6 +526,7 @@ export const PROTOCOL_SCHEMA_DEFINITIONS = {
   ToolExecuteParamsSchema,
   ContentBlockSchema,
   ProviderErrorMetadataSchema,
+  ProviderModelSourceSchema,
   UserMessageSchema,
   AssistantMessageSchema,
   ToolResultMessageSchema,

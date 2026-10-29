@@ -16,6 +16,7 @@ import {
 import { runWithConcurrency } from '../concurrency.js';
 import { adoptMessage, commitJournal } from '../journal-commit.js';
 import { type InterruptedToolRecoveryPlan, synthesizeInterruptedToolResult } from '../reducer/session-reducer.js';
+import { type ToolSearchCandidate, type ToolSearchExecutionContext, isToolSearchTool } from '../tool-discovery.js';
 import { toolReplayContractsMatch } from '../tool-replay-contract.js';
 import { extractToolCalls } from './extract-tool-calls.js';
 import type { TurnContext } from './turn-context.js';
@@ -149,22 +150,35 @@ export class ToolDispatcher {
     // 其工具参数可能不完整，不予执行截断工具调用，避免产生未知副作用。
     if (assistantMessage.stopReason === 'length') {
       for (const call of toolCalls) {
-        const invalidArgumentsError = this.getJournalArgumentsError(ctx, call);
-        let truncatedRes: ToolResultMessage = invalidArgumentsError
-          ? await this.rejectInvalidArguments(ctx, call, invalidArgumentsError, sourceIndexByCallId.get(call.id))
-          : {
+        const accessError =
+          ctx.modelToolAllowed && !ctx.modelToolAllowed(call.name)
+            ? `Tool '${call.name}' is not available in the current model context.`
+            : undefined;
+        const invalidArgumentsError = accessError ? undefined : this.getJournalArgumentsError(ctx, call);
+        let truncatedRes: ToolResultMessage = accessError
+          ? {
               role: 'toolResult',
               toolCallId: call.id,
               toolName: call.name,
               isError: true,
-              content: [
-                {
-                  type: 'text',
-                  text: `Tool call '${call.name}' was not executed because the assistant response hit the output token limit and arguments may be truncated.`
-                }
-              ],
+              content: [{ type: 'text', text: accessError }],
               timestamp: ctx.clock()
-            };
+            }
+          : invalidArgumentsError
+            ? await this.rejectInvalidArguments(ctx, call, invalidArgumentsError, sourceIndexByCallId.get(call.id))
+            : {
+                role: 'toolResult',
+                toolCallId: call.id,
+                toolName: call.name,
+                isError: true,
+                content: [
+                  {
+                    type: 'text',
+                    text: `Tool call '${call.name}' was not executed because the assistant response hit the output token limit and arguments may be truncated.`
+                  }
+                ],
+                timestamp: ctx.clock()
+              };
         if (ctx.options.journal && !invalidArgumentsError) {
           // 截断拦截同样遵守"意图 → 结算 → 结果物化"三段持久化，保证恢复路径完整。
           const invocationId = this.reserveInvocationId(ctx);
@@ -236,9 +250,13 @@ export class ToolDispatcher {
   private async prepareCall(
     ctx: TurnContext,
     call: ToolCallContent,
-    assistantMessage: AssistantMessage
+    assistantMessage: AssistantMessage,
+    requireModelDeclaration = true
   ): Promise<PreparedCall> {
     const preparation: PreparedCall = { call };
+    if (requireModelDeclaration && ctx.modelToolAllowed && !ctx.modelToolAllowed(call.name)) {
+      return { call, blockReason: `Tool '${call.name}' is not available in the current model context.` };
+    }
     preparation.argumentsError = this.getJournalArgumentsError(ctx, call);
     if (preparation.argumentsError) return preparation;
     if (ctx.signal?.aborted) return { call, blockReason: 'Tool execution aborted by signal' };
@@ -483,6 +501,9 @@ export class ToolDispatcher {
       if (preparation.error) throw new Error(preparation.error);
       let blockReason = preparation.blockReason;
       const current = (ctx.currentTools?.() ?? toolRegistry).get(call.name);
+      if (!blockReason && !internal && ctx.modelToolAllowed && !ctx.modelToolAllowed(call.name)) {
+        blockReason = `Tool '${call.name}' is not available in the current model context.`;
+      }
       if (
         !blockReason &&
         (current !== preparation.tool || this.toolDeclaration(ctx, call.name) !== preparation.declaration)
@@ -574,20 +595,29 @@ export class ToolDispatcher {
   }
 
   private executionContext(ctx: TurnContext, assistantMessage: AssistantMessage, tool: AgentTool | undefined): unknown {
-    const context: { messages: typeof ctx.state.messages; codemode?: CodemodeExecutionContext } = {
-      messages: ctx.state.messages
-    };
+    const context: {
+      messages: typeof ctx.state.messages;
+      codemode?: CodemodeExecutionContext;
+      toolSearch?: ToolSearchExecutionContext['toolSearch'];
+    } = { messages: ctx.state.messages };
+    if (isToolSearchTool(tool)) context.toolSearch = { candidates: this.deferredSearchCandidates(ctx) };
     const codeModeOptions = tool ? getCodemodeToolOptions(tool) : undefined;
     if (!codeModeOptions) return context;
 
-    const registry = ctx.currentTools?.() ?? ctx.toolRegistry;
+    const registry = ctx.toolRegistry;
+    const currentRegistry = ctx.currentTools?.() ?? registry;
     const allowed = new Set(codeModeOptions.allowedReadTools);
     const tools = codeModeOptions.allowedReadTools.flatMap((name) => {
       const candidate = registry.get(name);
       const registration = registry.getRegistration(name);
+      const current = currentRegistry.get(name);
+      const currentRegistration = currentRegistry.getRegistration(name);
       if (
         !candidate ||
+        current !== candidate ||
         !registration ||
+        registration.exposure === 'hidden' ||
+        JSON.stringify(currentRegistration) !== JSON.stringify(registration) ||
         registration.capabilities.length !== 1 ||
         registration.capabilities[0] !== 'read'
       )
@@ -604,11 +634,16 @@ export class ToolDispatcher {
         if (!allowed.has(name)) throw new Error(`Tool '${name}' is not allowlisted for codemode.`);
         if (name === CODEMODE_TOOL_NAME) throw new Error('Codemode cannot call itself.');
         const currentRegistry = ctx.currentTools?.() ?? ctx.toolRegistry;
-        const candidate = currentRegistry.get(name);
-        const registration = currentRegistry.getRegistration(name);
+        const candidate = ctx.toolRegistry.get(name);
+        const registration = ctx.toolRegistry.getRegistration(name);
+        const current = currentRegistry.get(name);
+        const currentRegistration = currentRegistry.getRegistration(name);
         if (
           !candidate ||
+          current !== candidate ||
           !registration ||
+          registration.exposure === 'hidden' ||
+          JSON.stringify(currentRegistration) !== JSON.stringify(registration) ||
           registration.capabilities.length !== 1 ||
           registration.capabilities[0] !== 'read'
         ) {
@@ -620,14 +655,14 @@ export class ToolDispatcher {
           throw new Error(error instanceof Error ? error.message : String(error));
         }
 
-        const nestedContext: TurnContext = { ...ctx, toolRegistry: currentRegistry, signal };
+        const nestedContext: TurnContext = { ...ctx, toolRegistry: ctx.toolRegistry, signal };
         const nestedCall: ToolCallContent = {
           type: 'toolCall',
           id: `codemode_${this.reserveInvocationId(nestedContext)}`,
           name,
           arguments: structuredClone(args)
         };
-        const preparation = await this.prepareCall(nestedContext, nestedCall, assistantMessage);
+        const preparation = await this.prepareCall(nestedContext, nestedCall, assistantMessage, false);
         const result = await this.executeOne(
           nestedContext,
           preparation,
@@ -746,6 +781,23 @@ export class ToolDispatcher {
     return entry ? { ...result, id: entry.id } : result;
   }
 
+  private deferredSearchCandidates(ctx: TurnContext): ToolSearchCandidate[] {
+    const currentRegistry = ctx.currentTools?.() ?? ctx.toolRegistry;
+    return ctx.toolRegistry.getAll().flatMap((tool) => {
+      const registration = ctx.toolRegistry.getRegistration(tool.name);
+      const current = currentRegistry.get(tool.name);
+      const currentRegistration = currentRegistry.getRegistration(tool.name);
+      if (
+        !registration ||
+        registration.exposure !== 'deferred' ||
+        current !== tool ||
+        JSON.stringify(currentRegistration) !== JSON.stringify(registration)
+      )
+        return [];
+      return [{ tool, registration }];
+    });
+  }
+
   private toolDeclaration(ctx: TurnContext, name: string): string {
     const tools = ctx.currentTools?.() ?? ctx.toolRegistry;
     const tool = tools.get(name);
@@ -753,6 +805,8 @@ export class ToolDispatcher {
       description: tool?.description,
       parameters: tool?.parameters,
       replay: tool?.replay ?? 'never',
+      implementationVersion: tool?.implementationVersion,
+      registration: tools.getRegistration(name),
       contract: tools.getReplayContract(name)
     });
   }

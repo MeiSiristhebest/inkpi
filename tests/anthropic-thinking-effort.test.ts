@@ -173,4 +173,101 @@ describe('@inkpi/ai -> Anthropic per-turn thinking effort (aligned with pi v0.85
     const assistant = agent.state.messages.find((m) => m.role === 'assistant');
     expect((assistant as any)?.providerThinkingLevel).toBe('medium');
   });
+
+  it('uses the prepared dispatch model for provenance and projects incompatible thinking from the wire request', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        responseFrom([
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}\\n\\n',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}\\n\\n',
+          'data: {"type":"message_stop"}\\n\\n'
+        ])
+      );
+    globalThis.fetch = fetchMock as any;
+
+    const selectedModel = {
+      id: 'claude-selected',
+      name: 'Claude selected',
+      provider: 'claude' as const,
+      routeId: 'route-selected',
+      baseUrl: 'https://selected.test/v1',
+      apiKey: 'unused-test-key'
+    };
+    const dispatchedModel = {
+      id: 'claude-dispatched',
+      name: 'Claude dispatched',
+      provider: 'claude' as const,
+      routeId: 'route-dispatched',
+      baseUrl: 'https://provider.test/v1',
+      apiKey: 'fake-test-key',
+      supportsThinking: true
+    };
+    const previousAssistant: AgentMessage = {
+      id: 'history-assistant',
+      role: 'assistant',
+      providerSource: { provider: 'claude', modelId: 'claude-previous', routeId: 'route-previous' },
+      content: [
+        { type: 'thinking', thinking: 'private historical reasoning', providerSignature: 'opaque-source-signature' },
+        { type: 'text', text: 'visible history' },
+        { type: 'toolCall', id: 'call|history', name: 'lookup', arguments: { query: 'x' } }
+      ]
+    };
+    const agent = new Agent({
+      initialState: {
+        model: selectedModel,
+        messages: [
+          { role: 'user', content: 'previous question' },
+          previousAssistant,
+          {
+            role: 'toolResult',
+            toolCallId: 'call|history',
+            toolName: 'lookup',
+            content: [{ type: 'text', text: 'tool output' }]
+          }
+        ]
+      },
+      prepareRequest: (request) => {
+        expect(request.model.id).toBe(selectedModel.id);
+        return { model: dispatchedModel };
+      }
+    });
+
+    try {
+      await agent.prompt('new question');
+
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+      expect(body.model).toBe(dispatchedModel.id);
+      expect(JSON.stringify(body.messages)).not.toContain('private historical reasoning');
+      expect(JSON.stringify(body.messages)).not.toContain('opaque-source-signature');
+      expect(body.messages).toContainEqual({
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'visible history' },
+          { type: 'tool_use', id: 'call_history', name: 'lookup', input: { query: 'x' } }
+        ]
+      });
+      expect(body.messages).toContainEqual({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'call_history', content: 'tool output' }]
+      });
+      expect(agent.state.messages.find((message) => message.id === 'history-assistant')).toMatchObject({
+        providerSource: { provider: 'claude', modelId: 'claude-previous', routeId: 'route-previous' },
+        content: expect.arrayContaining([
+          { type: 'thinking', thinking: 'private historical reasoning', providerSignature: 'opaque-source-signature' }
+        ])
+      });
+      expect(agent.state.messages.at(-1)).toMatchObject({
+        role: 'assistant',
+        providerSource: {
+          provider: dispatchedModel.provider,
+          modelId: dispatchedModel.id,
+          routeId: dispatchedModel.routeId
+        }
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

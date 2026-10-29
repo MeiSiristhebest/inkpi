@@ -3,6 +3,7 @@ import type {
   AgentTool,
   TSchema,
   ToolCallContent,
+  ToolExposure,
   ToolRegistrationDescriptor,
   ToolRegistrationOptions,
   ToolReplayContract,
@@ -226,12 +227,17 @@ export function createToolRegistrationDescriptor(
         : 'runtime';
   const skillId = normalizeOptionalString(options.skillId);
   const skillVersion = normalizeOptionalString(options.skillVersion);
+  const exposure = options.exposure ?? 'direct';
+  if (exposure !== 'direct' && exposure !== 'deferred' && exposure !== 'hidden') {
+    throw new Error(`Invalid tool exposure for '${tool.name}'.`);
+  }
 
   return {
     name: tool.name,
     source,
     ...(skillId ? { skillId } : {}),
     ...(skillVersion ? { skillVersion } : {}),
+    ...(exposure !== 'direct' ? { exposure: exposure as ToolExposure } : {}),
     capabilities: normalizeCapabilities(options.capabilities)
   };
 }

@@ -1,23 +1,36 @@
+import { createHash } from 'node:crypto';
 import {
   ContextBudgetPlanner,
   type RuntimeCacheCoordinatorPort,
   type SessionCompactor,
+  type SummaryBudgetFacts,
   type TaskHandler,
   type TaskHandlerContext,
   type TaskHandlerResult,
   type ToolRegistry,
   createExecutionSnapshot,
   createRuntimeCacheKey,
+  resolveTaskWorkspaceId,
+  runWithConcurrency,
   stableSerialize
 } from '@inkpi/agent-core';
-import { type ModelConfig, ProviderError, classifyProviderError, streamAi } from '@inkpi/ai';
+import {
+  type ModelConfig,
+  ProviderError,
+  classifyProviderError,
+  sanitizeMessagesForProvider,
+  streamAi
+} from '@inkpi/ai';
 import {
   type AgentMessage,
+  type AgentTool,
   type AssistantMessage,
   type JsonObject,
   type JsonValue,
   type TaskOutput,
   type ToolCallContent,
+  type ToolResultMessage,
+  type Usage,
   assertJsonValue
 } from '@inkpi/protocol';
 import { CONVERSATION_HISTORY_PROVIDER_ID } from './conversation-history-provider.js';
@@ -246,6 +259,8 @@ export class TaskModelHandler implements TaskHandler {
     let providerCacheKey: string | undefined;
     let providerCacheHit = false;
     let overflowRecoveryUsed = false;
+    const compactionSummaryUsage: Usage[] = [];
+    const compactionSummaryBudgets: SummaryBudgetFacts[] = [];
     while (true) {
       if (this.sessionCompactor) {
         const budgetPlan = this.contextBudgetPlanner.plan(
@@ -261,13 +276,18 @@ export class TaskModelHandler implements TaskHandler {
           messages.length > 1
         ) {
           const compacted = await this.sessionCompactor.compact(messages, context.signal, context.task);
+          compactionSummaryBudgets.push(compacted.summaryBudget);
+          const summary = compacted.compactedMessages[0];
+          if (summary?.role === 'assistant' && summary.usage) compactionSummaryUsage.push(summary.usage);
           messages = compacted.compactedMessages;
         }
       }
       const steering = context.consumeSteering();
       if (steering.length > 0) messages.push(publicSteeringMessage(steering));
       const cacheKey =
-        toolStep === 0 ? createProviderResponseCacheKey(context, route, messages, this.systemPrompt) : undefined;
+        toolStep === 0
+          ? createProviderResponseCacheKey(context, route, messages, this.systemPrompt, toolRegistry)
+          : undefined;
       const cached = cacheKey ? this.providerResponseCache.get(cacheKey) : undefined;
       if (cached) {
         assistant = cached;
@@ -300,6 +320,9 @@ export class TaskModelHandler implements TaskHandler {
         ) {
           overflowRecoveryUsed = true;
           const compacted = await this.sessionCompactor.compact(messages, context.signal, context.task);
+          compactionSummaryBudgets.push(compacted.summaryBudget);
+          const summary = compacted.compactedMessages[0];
+          if (summary?.role === 'assistant' && summary.usage) compactionSummaryUsage.push(summary.usage);
           messages = compacted.compactedMessages;
           continue;
         }
@@ -324,10 +347,26 @@ export class TaskModelHandler implements TaskHandler {
       }
       messages.push(publicAssistantMessage(assistant));
       context.reportProgress(Math.min(0.9, 0.1 + toolStep / (maxToolSteps + 1)));
-      const toolResults = await toolRegistry.executeBatch(toolCalls, 'sequential', context.signal, undefined, {
-        taskId: context.task.id,
-        executionRunId: context.executionRunId
-      });
+      const toolResults = await runWithConcurrency(
+        toolCalls,
+        async (call): Promise<ToolResultMessage> => {
+          // Recheck each call after prior effects; model visibility is not a host execution grant.
+          if (toolRegistry.getRegistration(call.name)?.exposure === 'hidden') {
+            return {
+              role: 'toolResult',
+              toolCallId: call.id,
+              toolName: call.name,
+              isError: true,
+              content: [{ type: 'text', text: `Tool '${call.name}' is not available in the current model context.` }]
+            };
+          }
+          return toolRegistry.executeTool(call, context.signal, undefined, {
+            taskId: context.task.id,
+            executionRunId: context.executionRunId
+          });
+        },
+        'sequential'
+      );
       messages.push(...toolResults);
       for (const result of toolResults) {
         toolTrace.push({
@@ -361,7 +400,7 @@ export class TaskModelHandler implements TaskHandler {
       model: route.model,
       canonicalModelId: route.model.id,
       systemPrompt: route.systemPrompt ?? this.systemPrompt,
-      tools: toolRegistry?.getAll() ?? [],
+      tools: modelVisibleTools(toolRegistry),
       messages,
       estimatedTokens: context.context.tokenEstimate,
       policy: executionPolicySnapshot(context.task.executionPolicy),
@@ -392,6 +431,8 @@ export class TaskModelHandler implements TaskHandler {
         providerCacheHit,
         latencyMs: Date.now() - startedAt,
         usage: finalAssistant.usage,
+        ...(compactionSummaryUsage.length > 0 ? { compactionSummaryUsage } : {}),
+        ...(compactionSummaryBudgets.length > 0 ? { compactionSummaryBudgets } : {}),
         toolCalls: toolTrace,
         toolStepCount: toolStep,
         ...(context.instructions && context.instructions.entryIds.length > 0
@@ -413,12 +454,13 @@ export class TaskModelHandler implements TaskHandler {
     const tools =
       route.capabilities.tools === false
         ? undefined
-        : (context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry)?.getAll().map((tool) => ({
+        : modelVisibleTools(context.toolRegistry ?? route.toolRegistry ?? this.toolRegistry).map((tool) => ({
             name: tool.name,
             description: tool.description,
             parameters: tool.parameters
           }));
-    const stream = (route.stream ?? this.stream)(model, messages, {
+    const requestMessages = sanitizeMessagesForProvider(messages, model);
+    const stream = (route.stream ?? this.stream)(model, requestMessages, {
       signal: context.signal,
       systemPrompt: route.systemPrompt ?? this.systemPrompt,
       maxTokens: model.maxTokens,
@@ -428,18 +470,36 @@ export class TaskModelHandler implements TaskHandler {
     const onAbort = () => stream.abort();
     context.signal.addEventListener('abort', onAbort, { once: true });
     try {
-      return await stream.collect();
+      const assistant = await stream.collect();
+      return {
+        ...assistant,
+        providerSource: providerModelSource(model)
+      };
     } finally {
       context.signal.removeEventListener('abort', onAbort);
     }
   }
 
   private async resolveProviderModel(route: ResolvedModelRoute): Promise<ResolvedModelRoute['model']> {
-    if (!route.credentialRef) return route.model;
+    const providerModel = { ...route.model, routeId: route.id };
+    if (!route.credentialRef) return providerModel;
     if (!this.credentialResolver) throw new Error('Model credential broker is not configured');
     const apiKey = await this.credentialResolver(route.credentialRef);
-    return apiKey ? { ...route.model, apiKey } : route.model;
+    return apiKey ? { ...providerModel, apiKey } : providerModel;
   }
+}
+
+function modelVisibleTools(registry?: ToolRegistry): AgentTool[] {
+  return registry?.getAll().filter((tool) => registry.getRegistration(tool.name)?.exposure !== 'hidden') ?? [];
+}
+
+function providerModelSource(model: ModelConfig): NonNullable<AssistantMessage['providerSource']> {
+  const routeId = model.routeId?.trim();
+  return {
+    provider: String(model.provider),
+    modelId: model.id,
+    ...(routeId ? { routeId } : {})
+  };
 }
 
 function isToolCall(content: AssistantMessage['content'][number]): content is ToolCallContent {
@@ -563,17 +623,33 @@ function createProviderResponseCacheKey(
   context: TaskHandlerContext,
   route: ResolvedModelRoute,
   messages: AgentMessage[],
-  defaultSystemPrompt: string
+  defaultSystemPrompt: string,
+  toolRegistry?: ToolRegistry
 ): string {
   const taskMetadata = asRecord(context.task.metadata);
   const contextMetadata = asRecord(context.task.contextPolicy?.metadata);
   const skillVersion = firstString(taskMetadata?.skillVersion, contextMetadata?.skillVersion);
+  const identity = {
+    messages: messages.map(messageIdentity),
+    outputContract: context.task.outputContract,
+    requirements: context.task.requirements,
+    routeId: route.id,
+    systemPrompt: route.systemPrompt ?? defaultSystemPrompt,
+    maxTokens: route.model.maxTokens,
+    thinkingBudget: route.model.thinkingBudget,
+    requestConfigFingerprint: providerRequestConfigFingerprint(route),
+    toolDefinitions: modelVisibleTools(toolRegistry).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+    })),
+    contextTruncated: context.context.truncated,
+    contextTokenCount: context.context.tokenEstimate
+  };
   return createRuntimeCacheKey({
     layer: 'provider',
-    // Provider replies are keyed by the rendered messages too, so the task scope is a
-    // sufficient discriminator here; the payload/metadata carriers only matter for the
-    // context and retrieval layers, where the resolver supplies them.
-    workspaceId: context.task.scope?.workspaceId ?? null,
+    // Resolve scope, payload and metadata carriers alike so provider replies never cross workspaces.
+    workspaceId: resolveTaskWorkspaceId(context.task),
     taskKind: context.task.kind,
     instructionVersion: context.instructions?.version,
     skillVersion,
@@ -581,18 +657,24 @@ function createProviderResponseCacheKey(
     contextFingerprint: context.context.fingerprint,
     provider: route.model.provider,
     model: route.model.id,
-    identity: {
-      messages: messages.map(messageIdentity),
-      outputContract: context.task.outputContract,
-      requirements: context.task.requirements,
-      routeId: route.id,
-      systemPrompt: route.systemPrompt ?? defaultSystemPrompt,
-      maxTokens: route.model.maxTokens,
-      thinkingBudget: route.model.thinkingBudget,
-      contextTruncated: context.context.truncated,
-      contextTokenCount: context.context.tokenEstimate
-    }
+    // Cache snapshots persist keys; don't store prompts or tool schemas in them.
+    identity: cacheIdentityFingerprint(identity)
   });
+}
+
+function providerRequestConfigFingerprint(route: ResolvedModelRoute): string {
+  const { apiKey, ...modelConfig } = route.model;
+  return cacheIdentityFingerprint({
+    modelConfig,
+    apiKey,
+    credentialRef: route.credentialRef,
+    capabilities: route.capabilities,
+    maxToolSteps: route.maxToolSteps
+  });
+}
+
+function cacheIdentityFingerprint<T>(identity: T): string {
+  return createHash('sha256').update(stableSerialize(identity)).digest('hex');
 }
 
 function messageIdentity(message: AgentMessage): Record<string, unknown> {

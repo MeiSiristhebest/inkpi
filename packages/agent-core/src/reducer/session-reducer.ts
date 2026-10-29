@@ -279,6 +279,12 @@ export function reduceSessionEntry<TState extends RuntimeState = RuntimeState>(
         next.runtimeState = mergeOwnedState(adapter, next.runtimeState, { _lastCompactionSummary: summary });
         next.factsLedger = next.runtimeState;
       }
+      const summaryUsage = entry.payload?.modelView?.summaryMessage?.usage as Usage | undefined;
+      if (summaryUsage) {
+        next.usageTotals.inputTokens += summaryUsage.inputTokens || 0;
+        next.usageTotals.outputTokens += summaryUsage.outputTokens || 0;
+        next.usageTotals.totalTokens += summaryUsage.totalTokens || 0;
+      }
       break;
     }
 
@@ -315,6 +321,7 @@ export function messageFromSessionEntry(entry: SessionEntry): AgentMessage | und
       stopReason: payload?.stopReason || 'stop',
       ...(payload?.errorMessage !== undefined ? { errorMessage: payload.errorMessage } : {}),
       ...(payload?.providerError !== undefined ? { providerError: structuredClone(payload.providerError) } : {}),
+      ...(payload?.providerSource !== undefined ? { providerSource: structuredClone(payload.providerSource) } : {}),
       ...(payload?.providerThinkingLevel !== undefined ? { providerThinkingLevel: payload.providerThinkingLevel } : {}),
       ...(payload?.usage !== undefined ? { usage: structuredClone(payload.usage) } : {}),
       ...(typeof payload?.durationMs === 'number' ? { durationMs: payload.durationMs } : {})

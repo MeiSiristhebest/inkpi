@@ -94,9 +94,16 @@ describe('@inkpi/protocol TypeBox Schemas & Validation', () => {
           arguments: {}
         }
       ],
-      providerThinkingLevel: 'medium'
+      providerThinkingLevel: 'medium',
+      providerSource: { provider: 'claude', modelId: 'claude-3-sonnet', routeId: 'route-main' }
     };
     expect(Value.Check(AssistantMessageSchema, assistantMsg)).toBe(true);
+    expect(
+      Value.Check(AssistantMessageSchema, {
+        ...assistantMsg,
+        providerSource: { ...assistantMsg.providerSource, apiKey: 'must-not-be-accepted' }
+      })
+    ).toBe(false);
   });
 
   it('should validate generic RuntimeState and compatibility snapshot schemas', () => {

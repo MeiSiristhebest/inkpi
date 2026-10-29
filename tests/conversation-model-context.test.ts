@@ -154,14 +154,18 @@ describe('canonical persisted model views', () => {
     expect(journal.count()).toBe(count);
   });
 
-  it('preserves edits in a durable session fork and exposes as-of context through RPC', async () => {
-    const daemon = new InkPiDaemon({ defaultModel: getModelPreset('mock-test') });
+  it('preserves edits and provider provenance in a durable session fork and exposes as-of context through RPC', async () => {
+    const defaultModel = { ...getModelPreset('mock-test'), routeId: 'fork-route' };
+    const daemon = new InkPiDaemon({ defaultModel });
     const sessions = daemon.getSessionManager();
     const source = sessions.createSession({ sessionId: 'source' });
     await source.agent.prompt('source input');
     const id = source.agent.state.messages[1].id!;
     await source.agent.editContext({ version: 1, edits: [{ action: 'exclude', messageId: id }] });
     const fork = sessions.forkSession('source', { sessionId: 'fork' });
+    expect(fork.agent.state.messages[1]).toMatchObject({
+      providerSource: { provider: defaultModel.provider, modelId: defaultModel.id, routeId: 'fork-route' }
+    });
     expect(fork.agent.getModelContext().messages.some((message) => message.id === id)).toBe(false);
     expect(fork.agent.getModelContext().rawMessages.some((message) => message.id === id)).toBe(true);
     const result = await daemon
@@ -271,6 +275,67 @@ describe('provider instruction history capabilities', () => {
       expect(serialized).toContain('second rules');
       expect(serialized).not.toContain('first rules');
       expect(serialized).not.toContain('"name":"lookup"');
+    }
+  );
+
+  it.each([false, true])(
+    'sends the complete current OpenAI-compatible tool declaration when system-message support is %s',
+    async (supportsMidConvoSystemMessages) => {
+      const payloads: Array<Record<string, unknown>> = [];
+      setHttpClient({
+        fetch: async (_url, init) => {
+          payloads.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return new Response('fixture', { status: 400 });
+        }
+      });
+      const model = {
+        provider: 'deepseek' as const,
+        id: 'deepseek-loadout-test',
+        name: 'DeepSeek loadout test',
+        apiKey: 'test-key',
+        baseUrl: 'https://provider.test/v1',
+        compat: { supportsMidConvoSystemMessages, enableSelfHealing: false }
+      };
+      const initialTools = [
+        {
+          name: 'lookup',
+          description: 'old lookup',
+          parameters: { type: 'object', properties: { old: { type: 'string' } } }
+        },
+        { name: 'stale_tool', description: 'removed tool', parameters: { type: 'object' } }
+      ];
+      const currentTools = [
+        {
+          name: 'lookup',
+          description: 'redefined lookup',
+          parameters: { type: 'object', properties: { next: { type: 'string' } } }
+        },
+        { name: 'new_tool', description: 'new tool', parameters: { type: 'object' } }
+      ];
+
+      await getProvider('deepseek')(model, messages, { tools: initialTools }).collect();
+      await getProvider('deepseek')(model, messages, { tools: currentTools }).collect();
+
+      const wireTools = (payloads[1]?.tools ?? []) as Array<{
+        type: string;
+        function: { name: string; description: string; parameters: unknown };
+      }>;
+      expect(wireTools).toEqual([
+        {
+          type: 'function',
+          function: {
+            name: 'lookup',
+            description: 'redefined lookup',
+            parameters: { type: 'object', properties: { next: { type: 'string' } } }
+          }
+        },
+        {
+          type: 'function',
+          function: { name: 'new_tool', description: 'new tool', parameters: { type: 'object' } }
+        }
+      ]);
+      expect(JSON.stringify(payloads[1]?.tools)).not.toContain('stale_tool');
+      expect(JSON.stringify(payloads[1]?.tools)).not.toContain('cache_control');
     }
   );
 });

@@ -1,7 +1,7 @@
 /**
- * 微虚拟机 / 容器安全沙箱隔离引擎
- * 用于安全隔离执行第三方规则引擎脚本、自定义表达式求值与计算仿真逻辑，
- * 具备 CPU 超时熔断（Timeout Protection）、内存隔离、越权系统调用（fs/net/process）拦截与输出流截断。
+ * 基于 `node:vm` 的可信计算辅助工具；超时和输出上限只是运行控制，不是安全边界。
+ * 不要将模型输出、第三方插件脚本或其他不可信代码传入。它不提供 QuickJS/WASM worker、
+ * 独立进程或容器级隔离；模型代码应使用显式 opt-in 的 Codemode 执行路径。
  */
 
 import * as vm from 'node:vm';
@@ -28,12 +28,14 @@ export interface SandboxExecutionResult<T = any> {
   terminatedByTimeout?: boolean;
 }
 
+/** Host execution adapter; this interface does not itself guarantee code isolation. */
 export interface SandboxRunner {
   execute<T = any>(code: string, options?: SandboxExecutionOptions): Promise<SandboxExecutionResult<T>>;
 }
 
 /**
- * 基于 Node.js 受限安全上下文的内存隔离沙箱 (NodeVMSandbox)
+ * 基于 `node:vm` 的可信计算辅助工具。
+ * `vm` 不构成安全边界；仅可执行宿主控制的可信脚本。
  */
 export class NodeVMSandbox implements SandboxRunner {
   private defaultTimeoutMs: number;
@@ -57,7 +59,7 @@ export class NodeVMSandbox implements SandboxRunner {
     const stdout: string[] = [];
     const stderr: string[] = [];
 
-    // 创建安全隔离的沙箱控制台
+    // 提供受限输出的 console 适配器；字符上限是容量控制，不是隔离机制。
     const sandboxConsole = {
       log: (...args: any[]) => {
         const line = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
@@ -73,8 +75,8 @@ export class NodeVMSandbox implements SandboxRunner {
       }
     };
 
-    // 内置常用安全辅助函数（如随机数与数值计算）
-    const sandboxSafeGlobals = {
+    // 宿主提供的计算辅助函数；名称不代表沙箱安全能力。
+    const calculationHelpers = {
       roll: (diceNotation: string): number => {
         // e.g. "1d20", "3d6+2"
         const match = diceNotation.match(/^(\d+)d(\d+)([+-]\d+)?$/i);
@@ -92,7 +94,7 @@ export class NodeVMSandbox implements SandboxRunner {
       }
     };
 
-    // 严密隔离的 Sandbox 上下文，彻底移除 process, require, import, fs, child_process
+    // 仅注入常用全局量以便利可信计算；限制可见名称不构成安全隔离。
     const contextObject: Record<string, unknown> = {
       console: sandboxConsole,
       Math,
@@ -106,20 +108,20 @@ export class NodeVMSandbox implements SandboxRunner {
       RegExp,
       Map,
       Set,
-      ...sandboxSafeGlobals,
+      ...calculationHelpers,
       ...(options.globals || {})
     };
 
-    // 防止原型链逃逸
+    // 设置脚本常用别名；不防止原型链逃逸。
     contextObject.global = contextObject;
     contextObject.globalThis = contextObject;
 
     const vmContext = vm.createContext(contextObject);
 
     try {
-      // 静态防护：禁止代码内直接引用 process / require / child_process
+      // 仅为常见误用提供关键词护栏，无法鉴别或阻止恶意代码。
       if (/\b(process|require|child_process|fs|net|http|cluster)\b/.test(code)) {
-        throw new Error('Sandbox Security Violation: Access to system modules (process/fs/net) is strictly forbidden.');
+        throw new Error('Sandbox keyword guardrail rejected a known system-module identifier.');
       }
 
       const script = new vm.Script(`(() => { ${code} })()`);
@@ -150,8 +152,8 @@ export class NodeVMSandbox implements SandboxRunner {
 }
 
 /**
- * 统一沙箱执行门面 (SandboxExecutor)
- * 包装任意 SandboxRunner，对外提供规则脚本与表达式两类安全求值入口。
+ * 宿主侧可信规则/表达式计算门面。
+ * 默认 NodeVMSandbox 基于 node:vm，并非安全边界；不要传入模型或插件提供的代码。
  */
 export class SandboxExecutor {
   private runner: SandboxRunner;
@@ -161,7 +163,7 @@ export class SandboxExecutor {
   }
 
   /**
-   * 执行一段自定义规则引擎脚本（如数值计算、规则求值与逻辑检定）
+   * 执行宿主信任的规则脚本；不得传入模型输出、第三方插件代码或其他不可信字符串。
    */
   public async runRuleScript<T = any>(
     scriptCode: string,
@@ -175,7 +177,7 @@ export class SandboxExecutor {
   }
 
   /**
-   * 安全评估表达式
+   * 评估宿主控制的可信表达式；该方法不提供隔离。
    */
   public async evaluateExpression<T = any>(
     expression: string,

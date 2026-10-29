@@ -23,6 +23,14 @@ import {
   planInterruptedRecovery,
   reduceSession
 } from './reducer/session-reducer.js';
+import {
+  TOOL_SEARCH_NAME,
+  createToolSearchTool,
+  modelToolDefinition,
+  modelToolDefinitionKey,
+  readToolSearchActivations,
+  toolDiscoveryFingerprint
+} from './tool-discovery.js';
 import { ToolRegistry } from './tools.js';
 import { AgentLoopRunner } from './turn/agent-loop-runner.js';
 import { ToolDispatcher } from './turn/tool-dispatcher.js';
@@ -65,6 +73,8 @@ export class Agent {
   private initialMessagesRecorded = false;
   private recoveryChecked = false;
   private readonly historicalTools = new Map<string, { tool: AgentTool; registration?: ToolRegistrationDescriptor }>();
+  private readonly pendingDeferredToolFingerprints = new Map<string, string>();
+  private readonly toolSearchTool?: AgentTool;
 
   constructor(options: AgentOptions = {}) {
     this.options = { ...options };
@@ -115,6 +125,14 @@ export class Agent {
       for (const t of init.tools) {
         this.toolRegistry.register(t);
       }
+    }
+    if (options.toolDiscovery) {
+      if (this.toolRegistry.get(TOOL_SEARCH_NAME)) {
+        throw new Error(`Tool name '${TOOL_SEARCH_NAME}' is reserved when tool discovery is enabled.`);
+      }
+      this.toolSearchTool = createToolSearchTool();
+      this.toolRegistry.register(this.toolSearchTool, { source: 'runtime', capabilities: ['tool-discovery'] });
+      this.state.tools = [...this.state.tools, this.toolSearchTool];
     }
 
     this.extensionRunner = new ExtensionRunner(this.extensionHost);
@@ -224,7 +242,8 @@ export class Agent {
   private async restoreInterruptedTools(): Promise<void> {
     if (this.recoveryChecked || !this.conversation) return;
     const recovered = detectAndMarkInterruptedOperations(reduceSession(this.getConversationPath()), this.clock);
-    const toolRegistry = this.mergedToolRegistry();
+    const registeredTools = this.mergedToolRegistry();
+    const toolRegistry = this.modelVisibleRegistry(registeredTools);
     const plans = planInterruptedRecovery(recovered.state, toolRegistry);
     if (plans.length)
       await new ToolDispatcher().recover(
@@ -232,7 +251,9 @@ export class Agent {
           state: this.state,
           options: { ...this.options, ...this.toolHooks() },
           toolRegistry,
-          currentTools: () => this.mergedToolRegistry(),
+          currentTools: () => this.modelVisibleRegistry(this.mergedToolRegistry()),
+          modelTools: () => this.getModelVisibleTools(registeredTools),
+          modelToolAllowed: (name) => this.getModelVisibleTools(registeredTools).some((tool) => tool.name === name),
           steeringQueue: this.steeringQueue,
           followUpQueue: this.followUpQueue,
           emitEvent: (event) => this.emitEvent(event),
@@ -257,22 +278,14 @@ export class Agent {
       if (captured.some((message, index) => message !== this.state.messages[index])) this.state.messages = captured;
       this.initialMessagesRecorded = true;
     }
-    const tools = [
-      ...new Map(
-        [...this.toolRegistry.getAll(), ...this.extensionHost.getTools()].map((tool) => [tool.name, tool])
-      ).values()
-    ];
-    for (const tool of tools)
-      this.historicalTools.set(this.toolKey(tool), {
-        tool,
-        registration: this.extensionHost.getTools().includes(tool)
-          ? this.extensionHost.getToolRegistration(tool.name)
-          : this.toolRegistry.getRegistration(tool.name)
-      });
+    const registry = this.mergedToolRegistry();
+    for (const tool of registry.getAll())
+      this.historicalTools.set(this.toolKey(tool), { tool, registration: registry.getRegistration(tool.name) });
     await this.conversation.recordLoadout(
       this.state.systemPrompt,
-      tools.map((tool) => this.toolDefinition(tool))
+      this.getModelVisibleTools(registry).map((tool) => this.toolDefinition(tool))
     );
+    if (this.options.toolDiscovery) this.state.tools = this.getModelVisibleTools(registry);
   }
 
   public getModelContext(headId?: string | null): ConversationModelContext {
@@ -303,6 +316,8 @@ export class Agent {
     try {
       await this.initializeConversation();
       await commitJournal(this.options.journal, [{ type: 'context_edit', payload: edit }]);
+      this.pendingDeferredToolFingerprints.clear();
+      if (this.options.toolDiscovery) this.state.tools = this.getModelVisibleTools(this.mergedToolRegistry());
       this.loopRunner.clearIncrementalContextCache();
     } catch (error) {
       this.latchJournalFault(error);
@@ -317,18 +332,22 @@ export class Agent {
     this.claimRun();
     const previousHead = this.conversation.getHeadId();
     try {
-      for (const tool of this.toolRegistry.getAll())
-        this.historicalTools.set(this.toolKey(tool), {
-          tool,
-          registration: this.toolRegistry.getRegistration(tool.name)
-        });
+      if (!this.options.toolDiscovery) {
+        for (const tool of this.toolRegistry.getAll())
+          this.historicalTools.set(this.toolKey(tool), {
+            tool,
+            registration: this.toolRegistry.getRegistration(tool.name)
+          });
+      }
       const context = this.conversation.getContext(headId);
-      const tools = (context.loadout?.tools ?? []).map((definition) => {
-        const historical = this.historicalTools.get(this.toolKey(definition));
-        if (!historical)
-          throw new Error(`Historical tool '${definition.name}' is not available with the recorded interface.`);
-        return historical;
-      });
+      const tools = this.options.toolDiscovery
+        ? []
+        : (context.loadout?.tools ?? []).map((definition) => {
+            const historical = this.historicalTools.get(this.toolKey(definition));
+            if (!historical)
+              throw new Error(`Historical tool '${definition.name}' is not available with the recorded interface.`);
+            return historical;
+          });
       this.conversation.selectHead(headId);
       await commitJournal(this.options.journal, [
         { type: 'custom', payload: { kind: 'context_head', version: 1, headId } }
@@ -336,10 +355,15 @@ export class Agent {
       try {
         this.state.messages = context.rawMessages;
         this.state.systemPrompt = context.loadout?.systemPrompt ?? '';
-        const registry = new ToolRegistry(this.clock, this.options.monotonicClock);
-        for (const { tool, registration } of tools) registry.register(tool, registration);
-        this.toolRegistry = registry;
-        this.state.tools = tools.map(({ tool }) => tool);
+        if (this.options.toolDiscovery) {
+          this.pendingDeferredToolFingerprints.clear();
+          this.state.tools = this.getModelVisibleTools(this.mergedToolRegistry());
+        } else {
+          const registry = new ToolRegistry(this.clock, this.options.monotonicClock);
+          for (const { tool, registration } of tools) registry.register(tool, registration);
+          this.toolRegistry = registry;
+          this.state.tools = tools.map(({ tool }) => tool);
+        }
       } catch (error) {
         throw new SessionCommitError('Context head committed but adoption failed.', 'unknown', { cause: error });
       }
@@ -526,6 +550,25 @@ export class Agent {
       options: {
         ...this.options,
         ...this.toolHooks(),
+        prepareRequest: async (request, signal) => {
+          const prepared = await this.options.prepareRequest?.(request, signal);
+          if (!prepared?.tools) return prepared;
+          const hiddenNames = new Set(
+            mergedTools
+              .getAll()
+              .filter((tool) => mergedTools.getRegistration(tool.name)?.exposure === 'hidden')
+              .map((tool) => tool.name)
+          );
+          const visibleNames = this.options.toolDiscovery
+            ? new Set(this.getModelVisibleTools(mergedTools).map((tool) => tool.name))
+            : undefined;
+          return {
+            ...prepared,
+            tools: prepared.tools.filter(
+              (tool) => !hiddenNames.has(tool.name) && (!visibleNames || visibleNames.has(tool.name))
+            )
+          };
+        },
         transformContext: async (msgs, signal) => {
           let transformed = msgs;
           if (this.options.transformContext) {
@@ -536,6 +579,8 @@ export class Agent {
       },
       toolRegistry: mergedTools,
       currentTools: () => this.mergedToolRegistry(),
+      modelTools: () => this.getModelVisibleTools(mergedTools),
+      modelToolAllowed: (name) => this.getModelVisibleTools(mergedTools).some((tool) => tool.name === name),
       steeringQueue: this.steeringQueue,
       followUpQueue: this.followUpQueue,
       emitEvent: (ev) => this.emitEvent(ev),
@@ -570,11 +615,65 @@ export class Agent {
   }
 
   private mergedToolRegistry(): ToolRegistry {
+    const extensionTools = this.extensionHost.getTools();
+    if (
+      this.toolSearchTool &&
+      (this.toolRegistry.get(TOOL_SEARCH_NAME) !== this.toolSearchTool ||
+        extensionTools.some((tool) => tool.name === TOOL_SEARCH_NAME))
+    ) {
+      throw new Error(`Tool name '${TOOL_SEARCH_NAME}' is reserved when tool discovery is enabled.`);
+    }
     const merged = new ToolRegistry(this.clock, this.options.monotonicClock);
     for (const tool of this.toolRegistry.getAll()) merged.register(tool, this.toolRegistry.getRegistration(tool.name));
-    for (const tool of this.extensionHost.getTools())
-      merged.register(tool, this.extensionHost.getToolRegistration(tool.name));
+    for (const tool of extensionTools) merged.register(tool, this.extensionHost.getToolRegistration(tool.name));
     return merged;
+  }
+
+  private getModelVisibleTools(frozenRegistry: ToolRegistry): AgentTool[] {
+    const currentRegistry = this.mergedToolRegistry();
+    const loadout = new Map(
+      (this.conversation?.getLoadout()?.tools ?? []).map((definition) => [
+        definition.name,
+        modelToolDefinitionKey(definition)
+      ])
+    );
+    const direct: AgentTool[] = [];
+    const deferred: AgentTool[] = [];
+    for (const tool of frozenRegistry.getAll()) {
+      const registration = frozenRegistry.getRegistration(tool.name);
+      const current = currentRegistry.get(tool.name);
+      const currentRegistration = currentRegistry.getRegistration(tool.name);
+      if (
+        !registration ||
+        current !== tool ||
+        JSON.stringify(currentRegistration) !== JSON.stringify(registration) ||
+        registration.exposure === 'hidden'
+      )
+        continue;
+      const exposure = registration.exposure ?? 'direct';
+      if (!this.options.toolDiscovery || exposure === 'direct') {
+        direct.push(tool);
+        continue;
+      }
+      if (exposure !== 'deferred') continue;
+      const fingerprint = toolDiscoveryFingerprint(tool, registration);
+      if (
+        this.pendingDeferredToolFingerprints.get(tool.name) === fingerprint ||
+        loadout.get(tool.name) === modelToolDefinitionKey(modelToolDefinition(tool))
+      ) {
+        deferred.push(tool);
+      }
+    }
+    // Keep the always-visible declaration prefix stable as deferred tools are activated or revoked.
+    return this.options.toolDiscovery ? [...direct, ...deferred] : direct;
+  }
+
+  private modelVisibleRegistry(frozenRegistry: ToolRegistry): ToolRegistry {
+    const visible = new ToolRegistry(this.clock, this.options.monotonicClock);
+    for (const tool of this.getModelVisibleTools(frozenRegistry)) {
+      visible.register(tool, frozenRegistry.getRegistration(tool.name));
+    }
+    return visible;
   }
 
   private toolHooks(): Pick<AgentOptions, 'beforeToolCall' | 'afterToolCall'> {
@@ -590,14 +689,37 @@ export class Agent {
       },
       afterToolCall: async (event, signal) => {
         const explicit = await this.options.afterToolCall?.(event, signal);
-        if (explicit) return explicit;
-        return this.extensionHost.executeAfterToolCall({
-          toolCallId: event.toolCall.id,
-          toolName: event.toolCall.name,
-          parameters: event.toolCall.arguments,
-          result: event.result,
-          isError: event.isError
-        });
+        const after =
+          explicit ??
+          (await this.extensionHost.executeAfterToolCall({
+            toolCallId: event.toolCall.id,
+            toolName: event.toolCall.name,
+            parameters: event.toolCall.arguments,
+            result: event.result,
+            isError: event.isError
+          }));
+        if (
+          this.toolSearchTool &&
+          event.toolCall.name === TOOL_SEARCH_NAME &&
+          !event.isError &&
+          after?.isError !== true &&
+          !after?.terminate &&
+          !signal?.aborted
+        ) {
+          const registry = this.mergedToolRegistry();
+          for (const activation of readToolSearchActivations(event.result.details)) {
+            const tool = registry.get(activation.name);
+            const registration = registry.getRegistration(activation.name);
+            if (
+              tool &&
+              registration?.exposure === 'deferred' &&
+              toolDiscoveryFingerprint(tool, registration) === activation.fingerprint
+            ) {
+              this.pendingDeferredToolFingerprints.set(activation.name, activation.fingerprint);
+            }
+          }
+        }
+        return after;
       }
     };
   }

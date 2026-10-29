@@ -1,6 +1,20 @@
 import { CodemodeSandbox, MAX_OUTPUT_CHARS, toCodemodeIdentifier } from '@earendil-works/pi-codemode';
 import type { CodemodeOutputItem, CodemodeResult } from '@earendil-works/pi-codemode';
 import type { AgentTool, ImageContent, TextContent } from '@inkpi/protocol';
+import {
+  CODEMODE_WORKER_ADMISSION_LIMITS,
+  CodemodeAdmissionQueue,
+  acquireCodemodeWorkerSlot,
+  createCodemodeAbortError,
+  createCodemodeWorkerReservation
+} from './codemode-admission.js';
+import { getEmbeddedCodemodeWasm } from './codemode-bundle-assets.js';
+import { trackCodemodeWorkerExit } from './codemode-worker-lifecycle.js';
+
+declare const __INKPI_CODEMODE_WORKER_URL__: string | undefined;
+
+const bundledCodemodeWorkerUrl =
+  typeof __INKPI_CODEMODE_WORKER_URL__ === 'string' ? __INKPI_CODEMODE_WORKER_URL__ : undefined;
 
 export const CODEMODE_TOOL_NAME = 'codemode';
 
@@ -72,6 +86,7 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool<{ co
   if (!Number.isInteger(maxOutputChars) || maxOutputChars <= 0 || maxOutputChars > MAX_OUTPUT_CHARS) {
     throw new RangeError(`Codemode maxOutputChars must be between 1 and ${MAX_OUTPUT_CHARS}.`);
   }
+  const workerUrl = options.workerUrl ?? bundledCodemodeWorkerUrl;
 
   const tool: AgentTool<{ code: string }> = {
     name: CODEMODE_TOOL_NAME,
@@ -98,9 +113,15 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool<{ co
       if (!context || typeof context.executeReadTool !== 'function' || !Array.isArray(context.tools)) {
         return errorResult('Codemode must run through the InkPi tool dispatcher.');
       }
+      const scriptDeadline = performance.now() + timeoutMs;
+      const remainingScriptMs = () => Math.max(0, scriptDeadline - performance.now());
       const available = new Map(context.tools.map((entry) => [entry.name, entry]));
+      const nestedCallAdmission = new CodemodeAdmissionQueue({
+        capacity: CODEMODE_DEFAULTS.maxConcurrentNestedCalls,
+        maxQueued: CODEMODE_DEFAULTS.maxNestedCalls - CODEMODE_DEFAULTS.maxConcurrentNestedCalls,
+        subject: 'Codemode nested tool'
+      });
       let callCount = 0;
-      let activeCalls = 0;
       const tools = allowedReadTools.flatMap((name) => {
         const descriptor = available.get(name);
         if (!descriptor) return [];
@@ -113,36 +134,64 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool<{ co
               if (callCount > CODEMODE_DEFAULTS.maxNestedCalls) {
                 throw new Error(`Codemode allows at most ${CODEMODE_DEFAULTS.maxNestedCalls} nested calls.`);
               }
-              if (activeCalls >= CODEMODE_DEFAULTS.maxConcurrentNestedCalls) {
-                throw new Error(
-                  `Codemode allows at most ${CODEMODE_DEFAULTS.maxConcurrentNestedCalls} concurrent nested calls.`
-                );
-              }
               if (!isPlainJsonObject(args)) throw new Error('Nested tool arguments must be a JSON object.');
-              activeCalls += 1;
+              const release = await nestedCallAdmission.acquire({
+                signal: invocation.signal,
+                timeoutMs: remainingScriptMs()
+              });
               try {
+                if (invocation.signal.aborted) throw createCodemodeAbortError(invocation.signal.reason);
                 return await context.executeReadTool(name, args, invocation.signal);
               } finally {
-                activeCalls -= 1;
+                release();
               }
             }
           }
         ];
       });
 
-      const sandbox = new CodemodeSandbox({
-        tools,
-        timeoutMs,
-        memoryLimitBytes,
-        ...(options.workerUrl !== undefined ? { workerUrl: options.workerUrl } : {})
-      });
+      let sandbox: CodemodeSandbox | undefined;
       let result: CodemodeResult;
+      let admissionRelease: (() => void) | undefined;
+      let workerReservation: ReturnType<typeof createCodemodeWorkerReservation> | undefined;
+      let executionSettled = false;
       try {
-        result = await sandbox.execute(params.code, { signal });
+        const waitMs = Math.min(CODEMODE_WORKER_ADMISSION_LIMITS.maxWaitMs, remainingScriptMs());
+        const releaseWorkerSlot = await acquireCodemodeWorkerSlot(signal, waitMs);
+        admissionRelease = releaseWorkerSlot;
+        if (signal?.aborted) throw createCodemodeAbortError(signal.reason);
+        const reservation = createCodemodeWorkerReservation({
+          release: releaseWorkerSlot,
+          signal,
+          remainingMs: remainingScriptMs,
+          executionSettled: () => executionSettled
+        });
+        workerReservation = reservation;
+        const executionTimeoutMs = remainingScriptMs();
+        if (executionTimeoutMs <= 0) {
+          return errorResult('Codemode script deadline expired before worker execution.');
+        }
+        const wasm = getEmbeddedCodemodeWasm();
+        sandbox = new CodemodeSandbox({
+          tools,
+          timeoutMs: executionTimeoutMs,
+          memoryLimitBytes,
+          acquireWorker: reservation.acquireWorker,
+          onWorkerStarted: trackCodemodeWorkerExit,
+          wasm,
+          workerUrl
+        });
+        result = await sandbox.execute(params.code, { signal, timeoutMs: executionTimeoutMs });
       } catch (error) {
         return errorResult(error instanceof Error ? error.message : String(error));
       } finally {
-        await sandbox.close();
+        executionSettled = true;
+        try {
+          await sandbox?.close();
+        } finally {
+          if (workerReservation) workerReservation.releaseIfUntransferred();
+          else admissionRelease?.();
+        }
       }
 
       const outputChars = result.output.reduce((total, item) => total + outputLength(item), 0);
@@ -173,7 +222,7 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool<{ co
     timeoutMs,
     memoryLimitBytes,
     maxOutputChars,
-    ...(options.workerUrl !== undefined ? { workerUrl: options.workerUrl } : {})
+    ...(workerUrl !== undefined ? { workerUrl } : {})
   });
   return tool;
 }

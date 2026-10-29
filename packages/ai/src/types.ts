@@ -26,6 +26,8 @@ export interface ModelConfig {
   id: string;
   name: string;
   provider: ProviderType;
+  /** Non-secret host route identity, used only for message provenance and compatibility checks. */
+  routeId?: string;
   baseUrl?: string;
   apiKey?: string;
   maxTokens?: number;
@@ -92,7 +94,10 @@ export interface ModelCompatConfig {
   extraHeaders?: Record<string, string>;
   /** Explicit gateway session-affinity header; OpenRouter defaults to x-session-id. */
   sessionAffinityHeader?: string;
-  /** Preserve instruction updates at their original transcript positions. */
+  /**
+   * Preserve instruction updates at their original transcript positions.
+   * This is system-message-only; it does not imply incremental tool declarations or cache-prefix stability.
+   */
   supportsMidConvoSystemMessages?: boolean;
   /**
    * 是否开启报错自动自愈重试（默认 true）。
@@ -135,11 +140,14 @@ export interface StreamOptions {
    */
   thinkingEffort?: AnthropicEffort;
   cacheControl?: boolean | CacheControl;
+  /** Complete current provider tool declarations; adapters must not treat this list as a delta. */
   tools?: Array<{
     name: string;
     description: string;
     parameters: unknown;
   }>;
+  /** Explicit breakpoint after this many stable leading tool definitions; currently honored only by Anthropic. */
+  stableToolPrefixLength?: number;
 }
 
 export type StreamFn = (

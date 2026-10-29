@@ -139,9 +139,12 @@ export class InkRpcServer {
   public bindTransport(transport: RpcTransport): void {
     this.boundTransports.add(transport);
     const connectionId = crypto.randomUUID();
+    const requestControllers = new Set<AbortController>();
     this.connections.set(transport, connectionId);
     transport.onClose?.(() => {
       this.boundTransports.delete(transport);
+      for (const controller of requestControllers) controller.abort();
+      requestControllers.clear();
       this.sessionRouting?.release(connectionId);
     });
     let activeRequests = 0;
@@ -158,10 +161,12 @@ export class InkRpcServer {
         return;
       }
       activeRequests++;
+      const requestController = new AbortController();
+      requestControllers.add(requestController);
       let res: RpcResponse;
       try {
         const req: RpcRequest = JSON.parse(msgStr);
-        res = await this.handleRequest(req, connectionId);
+        res = await this.handleRequest(req, connectionId, requestController.signal);
       } catch {
         res = {
           jsonrpc: '2.0',
@@ -178,6 +183,7 @@ export class InkRpcServer {
         await transport.close();
       } finally {
         activeRequests--;
+        requestControllers.delete(requestController);
       }
     });
   }
@@ -310,7 +316,11 @@ export class InkRpcServer {
     }
   }
 
-  public async handleRequest(inputRequest: RpcRequest, connectionId = 'direct'): Promise<RpcResponse> {
+  public async handleRequest(
+    inputRequest: RpcRequest,
+    connectionId = 'direct',
+    requestSignal?: AbortSignal
+  ): Promise<RpcResponse> {
     const req = inputRequest && {
       ...inputRequest,
       ...(inputRequest.route ? { route: structuredClone(inputRequest.route) } : {})
@@ -337,7 +347,7 @@ export class InkRpcServer {
       const safeParams = req.params === undefined ? undefined : normalizeJsonBoundary(req.params, 'RPC request params');
       const safeRequest = { ...req, params: safeParams };
       this.sessionRouting?.assertRequest(connectionId, safeRequest);
-      const result = await this.dispatch(req.method, safeParams ?? {}, connectionId);
+      const result = await this.dispatch(req.method, safeParams ?? {}, connectionId, requestSignal);
       if (req.method !== 'session.close') this.sessionRouting?.assertRequest(connectionId, safeRequest);
       return {
         jsonrpc: '2.0',
@@ -368,7 +378,12 @@ export class InkRpcServer {
     }
   }
 
-  private async dispatch(method: string, params: any, connectionId = 'direct'): Promise<any> {
+  private async dispatch(
+    method: string,
+    params: any,
+    connectionId = 'direct',
+    requestSignal?: AbortSignal
+  ): Promise<any> {
     if (this.customHandlers.has(method)) {
       return await this.customHandlers.get(method)!(params, connectionId);
     }
@@ -376,7 +391,7 @@ export class InkRpcServer {
 
     const builtinHandler = BUILTIN_RPC_METHODS[method];
     if (builtinHandler) {
-      return await builtinHandler(params, this.ctx, this.branchSummarizer);
+      return builtinHandler(params, this.ctx, this.branchSummarizer, requestSignal);
     }
 
     throw {

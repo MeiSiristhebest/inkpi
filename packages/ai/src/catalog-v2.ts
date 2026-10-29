@@ -1,7 +1,6 @@
 import {
   type ModelCatalogEntry,
   type ModelPriceDescriptor,
-  type ModelPriceRateOverrides,
   modelCatalogEntryToCapabilityDeclaration,
   modelCatalogEntryToConfig
 } from './catalog.js';
@@ -54,15 +53,7 @@ export interface CanonicalModelIdentity {
 }
 
 /** Pricing is catalog metadata, not a transport or credential concern. */
-export interface ModelPricingDescriptor {
-  inputPerMillionUsd: number;
-  outputPerMillionUsd: number;
-  cacheReadPerMillionUsd?: number;
-  cacheWritePerMillionUsd?: number;
-  serviceTierRates?: Record<string, ModelPriceRateOverrides>;
-  promptLengthTiers?: ModelPriceDescriptor['promptLengthTiers'];
-  cacheWritePerMillionUsdByTtl?: Partial<Record<'5m' | '1h', number>>;
-}
+export type ModelPricingDescriptor = ModelPriceDescriptor;
 
 /** JSON-safe catalog metadata. Executable handlers live in the manager registry. */
 export interface ModelCatalogV2Entry

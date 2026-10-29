@@ -810,6 +810,7 @@ describe('@inkpi/ai', () => {
       id: 'claude-test',
       name: 'Claude',
       provider: 'claude' as const,
+      routeId: 'anthropic-test-route',
       baseUrl: 'https://provider.test/v1',
       apiKey: 'key',
       supportsThinking: true
@@ -832,6 +833,11 @@ describe('@inkpi/ai', () => {
         tools,
         thinkingBudget: 2048
       }).collect();
+      assistantMessage.providerSource = {
+        provider: model.provider,
+        modelId: model.id,
+        routeId: model.routeId
+      };
       expect(assistantMessage.content).toEqual([
         {
           type: 'thinking',

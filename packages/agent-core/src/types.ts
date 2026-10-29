@@ -115,6 +115,8 @@ export interface AgentOptions {
   steeringMode?: QueueMode;
   followUpMode?: QueueMode;
   toolExecution?: ToolExecutionMode;
+  /** Enables local deferred-tool discovery through the built-in `tool_search` tool. Disabled by default. */
+  toolDiscovery?: boolean;
   streamFn?: ModelStreamer;
   thinkingMapper?: ThinkingMapper;
   idGenerator?: IdGenerator;

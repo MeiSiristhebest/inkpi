@@ -89,12 +89,24 @@ describe('provider prompt cache controls', () => {
             cacheControl: { type: 'ephemeral', ttl: '1h' }
           },
           userMessages,
-          { systemPrompt: 'Stable system prefix.', cacheControl }
+          {
+            systemPrompt: 'Stable system prefix.',
+            cacheControl,
+            tools: [
+              { name: 'stable', description: 'Stable tool', parameters: { type: 'object' } },
+              { name: 'dynamic', description: 'Dynamic tool', parameters: { type: 'object' } }
+            ],
+            stableToolPrefixLength: 1
+          }
         ).collect();
 
         expect(message.stopReason).toBe('stop');
         const request = requestBody(fetchMock);
         expect(request.system).toEqual([{ type: 'text', text: 'Stable system prefix.' }]);
+        expect(request.tools).toEqual([
+          { name: 'stable', description: 'Stable tool', input_schema: { type: 'object' } },
+          { name: 'dynamic', description: 'Dynamic tool', input_schema: { type: 'object' } }
+        ]);
       });
     }
   );

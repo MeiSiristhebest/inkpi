@@ -7,6 +7,7 @@
  */
 
 import { execFileSync, execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,8 @@ import { getRuntimeBuildIdentity } from './runtime-build-identity.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
-const distDir = path.join(rootDir, 'dist-bin');
+const configuredDistDir = process.env.INKPI_DIST_BIN_DIR?.trim();
+const distDir = configuredDistDir ? path.resolve(rootDir, configuredDistDir) : path.join(rootDir, 'dist-bin');
 
 const args = process.argv.slice(2);
 const isDryRun = args.includes('--dry-run');
@@ -38,8 +40,19 @@ if (!fs.existsSync(distDir)) {
 // 2. 生成单文件独立入口脚本
 console.log('📦 Step 2: Preparing Standalone Release Entrypoint...');
 const standaloneEntry = path.join(rootDir, 'scripts', 'inkpi-standalone.mjs');
+const codemodeWorkerEntrypoint = path.join(rootDir, 'packages', 'agent-core', 'codemode-worker.ts');
+const codemodeWasmResolverPath = fs.realpathSync(
+  path.join(rootDir, 'packages', 'agent-core', 'node_modules', '@earendil-works', 'pi-codemode', 'dist', 'wasm.js')
+);
+const codemodeWasmPath = createRequire(codemodeWasmResolverPath).resolve('quickjs-wasi/quickjs.wasm');
 if (!fs.existsSync(standaloneEntry)) {
   throw new Error(`Standalone entrypoint is missing: ${standaloneEntry}`);
+}
+if (!fs.existsSync(codemodeWorkerEntrypoint)) {
+  throw new Error(`Codemode worker entrypoint is missing: ${codemodeWorkerEntrypoint}`);
+}
+if (!fs.existsSync(codemodeWasmPath)) {
+  throw new Error(`Codemode QuickJS WASM resource is missing: ${codemodeWasmPath}`);
 }
 console.log(`✅ Reviewed entrypoint selected: ${path.relative(rootDir, standaloneEntry)}`);
 
@@ -74,7 +87,13 @@ if (hasBun && !isDryRun) {
         `__INKPI_RUNTIME_COMMIT__=${JSON.stringify(buildIdentity.runtimeCommit)}`,
         '--define',
         `__INKPI_SKILL_MANIFEST_HASH__=${JSON.stringify(buildIdentity.skillManifestHash)}`,
-        standaloneEntry
+        '--define',
+        `__INKPI_CODEMODE_WORKER_URL__=${JSON.stringify('./packages/agent-core/codemode-worker.ts')}`,
+        '--loader',
+        '.wasm:file',
+        standaloneEntry,
+        codemodeWorkerEntrypoint,
+        codemodeWasmPath
       ],
       {
       stdio: 'inherit',

@@ -4,6 +4,7 @@
  */
 
 import { execFileSync, execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,8 @@ import { getRuntimeBuildIdentity } from './runtime-build-identity.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
-const distDir = path.join(rootDir, 'dist-bin');
+const configuredDistDir = process.env.INKPI_DIST_BIN_DIR?.trim();
+const distDir = configuredDistDir ? path.resolve(rootDir, configuredDistDir) : path.join(rootDir, 'dist-bin');
 
 console.log('🚀 [InkPi Bundler] Starting Standalone Single-File Binary Compilation...');
 
@@ -32,8 +34,19 @@ try {
 
 // 2. Create standalone CLI entrypoint for bundler
 const entrypointPath = path.join(rootDir, 'scripts', 'inkpi-standalone.mjs');
+const codemodeWorkerEntrypointPath = path.join(rootDir, 'packages', 'agent-core', 'codemode-worker.ts');
+const codemodeWasmResolverPath = fs.realpathSync(
+  path.join(rootDir, 'packages', 'agent-core', 'node_modules', '@earendil-works', 'pi-codemode', 'dist', 'wasm.js')
+);
+const codemodeWasmPath = createRequire(codemodeWasmResolverPath).resolve('quickjs-wasi/quickjs.wasm');
 if (!fs.existsSync(entrypointPath)) {
   throw new Error(`Standalone entrypoint is missing: ${entrypointPath}`);
+}
+if (!fs.existsSync(codemodeWorkerEntrypointPath)) {
+  throw new Error(`Codemode worker entrypoint is missing: ${codemodeWorkerEntrypointPath}`);
+}
+if (!fs.existsSync(codemodeWasmPath)) {
+  throw new Error(`Codemode QuickJS WASM resource is missing: ${codemodeWasmPath}`);
 }
 
 if (hasBun) {
@@ -54,7 +67,13 @@ if (hasBun) {
         `__INKPI_RUNTIME_COMMIT__=${JSON.stringify(buildIdentity.runtimeCommit)}`,
         '--define',
         `__INKPI_SKILL_MANIFEST_HASH__=${JSON.stringify(buildIdentity.skillManifestHash)}`,
-        entrypointPath
+        '--define',
+        `__INKPI_CODEMODE_WORKER_URL__=${JSON.stringify('./packages/agent-core/codemode-worker.ts')}`,
+        '--loader',
+        '.wasm:file',
+        entrypointPath,
+        codemodeWorkerEntrypointPath,
+        codemodeWasmPath
       ],
       { stdio: 'inherit', cwd: rootDir }
     );

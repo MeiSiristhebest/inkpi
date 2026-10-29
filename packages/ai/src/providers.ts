@@ -299,17 +299,12 @@ export function convertMessagesToAnthropic(messages: AgentMessage[]): AnthropicM
       for (const item of message.content) {
         if (item.type === 'text' && item.text.length > 0) {
           blocks.push({ type: 'text', text: item.text });
-        } else if (item.type === 'thinking' && item.thinking.length > 0) {
-          if (item.providerSignature) {
-            blocks.push({
-              type: 'thinking',
-              thinking: item.thinking,
-              signature: item.providerSignature
-            });
-          } else {
-            // Unsigned reasoning cannot be replayed as an Anthropic thinking block.
-            blocks.push({ type: 'text', text: item.thinking });
-          }
+        } else if (item.type === 'thinking' && item.thinking.length > 0 && item.providerSignature) {
+          blocks.push({
+            type: 'thinking',
+            thinking: item.thinking,
+            signature: item.providerSignature
+          });
         } else if (item.type === 'toolCall') {
           blocks.push({
             type: 'tool_use',
@@ -361,6 +356,7 @@ export type ProviderHandler = (
 ) => EventStream<AssistantMessageEvent>;
 
 const providerRegistry = new Map<ProviderType, ProviderHandler>();
+const registeredProviderTypes = new Set<ProviderType>();
 
 /**
  * Provider aliases do not necessarily match their credential environment
@@ -707,6 +703,7 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
         payload.prompt_cache_options = { ttl: '30m' };
       }
 
+      // Always send the complete current tool list; the system-message capability is not a tool delta API.
       if (options?.tools && options.tools.length > 0) {
         payload.tools = options.tools.map((t) => ({
           type: 'function',
@@ -1046,7 +1043,8 @@ export const openAiCompatibleProvider: ProviderHandler = (model, inputMessages, 
 // 3. Anthropic Messages API Provider
 // ----------------------------------------------------------------------
 export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
-  const { messages, options } = resolveModelTranscript(inputMessages, inputOptions);
+  const { messages: resolvedMessages, options } = resolveModelTranscript(inputMessages, inputOptions);
+  const messages = sanitizeMessagesForProvider(resolvedMessages, model);
   const stream = new AssistantEventStream();
   const baseUrl = model.baseUrl || 'https://api.anthropic.com/v1';
   const apiKey = model.apiKey || process.env.ANTHROPIC_API_KEY || '';
@@ -1120,10 +1118,23 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
   }
 
   if (options?.tools && options.tools.length > 0) {
-    bodyPayload.tools = options.tools.map((t) => ({
+    const stablePrefixLength = options.stableToolPrefixLength ?? 0;
+    const cacheBreakpointIndex =
+      model.supportsPromptCache === true &&
+      promptCacheEnabled(cacheControl) &&
+      Number.isSafeInteger(stablePrefixLength) &&
+      stablePrefixLength > 0 &&
+      stablePrefixLength <= options.tools.length
+        ? stablePrefixLength - 1
+        : -1;
+    // This is a cache breakpoint on an explicitly stable prefix, never a partial tool declaration.
+    bodyPayload.tools = options.tools.map((t, index) => ({
       name: t.name,
       description: t.description,
-      input_schema: t.parameters
+      input_schema: t.parameters,
+      ...(index === cacheBreakpointIndex
+        ? { cache_control: { type: 'ephemeral', ...(cacheTtl ? { ttl: cacheTtl } : {}) } }
+        : {})
     }));
   }
 
@@ -1380,8 +1391,19 @@ export const anthropicProvider: ProviderHandler = (model, inputMessages, inputOp
 // ----------------------------------------------------------------------
 // 4. Google Generative AI Provider (Gemini SSE)
 // ----------------------------------------------------------------------
+function serializeGeminiContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return JSON.stringify(content) ?? '';
+  const visibleContent = (content as unknown[]).filter((item) => {
+    if (typeof item !== 'object' || item === null || !('type' in item)) return true;
+    return item.type !== 'thinking';
+  });
+  return JSON.stringify(visibleContent) ?? '';
+}
+
 export const geminiProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
-  const { messages, options } = resolveModelTranscript(inputMessages, inputOptions);
+  const { messages: transcriptMessages, options } = resolveModelTranscript(inputMessages, inputOptions);
+  const messages = sanitizeMessagesForProvider(transcriptMessages, model);
   const stream = new AssistantEventStream();
   const apiKey = model.apiKey || process.env.GEMINI_API_KEY || '';
 
@@ -1403,11 +1425,7 @@ export const geminiProvider: ProviderHandler = (model, inputMessages, inputOptio
 
   const contents = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [
-      {
-        text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-      }
-    ]
+    parts: [{ text: serializeGeminiContent(m.content) }]
   }));
 
   (async () => {
@@ -1552,11 +1570,12 @@ export const geminiProvider: ProviderHandler = (model, inputMessages, inputOptio
 // 5. Ollama Provider for Local Offline inference
 // ----------------------------------------------------------------------
 export const ollamaProvider: ProviderHandler = (model, inputMessages, inputOptions) => {
-  const { messages, options } = resolveModelTranscript(
+  const { messages: transcriptMessages, options } = resolveModelTranscript(
     inputMessages,
     inputOptions,
     model.compat?.supportsMidConvoSystemMessages === true
   );
+  const messages = sanitizeMessagesForProvider(transcriptMessages, model);
   const stream = new AssistantEventStream();
   const baseUrl = model.baseUrl || 'http://localhost:11434';
   const standardMessages = convertMessagesToStandard(messages, options?.systemPrompt);
@@ -1712,6 +1731,7 @@ export function mockProvider(
 
 export function registerProvider(type: ProviderType, handler: ProviderHandler): void {
   providerRegistry.set(type, handler);
+  registeredProviderTypes.add(type);
 }
 
 export function getProvider(type: ProviderType): ProviderHandler {
@@ -1734,5 +1754,8 @@ export function streamAi(
   options?: StreamOptions
 ): EventStream<AssistantMessageEvent> {
   const handler = getProvider(model.provider);
-  return handler(model, messages, options);
+  const providerMessages = registeredProviderTypes.has(model.provider)
+    ? sanitizeMessagesForProvider(messages, model)
+    : messages;
+  return handler(model, providerMessages, options);
 }

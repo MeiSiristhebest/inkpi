@@ -5,7 +5,8 @@ import type { ServerContext } from './server.js';
 export type RpcMethodHandler = (
   params: any,
   ctx: ServerContext,
-  branchSummarizer?: BranchSummarizer
+  branchSummarizer?: BranchSummarizer,
+  requestSignal?: AbortSignal
 ) => Promise<any> | any;
 
 function normalizeAgentMessage(message: unknown, method: string): AgentMessage {
@@ -186,7 +187,7 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
     return { currentLeafId: targetId, node };
   },
 
-  'tree.getSummary': async (params, ctx, branchSummarizer) => {
+  'tree.getSummary': async (params, ctx, branchSummarizer, requestSignal) => {
     if (!ctx.tree) throw new Error('SessionTree not initialized');
     if (!branchSummarizer) throw new Error('Branch summarization capability not configured');
     const fromLeaf = params.fromLeafId || ctx.tree.getCurrentLeafId();
@@ -197,8 +198,9 @@ export const BUILTIN_RPC_METHODS: Record<string, RpcMethodHandler> = {
     if (typeof toLeaf !== 'string' || toLeaf.length === 0) {
       throw new Error('tree.getSummary requires toLeafId');
     }
-    const summary = await branchSummarizer.summarizeBranch(ctx.tree, fromLeaf, toLeaf);
-    return { summary };
+    const result = await branchSummarizer.summarizeBranchWithUsage(ctx.tree, fromLeaf, toLeaf, requestSignal);
+    if (result?.usage) return { summary: result.details, summaryUsage: result.usage };
+    return { summary: result?.details ?? null };
   },
 
   // 5. Slash Commands

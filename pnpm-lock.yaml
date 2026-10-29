@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@earendil-works/pi-codemode@1.1.0': b24e55f6ae43ad2b89adc81d77ad441786d4649dba457ef6816fbec0a2e183b3
-
 importers:
 
   .:
@@ -64,8 +61,8 @@ importers:
   packages/agent-core:
     dependencies:
       '@earendil-works/pi-codemode':
-        specifier: 1.1.0
-        version: 1.1.0(patch_hash=b24e55f6ae43ad2b89adc81d77ad441786d4649dba457ef6816fbec0a2e183b3)
+        specifier: 1.4.0
+        version: 1.4.0
       '@inkpi/ai':
         specifier: workspace:*
         version: link:../ai
@@ -258,8 +255,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@earendil-works/pi-codemode@1.1.0':
-    resolution: {integrity: sha512-8Asc2AzhoNaXS1snmRFa96OhcWIlFM5k1Kuiz6p2DvIYgi5QHQccRAmDVY9oO92TzWrizpvQpconZGQ7JhlI7Q==}
+  '@earendil-works/pi-codemode@1.4.0':
+    resolution: {integrity: sha512-23CNAXpS9DuLzPMyYuvrXVVio46x4YhffCgCqaWmF7F5H8PooqjrQvX4ucF6M0BhUd+x2tV6r1J0dv8cCME4Cg==}
     engines: {node: '>=22.19.0'}
 
   '@esbuild/aix-ppc64@0.25.0':
@@ -1103,7 +1100,7 @@ snapshots:
   '@biomejs/cli-win32-x64@1.9.4':
     optional: true
 
-  '@earendil-works/pi-codemode@1.1.0(patch_hash=b24e55f6ae43ad2b89adc81d77ad441786d4649dba457ef6816fbec0a2e183b3)':
+  '@earendil-works/pi-codemode@1.4.0':
     dependencies:
       quickjs-wasi: 3.6.2
 
