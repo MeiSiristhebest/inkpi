@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import {
   Agent,
   DynamicPluginLoader,
@@ -29,6 +31,7 @@ const INKPI_ROOT = path.resolve(TEST_ROOT, '..');
 const DESKTOP_ROOT = path.resolve(INKPI_ROOT, '..', 'inkpi-desktop');
 const DESKTOP_CATALOG_FILE = path.join(DESKTOP_ROOT, 'src', 'ai', 'tasks', 'pluginCatalog.ts');
 const DESKTOP_RUNTIME_CATALOG_FILE = path.join(DESKTOP_ROOT, 'src', 'ai', 'tasks', 'pluginRuntimeCatalog.ts');
+const execFileAsync = promisify(execFile);
 
 const RUNTIME_SOURCE_ROOTS = [
   path.join(INKPI_ROOT, 'packages', 'agent-core', 'src'),
@@ -73,23 +76,47 @@ const CLASS_TARGETS: Record<string, string> = {
 
 async function importCurrentExport<T>(filePath: string): Promise<T> {
   if (!fs.existsSync(filePath)) throw new Error(`Required current export is missing: ${filePath}`);
-  // Bypass Vitest's project-root restriction for the read-only sibling-repo
-  // catalog. Node 26 can load the catalog's TypeScript directly. The runtime
-  // catalog has one extensionless relative import, so only that specifier is
-  // rewritten in an in-memory, type-stripped module; its exported code/data is
-  // otherwise the current file verbatim.
-  const nativeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>;
-  if (filePath === DESKTOP_RUNTIME_CATALOG_FILE) {
-    const moduleApi = (await nativeImport('node:module')) as {
-      stripTypeScriptTypes(source: string, options?: { mode?: 'strip' }): string;
-    };
-    const source = fs
-      .readFileSync(filePath, 'utf8')
-      .replace("from './pluginCatalog'", `from '${pathToFileURL(DESKTOP_CATALOG_FILE).href}'`);
-    const javascript = moduleApi.stripTypeScriptTypes(source, { mode: 'strip' });
-    return (await nativeImport(`data:text/javascript;base64,${Buffer.from(javascript).toString('base64')}`)) as T;
-  }
-  return (await nativeImport(pathToFileURL(filePath).href)) as T;
+
+  // Load sibling-repository TypeScript in a Node child process so Vitest's VM
+  // context does not need an importModuleDynamically callback. The runtime
+  // catalog's one extensionless import is rewritten only in-memory.
+  const isRuntimeCatalog = filePath === DESKTOP_RUNTIME_CATALOG_FILE;
+  const childScript = [
+    "import { readFileSync } from 'node:fs';",
+    "import { stripTypeScriptTypes } from 'node:module';",
+    "import { pathToFileURL } from 'node:url';",
+    `const filePath = ${JSON.stringify(filePath)};`,
+    `const catalogPath = ${JSON.stringify(DESKTOP_CATALOG_FILE)};`,
+    `const isRuntimeCatalog = ${JSON.stringify(isRuntimeCatalog)};`,
+    'let imported;',
+    'if (isRuntimeCatalog) {',
+    "  const source = readFileSync(filePath, 'utf8').replace(\"from './pluginCatalog'\", 'from \\\"' + pathToFileURL(catalogPath).href + '\\\"');",
+    "  const javascript = stripTypeScriptTypes(source, { mode: 'strip' });",
+    "  imported = await import('data:text/javascript;base64,' + Buffer.from(javascript).toString('base64'));",
+    '  const catalog = await import(pathToFileURL(catalogPath).href);',
+    '  const runtimeEntries = Object.fromEntries(catalog.FIRST_PARTY_PLUGIN_IDS.map((id) => [id, imported.getPluginRuntimeEntry(id)]));',
+    '  imported = { PLUGIN_RUNTIME_CATALOG: imported.PLUGIN_RUNTIME_CATALOG, runtimeEntries };',
+    '} else {',
+    '  imported = await import(pathToFileURL(filePath).href);',
+    '}',
+    'process.stdout.write(JSON.stringify(imported));'
+  ].join('\n');
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ['--experimental-strip-types', '--input-type=module', '-e', childScript],
+    { cwd: DESKTOP_ROOT, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }
+  );
+  const parsed = JSON.parse(stdout) as T;
+  if (!isRuntimeCatalog) return parsed;
+
+  const serialized = parsed as unknown as {
+    PLUGIN_RUNTIME_CATALOG: Record<string, PluginRuntimeEntry>;
+    runtimeEntries: Record<string, PluginRuntimeEntry | undefined>;
+  };
+  return {
+    PLUGIN_RUNTIME_CATALOG: serialized.PLUGIN_RUNTIME_CATALOG,
+    getPluginRuntimeEntry: (pluginId: string) => serialized.runtimeEntries[pluginId]
+  } as T;
 }
 
 function listSourceFiles(root: string): string[] {
