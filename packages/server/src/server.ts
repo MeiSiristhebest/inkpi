@@ -215,6 +215,18 @@ export class InkRpcServer {
     const nodeRequire = createRequire(import.meta.url);
     const { WebSocketServer } = nodeRequire('ws');
     const wss = new WebSocketServer({ port, host, maxPayload: this.limits.maxFrameBytes });
+    const listening = new Promise<void>((resolve, reject) => {
+      const onListening = () => {
+        wss.off('error', onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        wss.off('listening', onListening);
+        reject(error);
+      };
+      wss.once('listening', onListening);
+      wss.once('error', onError);
+    });
     wss.on('connection', (ws: any) => {
       const transport = new WebSocketRpcTransport(ws, this.limits);
       this.bindTransport(transport);
@@ -226,6 +238,7 @@ export class InkRpcServer {
         ws.on('error', cleanup);
       }
     });
+    await listening;
     this.wsServer = wss;
     return wss;
   }

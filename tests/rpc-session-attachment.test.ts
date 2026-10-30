@@ -52,18 +52,26 @@ describe('session attachment routing over TCP', () => {
     await expect(first!.request('session.value', { sessionId: 'beta' })).rejects.toThrow('targets another session');
 
     const firstEvents: unknown[] = [];
+    let resolveFirstEvent!: (event: unknown) => void;
+    const firstEvent = new Promise<unknown>((resolve) => {
+      resolveFirstEvent = resolve;
+    });
     const secondEvent = nextSessionEvent(second!);
-    const offFirst = first!.on('session.event', (event) => firstEvents.push(event));
+    const offFirst = first!.on('session.event', (event) => {
+      firstEvents.push(event);
+      resolveFirstEvent(event);
+    });
     server.notifySessionEvent('alpha', sessions.get('alpha')!, { value: 1 });
+    await expect(firstEvent).resolves.toMatchObject({ event: { value: 1 } });
     await expect(secondEvent).resolves.toMatchObject({ event: { value: 1 } });
-    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(firstEvents).toHaveLength(1);
 
     const stillAlpha = nextSessionEvent(second!);
     await first!.attachSession('beta');
     server.notifySessionEvent('alpha', sessions.get('alpha')!, { value: 2 });
     await expect(stillAlpha).resolves.toMatchObject({ event: { value: 2 } });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // A response on the first socket is an ordering barrier for any preceding notifications.
+    await expect(first!.request('session.value')).resolves.toBe('B');
     expect(firstEvents).toHaveLength(1);
     offFirst();
 

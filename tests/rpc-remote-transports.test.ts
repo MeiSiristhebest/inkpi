@@ -257,6 +257,13 @@ describe('InkPi RPC Remote Transports & Server/Client', () => {
     expect(domTransport.isOpen()).toBe(false);
   });
 
+  it('waits for the WebSocket listener to bind before resolving', async () => {
+    server = new InkRpcServer();
+
+    const listener = await server.listenWebSocket(0, '127.0.0.1');
+    expect(listener.address()).toMatchObject({ address: '127.0.0.1', port: expect.any(Number) });
+  });
+
   it('should communicate over native TCP socket transport', async () => {
     const editor = new HeadlessEditorState();
     editor.insert('TCP 传输测试正文');

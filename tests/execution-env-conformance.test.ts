@@ -195,6 +195,7 @@ describe('host-bound asynchronous execution environment', () => {
 
   it('runs argv literally in the granted cwd and passes only host-provided environment', async () => {
     await fs.mkdir(path.join(root, 'nested'));
+    const grantedCwd = await fs.realpath(path.join(root, 'nested'));
     const env = environment({ executables: { node: process.execPath }, environment: { HOST_MARKER: 'granted' } });
     const values = ['a b', '; echo injected', '$HOME', '$(anything)', '中文🙂'];
     const result = await env.runProcess({
@@ -210,7 +211,7 @@ describe('host-bound asynchronous execution environment', () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout.content)).toEqual({
       args: values,
-      cwd: path.join(root, 'nested'),
+      cwd: grantedCwd,
       marker: 'granted',
       home: null
     });
