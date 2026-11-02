@@ -184,10 +184,15 @@ describe('TaskModelHandler structured output failures', () => {
       context: {
         fragments: [
           { id: 'retrieved', source: 'retrieval.jit', text: 'RETRIEVED' },
+          {
+            id: 'author-reference',
+            source: 'creative.references',
+            text: 'AUTHOR_SELECTED_REFERENCE_EXCERPT'
+          },
           { id: 'scene', source: 'creative.document', text: 'SCENE' },
           { id: 'project', source: 'creative.story', text: 'PROJECT' }
         ],
-        text: 'RETRIEVED\n\nSCENE\n\nPROJECT',
+        text: 'RETRIEVED\n\nAUTHOR_SELECTED_REFERENCE_EXCERPT\n\nSCENE\n\nPROJECT',
         tokenEstimate: 3,
         fingerprint: 'prompt-order-context',
         truncated: false,
@@ -218,7 +223,8 @@ describe('TaskModelHandler structured output failures', () => {
     ].map((section) => prompt.indexOf(section));
     expect(order).toEqual([...order].sort((left, right) => left - right));
     expect(prompt.indexOf('PROJECT')).toBeLessThan(prompt.indexOf('RETRIEVED'));
-    expect(prompt.indexOf('RETRIEVED')).toBeLessThan(prompt.indexOf('SCENE'));
+    expect(prompt.indexOf('RETRIEVED')).toBeLessThan(prompt.indexOf('AUTHOR_SELECTED_REFERENCE_EXCERPT'));
+    expect(prompt.indexOf('AUTHOR_SELECTED_REFERENCE_EXCERPT')).toBeLessThan(prompt.indexOf('SCENE'));
     expect(prompt).toContain('TASK_DETAILS');
     expect(prompt).toContain('USER_INTENT');
     expect(prompt).not.toContain('must appear through providers only');
