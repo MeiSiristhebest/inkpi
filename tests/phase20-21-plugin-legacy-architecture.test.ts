@@ -19,11 +19,11 @@ import { describe, expect, it } from 'vitest';
 /**
  * Phase 20–21 audit boundary.
  *
- * The 44-id catalog and runtime classification catalog are read from their
+ * The plugin catalog and runtime classification catalog are read from their
  * current exports; this test does not copy the list into Runtime or mutate
  * either repository.
  * Runtime object wiring is local-process evidence only. It must not be read as
- * proof that a Desktop/Tauri process registers all 44 plugins over RPC.
+ * proof that a Desktop/Tauri process registers every catalog plugin over RPC.
  */
 
 const TEST_ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +66,7 @@ type DesktopRuntimeCatalogModule = {
 
 const CLASS_TARGETS: Record<string, string> = {
   'pure-local': 'desktop-local-engine',
+  'shared-ai': 'creative-task',
   'ai-task': 'creative-task',
   'context-provider': 'story-context-compiler',
   tool: 'extension-tool',
@@ -158,7 +159,7 @@ function stripComments(source: string): string {
 }
 
 describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
-  it('derives all 44 classifications from the live catalog and runtime catalog exports', async () => {
+  it('classifies every plugin in the live catalog using Runtime catalog exports', async () => {
     if (!fs.existsSync(DESKTOP_CATALOG_FILE) || !fs.existsSync(DESKTOP_RUNTIME_CATALOG_FILE)) {
       // Gracefully bypass sibling repository inspection when inkpi runs in standalone CI
       return;
@@ -168,7 +169,7 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
     const ids = [...catalog.FIRST_PARTY_PLUGIN_IDS];
     const entries = ids.map((id) => ({ id, entry: runtimeCatalog.getPluginRuntimeEntry(id) }));
 
-    expect(ids).toHaveLength(44);
+    expect(ids).toHaveLength(49);
     expect(new Set(ids).size).toBe(ids.length);
     expect(Object.keys(runtimeCatalog.PLUGIN_RUNTIME_CATALOG).sort()).toEqual([...ids].sort());
     expect(entries.every(({ entry }) => entry !== undefined)).toBe(true);
@@ -190,7 +191,7 @@ describe('Phase 20–21 plugin catalog and Runtime registration audit', () => {
     }
   });
 
-  it('proves local production wiring while keeping 44-plugin cross-process evidence explicitly missing', async () => {
+  it('proves local production wiring while keeping cross-process evidence explicitly missing', async () => {
     const agentCore = await import('@inkpi/agent-core');
     expect(agentCore.ExtensionHost).toBe(ExtensionHost);
     expect(agentCore.ExtensionRunner).toBe(ExtensionRunner);
