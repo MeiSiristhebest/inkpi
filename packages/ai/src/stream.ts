@@ -327,12 +327,14 @@ export class AssistantEventStream implements EventStream<AssistantMessageEvent> 
               break;
             }
           }
-          toolCallsMap.set(event.toolCall.id, {
+          const endedCall: typeof existing = {
             id: event.toolCall.id,
             name: event.toolCall.name,
             argsStr: endedArgs,
             ended: true
-          });
+          };
+          if (existing.blockIndex !== undefined) endedCall.blockIndex = existing.blockIndex;
+          toolCallsMap.set(event.toolCall.id, endedCall);
           break;
         }
         case 'usage':

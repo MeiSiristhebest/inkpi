@@ -51,6 +51,13 @@ import type {
   OpenAIChatGPTPlanSignInStart,
   OpenAIChatGPTPlanSignInStatus,
   OpenAIChatGPTPlanSignInStatusParams,
+  OpenAICodexConnection,
+  OpenAICodexDisconnectParams,
+  OpenAICodexDisconnectResult,
+  OpenAICodexSignInParams,
+  OpenAICodexSignInStart,
+  OpenAICodexSignInStatus,
+  OpenAICodexSignInStatusParams,
   RuntimeModelProviderProbeParams,
   RuntimeModelProviderProbeResult,
   RuntimeModelRouteHealthParams,
@@ -310,6 +317,10 @@ export interface DaemonRpcMethodMap {
     OpenAIChatGPTPlanDisconnectParams,
     OpenAIChatGPTPlanDisconnectResult
   >;
+  'model.openai-codex.status': RpcMethodContract<void, OpenAICodexConnection>;
+  'model.openai-codex.sign-in': RpcMethodContract<OpenAICodexSignInParams, OpenAICodexSignInStart>;
+  'model.openai-codex.sign-in-status': RpcMethodContract<OpenAICodexSignInStatusParams, OpenAICodexSignInStatus>;
+  'model.openai-codex.disconnect': RpcMethodContract<OpenAICodexDisconnectParams, OpenAICodexDisconnectResult>;
   'proposal.sync.push': RpcMethodContract<ProposalSyncPushParams, ProposalSyncPushResult>;
   'proposal.sync.snapshot': RpcMethodContract<ProposalSyncSnapshotParams, ProposalProjectionSnapshot>;
   'runtime.diagnostics': RpcMethodContract<void, DiagnosticSnapshot>;
@@ -385,6 +396,10 @@ export const DAEMON_RPC_METHOD_NAMES = [
   'model.chatgpt-plan.sign-in-status',
   'model.chatgpt-plan.models',
   'model.chatgpt-plan.disconnect',
+  'model.openai-codex.status',
+  'model.openai-codex.sign-in',
+  'model.openai-codex.sign-in-status',
+  'model.openai-codex.disconnect',
   'proposal.sync.push',
   'proposal.sync.snapshot',
   'runtime.diagnostics',

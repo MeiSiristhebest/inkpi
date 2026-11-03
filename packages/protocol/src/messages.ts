@@ -150,6 +150,9 @@ export interface StandardLlmMessage {
 export type ProviderType =
   | 'deepseek'
   | 'openai'
+  | 'openai-responses'
+  | 'azure-openai-responses'
+  | 'openai-codex'
   | 'openai-chatgpt-plan'
   | 'claude'
   | 'gemini'
@@ -176,6 +179,7 @@ export interface ModelConfig {
   maxTokens?: number;
   contextWindow?: number;
   supportsThinking?: boolean;
+  reasoningEffort?: ThinkingLevel;
   supportsTools?: boolean;
   presencePenalty?: number;
   frequencyPenalty?: number;

@@ -47,7 +47,7 @@ describe('Runtime credential broker client', () => {
     }
   });
 
-  it('writes and removes only ChatGPT account references through the broker', async () => {
+  it('writes and removes only approved ChatGPT and Codex account references through the broker', async () => {
     const received: unknown[] = [];
     const server = createServer((socket) => {
       let request = '';
@@ -64,10 +64,13 @@ describe('Runtime credential broker client', () => {
       INKPI_CREDENTIAL_BROKER_TOKEN: BROKER_TOKEN
     });
     const accountRef = `inkpi.model.openai-chatgpt-plan.account.${'b'.repeat(32)}`;
+    const codexAccountRef = `inkpi.model.openai-codex.account.${'c'.repeat(32)}`;
 
     try {
       await store?.set(accountRef, '{"refreshToken":"secret"}');
       await store?.remove('inkpi.model.openai-chatgpt-plan.accounts');
+      await store?.set(codexAccountRef, '{"refreshToken":"codex-secret"}');
+      await store?.remove('inkpi.model.openai-codex.accounts');
       expect(received).toEqual([
         {
           token: BROKER_TOKEN,
@@ -79,10 +82,21 @@ describe('Runtime credential broker client', () => {
           token: BROKER_TOKEN,
           operation: 'remove',
           credential_ref: 'inkpi.model.openai-chatgpt-plan.accounts'
+        },
+        {
+          token: BROKER_TOKEN,
+          operation: 'set',
+          credential_ref: codexAccountRef,
+          value: '{"refreshToken":"codex-secret"}'
+        },
+        {
+          token: BROKER_TOKEN,
+          operation: 'remove',
+          credential_ref: 'inkpi.model.openai-codex.accounts'
         }
       ]);
       await expect(store?.set('inkpi.model.openai.gpt-4o', 'secret')).rejects.toThrow(
-        'limited to ChatGPT plan references'
+        'limited to approved OpenAI account references'
       );
     } finally {
       await close(server);

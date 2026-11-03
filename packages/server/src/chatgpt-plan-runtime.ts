@@ -24,9 +24,7 @@ const OPENAI_RESOURCE = 'https://api.openai.com/v1';
 const OPENAI_MODELS_URL = `${OPENAI_RESOURCE}/models`;
 const OPENAI_TOKEN_SCOPE = 'chatgpt.tokens.use.direct';
 const DYNAMIC_CLIENT_ID = 'dynamic_agent_client';
-const ACCOUNT_INDEX_REF = 'inkpi.model.openai-chatgpt-plan.accounts';
-const HOST_ID_REF = 'inkpi.model.openai-chatgpt-plan.host';
-const ACCOUNT_REF_PREFIX = 'inkpi.model.openai-chatgpt-plan.account.';
+type OpenAIAccountNamespace = 'openai-chatgpt-plan' | 'openai-codex';
 const CALLBACK_PATH = '/auth/callback';
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 const ATTEMPT_RETENTION_MS = 10 * 60 * 1000;
@@ -97,11 +95,14 @@ export interface ChatGPTPlanRuntimeOptions {
   fetchImpl?: typeof fetch;
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
+  /** Separate persisted OAuth namespace for the Codex route. */
+  accountNamespace?: OpenAIAccountNamespace;
 }
 
 /** Implements OpenAI's documented Sign in with ChatGPT plan-usage flow. */
 export class ChatGPTPlanRuntime {
   private readonly credentialStore?: RuntimeCredentialStore;
+  private readonly accountNamespace: OpenAIAccountNamespace;
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private readonly sleep: (milliseconds: number) => Promise<void>;
@@ -113,6 +114,7 @@ export class ChatGPTPlanRuntime {
 
   constructor(options: ChatGPTPlanRuntimeOptions = {}) {
     this.credentialStore = options.credentialStore;
+    this.accountNamespace = options.accountNamespace ?? 'openai-chatgpt-plan';
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
@@ -130,6 +132,9 @@ export class ChatGPTPlanRuntime {
 
   async startSignIn(params: OpenAIChatGPTPlanSignInParams): Promise<OpenAIChatGPTPlanSignInStart> {
     const store = this.requireCredentialStore();
+    if (this.accountNamespace === 'openai-codex' && params.enablePlanUsage) {
+      throw new ChatGPTPlanRuntimeError('Codex sign-in does not support ChatGPT Plan token access.');
+    }
     this.pruneAttempts();
     if ([...this.attempts.values()].filter((attempt) => !attempt.result).length >= MAX_PENDING_ATTEMPTS) {
       throw new ChatGPTPlanRuntimeError('Too many sign-in attempts are already pending.');
@@ -216,6 +221,9 @@ export class ChatGPTPlanRuntime {
   }
 
   async listModels(params: OpenAIChatGPTPlanModelsParams): Promise<OpenAIChatGPTPlanModel[]> {
+    if (this.accountNamespace !== 'openai-chatgpt-plan') {
+      throw new ChatGPTPlanRuntimeError('Codex model discovery is not available through the ChatGPT Plan API.');
+    }
     const accountId = normalizeAccountId(params.accountId);
     const accessToken = await this.getAccessTokenForAccount(accountId, true);
     let response: Response;
@@ -256,7 +264,10 @@ export class ChatGPTPlanRuntime {
   }
 
   async probeModelProvider(params: RuntimeModelProviderProbeParams): Promise<RuntimeModelProviderProbeResult> {
-    const accountId = accountIdFromCredentialRef(params.credentialRef);
+    if (this.accountNamespace !== 'openai-chatgpt-plan') {
+      throw new ChatGPTPlanRuntimeError('Codex accounts use the OpenAI Codex Responses route.');
+    }
+    const accountId = accountIdFromCredentialRef(params.credentialRef, this.accountNamespace);
     const startedAt = this.now();
     const models = await this.listModels({ accountId });
     const catalogModels: RuntimeModelCatalogEntry[] = models.map(({ id, name }) => ({ id, name }));
@@ -270,7 +281,10 @@ export class ChatGPTPlanRuntime {
 
   /** Resolve an account-scoped route reference without returning any token to Desktop. */
   async resolveModelAccessToken(credentialRef: string): Promise<string> {
-    return this.getAccessTokenForAccount(accountIdFromCredentialRef(credentialRef), true);
+    return this.getAccessTokenForAccount(
+      accountIdFromCredentialRef(credentialRef, this.accountNamespace),
+      this.accountNamespace === 'openai-chatgpt-plan'
+    );
   }
 
   dispose(): void {
@@ -508,7 +522,7 @@ export class ChatGPTPlanRuntime {
       grant_type: 'refresh_token',
       client_id: account.clientId,
       refresh_token: refreshToken,
-      resource: OPENAI_RESOURCE
+      ...(this.accountNamespace === 'openai-chatgpt-plan' ? { resource: OPENAI_RESOURCE } : {})
     });
     let response: Response;
     try {
@@ -552,7 +566,7 @@ export class ChatGPTPlanRuntime {
       throw new ChatGPTPlanRuntimeError('OpenAI did not rotate the account refresh token.');
     }
     await this.saveAccount(this.requireCredentialStore(), refreshed);
-    if (!refreshed.scopes.includes(OPENAI_TOKEN_SCOPE)) {
+    if (this.accountNamespace === 'openai-chatgpt-plan' && !refreshed.scopes.includes(OPENAI_TOKEN_SCOPE)) {
       throw new ChatGPTPlanRuntimeError('ChatGPT plan usage is not authorized for this account.');
     }
     return accessToken;
@@ -593,13 +607,13 @@ export class ChatGPTPlanRuntime {
 
   private saveAccount(store: RuntimeCredentialStore, account: ChatGPTPlanAccountRecord): Promise<void> {
     return this.withAccountMutation(async () => {
-      const reference = accountCredentialRef(account.accountId);
+      const reference = accountCredentialRef(account.accountId, this.accountNamespace);
       const previousRecord = await store.get(reference);
       const accountIds = await this.readAccountIds();
       const nextIds = accountIds.includes(account.accountId) ? accountIds : [...accountIds, account.accountId];
       await store.set(reference, JSON.stringify(account));
       try {
-        await store.set(ACCOUNT_INDEX_REF, JSON.stringify(nextIds));
+        await store.set(accountIndexRef(this.accountNamespace), JSON.stringify(nextIds));
       } catch (error) {
         try {
           if (previousRecord) await store.set(reference, previousRecord);
@@ -615,13 +629,13 @@ export class ChatGPTPlanRuntime {
   private removeAccount(accountId: string): Promise<void> {
     return this.withAccountMutation(async () => {
       const store = this.requireCredentialStore();
-      const reference = accountCredentialRef(accountId);
+      const reference = accountCredentialRef(accountId, this.accountNamespace);
       const previousRecord = await store.get(reference);
       const nextIds = (await this.readAccountIds()).filter((id) => id !== accountId);
       await store.remove(reference);
       try {
-        if (nextIds.length > 0) await store.set(ACCOUNT_INDEX_REF, JSON.stringify(nextIds));
-        else await store.remove(ACCOUNT_INDEX_REF);
+        if (nextIds.length > 0) await store.set(accountIndexRef(this.accountNamespace), JSON.stringify(nextIds));
+        else await store.remove(accountIndexRef(this.accountNamespace));
       } catch (error) {
         if (previousRecord) {
           try {
@@ -636,7 +650,7 @@ export class ChatGPTPlanRuntime {
   }
 
   private async readAccountIds(): Promise<string[]> {
-    const raw = await this.requireCredentialStore().get(ACCOUNT_INDEX_REF);
+    const raw = await this.requireCredentialStore().get(accountIndexRef(this.accountNamespace));
     if (!raw) return [];
     let value: unknown;
     try {
@@ -652,7 +666,7 @@ export class ChatGPTPlanRuntime {
 
   private async readAccount(accountId: string): Promise<ChatGPTPlanAccountRecord | undefined> {
     const normalizedId = normalizeAccountId(accountId);
-    const raw = await this.requireCredentialStore().get(accountCredentialRef(normalizedId));
+    const raw = await this.requireCredentialStore().get(accountCredentialRef(normalizedId, this.accountNamespace));
     if (!raw) return undefined;
     let value: unknown;
     try {
@@ -669,7 +683,8 @@ export class ChatGPTPlanRuntime {
   private getOrCreateHostId(store: RuntimeCredentialStore): Promise<string> {
     if (!this.hostIdPromise) {
       this.hostIdPromise = (async () => {
-        const existing = await store.get(HOST_ID_REF);
+        const reference = hostIdRef(this.accountNamespace);
+        const existing = await store.get(reference);
         if (existing) {
           if (!/^urn:uuid:[0-9a-f-]{36}$/i.test(existing)) {
             throw new ChatGPTPlanRuntimeError('The saved ChatGPT host identifier is invalid.');
@@ -677,7 +692,7 @@ export class ChatGPTPlanRuntime {
           return existing;
         }
         const hostId = `urn:uuid:${randomUUID()}`;
-        await store.set(HOST_ID_REF, hostId);
+        await store.set(reference, hostId);
         return hostId;
       })().catch((error) => {
         this.hostIdPromise = undefined;
@@ -807,15 +822,24 @@ function normalizeAccountId(accountId: string): string {
   return accountId.toLowerCase();
 }
 
-function accountCredentialRef(accountId: string): string {
-  return `${ACCOUNT_REF_PREFIX}${normalizeAccountId(accountId)}`;
+function accountIndexRef(namespace: OpenAIAccountNamespace): string {
+  return `inkpi.model.${namespace}.accounts`;
 }
 
-function accountIdFromCredentialRef(credentialRef?: string): string {
-  if (!credentialRef?.startsWith(ACCOUNT_REF_PREFIX)) {
-    throw new ChatGPTPlanRuntimeError('A ChatGPT account credential reference is required.');
+function hostIdRef(namespace: OpenAIAccountNamespace): string {
+  return `inkpi.model.${namespace}.host`;
+}
+
+function accountCredentialRef(accountId: string, namespace: OpenAIAccountNamespace): string {
+  return `inkpi.model.${namespace}.account.${normalizeAccountId(accountId)}`;
+}
+
+function accountIdFromCredentialRef(credentialRef: string | undefined, namespace: OpenAIAccountNamespace): string {
+  const prefix = `inkpi.model.${namespace}.account.`;
+  if (!credentialRef?.startsWith(prefix)) {
+    throw new ChatGPTPlanRuntimeError('An account-scoped OpenAI credential reference is required.');
   }
-  return normalizeAccountId(credentialRef.slice(ACCOUNT_REF_PREFIX.length));
+  return normalizeAccountId(credentialRef.slice(prefix.length));
 }
 
 function isAccountRecord(value: unknown): value is ChatGPTPlanAccountRecord {

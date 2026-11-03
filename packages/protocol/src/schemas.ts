@@ -472,6 +472,47 @@ export const OpenAIChatGPTPlanDisconnectResultSchema = Type.Object({
   remoteRevocationConfirmed: Type.Boolean()
 });
 
+export const OpenAICodexAccountSummarySchema = Type.Object({
+  accountId: IdSchema,
+  email: Type.Optional(Type.String()),
+  name: Type.Optional(Type.String()),
+  connected: Type.Boolean(),
+  reauthRequired: Type.Boolean()
+});
+
+export const OpenAICodexConnectionSchema = Type.Object({
+  available: Type.Boolean(),
+  accounts: Type.Array(OpenAICodexAccountSummarySchema)
+});
+
+export const OpenAICodexSignInParamsSchema = Type.Object({
+  accountId: Type.Optional(IdSchema)
+});
+
+export const OpenAICodexSignInStartSchema = Type.Object({
+  attemptId: IdSchema,
+  authorizationUrl: Type.String({ minLength: 1 })
+});
+
+export const OpenAICodexSignInStatusParamsSchema = Type.Object({
+  attemptId: IdSchema
+});
+
+export const OpenAICodexSignInStatusSchema = Type.Union([
+  Type.Object({ status: Type.Literal('pending') }),
+  Type.Object({ status: Type.Literal('connected'), account: OpenAICodexAccountSummarySchema }),
+  Type.Object({ status: Type.Union([Type.Literal('cancelled'), Type.Literal('error')]), message: Type.String() })
+]);
+
+export const OpenAICodexDisconnectParamsSchema = Type.Object({
+  accountId: IdSchema
+});
+
+export const OpenAICodexDisconnectResultSchema = Type.Object({
+  accountId: IdSchema,
+  remoteRevocationConfirmed: Type.Boolean()
+});
+
 export const RuntimeModelRouteCapabilitiesSchema = Type.Object({
   nativeCapabilities: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
   runtimeTransforms: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
@@ -644,6 +685,14 @@ export const PROTOCOL_SCHEMA_DEFINITIONS = {
   OpenAIChatGPTPlanModelSchema,
   OpenAIChatGPTPlanDisconnectParamsSchema,
   OpenAIChatGPTPlanDisconnectResultSchema,
+  OpenAICodexAccountSummarySchema,
+  OpenAICodexConnectionSchema,
+  OpenAICodexSignInParamsSchema,
+  OpenAICodexSignInStartSchema,
+  OpenAICodexSignInStatusParamsSchema,
+  OpenAICodexSignInStatusSchema,
+  OpenAICodexDisconnectParamsSchema,
+  OpenAICodexDisconnectResultSchema,
   ExecutionSnapshotSchema,
   TaskExecutionSnapshotSchema,
   RpcRequestSchema,

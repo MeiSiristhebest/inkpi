@@ -62,6 +62,13 @@ import type {
   OpenAIChatGPTPlanSignInStart,
   OpenAIChatGPTPlanSignInStatus,
   OpenAIChatGPTPlanSignInStatusParams,
+  OpenAICodexConnection,
+  OpenAICodexDisconnectParams,
+  OpenAICodexDisconnectResult,
+  OpenAICodexSignInParams,
+  OpenAICodexSignInStart,
+  OpenAICodexSignInStatus,
+  OpenAICodexSignInStatusParams,
   ProposalSyncPushParams,
   ProposalSyncSnapshotParams,
   RuntimeModelProviderProbeParams,
@@ -115,6 +122,7 @@ import {
   validateModelRouteRuntimeState
 } from './model-capability-router.js';
 import { probeModelProvider } from './model-provider-probe.js';
+import { OpenAICodexRuntime } from './openai-codex-runtime.js';
 import { PROJECT_INSTRUCTIONS_PROVIDER_ID, createTrustedProjectInstructionsProvider } from './project-instructions.js';
 import {
   type RuntimeCredentialResolver,
@@ -139,6 +147,7 @@ export interface DaemonOptions {
   credentialResolver?: RuntimeCredentialResolver;
   credentialStore?: RuntimeCredentialStore;
   chatGPTPlanRuntime?: ChatGPTPlanRuntime;
+  openAICodexRuntime?: OpenAICodexRuntime;
   capabilityRouter?: CapabilityRouter;
   instructionRegistry?: InstructionRegistry;
   /** Current project directory. Project instructions load only inside trustedProjectRoots. */
@@ -192,6 +201,7 @@ export class InkPiDaemon {
   private readonly credentialResolver?: RuntimeCredentialResolver;
   private readonly credentialStore?: RuntimeCredentialStore;
   private readonly chatGPTPlanRuntime: ChatGPTPlanRuntime;
+  private readonly openAICodexRuntime: OpenAICodexRuntime;
   private readonly cacheCoordinator: RuntimeCacheCoordinatorPort;
   private readonly firstPartyPluginRuntime: FirstPartyPluginRuntimeRegistration;
   private cachePersistenceRestored = false;
@@ -207,6 +217,8 @@ export class InkPiDaemon {
     this.credentialResolver = options.credentialResolver ?? this.credentialStore?.get;
     this.chatGPTPlanRuntime =
       options.chatGPTPlanRuntime ?? new ChatGPTPlanRuntime({ credentialStore: this.credentialStore });
+    this.openAICodexRuntime =
+      options.openAICodexRuntime ?? new OpenAICodexRuntime({ credentialStore: this.credentialStore });
     this.taskObservability = new TaskObservability(options.observability);
     this.sessionManager = new SessionRegistry(REAL_CLOCK, options.defaultModel, undefined, {
       journalFactory:
@@ -599,6 +611,23 @@ export class InkPiDaemon {
         this.chatGPTPlanRuntime.disconnect(params)
     );
     this.rpcServer.registerMethod(
+      'model.openai-codex.status',
+      (): Promise<OpenAICodexConnection> => this.openAICodexRuntime.getStatus()
+    );
+    this.rpcServer.registerMethod(
+      'model.openai-codex.sign-in',
+      (params: OpenAICodexSignInParams): Promise<OpenAICodexSignInStart> => this.openAICodexRuntime.startSignIn(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.openai-codex.sign-in-status',
+      (params: OpenAICodexSignInStatusParams): OpenAICodexSignInStatus => this.openAICodexRuntime.signInStatus(params)
+    );
+    this.rpcServer.registerMethod(
+      'model.openai-codex.disconnect',
+      (params: OpenAICodexDisconnectParams): Promise<OpenAICodexDisconnectResult> =>
+        this.openAICodexRuntime.disconnect(params)
+    );
+    this.rpcServer.registerMethod(
       'model.routes.configure',
       (params: RuntimeModelRoutesConfigureParams): RuntimeModelRoutesConfigureResult =>
         this.configureRuntimeModelRoutes(params)
@@ -843,6 +872,9 @@ export class InkPiDaemon {
   private resolveModelCredential(credentialRef: string): Promise<string | undefined> {
     if (credentialRef.startsWith('inkpi.model.openai-chatgpt-plan.account.')) {
       return this.chatGPTPlanRuntime.resolveModelAccessToken(credentialRef);
+    }
+    if (credentialRef.startsWith('inkpi.model.openai-codex.account.')) {
+      return this.openAICodexRuntime.resolveModelAccessToken(credentialRef);
     }
     return this.credentialResolver ? this.credentialResolver(credentialRef) : Promise.resolve(undefined);
   }
@@ -1098,6 +1130,7 @@ export class InkPiDaemon {
 
   public async stop(): Promise<void> {
     this.chatGPTPlanRuntime.dispose();
+    this.openAICodexRuntime.dispose();
     if (!this.running) {
       await this.taskRouter.stop();
       return;
@@ -1217,6 +1250,7 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
       'topP',
       'maxTokens',
       'thinkingBudget',
+      'reasoningEffort',
       'supportsThinking',
       'supportsMidConvoEffort',
       'supportsPromptCache',
@@ -1282,6 +1316,8 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
     entry.model.credentialRef === undefined
       ? undefined
       : routeCredentialRef(entry.model.credentialRef, `credential reference for route '${id}'`);
+  assertProviderCredentialNamespace(provider, credentialRef, id);
+  const reasoningEffort = routeReasoningEffort(entry.model.reasoningEffort, `reasoningEffort for route '${id}'`);
   const model = {
     id: modelId,
     name,
@@ -1291,6 +1327,7 @@ function runtimeRegistrationToModelRoute(entry: RuntimeModelRouteRegistration): 
     ...(finiteNumber(entry.model.topP) ? { topP: entry.model.topP } : {}),
     ...(finiteNumber(entry.model.maxTokens) ? { maxTokens: entry.model.maxTokens } : {}),
     ...(finiteNumber(entry.model.thinkingBudget) ? { thinkingBudget: entry.model.thinkingBudget } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(typeof entry.model.supportsThinking === 'boolean' ? { supportsThinking: entry.model.supportsThinking } : {}),
     ...(typeof entry.model.supportsMidConvoEffort === 'boolean'
       ? { supportsMidConvoEffort: entry.model.supportsMidConvoEffort }
@@ -1327,6 +1364,7 @@ function summarizeRuntimeModelRoute(route: ModelRoute): RuntimeModelRouteSummary
     ...(finiteNumber(model.topP) ? { topP: model.topP } : {}),
     ...(finiteNumber(model.maxTokens) ? { maxTokens: model.maxTokens } : {}),
     ...(finiteNumber(model.thinkingBudget) ? { thinkingBudget: model.thinkingBudget } : {}),
+    ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
     ...(typeof model.supportsThinking === 'boolean' ? { supportsThinking: model.supportsThinking } : {}),
     ...(typeof model.supportsMidConvoEffort === 'boolean'
       ? { supportsMidConvoEffort: model.supportsMidConvoEffort }
@@ -1344,6 +1382,21 @@ function summarizeRuntimeModelRoute(route: ModelRoute): RuntimeModelRouteSummary
     ...(route.ranking ? { ranking: { ...route.ranking } } : {}),
     ...(route.fallback === undefined ? {} : { fallback: route.fallback })
   };
+}
+
+function routeReasoningEffort(value: unknown, field: string): AiModelConfig['reasoningEffort'] {
+  if (value === undefined) return undefined;
+  if (
+    value === 'none' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
+  ) {
+    return value;
+  }
+  throw new Error(`Model route ${field} is unsupported`);
 }
 
 function routeString(value: unknown, field: string): string {
@@ -1382,6 +1435,18 @@ function parseModelRouteCacheControl(
 
 function isRuntimePromptCacheTtl(value: unknown): value is RuntimePromptCacheTtl {
   return value === '5m' || value === '30m' || value === '1h';
+}
+
+function assertProviderCredentialNamespace(provider: string, credentialRef: string | undefined, routeId: string): void {
+  const accountReferenceRequired =
+    provider === 'openai-chatgpt-plan'
+      ? /^inkpi\.model\.openai-chatgpt-plan\.account\.[a-f0-9]{32}$/i
+      : provider === 'openai-codex'
+        ? /^inkpi\.model\.openai-codex\.account\.[a-f0-9]{32}$/i
+        : undefined;
+  if (accountReferenceRequired && (!credentialRef || !accountReferenceRequired.test(credentialRef))) {
+    throw new Error(`Model route '${routeId}' requires an account credential reference scoped to '${provider}'`);
+  }
 }
 
 function routeCredentialRef(value: unknown, field: string): string {

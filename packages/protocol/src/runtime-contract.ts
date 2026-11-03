@@ -71,7 +71,11 @@ export const RUNTIME_CAPABILITIES = [
   'model.chatgpt-plan.sign-in',
   'model.chatgpt-plan.sign-in-status',
   'model.chatgpt-plan.models',
-  'model.chatgpt-plan.disconnect'
+  'model.chatgpt-plan.disconnect',
+  'model.openai-codex.status',
+  'model.openai-codex.sign-in',
+  'model.openai-codex.sign-in-status',
+  'model.openai-codex.disconnect'
 ] as const;
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number];
@@ -99,7 +103,11 @@ export const DESKTOP_REQUIRED_RUNTIME_CAPABILITIES = [
   'model.chatgpt-plan.sign-in',
   'model.chatgpt-plan.sign-in-status',
   'model.chatgpt-plan.models',
-  'model.chatgpt-plan.disconnect'
+  'model.chatgpt-plan.disconnect',
+  'model.openai-codex.status',
+  'model.openai-codex.sign-in',
+  'model.openai-codex.sign-in-status',
+  'model.openai-codex.disconnect'
 ] as const satisfies readonly RuntimeCapability[];
 
 export interface RuntimeHandshakeRequest {

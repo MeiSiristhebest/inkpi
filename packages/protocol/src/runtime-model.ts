@@ -1,4 +1,5 @@
 import type { JsonObject } from './json.js';
+import type { ThinkingLevel } from './messages.js';
 import type { OutputFormat } from './task.js';
 
 /** TTL values exposed by current provider adapters; each provider accepts a subset. */
@@ -18,6 +19,7 @@ export interface RuntimeModelRegistrationConfig {
   topP?: number;
   maxTokens?: number;
   thinkingBudget?: number;
+  reasoningEffort?: ThinkingLevel;
   supportsThinking?: boolean;
   supportsMidConvoEffort?: boolean;
   supportsPromptCache?: boolean;
@@ -38,6 +40,7 @@ export interface RuntimeModelSummary {
   topP?: number;
   maxTokens?: number;
   thinkingBudget?: number;
+  reasoningEffort?: ThinkingLevel;
   supportsThinking?: boolean;
   supportsMidConvoEffort?: boolean;
   supportsPromptCache?: boolean;
@@ -221,6 +224,48 @@ export interface OpenAIChatGPTPlanDisconnectParams {
 }
 
 export interface OpenAIChatGPTPlanDisconnectResult {
+  accountId: string;
+  remoteRevocationConfirmed: boolean;
+}
+
+/** Codex account identity and connection state; intentionally separate from ChatGPT Plan. */
+export interface OpenAICodexAccountSummary {
+  accountId: string;
+  email?: string;
+  name?: string;
+  connected: boolean;
+  reauthRequired: boolean;
+}
+
+export interface OpenAICodexConnection {
+  available: boolean;
+  accounts: OpenAICodexAccountSummary[];
+}
+
+export interface OpenAICodexSignInParams {
+  /** Existing Codex account registration to reauthorize; omitted to add an account. */
+  accountId?: string;
+}
+
+export interface OpenAICodexSignInStart {
+  attemptId: string;
+  authorizationUrl: string;
+}
+
+export interface OpenAICodexSignInStatusParams {
+  attemptId: string;
+}
+
+export type OpenAICodexSignInStatus =
+  | { status: 'pending' }
+  | { status: 'connected'; account: OpenAICodexAccountSummary }
+  | { status: 'cancelled' | 'error'; message: string };
+
+export interface OpenAICodexDisconnectParams {
+  accountId: string;
+}
+
+export interface OpenAICodexDisconnectResult {
   accountId: string;
   remoteRevocationConfirmed: boolean;
 }

@@ -120,7 +120,44 @@ describe('Runtime model provider probe', () => {
     await expect(
       probeModelProvider({ provider: 'custom', baseUrl: 'https://example.test?key=secret' }, { fetchImpl })
     ).rejects.toThrow('must not contain credentials');
+    await expect(probeModelProvider({ provider: 'custom', baseUrl: 'not a URL' }, { fetchImpl })).rejects.toThrow(
+      'valid HTTP(S) URL'
+    );
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('uses Azure Responses authentication and never probes Codex account tokens generically', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ data: [{ id: 'deployment-a' }] }), { status: 200 })
+    );
+    const result = await probeModelProvider(
+      {
+        provider: 'azure-openai-responses',
+        baseUrl: 'https://resource.openai.azure.com/openai/v1',
+        credentialRef: 'inkpi.model.azure.deployment-a'
+      },
+      { fetchImpl, resolveCredential: async () => 'azure-secret' }
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://resource.openai.azure.com/openai/v1/models',
+      expect.objectContaining({ headers: { Accept: 'application/json', 'api-key': 'azure-secret' } })
+    );
+    expect(result.modelIds).toEqual(['deployment-a']);
+
+    const resolveCredential = vi.fn(async () => 'codex-token');
+    await expect(
+      probeModelProvider(
+        {
+          provider: 'openai-codex',
+          baseUrl: 'https://chatgpt.com/backend-api',
+          credentialRef: 'inkpi.model.openai-codex.account.ref'
+        },
+        { fetchImpl, resolveCredential }
+      )
+    ).rejects.toThrow('cannot be used for generic provider discovery');
+    expect(resolveCredential).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('routes ChatGPT plan probes through the account API instead of API-key authentication', async () => {

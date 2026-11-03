@@ -4,6 +4,7 @@ import type {
   AssistantMessageEvent,
   ProviderType,
   RuntimeModelCacheControl,
+  ThinkingLevel,
   Usage
 } from '@inkpi/protocol';
 
@@ -38,6 +39,7 @@ export interface ModelConfig {
   presencePenalty?: number;
   frequencyPenalty?: number;
   thinkingBudget?: number;
+  reasoningEffort?: ThinkingLevel;
   /**
    * 是否支持逐轮思考档位（Anthropic 自适应思考 / mid-conversation effort）。
    * 置为 true 时流式请求走 effort 路径，并把当轮档位记录在 assistant 消息上，
@@ -133,6 +135,8 @@ export interface StreamOptions {
   temperature?: number;
   maxTokens?: number;
   thinkingBudget?: number;
+  /** OpenAI Responses reasoning level for this request; 'none' explicitly disables reasoning. */
+  reasoningEffort?: ThinkingLevel;
   /**
    * Anthropic 自适应思考 effort（仅 supportsMidConvoEffort 模型生效）。
    * 提供时优先于 thinkingBudget：thinking 走 adaptive + output_config.effort，

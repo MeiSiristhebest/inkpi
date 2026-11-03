@@ -58,8 +58,8 @@ async function requestCredentialBroker(input: {
   value?: string;
 }): Promise<string | undefined> {
   validateCredentialRef(input.credentialRef);
-  if (input.operation !== 'get' && !isChatGPTPlanCredentialRef(input.credentialRef)) {
-    throw new Error('Credential writes are limited to ChatGPT plan references');
+  if (input.operation !== 'get' && !isOpenAIAccountCredentialRef(input.credentialRef)) {
+    throw new Error('Credential writes are limited to approved OpenAI account references');
   }
   if (input.value !== undefined && Buffer.byteLength(input.value, 'utf8') > MAX_CREDENTIAL_BYTES) {
     throw new Error('Credential value exceeds the size limit');
@@ -136,12 +136,16 @@ function validateCredentialRef(credentialRef: string): void {
   }
 }
 
-function isChatGPTPlanCredentialRef(credentialRef: string): boolean {
+function isOpenAIAccountCredentialRef(credentialRef: string): boolean {
   return (
     credentialRef === 'inkpi.model.openai-chatgpt-plan.accounts' ||
     credentialRef === 'inkpi.model.openai-chatgpt-plan.host' ||
     credentialRef === 'inkpi.model.openai-chatgpt-plan.account' ||
-    /^inkpi\.model\.openai-chatgpt-plan\.account\.[a-f0-9]{32}$/i.test(credentialRef)
+    /^inkpi\.model\.openai-chatgpt-plan\.account\.[a-f0-9]{32}$/i.test(credentialRef) ||
+    credentialRef === 'inkpi.model.openai-codex.accounts' ||
+    credentialRef === 'inkpi.model.openai-codex.host' ||
+    credentialRef === 'inkpi.model.openai-codex.account' ||
+    /^inkpi\.model\.openai-codex\.account\.[a-f0-9]{32}$/i.test(credentialRef)
   );
 }
 

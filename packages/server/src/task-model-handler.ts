@@ -345,7 +345,7 @@ export class TaskModelHandler implements TaskHandler {
         error.retryable = false;
         throw error;
       }
-      messages.push(publicAssistantMessage(assistant));
+      messages.push(publicAssistantMessage(assistant, providerModel));
       context.reportProgress(Math.min(0.9, 0.1 + toolStep / (maxToolSteps + 1)));
       const toolResults = await runWithConcurrency(
         toolCalls,
@@ -465,6 +465,7 @@ export class TaskModelHandler implements TaskHandler {
       systemPrompt: route.systemPrompt ?? this.systemPrompt,
       maxTokens: model.maxTokens,
       thinkingBudget: model.thinkingBudget,
+      reasoningEffort: model.reasoningEffort,
       ...(tools && tools.length > 0 ? { tools } : {})
     });
     const onAbort = () => stream.abort();
@@ -506,10 +507,17 @@ function isToolCall(content: AssistantMessage['content'][number]): content is To
   return content.type === 'toolCall';
 }
 
-function publicAssistantMessage(assistant: AssistantMessage): AssistantMessage {
+function publicAssistantMessage(assistant: AssistantMessage, model: ModelConfig): AssistantMessage {
+  const sanitized = sanitizeMessagesForProvider([assistant], model)[0];
+  if (!sanitized || sanitized.role !== 'assistant') throw new Error('Assistant transcript sanitization failed');
   return {
-    ...assistant,
-    content: assistant.content.filter((content) => content.type === 'text' || content.type === 'toolCall')
+    ...sanitized,
+    content: sanitized.content.filter(
+      (content) =>
+        content.type === 'text' ||
+        content.type === 'toolCall' ||
+        (content.type === 'thinking' && typeof content.providerSignature === 'string' && !!content.providerSignature)
+    )
   };
 }
 
@@ -637,6 +645,7 @@ function createProviderResponseCacheKey(
     systemPrompt: route.systemPrompt ?? defaultSystemPrompt,
     maxTokens: route.model.maxTokens,
     thinkingBudget: route.model.thinkingBudget,
+    reasoningEffort: route.model.reasoningEffort,
     requestConfigFingerprint: providerRequestConfigFingerprint(route),
     toolDefinitions: modelVisibleTools(toolRegistry).map((tool) => ({
       name: tool.name,

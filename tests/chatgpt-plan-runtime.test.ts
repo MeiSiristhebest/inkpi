@@ -2,6 +2,7 @@ import { createSign, generateKeyPairSync } from 'node:crypto';
 import { get as httpGet } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import { ChatGPTPlanRuntime } from '../packages/server/src/chatgpt-plan-runtime.js';
+import { OpenAICodexRuntime } from '../packages/server/src/openai-codex-runtime.js';
 import type { RuntimeCredentialStore } from '../packages/server/src/runtime-credential-broker.js';
 
 const OPENID_URL = 'https://auth.openai.com/.well-known/openid-configuration';
@@ -134,7 +135,10 @@ function createFixture() {
 
   return {
     runtime,
+    store,
     values,
+    fetchImpl,
+    currentTime: () => now,
     authorizationCodeGrants,
     refreshGrants,
     modelAuthorizationHeaders,
@@ -182,6 +186,34 @@ async function finishSignIn(
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error('ChatGPT sign-in did not settle in the test timeout.');
+}
+
+async function finishCodexSignIn(
+  fixture: ReturnType<typeof createFixture>,
+  runtime: OpenAICodexRuntime,
+  attemptId: string,
+  authorizationUrl: string,
+  code: string
+) {
+  const auth = new URL(authorizationUrl);
+  const nonce = auth.searchParams.get('nonce');
+  const state = auth.searchParams.get('state');
+  const redirectUri = auth.searchParams.get('redirect_uri');
+  if (!nonce || !state || !redirectUri) throw new Error('Authorization URL omitted required flow parameters.');
+  fixture.nonceByCode.set(code, nonce);
+
+  const callback = new URL(redirectUri);
+  callback.searchParams.set('code', code);
+  callback.searchParams.set('state', state);
+  callback.searchParams.set('client_id', `client-${code}`);
+  expect(await requestLocalCallback(callback)).toBe(200);
+
+  for (let index = 0; index < 100; index += 1) {
+    const status = runtime.signInStatus({ attemptId });
+    if (status.status !== 'pending') return status;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('Codex sign-in did not settle in the test timeout.');
 }
 
 function requestLocalCallback(callback: URL): Promise<number> {
@@ -340,6 +372,36 @@ describe('ChatGPT plan Runtime account flow', () => {
       expect(badStatus).toMatchObject({ status: 'error' });
       expect(await fixture.runtime.getStatus()).toMatchObject({ accounts: [initialStatus.account] });
     } finally {
+      fixture.runtime.dispose();
+    }
+  });
+
+  it('isolates Codex OAuth credentials and does not request ChatGPT Plan token scopes', async () => {
+    const fixture = createFixture();
+    const runtime = new OpenAICodexRuntime({
+      credentialStore: fixture.store,
+      fetchImpl: fixture.fetchImpl,
+      now: fixture.currentTime,
+      sleep: async () => {}
+    });
+    try {
+      const start = await runtime.startSignIn({});
+      const authorizationUrl = new URL(start.authorizationUrl);
+      expect(authorizationUrl.searchParams.get('scope')).not.toContain('chatgpt.tokens.use.direct');
+      expect(authorizationUrl.searchParams.has('resource')).toBe(false);
+
+      const signIn = await finishCodexSignIn(fixture, runtime, start.attemptId, start.authorizationUrl, 'codex');
+      expect(signIn.status).toBe('connected');
+      if (signIn.status !== 'connected') throw new Error('Expected Codex account connection.');
+      expect(signIn.account).not.toHaveProperty('sharing');
+
+      const accountRef = `inkpi.model.openai-codex.account.${signIn.account.accountId}`;
+      expect(fixture.values.has('inkpi.model.openai-codex.accounts')).toBe(true);
+      expect(fixture.values.has(ACCOUNT_INDEX_REF)).toBe(false);
+      await expect(runtime.resolveModelAccessToken(accountRef)).resolves.toBe('access-codex');
+      expect((await fixture.runtime.getStatus()).accounts).toEqual([]);
+    } finally {
+      runtime.dispose();
       fixture.runtime.dispose();
     }
   });

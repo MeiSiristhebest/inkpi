@@ -58,5 +58,13 @@ export type {
   OpenAIChatGPTPlanModelsParams,
   OpenAIChatGPTPlanModel,
   OpenAIChatGPTPlanDisconnectParams,
-  OpenAIChatGPTPlanDisconnectResult
+  OpenAIChatGPTPlanDisconnectResult,
+  OpenAICodexAccountSummary,
+  OpenAICodexConnection,
+  OpenAICodexSignInParams,
+  OpenAICodexSignInStart,
+  OpenAICodexSignInStatus,
+  OpenAICodexSignInStatusParams,
+  OpenAICodexDisconnectParams,
+  OpenAICodexDisconnectResult
 } from './runtime-model.js';

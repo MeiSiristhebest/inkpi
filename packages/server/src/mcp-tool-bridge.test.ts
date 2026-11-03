@@ -106,6 +106,29 @@ describe('MCP tool bridge', () => {
     expect(extensionHost.getTools()).toEqual([]);
   });
 
+  it('preserves array, null, and primitive structuredContent values without truthiness filtering', async () => {
+    const structuredValues: unknown[] = [[], null, false, 0, 'scalar', ['one', { nested: true }]];
+
+    for (const structuredContent of structuredValues) {
+      const client = new FakeMcpClient([mcpTool('inspect')], { content: [], structuredContent });
+      const toolRegistry = new ToolRegistry();
+      const registration = await registerMcpTools({
+        serverId: 'workspace',
+        client,
+        toolRegistry,
+        allowedToolNames: ['inspect']
+      });
+
+      const result = await toolRegistry.executeTool(
+        toolCall('mcp_workspace_inspect', {}),
+        new AbortController().signal
+      );
+
+      expect(result).toHaveProperty('details', structuredContent);
+      registration.dispose();
+    }
+  });
+
   it('does not treat server annotations as authorization to expose tools', async () => {
     const client = new FakeMcpClient([mcpTool('search', true), mcpTool('write_file', false), mcpTool('delete_file')]);
     const toolRegistry = new ToolRegistry();

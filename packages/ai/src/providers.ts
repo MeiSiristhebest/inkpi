@@ -1,5 +1,10 @@
 import type { AgentMessage, AssistantMessageEvent, StandardLlmMessage, ThinkingLevel } from '@inkpi/protocol';
-import { chatGPTPlanResponsesProvider } from './chatgpt-plan-provider.js';
+import {
+  azureOpenAIResponsesProvider,
+  chatGPTPlanResponsesProvider,
+  openAICodexResponsesProvider,
+  openAIResponsesProvider
+} from './chatgpt-plan-provider.js';
 import { ProviderError, ProviderNotImplementedError, classifyProviderError, providerHttpError } from './errors.js';
 import { getHttpClient } from './http-client.js';
 import { sanitizeMessagesForProvider } from './sanitize.js';
@@ -368,6 +373,8 @@ export const PROVIDER_API_KEY_ENV: Readonly<Record<string, string>> = {
   deepseek: 'DEEPSEEK_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
   openai: 'OPENAI_API_KEY',
+  'openai-responses': 'OPENAI_API_KEY',
+  'azure-openai-responses': 'AZURE_OPENAI_API_KEY',
   claude: 'ANTHROPIC_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   gemini: 'GEMINI_API_KEY',
@@ -493,6 +500,8 @@ function legacyUsage(script: FauxScriptedResponse): import('@inkpi/protocol').Us
 
 export const DEFAULT_BASE_URLS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
+  'openai-responses': 'https://api.openai.com/v1',
+  'openai-codex': 'https://chatgpt.com/backend-api',
   deepseek: 'https://api.deepseek.com/v1',
   openrouter: 'https://openrouter.ai/api/v1',
   groq: 'https://api.groq.com/openai/v1',
@@ -1693,6 +1702,9 @@ function isAbortError(error: unknown): boolean {
 // ----------------------------------------------------------------------
 providerRegistry.set('deepseek', openAiCompatibleProvider);
 providerRegistry.set('openai', openAiCompatibleProvider);
+providerRegistry.set('openai-responses', openAIResponsesProvider);
+providerRegistry.set('azure-openai-responses', azureOpenAIResponsesProvider);
+providerRegistry.set('openai-codex', openAICodexResponsesProvider);
 providerRegistry.set('openai-chatgpt-plan', chatGPTPlanResponsesProvider);
 providerRegistry.set('claude', anthropicProvider);
 providerRegistry.set('gemini', geminiProvider);

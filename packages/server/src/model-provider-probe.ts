@@ -19,18 +19,23 @@ export async function probeModelProvider(
   params: RuntimeModelProviderProbeParams,
   options: ModelProviderProbeOptions = {}
 ): Promise<RuntimeModelProviderProbeResult> {
-  if (params.provider.trim().toLowerCase() === 'openai-chatgpt-plan') {
+  const provider = params.provider.trim().toLowerCase();
+  if (provider === 'openai-chatgpt-plan') {
     throw new Error('ChatGPT plan accounts must be probed through the account Runtime API');
   }
-  const endpoint = providerModelsEndpoint(params.provider, params.baseUrl);
+  if (provider === 'openai-codex') {
+    throw new Error('Codex account tokens cannot be used for generic provider discovery');
+  }
+  const endpoint = providerModelsEndpoint(provider, params.baseUrl);
   const headers: Record<string, string> = { Accept: 'application/json' };
   const apiKey = params.credentialRef ? (await options.resolveCredential?.(params.credentialRef))?.trim() : undefined;
   if (params.credentialRef && !options.resolveCredential) {
     throw new Error('Model credential broker is not configured');
   }
-  const provider = params.provider.trim().toLowerCase();
   if (apiKey) {
-    if (provider.includes('anthropic')) {
+    if (provider === 'azure-openai-responses') {
+      headers['api-key'] = apiKey;
+    } else if (provider.includes('anthropic')) {
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = '2023-06-01';
     } else if (provider.includes('google') || provider.includes('gemini')) {
@@ -62,7 +67,12 @@ function providerModelsEndpoint(provider: string, baseUrl: string): string {
   if (!provider.trim()) throw new Error('Provider is required');
   if (!baseUrl.trim()) throw new Error('Model provider base URL is required');
 
-  const url = new URL(baseUrl);
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error('Model provider URL must be a valid HTTP(S) URL');
+  }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error('Model provider URL must use HTTP or HTTPS');
   }
@@ -77,6 +87,9 @@ function providerModelsEndpoint(provider: string, baseUrl: string): string {
     url.pathname = `${path}/api/tags`.replace(/^\/\//, '/');
   } else if (normalizedProvider.includes('google') || normalizedProvider.includes('gemini')) {
     if (!/\/v1beta$/i.test(path)) path = `${path}/v1beta`;
+    url.pathname = `${path}/models`;
+  } else if (normalizedProvider === 'azure-openai-responses') {
+    if (!/\/openai\/v1$/i.test(path)) path = `${path}/openai/v1`;
     url.pathname = `${path}/models`;
   } else {
     if (!/\/v1$/i.test(path)) path = `${path}/v1`;
